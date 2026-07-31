@@ -1,0 +1,6 @@
+{
+  "name": "Wasti OS",
+  "description": "Complete Personal AI Operating System - Executive Brain, Multi-Agent System, Memory, Knowledge Base, Projects, Code Workspace & Automations",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

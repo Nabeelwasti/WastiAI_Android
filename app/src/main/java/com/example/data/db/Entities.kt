@@ -1,0 +1,116 @@
+package com.example.data.db
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "conversations")
+data class ConversationEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val createdTimestamp: Long = System.currentTimeMillis(),
+    val updatedTimestamp: Long = System.currentTimeMillis(),
+    val activeAgentId: String = "ceo_agent",
+    val modelName: String = "gemini-3.5-flash",
+    val systemPrompt: String = "You are Wasti OS Executive Brain.",
+    val isPinned: Boolean = false
+)
+
+@Entity(tableName = "messages")
+data class MessageEntity(
+    @PrimaryKey val id: String,
+    val conversationId: String,
+    val role: String, // "user", "assistant", "system", "agent"
+    val content: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val agentId: String = "executive_brain",
+    val modelUsed: String = "gemini-3.5-flash",
+    val tokensUsed: Int = 0,
+    val toolCallsJson: String? = null,
+    val thinkingContent: String? = null
+)
+
+@Entity(tableName = "memories")
+data class MemoryEntity(
+    @PrimaryKey val id: String,
+    val key: String,
+    val category: String, // "Preference", "Fact", "Rule", "Goal", "ProjectContext", "Personal"
+    val value: String,
+    val importanceScore: Float = 0.9f,
+    val timestamp: Long = System.currentTimeMillis(),
+    val sourceMessageId: String? = null
+)
+
+@Entity(tableName = "knowledge")
+data class KnowledgeEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val category: String,
+    val content: String,
+    val tagsCsv: String = "",
+    val dateAdded: Long = System.currentTimeMillis(),
+    val sourceUrl: String? = null
+)
+
+@Entity(tableName = "agents")
+data class AgentEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val roleTitle: String,
+    val iconName: String,
+    val systemInstruction: String,
+    val temperature: Float = 0.7f,
+    val capabilitiesCsv: String,
+    val status: String = "Active", // "Active", "Standby", "Busy"
+    val agentType: String = "CEO"
+)
+
+@Entity(tableName = "projects")
+data class ProjectEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val description: String,
+    val status: String = "In Progress", // "In Progress", "Planning", "Completed", "Archived"
+    val priority: String = "High", // "High", "Medium", "Low"
+    val deadline: String = "2026-12-31",
+    val createdDate: Long = System.currentTimeMillis(),
+    val tagsCsv: String = "AI,OS"
+)
+
+@Entity(tableName = "tasks")
+data class TaskEntity(
+    @PrimaryKey val id: String,
+    val projectId: String,
+    val title: String,
+    val description: String,
+    val isCompleted: Boolean = false,
+    val priority: String = "Medium",
+    val assignedAgentId: String = "ceo_agent",
+    val dueDate: String = "2026-08-15"
+)
+
+@Entity(tableName = "integrations")
+data class IntegrationEntity(
+    @PrimaryKey val id: String,
+    val serviceName: String,
+    val provider: String,
+    val isConnected: Boolean = false,
+    val authType: String = "OAuth2",
+    val lastSyncedTimestamp: Long = System.currentTimeMillis(),
+    val statusText: String = "Configured"
+)
+
+@Entity(tableName = "system_logs")
+data class SystemLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val level: String = "INFO", // "INFO", "WARN", "ERROR", "AGENT"
+    val source: String,
+    val message: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val details: String? = null
+)
+
+@Entity(tableName = "settings")
+data class SettingEntity(
+    @PrimaryKey val key: String,
+    val value: String
+)
