@@ -30,6 +30,13 @@ jobs:
     - name: Accept Android SDK Licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
+    - name: Decode Debug Keystore
+      run: |
+        if [ -f "debug.keystore.base64" ]; then
+          base64 -d debug.keystore.base64 > debug.keystore
+          echo "Restored debug.keystore from base64"
+        fi
+
     - name: Build Debug APK
       run: gradle assembleDebug --stacktrace
 
