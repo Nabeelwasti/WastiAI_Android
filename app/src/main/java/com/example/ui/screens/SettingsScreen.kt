@@ -14,7 +14,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import android.content.Context
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -22,9 +24,14 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun SettingsScreen(
     isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit
+    onToggleTheme: () -> Unit,
+    selectedModel: String = "groq-llama-3.3-70b",
+    onSelectModel: (String) -> Unit = {}
 ) {
-    var selectedModel by remember { mutableStateOf("gemini-3.5-flash") }
+    val context = LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE) }
+    var enableExtraVoiceModels by remember { mutableStateOf(prefs.getBoolean("enable_extra_voice_models", false)) }
+
     var isDiagnosticRunning by remember { mutableStateOf(false) }
     var diagnosticResult by remember { mutableStateOf<String?>(null) }
 
@@ -493,20 +500,83 @@ fun SettingsScreen(
             }
         }
 
+        // Voice Assistant & Voice Model Control
+        item {
+            Text(text = "Voice Chat & Assistant Models", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Groq Speech AI is configured as your primary default voice assistant. All other voice models are kept inactive by default.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Primary Assistant Voice", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(text = "⚡ Groq Speech AI (Ultra-Fast 500 T/s)", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text("DEFAULT & ACTIVE", fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onPrimaryContainer)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Activate Secondary Voice Models", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                            Text(
+                                text = "Enable ElevenLabs, Wasti Male/Female/Girl/Boy voice personas in voice chat.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = enableExtraVoiceModels,
+                            onCheckedChange = { isChecked ->
+                                enableExtraVoiceModels = isChecked
+                                prefs.edit().putBoolean("enable_extra_voice_models", isChecked).apply()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
         // Primary AI Model Provider
         item {
             Text(text = "Default AI Model Provider", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Wasti OS uses Google Gemini as its primary free AI engine. Anthropic does not offer free API keys, so Gemini is configured out-of-the-box.",
+                text = "Groq Llama 3.3 70B is set as your default active AI engine. Alternate models will only activate if specifically selected.",
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(8.dp))
 
             val models = listOf(
-                "groq-llama-3.3-70b" to "Groq Llama 3.3 70B (Ultra-Fast 500 T/s • Key Active: gsk_IebD8f...)",
-                "gemini-3.5-flash" to "Google Gemini 3.5 Flash (Recommended - Free via AI Studio)",
+                "groq-llama-3.3-70b" to "⚡ Groq Llama 3.3 70B (Default Main Engine • Key: gsk_IebD8f...)",
+                "gemini-3.5-flash" to "Google Gemini 3.5 Flash (Free via AI Studio)",
                 "gemini-3.1-pro-preview" to "Google Gemini 3.1 Pro (Free via AI Studio)",
                 "claude-3.5-sonnet" to "Anthropic Claude 3.5 Sonnet (Paid Key Required)",
                 "gpt-4o" to "OpenAI GPT-4o (Paid Key Required)",
@@ -523,12 +593,13 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clickable { onSelectModel(modelKey) }
                                 .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             RadioButton(
                                 selected = selectedModel == modelKey,
-                                onClick = { selectedModel = modelKey },
+                                onClick = { onSelectModel(modelKey) },
                                 modifier = Modifier.testTag("model_radio_$modelKey")
                             )
                             Spacer(modifier = Modifier.width(8.dp))

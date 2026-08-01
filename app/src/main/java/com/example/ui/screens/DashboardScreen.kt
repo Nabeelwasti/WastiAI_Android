@@ -12,7 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -129,6 +129,44 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+
+        // Executive AI Command & Search Center
+        item {
+            var dashboardSearchQuery by remember { mutableStateOf("") }
+            OutlinedTextField(
+                value = dashboardSearchQuery,
+                onValueChange = { dashboardSearchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dashboard_search_box"),
+                placeholder = { Text("Search AI knowledge, tasks, projects, or commands...", fontSize = 13.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                trailingIcon = {
+                    if (dashboardSearchQuery.isNotEmpty()) {
+                        IconButton(onClick = { dashboardSearchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    } else {
+                        IconButton(onClick = { onNavigateTab("chat") }) {
+                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                )
+            )
         }
 
         // Quick Module Launchers

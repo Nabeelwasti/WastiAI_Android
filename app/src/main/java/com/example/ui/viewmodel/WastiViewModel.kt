@@ -14,12 +14,20 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     private val db = WastiDatabase.getDatabase(application)
     val repository = WastiRepository(db)
 
+    private val prefs = application.getSharedPreferences("wasti_prefs", android.content.Context.MODE_PRIVATE)
+
     val activeTab = MutableStateFlow("dashboard")
     val activeConversationId = MutableStateFlow<String?>(null)
     val activeAgentId = MutableStateFlow("ceo_agent")
     val isCommandPaletteOpen = MutableStateFlow(false)
     val isGenerating = MutableStateFlow(false)
     val darkThemeEnabled = MutableStateFlow(true)
+    val selectedModel = MutableStateFlow(prefs.getString("selected_model", "groq-llama-3.3-70b") ?: "groq-llama-3.3-70b")
+
+    fun setSelectedModel(modelKey: String) {
+        selectedModel.value = modelKey
+        prefs.edit().putString("selected_model", modelKey).apply()
+    }
 
     val conversations: StateFlow<List<ConversationEntity>> = repository.conversations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -104,7 +112,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isGenerating.value = true
             try {
-                repository.sendMessage(convId, prompt, activeAgentId.value)
+                repository.sendMessage(convId, prompt, activeAgentId.value, selectedModel.value)
             } finally {
                 isGenerating.value = false
             }

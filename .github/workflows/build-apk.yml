@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout Repository
@@ -25,7 +27,7 @@ jobs:
       uses: android-actions/setup-android@v3
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+      uses: gradle/actions/setup-gradle@v4
 
     - name: Accept Android SDK Licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -45,3 +47,16 @@ jobs:
       with:
         name: WastiAI-Debug-APK
         path: app/build/outputs/apk/debug/app-debug.apk
+
+    - name: Create or Update GitHub Release
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "app/build/outputs/apk/debug/app-debug.apk"
+        tag: "v1.0.0"
+        name: "Wasti AI v1.0.0 (Latest APK)"
+        body: |
+          ### 📱 Wasti AI Latest Build
+          - **File:** `app-debug.apk`
+          - Download the `app-debug.apk` file below and open it on your Android phone to install!
+        allowUpdates: true
+        token: ${{ secrets.GITHUB_TOKEN }}

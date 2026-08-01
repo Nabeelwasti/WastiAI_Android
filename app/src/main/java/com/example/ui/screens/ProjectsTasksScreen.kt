@@ -32,6 +32,7 @@ fun ProjectsTasksScreen(
     onToggleTaskStatus: (String, Boolean) -> Unit
 ) {
     var selectedProjectId by remember { mutableStateOf<String?>(projects.firstOrNull()?.id) }
+    var searchQuery by remember { mutableStateOf("") }
 
     var showProjectDialog by remember { mutableStateOf(false) }
     var projName by remember { mutableStateOf("") }
@@ -154,12 +155,46 @@ fun ProjectsTasksScreen(
             }
         }
 
-        // Projects Cards
+        // Search Projects & Tasks
         item {
-            Text(text = "Active Projects (${projects.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("project_search_box"),
+                placeholder = { Text("Search projects, tasks, or execution rules...", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                )
+            )
         }
 
-        items(projects) { proj ->
+        val filteredProjects = projects.filter { proj ->
+            searchQuery.isBlank() ||
+            proj.name.contains(searchQuery, ignoreCase = true) ||
+            proj.description.contains(searchQuery, ignoreCase = true)
+        }
+
+        // Projects Cards
+        item {
+            Text(text = "Active Projects (${filteredProjects.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+
+        items(filteredProjects) { proj ->
             val isSelected = proj.id == selectedProjectId
             Card(
                 modifier = Modifier
@@ -223,10 +258,9 @@ fun ProjectsTasksScreen(
             }
         }
 
-        val projectTasks = if (selectedProjectId != null) {
-            allTasks.filter { it.projectId == selectedProjectId }
-        } else {
-            allTasks
+        val projectTasks = allTasks.filter { task ->
+            (selectedProjectId == null || task.projectId == selectedProjectId) &&
+            (searchQuery.isBlank() || task.title.contains(searchQuery, ignoreCase = true) || task.description.contains(searchQuery, ignoreCase = true))
         }
 
         items(projectTasks) { task ->

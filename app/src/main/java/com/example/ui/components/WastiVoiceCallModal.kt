@@ -59,7 +59,10 @@ fun WastiVoiceCallModal(
     lastAiResponse: String?
 ) {
     val context = LocalContext.current
-    var selectedPersona by remember { mutableStateOf(WastiVoicePersona.WASTI_MALE) }
+    val prefs = remember { context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE) }
+    val enableExtraVoiceModels = remember { prefs.getBoolean("enable_extra_voice_models", false) }
+
+    var selectedPersona by remember { mutableStateOf(WastiVoicePersona.GROQ_VOICE) }
     var isListening by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
     var voiceStatusText by remember { mutableStateOf("Wasti is listening... Speak now") }
@@ -397,41 +400,77 @@ fun WastiVoiceCallModal(
 
                 // Voice Persona Switcher Bar
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "Select Wasti Voice Persona:",
-                        color = Color(0xFFCBD5E1),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
+                    val activePersonas = if (enableExtraVoiceModels) {
+                        WastiVoicePersona.values().toList()
+                    } else {
+                        listOf(WastiVoicePersona.GROQ_VOICE)
+                    }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        WastiVoicePersona.values().forEach { persona ->
-                            val isSelected = selectedPersona == persona
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (isSelected) Color(0xFF0284C7) else Color(0xFF334155),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable {
-                                        selectedPersona = persona
-                                        speakWithPersona("Hello Sir! Wasti voice switched to ${persona.title}.", persona)
-                                    }
+                    if (!enableExtraVoiceModels) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF00E6FF).copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF00E6FF).copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(text = persona.icon, fontSize = 18.sp)
+                                Text(text = "⚡", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
                                     Text(
-                                        text = persona.title.split(" ").first(),
-                                        color = Color.White,
-                                        fontSize = 11.sp,
+                                        text = "Active Voice Assistant: Groq Speech AI (Main & Default)",
+                                        color = Color(0xFF00E6FF),
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
+                                    Text(
+                                        text = "All other models are disabled by default. Activate them in Settings.",
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Text(
+                            text = "Select Wasti Voice Persona:",
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            activePersonas.forEach { persona ->
+                                val isSelected = selectedPersona == persona
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) Color(0xFF0284C7) else Color(0xFF334155),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            selectedPersona = persona
+                                            speakWithPersona("Hello Sir! Wasti voice switched to ${persona.title}.", persona)
+                                        }
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(8.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Text(text = persona.icon, fontSize = 18.sp)
+                                        Text(
+                                            text = persona.title.split(" ").first(),
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }

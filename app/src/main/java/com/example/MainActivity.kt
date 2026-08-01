@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
             val activeAgentId by viewModel.activeAgentId.collectAsStateWithLifecycle()
             val isCommandPaletteOpen by viewModel.isCommandPaletteOpen.collectAsStateWithLifecycle()
             val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+            val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
 
             val conversations by viewModel.conversations.collectAsStateWithLifecycle()
             val messages by viewModel.currentMessages.collectAsStateWithLifecycle()
@@ -192,7 +193,9 @@ class MainActivity : ComponentActivity() {
                             )
                             "settings" -> SettingsScreen(
                                 isDarkTheme = darkTheme,
-                                onToggleTheme = { viewModel.toggleTheme() }
+                                onToggleTheme = { viewModel.toggleTheme() },
+                                selectedModel = selectedModel,
+                                onSelectModel = { viewModel.setSelectedModel(it) }
                             )
                             else -> DashboardScreen(
                                 conversations = conversations,

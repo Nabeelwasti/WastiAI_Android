@@ -271,7 +271,16 @@ fun ChatWorkspaceScreen(
                 MessageItem(
                     message = msg,
                     isThinkingVisible = isThinkingVisible,
-                    ttsEngine = ttsEngine
+                    ttsEngine = ttsEngine,
+                    onCopyText = { text ->
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Wasti Message", text)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    onEditMessage = { text ->
+                        promptInput = text
+                    }
                 )
             }
 
@@ -349,12 +358,23 @@ fun ChatWorkspaceScreen(
                 OutlinedTextField(
                     value = promptInput,
                     onValueChange = { promptInput = it },
-                    placeholder = { Text("Talk to Wasti... (Tap Mic or type in Urdu/Punjabi/English)", fontSize = 12.sp) },
+                    placeholder = { Text("Command AETHER / Wasti AI...", fontSize = 12.sp) },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("chat_prompt_input"),
                     maxLines = 4,
-                    shape = RoundedCornerShape(20.dp)
+                    shape = RoundedCornerShape(20.dp),
+                    trailingIcon = {
+                        if (promptInput.isNotEmpty()) {
+                            IconButton(onClick = { promptInput = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear Input", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    )
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -383,7 +403,9 @@ fun ChatWorkspaceScreen(
 private fun MessageItem(
     message: MessageEntity,
     isThinkingVisible: Boolean,
-    ttsEngine: TextToSpeech?
+    ttsEngine: TextToSpeech?,
+    onCopyText: (String) -> Unit,
+    onEditMessage: (String) -> Unit
 ) {
     val isUser = message.role == "user"
 
@@ -404,20 +426,48 @@ private fun MessageItem(
                 fontSize = 10.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
             )
-            if (!isUser) {
-                Spacer(modifier = Modifier.width(8.dp))
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Copy Action Icon Button
+            IconButton(
+                onClick = { onCopyText(message.content) },
+                modifier = Modifier.size(22.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy message",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(13.dp)
+                )
+            }
+
+            if (isUser) {
+                // Edit Message Action Icon Button for user prompt
+                IconButton(
+                    onClick = { onEditMessage(message.content) },
+                    modifier = Modifier.size(22.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit message",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            } else {
                 IconButton(
                     onClick = {
                         val cleanText = message.content.replace(Regex("```[\\s\\S]*?```"), "Code block omitted.")
                         ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "message_tts")
                     },
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.VolumeUp,
                         contentDescription = "Read aloud",
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }

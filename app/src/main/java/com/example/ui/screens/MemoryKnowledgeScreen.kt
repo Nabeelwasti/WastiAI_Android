@@ -31,6 +31,7 @@ fun MemoryKnowledgeScreen(
 ) {
     var selectedCategory by remember { mutableStateOf("All") }
     var selectedSection by remember { mutableIntStateOf(0) } // 0 = Memory, 1 = Knowledge Base
+    var searchQuery by remember { mutableStateOf("") }
 
     var showMemoryDialog by remember { mutableStateOf(false) }
     var memKey by remember { mutableStateOf("") }
@@ -212,6 +213,34 @@ fun MemoryKnowledgeScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Corporate Search Box
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("memory_search_box"),
+            placeholder = { Text(if (selectedSection == 0) "Search long-term memories, preferences, facts..." else "Search knowledge documents, articles, tags...", fontSize = 12.sp) },
+            leadingIcon = {
+                Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary)
+            },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Clear, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            )
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         // Web Scanner Banner
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -290,10 +319,9 @@ fun MemoryKnowledgeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val filteredMemories = if (selectedCategory == "All") {
-                memories
-            } else {
-                memories.filter { it.category.equals(selectedCategory, ignoreCase = true) }
+            val filteredMemories = memories.filter { mem ->
+                (selectedCategory == "All" || mem.category.equals(selectedCategory, ignoreCase = true)) &&
+                (searchQuery.isBlank() || mem.key.contains(searchQuery, ignoreCase = true) || mem.value.contains(searchQuery, ignoreCase = true) || mem.category.contains(searchQuery, ignoreCase = true))
             }
 
             LazyColumn(
@@ -373,11 +401,19 @@ fun MemoryKnowledgeScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            val filteredKnowledge = knowledge.filter { doc ->
+                searchQuery.isBlank() ||
+                doc.title.contains(searchQuery, ignoreCase = true) ||
+                doc.content.contains(searchQuery, ignoreCase = true) ||
+                doc.tagsCsv.contains(searchQuery, ignoreCase = true) ||
+                doc.category.contains(searchQuery, ignoreCase = true)
+            }
+
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(knowledge) { doc ->
+                items(filteredKnowledge) { doc ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
