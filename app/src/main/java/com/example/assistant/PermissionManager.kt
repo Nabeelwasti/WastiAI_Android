@@ -1,6 +1,7 @@
 package com.example.assistant
 
 import android.app.Activity
+import android.content.DialogInterface
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AlertDialog
 
@@ -21,7 +22,7 @@ object PermissionManager {
                 AlertDialog.Builder(activity)
                     .setTitle("Permission needed")
                     .setMessage(message)
-                    .setPositiveButton("OK") { _, _ -> launcher.launch(permission) }
+                    .setPositiveButton("OK") { dialog: DialogInterface, _ -> launcher.launch(permission) }
                     .setNegativeButton("Cancel", null)
                     .show()
             } else {
