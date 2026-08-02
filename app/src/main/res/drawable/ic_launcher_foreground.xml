@@ -1,8 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item
-        android:width="66dp"
-        android:height="66dp"
-        android:drawable="@drawable/img_wasti_app_icon_1785523199134"
-        android:gravity="center" />
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Safe area core (centered at 54, 54) -->
+    <!-- Outer Glowing Hexagon / Neural Node -->
+    <path
+        android:pathData="M54,26 L78,40 L78,68 L54,82 L30,68 L30,40 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FF38BDF8"
+        android:fillColor="#100284C7" />
+
+    <!-- Inner Futuristic 'W' AI Emblem -->
+    <path
+        android:pathData="M38,44 L46,64 L54,52 L62,64 L70,44"
+        android:strokeWidth="4"
+        android:strokeColor="#FF818CF8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Glowing Center AI Sparkle Core -->
+    <path
+        android:pathData="M54,36 L56,42 L62,44 L56,46 L54,52 L52,46 L46,44 L52,42 Z"
+        android:fillColor="#FF38BDF8" />
+
+    <!-- Corner AI Nodes -->
+    <path android:pathData="M54,26 M54,23 A3,3 0 1,1 54,29 A3,3 0 1,1 54,23" android:fillColor="#FF818CF8" />
+    <path android:pathData="M78,40 M78,37 A3,3 0 1,1 78,43 A3,3 0 1,1 78,37" android:fillColor="#FF38BDF8" />
+    <path android:pathData="M78,68 M78,65 A3,3 0 1,1 78,71 A3,3 0 1,1 78,65" android:fillColor="#FF818CF8" />
+    <path android:pathData="M54,82 M54,79 A3,3 0 1,1 54,85 A3,3 0 1,1 54,79" android:fillColor="#FF38BDF8" />
+    <path android:pathData="M30,68 M30,65 A3,3 0 1,1 30,71 A3,3 0 1,1 30,65" android:fillColor="#FF818CF8" />
+    <path android:pathData="M30,40 M30,37 A3,3 0 1,1 30,43 A3,3 0 1,1 30,37" android:fillColor="#FF38BDF8" />
+</vector>
+

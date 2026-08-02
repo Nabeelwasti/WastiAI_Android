@@ -29,6 +29,15 @@ interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
+    @Query("SELECT * FROM messages WHERE id = :id")
+    suspend fun getMessageById(id: String): MessageEntity?
+
+    @Query("UPDATE messages SET content = :newContent WHERE id = :id")
+    suspend fun updateMessageContent(id: String, newContent: String)
+
+    @Query("DELETE FROM messages WHERE conversationId = :conversationId AND timestamp > :timestamp")
+    suspend fun deleteMessagesAfterTimestamp(conversationId: String, timestamp: Long)
+
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteMessagesForConversation(conversationId: String)
 }

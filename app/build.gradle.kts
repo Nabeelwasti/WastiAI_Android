@@ -121,6 +121,10 @@ dependencies {
   implementation(libs.okhttp)
   // implementation(libs.play.services.location)
   implementation(libs.retrofit)
+  // WorkManager for scheduling background syncs (required for WastiApplication)
+  implementation("androidx.work:work-runtime-ktx:2.8.1")
+  // AppCompat for AlertDialog used in PermissionManager
+  implementation("androidx.appcompat:appcompat:1.6.1")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

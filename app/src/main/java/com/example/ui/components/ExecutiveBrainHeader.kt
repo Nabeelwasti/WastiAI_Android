@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun ExecutiveBrainHeader(
-    activeAgentName: String = "CEO Agent",
+    activeAgentName: String = "Wasti AI",
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onOpenCommandPalette: () -> Unit

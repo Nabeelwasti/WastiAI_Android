@@ -1,6 +1,7 @@
 package com.example.data.api
 
 import com.example.BuildConfig
+import com.example.util.WastiUrduLanguageEngine
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
@@ -49,7 +50,7 @@ object GeminiClient {
     suspend fun generateText(
         prompt: String,
         systemInstruction: String = "You are Wasti OS, an advanced AI Operating System.",
-        modelName: String = "gemini-3.5-flash",
+        modelName: String = "gemini-3.6-flash",
         history: List<GeminiContent> = emptyList()
     ): String = withContext(Dispatchers.IO) {
         val apiKey = try {
@@ -58,8 +59,11 @@ object GeminiClient {
             ""
         }
 
+        val langMandate = WastiUrduLanguageEngine.getLanguagePromptMandate(prompt)
+        val combinedSystemPrompt = "$systemInstruction\n\n$langMandate"
+
         if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-            return@withContext synthesizeLocalAiResponse(prompt, systemInstruction)
+            return@withContext synthesizeLocalAiResponse(prompt, combinedSystemPrompt)
         }
 
         val contentsList = mutableListOf<GeminiContent>()
@@ -68,33 +72,61 @@ object GeminiClient {
 
         val request = GeminiRequest(
             contents = contentsList,
-            systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = systemInstruction))),
+            systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = combinedSystemPrompt))),
             generationConfig = GeminiGenerationConfig(temperature = 0.7f)
         )
 
-        val resolvedModel = when (modelName.lowercase()) {
-            "gemini-flash", "gemini 3.5 flash" -> "gemini-3.5-flash"
-            "gemini-pro", "gemini 3.1 pro" -> "gemini-3.1-pro-preview"
-            else -> "gemini-3.5-flash"
+        val candidateModels = listOfNotNull(
+            modelName.ifBlank { null },
+            "gemini-3.6-flash",
+            "gemini-3.5-flash-lite"
+        ).distinct()
+
+        for (rawModel in candidateModels) {
+            val resolvedModel = when (rawModel.lowercase()) {
+                "gemini-flash", "gemini 3.6 flash", "gemini-3.6-flash" -> "gemini-3.6-flash"
+                "gemini-flash-lite", "gemini 3.5 flash lite" -> "gemini-3.5-flash-lite"
+                else -> rawModel
+            }
+
+            try {
+                val response = api.generateContent(model = resolvedModel, apiKey = apiKey, request = request)
+                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!text.isNullClassOrBlank()) {
+                    return@withContext text!!
+                }
+            } catch (e: Exception) {
+                // Failover to next Gemini free model in sequence
+            }
         }
 
-        try {
-            val response = api.generateContent(model = resolvedModel, apiKey = apiKey, request = request)
-            val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-            if (!text.isNullClassOrBlank()) {
-                text!!
-            } else {
-                synthesizeLocalAiResponse(prompt, systemInstruction)
-            }
-        } catch (e: Exception) {
-            synthesizeLocalAiResponse(prompt, systemInstruction)
-        }
+        return@withContext synthesizeLocalAiResponse(prompt, combinedSystemPrompt)
     }
 
     private fun String?.isNullClassOrBlank(): Boolean = this == null || this.isBlank()
 
     private fun synthesizeLocalAiResponse(prompt: String, systemInstruction: String): String {
         val lower = prompt.lowercase().trim()
+        val lang = WastiUrduLanguageEngine.detectLanguage(prompt)
+
+        // Pure Pakistani Urdu response generator for Urdu & Roman Urdu inputs
+        if (lang == WastiUrduLanguageEngine.LanguageType.ROMAN_URDU || lang == WastiUrduLanguageEngine.LanguageType.PURE_URDU) {
+            return when {
+                lower.contains("kaise") || lower.contains("haal") || lower.contains("kaise ho") || lower.contains("کیسے") || lower.contains("حال") ->
+                    "میں بالکل ٹھیک ہوں، جناب! آپ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟"
+                lower.contains("salam") || lower.contains("assalam") || lower.contains("سلام") ->
+                    "وعلیکم السلام، سر! واسطی اے آئی آپ کی خدمت میں حاضر ہے۔ فرمائیے کیا حکم ہے؟"
+                lower.contains("naam") || lower.contains("wasti") || lower.contains("نام") ->
+                    "میرا نام واسطی اے آئی (Wasti AI) ہے۔ میں سید نبیل واسطی کا ذاتی AI اسسٹنٹ اور موبائل OS کنٹرولر ہوں۔"
+                lower.contains("shukriya") || lower.contains("shukria") || lower.contains("thanks") || lower.contains("شکریہ") ->
+                    "بہت شکریہ، جناب! آپ کی خدمت کر کے مجھے دلی خوشی ہوئی اور افتخار حاصل ہوا۔"
+                lower.contains("open") || lower.contains("karo") || lower.contains("bhejo") || lower.contains("whatsapp") ->
+                    "جی بالکل جناب! میں آپ کا حکم پورا کر رہا ہوں۔ واسطی موبائل سسٹم فوری ایکشن لے رہا ہے۔"
+                else ->
+                    "جی جناب! میں آپ کی بات بالکل سمجھ گیا ہوں۔ واسطی اے آئی آپ کے حکم پر عمل کر رہا ہے: \"$prompt\"۔"
+            }
+        }
+
         return when {
             lower.contains("whatsapp") -> {
                 "Right away, Sir. Opening WhatsApp and dispatching your requested message to recipient. Wasti Mobile Controller active."

@@ -26,10 +26,12 @@ data class PromptTemplate(
 
 @Composable
 fun CodePromptWorkspaceScreen(
-    onSendMessageToChat: (String) -> Unit
+    activeCodeContext: String = "fun main() {\n    println(\"Wasti OS Code Engine\")\n}",
+    onCodeContextChange: (String) -> Unit = {},
+    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Code Playground, 1 = Prompt Library
-    var codeInput by remember { mutableStateOf("fun main() {\n    println(\"Wasti OS Code Engine\")\n}") }
+    var codeInput by remember(activeCodeContext) { mutableStateOf(activeCodeContext) }
     var codeOutput by remember { mutableStateOf("") }
     var selectedLanguage by remember { mutableStateOf("kotlin") }
 
@@ -88,8 +90,11 @@ fun CodePromptWorkspaceScreen(
 
                     OutlinedTextField(
                         value = codeInput,
-                        onValueChange = { codeInput = it },
-                        label = { Text("Code / Specification Input") },
+                        onValueChange = {
+                            codeInput = it
+                            onCodeContextChange(it)
+                        },
+                        label = { Text("Code / Specification Input (Open Workspace File)") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(140.dp)
@@ -104,7 +109,7 @@ fun CodePromptWorkspaceScreen(
                     ) {
                         Button(
                             onClick = {
-                                onSendMessageToChat("Generate optimized code for:\n$codeInput")
+                                onSendMessageToChat("Refactor and optimize the current workspace file.", codeInput)
                             },
                             modifier = Modifier.testTag("generate_code_button")
                         ) {
@@ -176,7 +181,7 @@ fun CodePromptWorkspaceScreen(
 
                             Spacer(modifier = Modifier.height(10.dp))
                             Button(
-                                onClick = { onSendMessageToChat(tmpl.promptText) },
+                                onClick = { onSendMessageToChat(tmpl.promptText, codeInput) },
                                 modifier = Modifier.align(Alignment.End)
                             ) {
                                 Text("Use Prompt in Chat", fontSize = 12.sp)

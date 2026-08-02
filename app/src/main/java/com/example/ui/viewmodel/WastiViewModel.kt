@@ -24,6 +24,14 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     val darkThemeEnabled = MutableStateFlow(true)
     val selectedModel = MutableStateFlow(prefs.getString("selected_model", "groq-llama-3.3-70b") ?: "groq-llama-3.3-70b")
 
+    val activeCodeContext = MutableStateFlow("fun main() {\n    println(\"Wasti OS Code Engine\")\n}")
+    val activeFileName = MutableStateFlow("WorkspaceCode.kt")
+
+    fun setActiveCodeContext(code: String, fileName: String = "WorkspaceCode.kt") {
+        activeCodeContext.value = code
+        activeFileName.value = fileName
+    }
+
     fun setSelectedModel(modelKey: String) {
         selectedModel.value = modelKey
         prefs.edit().putString("selected_model", modelKey).apply()
@@ -66,12 +74,16 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            repository.initDefaultDataIfNeeded()
-            // Set initial active conversation
-            val firstConv = repository.conversations.firstOrNull()?.firstOrNull()
-            if (firstConv != null) {
-                activeConversationId.value = firstConv.id
-                activeAgentId.value = firstConv.activeAgentId
+            try {
+                repository.initDefaultDataIfNeeded()
+                // Set initial active conversation
+                val firstConv = repository.conversations.firstOrNull()?.firstOrNull()
+                if (firstConv != null) {
+                    activeConversationId.value = firstConv.id
+                    activeAgentId.value = firstConv.activeAgentId
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("WastiViewModel", "Error initializing repository default data", e)
             }
         }
     }
@@ -105,14 +117,37 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage(prompt: String) {
+    fun sendMessage(prompt: String, explicitFileContext: String? = null) {
         val convId = activeConversationId.value ?: return
         if (prompt.isBlank()) return
+
+        val fileContextToPass = explicitFileContext
+            ?: if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
+                activeCodeContext.value.ifBlank { null }
+            } else null
 
         viewModelScope.launch {
             isGenerating.value = true
             try {
-                repository.sendMessage(convId, prompt, activeAgentId.value, selectedModel.value)
+                repository.sendMessage(convId, prompt, activeAgentId.value, selectedModel.value, fileContextToPass)
+            } finally {
+                isGenerating.value = false
+            }
+        }
+    }
+
+    fun editMessageAndResend(messageId: String, newPrompt: String) {
+        val convId = activeConversationId.value ?: return
+        if (newPrompt.isBlank()) return
+
+        val fileContextToPass = if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
+            activeCodeContext.value.ifBlank { null }
+        } else null
+
+        viewModelScope.launch {
+            isGenerating.value = true
+            try {
+                repository.editMessageAndRegenerate(convId, messageId, newPrompt, activeAgentId.value, selectedModel.value, fileContextToPass)
             } finally {
                 isGenerating.value = false
             }
@@ -170,6 +205,20 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     fun clearLogs() {
         viewModelScope.launch {
             repository.clearLogs()
+        }
+    }
+
+    fun saveXaiApiKey(apiKey: String, modelName: String = "grok-2-latest") {
+        viewModelScope.launch {
+            repository.saveAppSetting("xai_api_key", apiKey.trim())
+            repository.saveAppSetting("xai_model_name", modelName.trim())
+        }
+    }
+
+    fun clearChatHistory() {
+        val convId = activeConversationId.value ?: return
+        viewModelScope.launch {
+            repository.clearChatHistory(convId)
         }
     }
 

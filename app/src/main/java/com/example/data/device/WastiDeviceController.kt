@@ -30,6 +30,49 @@ object WastiDeviceController {
         val pm = context.packageManager
 
         try {
+            // Direct Package Name lookup if target contains dots (e.g. com.whatsapp)
+            if (lower.contains(".")) {
+                val directIntent = pm.getLaunchIntentForPackage(target)
+                if (directIntent != null) {
+                    directIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(directIntent)
+                    return DeviceCommandResult(true, "Successfully launched package '$target', Sir.", "OPEN_APP")
+                }
+            }
+
+            // Map common app names to known package IDs for fast execution
+            val knownPackages = mapOf(
+                "whatsapp" to "com.whatsapp",
+                "youtube" to "com.google.android.youtube",
+                "chrome" to "com.android.chrome",
+                "browser" to "com.android.chrome",
+                "gmail" to "com.google.android.gm",
+                "email" to "com.google.android.gm",
+                "maps" to "com.google.android.apps.maps",
+                "google maps" to "com.google.android.apps.maps",
+                "spotify" to "com.spotify.music",
+                "instagram" to "com.instagram.android",
+                "facebook" to "com.facebook.katana",
+                "twitter" to "com.twitter.android",
+                "x" to "com.twitter.android",
+                "telegram" to "org.telegram.messenger",
+                "calculator" to "com.google.android.calculator",
+                "clock" to "com.google.android.deskclock",
+                "camera" to "com.google.android.GoogleCamera",
+                "settings" to "com.android.settings"
+            )
+
+            val matchedPkg = knownPackages.entries.firstOrNull { lower.contains(it.key) }?.value
+            if (matchedPkg != null) {
+                val launchIntent = pm.getLaunchIntentForPackage(matchedPkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    return DeviceCommandResult(true, "Opened $target ($matchedPkg) successfully, Sir.", "OPEN_APP")
+                }
+            }
+
+            // Custom Intent Handling for System Apps & Fallbacks
             when {
                 lower.contains("whatsapp") -> {
                     val intent = pm.getLaunchIntentForPackage("com.whatsapp")
@@ -83,11 +126,11 @@ object WastiDeviceController {
                     return DeviceCommandResult(true, "Google Maps opened.", "OPEN_APP")
                 }
                 else -> {
-                    // Search installed apps by name
+                    // Search all installed packages using QUERY_ALL_PACKAGES
                     val packages = pm.getInstalledPackages(0)
                     for (pkg in packages) {
-                        val appName = pkg.applicationInfo?.loadLabel(pm)?.toString()?.lowercase() ?: ""
-                        if (appName.contains(lower) || pkg.packageName.lowercase().contains(lower)) {
+                        val appLabel = pkg.applicationInfo?.loadLabel(pm)?.toString()?.lowercase() ?: ""
+                        if (appLabel.contains(lower) || pkg.packageName.lowercase().contains(lower)) {
                             val launchIntent = pm.getLaunchIntentForPackage(pkg.packageName)
                             if (launchIntent != null) {
                                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

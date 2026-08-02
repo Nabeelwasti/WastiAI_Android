@@ -1,9 +1,13 @@
 package com.example
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -38,6 +42,27 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
+            val permissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestMultiplePermissions()
+            ) { _ -> }
+
+            LaunchedEffect(Unit) {
+                try {
+                    kotlinx.coroutines.delay(1000)
+                    val permissionsToRequest = mutableListOf(
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.SEND_SMS
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    permissionLauncher.launch(permissionsToRequest.toTypedArray())
+                } catch (e: Exception) {
+                    // Non-blocking fallback for preview environment
+                }
+            }
+
             val darkTheme by viewModel.darkThemeEnabled.collectAsStateWithLifecycle()
             val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()
             val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
@@ -55,14 +80,14 @@ class MainActivity : ComponentActivity() {
             val tasks by viewModel.allTasks.collectAsStateWithLifecycle()
             val integrations by viewModel.integrations.collectAsStateWithLifecycle()
             val logs by viewModel.logs.collectAsStateWithLifecycle()
+            val activeCodeContext by viewModel.activeCodeContext.collectAsStateWithLifecycle()
 
-            val activeAgent = agents.find { it.id == activeAgentId }
-            val activeAgentName = activeAgent?.name ?: "CEO Agent"
+            val activeAgentName = "Wasti AI"
 
             val navItems = listOf(
                 WastiNavDestination("dashboard", "Dashboard", Icons.Default.Dashboard),
                 WastiNavDestination("chat", "AI Chat", Icons.Default.Chat),
-                WastiNavDestination("agents", "Agents", Icons.Default.Psychology),
+                WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),
                 WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
                 WastiNavDestination("code", "Code", Icons.Default.Code),
@@ -148,10 +173,14 @@ class MainActivity : ComponentActivity() {
                                 messages = messages,
                                 agents = agents,
                                 activeAgentId = activeAgentId,
+                                selectedModel = selectedModel,
                                 isGenerating = isGenerating,
                                 onSelectConversation = { viewModel.selectConversation(it) },
                                 onSelectAgent = { viewModel.selectAgent(it) },
+                                onSelectModel = { viewModel.setSelectedModel(it) },
+                                onClearChatHistory = { viewModel.clearChatHistory() },
                                 onSendMessage = { viewModel.sendMessage(it) },
+                                onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) }
                             )
                             "agents" -> AgentManagerScreen(
@@ -181,9 +210,13 @@ class MainActivity : ComponentActivity() {
                                 onToggleTaskStatus = { taskId, currentStatus -> viewModel.toggleTaskStatus(taskId, currentStatus) }
                             )
                             "code" -> CodePromptWorkspaceScreen(
-                                onSendMessageToChat = { prompt ->
+                                activeCodeContext = activeCodeContext,
+                                onCodeContextChange = { viewModel.setActiveCodeContext(it) },
+                                onSendMessageToChat = { prompt, codeCtx ->
+                                    viewModel.selectAgent("coding_agent")
+                                    viewModel.setActiveCodeContext(codeCtx)
                                     viewModel.selectTab("chat")
-                                    viewModel.sendMessage(prompt)
+                                    viewModel.sendMessage(prompt, codeCtx)
                                 }
                             )
                             "integrations" -> IntegrationsLogsScreen(

@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,13 +15,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.credential.CredentialCategory
+import com.example.data.credential.CredentialRegistry
+import com.example.data.credential.CredentialState
+import com.example.data.credential.CredentialStatus
 import com.example.data.db.IntegrationEntity
 import com.example.data.db.SystemLogEntity
+import kotlinx.coroutines.launch
 
 @Composable
 fun IntegrationsLogsScreen(
@@ -28,8 +35,19 @@ fun IntegrationsLogsScreen(
     logs: List<SystemLogEntity>,
     onClearLogs: () -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Integrations, 1 = System Logs
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Credentials Registry, 1 = Service Connectors, 2 = System Logs
+    var selectedCategoryFilter by remember { mutableStateOf<CredentialCategory?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isTestingAll by remember { mutableStateOf(false) }
     var selectedLogLevel by remember { mutableStateOf("ALL") }
+
+    val credentialStates by CredentialRegistry.credentialStates.collectAsState()
+
+    LaunchedEffect(Unit) {
+        CredentialRegistry.refreshAll(context)
+    }
 
     Column(
         modifier = Modifier
@@ -41,20 +59,153 @@ fun IntegrationsLogsScreen(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("Service Connectors", fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.Extension, contentDescription = null) }
+                text = { Text("Credential Registry", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.VpnKey, contentDescription = null) }
             )
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
-                text = { Text("System Logs (${logs.size})", fontWeight = FontWeight.Bold) },
+                text = { Text("Connectors (${integrations.size})", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Extension, contentDescription = null) }
+            )
+            Tab(
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
+                text = { Text("Audit Logs (${logs.size})", fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Terminal, contentDescription = null) }
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         if (selectedTab == 0) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Unified Ecosystem CredentialRegistry",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "Centralized key management & live API health verification across models, design, payments, GitHub repos, and communications.",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                                    )
+                                }
+
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            isTestingAll = true
+                                            CredentialRegistry.testAllCredentials(context)
+                                            isTestingAll = false
+                                        }
+                                    },
+                                    enabled = !isTestingAll,
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    modifier = Modifier.testTag("test_all_credentials_button")
+                                ) {
+                                    if (isTestingAll) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Testing...", fontSize = 12.sp)
+                                    } else {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Test All Keys", fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Search & Category Filters
+                item {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search API keys by name or provider...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("credential_search_input")
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedCategoryFilter == null,
+                                onClick = { selectedCategoryFilter = null },
+                                label = { Text("ALL (${credentialStates.size})") }
+                            )
+                        }
+                        items(CredentialCategory.values()) { category ->
+                            val count = credentialStates.count { it.entry.category == category }
+                            FilterChip(
+                                selected = selectedCategoryFilter == category,
+                                onClick = { selectedCategoryFilter = category },
+                                label = { Text("${category.title} ($count)") }
+                            )
+                        }
+                    }
+                }
+
+                val filteredItems = credentialStates.filter { item ->
+                    val matchesCategory = selectedCategoryFilter == null || item.entry.category == selectedCategoryFilter
+                    val matchesQuery = searchQuery.isBlank() ||
+                            item.entry.keyName.contains(searchQuery, ignoreCase = true) ||
+                            item.entry.displayName.contains(searchQuery, ignoreCase = true) ||
+                            item.entry.description.contains(searchQuery, ignoreCase = true)
+                    matchesCategory && matchesQuery
+                }
+
+                items(filteredItems, key = { it.entry.keyName }) { item ->
+                    CredentialCardItem(
+                        state = item,
+                        onTestClick = {
+                            coroutineScope.launch {
+                                CredentialRegistry.testSingleCredential(item.entry.keyName, context)
+                            }
+                        }
+                    )
+                }
+            }
+        } else if (selectedTab == 1) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -67,41 +218,6 @@ fun IntegrationsLogsScreen(
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.VpnKey,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Active Ecosystem Credentials",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "• Canva Connect API Client ID configured for AI visual creation & document generation.\n" +
-                                        "• GitHub Fine-Grained & Classic PAT active for repository sync & MCP actions.\n" +
-                                        "• Google AI Studio key active for Gemini 3.5 Flash & 3.1 Pro reasoning.",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.9f),
-                                lineHeight = 16.sp
-                            )
-                        }
-                    }
                 }
 
                 items(integrations) { item ->
@@ -238,3 +354,191 @@ fun IntegrationsLogsScreen(
         }
     }
 }
+
+@Composable
+fun CredentialCardItem(
+    state: CredentialState,
+    onTestClick: () -> Unit
+) {
+    val entry = state.entry
+    val rawVal = state.rawValue
+    val maskedVal = when {
+        rawVal.isBlank() || rawVal.startsWith("MY_") || rawVal.startsWith("YOUR_") -> "Not Configured (Placeholder Key)"
+        rawVal.length > 12 -> "${rawVal.take(6)}...${rawVal.takeLast(4)}"
+        else -> "${rawVal.take(3)}..."
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("credential_card_${entry.keyName}"),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = entry.displayName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        if (entry.isDefaultActive) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Text(
+                                    text = "ACTIVE DEFAULT",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "Key Name: ${entry.keyName}",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                // Status Chip
+                when (val status = state.status) {
+                    is CredentialStatus.Connected -> {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("CONNECTED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF047857))
+                            }
+                        }
+                    }
+                    is CredentialStatus.Error -> {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("ERROR / UNCONFIGURED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                    is CredentialStatus.Testing -> {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("TESTING...", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            }
+                        }
+                    }
+                    is CredentialStatus.NotConfigured -> {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.RemoveCircleOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("NOT TESTED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = entry.description,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = "Value: $maskedVal",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onTestClick,
+                    modifier = Modifier.testTag("test_key_button_${entry.keyName}"),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Test Connection", fontSize = 11.sp)
+                }
+            }
+
+            // Status message detail
+            when (val status = state.status) {
+                is CredentialStatus.Connected -> {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Status: ${status.message}",
+                        fontSize = 11.sp,
+                        color = Color(0xFF047857),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                is CredentialStatus.Error -> {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Status: ${status.message}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.error,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                else -> {}
+            }
+        }
+    }
+}
+

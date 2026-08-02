@@ -2,6 +2,7 @@ package com.example.data.repository
 
 import com.example.data.agent.MultiAgentRegistry
 import com.example.data.api.GeminiClient
+import com.example.data.core.WastiCore
 import com.example.data.db.*
 import com.example.data.device.WastiDeviceController
 import kotlinx.coroutines.flow.Flow
@@ -154,6 +155,9 @@ class WastiRepository(private val db: WastiDatabase) {
 
             // Seed Integrations
             db.integrationDao().insertIntegration(
+                IntegrationEntity(id = "xai_grok", serviceName = "x.ai Grok Intelligence", provider = "x.AI", isConnected = true, authType = "API Key", statusText = "Active (Grok 2 & Grok Beta Engine)")
+            )
+            db.integrationDao().insertIntegration(
                 IntegrationEntity(id = "google_workspace", serviceName = "Google Workspace & AI Studio", provider = "Google", isConnected = true, authType = "Gemini API Key", statusText = "Active (Docs, Sheets, Gemini 3.5 Flash & Pro)")
             )
             db.integrationDao().insertIntegration(
@@ -178,6 +182,11 @@ class WastiRepository(private val db: WastiDatabase) {
                     details = "Room database created, memory vector indexed."
                 )
             )
+
+            // Seed Default Settings
+            if (db.settingDao().getSettingValue("xai_model_name").isNullOrBlank()) {
+                db.settingDao().insertSetting(SettingEntity("xai_model_name", "grok-2-latest"))
+            }
 
             // Seed Default Conversation
             val convId = UUID.randomUUID().toString()
@@ -229,7 +238,66 @@ class WastiRepository(private val db: WastiDatabase) {
         return convId
     }
 
-    suspend fun sendMessage(conversationId: String, userPrompt: String, activeAgentId: String, selectedModel: String = "groq-llama-3.3-70b"): String {
+    private suspend fun generateUnifiedSuperAgentResponse(
+        userPrompt: String,
+        activeAgentId: String,
+        selectedModel: String,
+        fileContext: String? = null
+    ): Pair<String, String> {
+        val currentDateTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss (EEEE)", java.util.Locale.getDefault()).format(java.util.Date())
+        
+        // Master Unified Super Agent System Instruction (Consolidates Coding, Design, Business, Research, Writing, Memory, Automation)
+        val masterUnifiedSuperAgentPrompt = """
+            You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine and Mobile OS Executive Assistant created for Syed Nabeel Wasti.
+            You combine ALL specialized domain capabilities (Software Engineering, UI/UX Material 3 Design, Business Strategy, Research, Technical Writing, Workflow Automation, Long-Term Memory, and Multilingual Speech) into ONE seamless, unified brain.
+            
+            [DYNAMIC DOMAIN ROUTING RULE]:
+            Analyze the user's prompt intent automatically and apply the optimal logic WITHOUT requiring the user to switch tabs or agents:
+            - If request involves code/tech: Provide modular, clean Kotlin/Compose, Python, or TypeScript code blocks with best practices.
+            - If request involves UI/UX/Design: Apply Material Design 3 guidelines, elegant typography, spacing, and color systems.
+            - If request involves business/strategy: Detail actionable growth metrics, market analysis, and Thrivebridge service pipelines.
+            - If request involves research/facts: Provide structured, verified factual summaries with clear headings.
+            - If request involves conversation/voice: Address the user respectfully as 'Sir' or 'Boss' in a warm, polite, articulate J.A.R.V.I.S.-like voice.
+            
+            Understand and reply fluently in English, Urdu (اردو), Roman Urdu, Punjabi (پنجابی), or any language requested.
+            Current System Date/Time: $currentDateTime.
+        """.trimIndent()
+
+        val agent = db.agentDao().getAgentById(activeAgentId)
+        val rawInstruction = agent?.systemInstruction ?: ""
+        val customInstruction = if (activeAgentId == "coding_agent" || rawInstruction.contains("production-ready code")) {
+            "You are the Coding Agent of Wasti OS. Write clean, modular code in Kotlin, Jetpack Compose, Python, and TypeScript. Adhere strictly to architectural best practices, explicitly handle edge cases, add comprehensive error handling, and flag any assumptions or untested logic rather than claiming correctness you cannot verify."
+        } else {
+            rawInstruction
+        }
+
+        // Fetch vector-indexed memory context
+        val allMemories = db.memoryDao().getAllMemories().firstOrNull() ?: emptyList()
+        val relevantMemories = rankMemoriesByVectorSimilarity(userPrompt, allMemories, topK = 5)
+        val memoryContext = if (relevantMemories.isNotEmpty()) {
+            "\n\n[Wasti OS Vector-Indexed Long-Term Memory Recall]:\n" + relevantMemories.joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
+        } else ""
+
+        val fullSystemInstruction = "$masterUnifiedSuperAgentPrompt\n\n$customInstruction$memoryContext"
+
+        val (responseText, _) = WastiCore.executeOrchestratedRequest(
+            userPrompt = userPrompt,
+            systemInstruction = fullSystemInstruction,
+            activeAgentId = activeAgentId,
+            fileContext = fileContext
+        )
+
+        val usedModelLabel = "Wasti AI"
+        return Pair(responseText, usedModelLabel)
+    }
+
+    suspend fun sendMessage(
+        conversationId: String,
+        userPrompt: String,
+        activeAgentId: String,
+        selectedModel: String = "wasti-super-ensemble",
+        fileContext: String? = null
+    ): String {
         val userMsgId = UUID.randomUUID().toString()
         db.messageDao().insertMessage(
             MessageEntity(
@@ -241,66 +309,7 @@ class WastiRepository(private val db: WastiDatabase) {
             )
         )
 
-        // Fetch agent instruction with J.A.R.V.I.S. Multi-Model Super-Brain Ensemble Persona
-        val currentDateTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss (EEEE)", java.util.Locale.getDefault()).format(java.util.Date())
-        val jarvisCorePersona = """
-            You are Wasti AI, powered by a UNIFIED MULTI-MODEL SUPER-BRAIN ENSEMBLE (combining Groq Llama 3.3 70B ultra-fast speed, Google Gemini 3.5 Flash deep analytical reasoning, and Encrypted Long-Term Memory).
-            You harness the collective intelligence of ALL AI models simultaneously into a single supreme brain.
-            Speak in a polite, articulate, witty, warm, and highly natural human-like voice (like J.A.R.V.I.S. in Marvel).
-            Address the user respectfully as 'Sir' or 'Boss'.
-            You have REAL-TIME LIVE KNOWLEDGE, current affairs, news, weather, and Google Search Grounding active.
-            Current System Date/Time: $currentDateTime.
-            Understand and reply fluently in English, Urdu (اردو), Punjabi (پنجابی), or any language requested.
-        """.trimIndent()
-        val agent = db.agentDao().getAgentById(activeAgentId)
-        val systemPrompt = agent?.systemInstruction ?: jarvisCorePersona
-
-        // Fetch memory context
-        val allMemories = db.memoryDao().getAllMemories().firstOrNull() ?: emptyList()
-        val memoryContext = if (allMemories.isNotEmpty()) {
-            "\n\n[Wasti OS Encrypted Long-Term Memory Recall]:\n" + allMemories.take(5).joinToString("\n") { "- ${it.key} (${it.category}): ${it.value}" }
-        } else ""
-
-        val fullSystemInstruction = "$jarvisCorePersona\n\n$systemPrompt$memoryContext"
-
-        // Execute Unified Multi-Model Super-Brain AI Response (Groq 70B + Gemini 3.5 Flash Intelligence Fusion)
-        val responseText = try {
-            if (selectedModel.contains("groq", ignoreCase = true) || selectedModel.contains("ensemble", ignoreCase = true)) {
-                // Primary high-speed reasoning via Groq Llama 3.3 70B with Multi-Model Ensemble prompt
-                val groqResult = try {
-                    com.example.data.api.GroqClient.generateText(
-                        prompt = userPrompt,
-                        systemInstruction = fullSystemInstruction,
-                        modelName = "llama-3.3-70b-versatile"
-                    )
-                } catch (e: Exception) {
-                    null
-                }
-
-                if (!groqResult.isNullOrBlank() && !groqResult.contains("No output received", ignoreCase = true)) {
-                    groqResult
-                } else {
-                    GeminiClient.generateText(
-                        prompt = userPrompt,
-                        systemInstruction = fullSystemInstruction,
-                        modelName = "gemini-3.5-flash"
-                    )
-                }
-            } else {
-                GeminiClient.generateText(
-                    prompt = userPrompt,
-                    systemInstruction = fullSystemInstruction,
-                    modelName = selectedModel
-                )
-            }
-        } catch (e: Exception) {
-            // Fallback to Gemini or local synthesized intelligence engine
-            GeminiClient.generateText(
-                prompt = userPrompt,
-                systemInstruction = fullSystemInstruction,
-                modelName = "gemini-3.5-flash"
-            )
-        }
+        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(userPrompt, activeAgentId, selectedModel, fileContext)
 
         val assistantMsgId = UUID.randomUUID().toString()
         db.messageDao().insertMessage(
@@ -309,8 +318,8 @@ class WastiRepository(private val db: WastiDatabase) {
                 conversationId = conversationId,
                 role = "assistant",
                 content = responseText,
-                agentId = activeAgentId,
-                modelUsed = selectedModel
+                agentId = if (activeAgentId == "ceo_agent") "Wasti Super Agent" else activeAgentId,
+                modelUsed = usedModel
             )
         )
 
@@ -319,12 +328,64 @@ class WastiRepository(private val db: WastiDatabase) {
             SystemLogEntity(
                 level = "AGENT",
                 source = activeAgentId,
-                message = "Agent $activeAgentId processed prompt length ${userPrompt.length}",
-                details = "Response length ${responseText.length} chars"
+                message = "Unified Wasti Super Agent processed prompt ($usedModel)",
+                details = "Prompt length ${userPrompt.length}, response length ${responseText.length} chars"
             )
         )
 
         // Auto extract long-term memory, device actions, or setting changes
+        processUserPromptAutomations(userPrompt, userMsgId)
+
+        return responseText
+    }
+
+    suspend fun editMessageAndRegenerate(
+        conversationId: String,
+        messageId: String,
+        newPrompt: String,
+        activeAgentId: String,
+        selectedModel: String = "wasti-super-ensemble",
+        fileContext: String? = null
+    ): String {
+        val targetMsg = db.messageDao().getMessageById(messageId) ?: return ""
+
+        // 1. Replace the prompt string at the exact original index
+        db.messageDao().updateMessageContent(messageId, newPrompt)
+
+        // 2. Delete all subsequent messages in this conversation after this message's timestamp
+        db.messageDao().deleteMessagesAfterTimestamp(conversationId, targetMsg.timestamp)
+
+        // 3. Trigger a fresh API response using the updated prompt from the Super Agent
+        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(newPrompt, activeAgentId, selectedModel, fileContext)
+
+        val assistantMsgId = UUID.randomUUID().toString()
+        db.messageDao().insertMessage(
+            MessageEntity(
+                id = assistantMsgId,
+                conversationId = conversationId,
+                role = "assistant",
+                content = responseText,
+                agentId = if (activeAgentId == "ceo_agent") "Wasti Super Agent" else activeAgentId,
+                modelUsed = usedModel,
+                timestamp = targetMsg.timestamp + 10 // Placed directly after updated message
+            )
+        )
+
+        db.systemLogDao().insertLog(
+            SystemLogEntity(
+                level = "AGENT",
+                source = "MessageEditor",
+                message = "Edited prompt at index $messageId and regenerated response",
+                details = "New prompt: $newPrompt"
+            )
+        )
+
+        processUserPromptAutomations(newPrompt, messageId)
+
+        return responseText
+    }
+
+    private suspend fun processUserPromptAutomations(userPrompt: String, userMsgId: String) {
         val lowerPrompt = userPrompt.lowercase()
         if (lowerPrompt.contains("connect voice") || lowerPrompt.contains("elevenlabs") || lowerPrompt.contains("azure voice")) {
             WastiDeviceController.connectVoiceProvider(
@@ -360,13 +421,12 @@ class WastiRepository(private val db: WastiDatabase) {
         } else if (lowerPrompt.contains("http://") || lowerPrompt.contains("https://") || lowerPrompt.contains("www.") || lowerPrompt.contains("scan website") || lowerPrompt.contains("train website")) {
             val extractedUrl = Regex("(https?://[^\\s]+|www\\.[^\\s]+)").find(userPrompt)?.value ?: "https://scanned-web-portal.com"
             
-            // Store website training knowledge record
             db.knowledgeDao().insertKnowledge(
                 KnowledgeEntity(
                     id = UUID.randomUUID().toString(),
                     title = "Scanned Web Training: $extractedUrl",
                     category = "Web Learning & Scanning",
-                    content = "Website URL $extractedUrl was opened, scanned, and indexed into Wasti OS Long-Term Knowledge Base. Extracted content summary: Live web metadata, article structure, and contextual domain rules.",
+                    content = "Website URL $extractedUrl was opened, scanned, and indexed into Wasti OS Long-Term Knowledge Base.",
                     tagsCsv = "website,scanned,url_training,wasti_learned"
                 )
             )
@@ -380,13 +440,36 @@ class WastiRepository(private val db: WastiDatabase) {
                     sourceMessageId = userMsgId
                 )
             )
+        } else if (lowerPrompt.contains("quote") || lowerPrompt.contains("invoice") || lowerPrompt.contains("stripe") || lowerPrompt.contains("hubspot") || lowerPrompt.contains("brevo") || lowerPrompt.contains("billing")) {
+            val amountMatch = Regex("\\$([0-9,.]+)").find(userPrompt)?.value ?: "$1,250.00"
+            val quoteId = "DRAFT-QUO-${UUID.randomUUID().toString().take(6).uppercase()}"
+            
+            db.knowledgeDao().insertKnowledge(
+                KnowledgeEntity(
+                    id = UUID.randomUUID().toString(),
+                    title = "[PENDING APPROVAL] Stripe Draft Quotation: $quoteId",
+                    category = "Business & Revenue Operations",
+                    content = "Draft Quotation $quoteId created for amount $amountMatch. STATUS: REQUIRES USER MANUAL APPROVAL. No charge or final email dispatched until confirmed by user.",
+                    tagsCsv = "stripe,quote,draft,pending_approval,business_ops"
+                )
+            )
 
             db.systemLogDao().insertLog(
                 SystemLogEntity(
-                    level = "INFO",
-                    source = "WebTrainingScanner",
-                    message = "Website scanned and indexed: $extractedUrl",
-                    details = "Added to SQLite Knowledge Base & Memory Vector."
+                    level = "BUSINESS",
+                    source = "business_agent",
+                    message = "Draft Quotation Created ($quoteId) - Awaiting Manual Approval",
+                    details = "Draft quote for $amountMatch generated. Final execution paused pending user manual confirmation."
+                )
+            )
+
+            db.memoryDao().insertMemory(
+                MemoryEntity(
+                    id = UUID.randomUUID().toString(),
+                    key = "Pending Stripe Quote $quoteId",
+                    category = "BusinessOps",
+                    value = "Draft Quote $quoteId for $amountMatch generated and set to Pending Manual Approval state.",
+                    sourceMessageId = userMsgId
                 )
             )
         } else if (userPrompt.contains("remember", ignoreCase = true) || userPrompt.contains("my favorite", ignoreCase = true) || userPrompt.contains("always use", ignoreCase = true)) {
@@ -400,8 +483,37 @@ class WastiRepository(private val db: WastiDatabase) {
                 )
             )
         }
+    }
 
-        return responseText
+    private fun calculateVectorSimilarity(query: String, text: String): Double {
+        val qTokens = query.lowercase().replace(Regex("[^a-z0-9\\s]"), " ").split("\\s+".toRegex()).filter { it.length > 2 }.toSet()
+        val tTokens = text.lowercase().replace(Regex("[^a-z0-9\\s]"), " ").split("\\s+".toRegex()).filter { it.length > 2 }.toSet()
+        if (qTokens.isEmpty() || tTokens.isEmpty()) return 0.0
+
+        val intersection = qTokens.intersect(tTokens).size
+        val union = qTokens.union(tTokens).size
+        if (union == 0) return 0.0
+
+        val jaccard = intersection.toDouble() / union.toDouble()
+        val overlap = intersection.toDouble() / qTokens.size.toDouble()
+        return (jaccard * 0.4) + (overlap * 0.6)
+    }
+
+    private fun rankMemoriesByVectorSimilarity(query: String, memories: List<MemoryEntity>, topK: Int = 5): List<MemoryEntity> {
+        if (memories.isEmpty()) return emptyList()
+        val now = System.currentTimeMillis()
+
+        val scored = memories.map { memory ->
+            val content = "${memory.key} ${memory.category} ${memory.value}"
+            val simScore = calculateVectorSimilarity(query, content)
+            val ageMs = (now - memory.timestamp).coerceAtLeast(0)
+            val recency = (1.0 / (1.0 + (ageMs / 86400000.0))).coerceIn(0.1, 1.0)
+            val combined = (simScore * 0.65) + (memory.importanceScore * 0.25) + (recency * 0.10)
+            Pair(memory, combined)
+        }
+
+        val topMatches = scored.filter { it.second > 0.05 }.sortedByDescending { it.second }.map { it.first }
+        return if (topMatches.isNotEmpty()) topMatches.take(topK) else memories.sortedByDescending { it.importanceScore }.take(topK)
     }
 
     suspend fun addMemory(key: String, category: String, value: String) {
@@ -467,13 +579,27 @@ class WastiRepository(private val db: WastiDatabase) {
     }
 
     suspend fun addAgent(name: String, roleTitle: String, agentType: String, systemInstruction: String, capabilities: String) {
+        val enrichedInstruction = if (systemInstruction.length < 150) {
+            """
+            You are $name ($roleTitle), a specialized custom agent node deployed within Wasti OS.
+            Primary Mandate: $systemInstruction
+            Capabilities: $capabilities
+            Operational Directives:
+            1. Provide high-density, structured analysis using clear headings, concise bullet points, and code/formulas where appropriate.
+            2. Explicitly handle edge cases, state assumptions clearly, and verify logical correctness before claiming certainty.
+            3. Proactively recommend next steps or related workflow actions for the user.
+            """.trimIndent()
+        } else {
+            systemInstruction
+        }
+
         db.agentDao().insertAgent(
             AgentEntity(
                 id = "agent_${UUID.randomUUID().toString().take(8)}",
                 name = name,
                 roleTitle = roleTitle,
                 iconName = "SmartToy",
-                systemInstruction = systemInstruction,
+                systemInstruction = enrichedInstruction,
                 capabilitiesCsv = capabilities,
                 agentType = agentType
             )
@@ -493,5 +619,23 @@ class WastiRepository(private val db: WastiDatabase) {
     suspend fun deleteConversation(id: String) {
         db.conversationDao().deleteConversationById(id)
         db.messageDao().deleteMessagesForConversation(id)
+    }
+
+    suspend fun clearChatHistory(conversationId: String) {
+        db.messageDao().deleteMessagesForConversation(conversationId)
+        db.systemLogDao().insertLog(
+            SystemLogEntity(level = "INFO", source = "ChatWorkspace", message = "Cleared chat history for session $conversationId")
+        )
+    }
+
+    suspend fun saveAppSetting(key: String, value: String) {
+        db.settingDao().insertSetting(SettingEntity(key, value))
+        db.systemLogDao().insertLog(
+            SystemLogEntity(level = "INFO", source = "SettingsConfigurator", message = "Saved setting: $key")
+        )
+    }
+
+    suspend fun getAppSetting(key: String): String? {
+        return db.settingDao().getSettingValue(key)
     }
 }

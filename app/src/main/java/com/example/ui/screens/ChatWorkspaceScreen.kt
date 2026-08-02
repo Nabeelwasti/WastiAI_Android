@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -31,8 +32,10 @@ import androidx.compose.ui.unit.sp
 import com.example.data.db.AgentEntity
 import com.example.data.db.ConversationEntity
 import com.example.data.db.MessageEntity
+import com.example.data.device.WastiIntentParser
 import com.example.ui.components.CodeBlockView
 import com.example.ui.components.WastiVoiceCallModal
+import com.example.util.WastiSpeechSanitizer
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -44,21 +47,35 @@ fun ChatWorkspaceScreen(
     messages: List<MessageEntity>,
     agents: List<AgentEntity>,
     activeAgentId: String,
+    selectedModel: String = "wasti-super-ensemble",
     isGenerating: Boolean,
     onSelectConversation: (String) -> Unit,
     onSelectAgent: (String) -> Unit,
+    onSelectModel: (String) -> Unit = {},
+    onClearChatHistory: () -> Unit = {},
     onSendMessage: (String) -> Unit,
+    onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
     onCreateNewConversation: (String) -> Unit
 ) {
     val context = LocalContext.current
     var promptInput by remember { mutableStateOf("") }
-    var isThinkingVisible by remember { mutableStateOf(true) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
+
     var showNewSessionDialog by remember { mutableStateOf(false) }
     var newSessionTitle by remember { mutableStateOf("") }
+
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var showModelMenu by remember { mutableStateOf(false) }
+    var showAttachmentMenu by remember { mutableStateOf(false) }
+
+    var showWebScanDialog by remember { mutableStateOf(false) }
+    var webUrlInput by remember { mutableStateOf("") }
 
     // TextToSpeech setup for Wasti multilingual voice response
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
     var isVoiceActive by remember { mutableStateOf(true) }
+    var isTtsSpeaking by remember { mutableStateOf(false) }
     var showVoiceModal by remember { mutableStateOf(false) }
 
     if (showVoiceModal) {
@@ -75,8 +92,13 @@ fun ChatWorkspaceScreen(
         lateinit var tts: TextToSpeech
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts.setPitch(0.85f)
+                tts.setPitch(0.95f)
                 tts.setSpeechRate(1.0f)
+                tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) { isTtsSpeaking = true }
+                    override fun onDone(utteranceId: String?) { isTtsSpeaking = false }
+                    override fun onError(utteranceId: String?) { isTtsSpeaking = false }
+                })
             }
         }
         ttsEngine = tts
@@ -86,7 +108,7 @@ fun ChatWorkspaceScreen(
         }
     }
 
-    // Android Multilingual Speech Recognizer Launcher (Supports Urdu, Punjabi, English, etc.)
+    // Android Multilingual Speech Recognizer Launcher
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -99,29 +121,46 @@ fun ChatWorkspaceScreen(
     }
 
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
-            val lastMsg = messages.last()
+    val filteredMessages = remember(messages, searchQuery) {
+        if (searchQuery.isBlank()) {
+            messages
+        } else {
+            messages.filter { it.content.contains(searchQuery, ignoreCase = true) }
+        }
+    }
+
+    LaunchedEffect(filteredMessages.size) {
+        if (filteredMessages.isNotEmpty() && searchQuery.isBlank()) {
+            listState.animateScrollToItem(filteredMessages.size - 1)
+            val lastMsg = filteredMessages.last()
+            
+            // Execute intent if message contains app launch / system action
+            WastiIntentParser.parseAndExecute(context, lastMsg.content)
+
             if (lastMsg.role == "assistant" && isVoiceActive) {
-                val cleanText = lastMsg.content.replace(Regex("```[\\s\\S]*?```"), "Code block generated.")
-                ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "jarvis_auto_tts")
+                val cleanText = WastiSpeechSanitizer.sanitizeForSpeech(lastMsg.content)
+                if (cleanText.isNotBlank()) {
+                    val params = android.os.Bundle()
+                    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_auto_tts")
+                    ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "chat_auto_tts")
+                }
             }
         }
     }
 
+    // Dialog 1: New Chat Session
     if (showNewSessionDialog) {
         AlertDialog(
             onDismissRequest = { showNewSessionDialog = false },
-            title = { Text("New AI Session") },
+            title = { Text("New AI Workspace Session") },
             text = {
                 OutlinedTextField(
                     value = newSessionTitle,
                     onValueChange = { newSessionTitle = it },
                     label = { Text("Session Title") },
-                    placeholder = { Text("e.g. Architecture Strategy") }
+                    placeholder = { Text("e.g. Architecture Strategy") },
+                    modifier = Modifier.fillMaxWidth()
                 )
             },
             confirmButton = {
@@ -141,6 +180,67 @@ fun ChatWorkspaceScreen(
                 TextButton(onClick = { showNewSessionDialog = false }) {
                     Text("Cancel")
                 }
+            }
+        )
+    }
+
+    // Dialog 2: Clear History Confirmation
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = { Text("Clear Chat History") },
+            text = { Text("Are you sure you want to clear all message logs in this active conversation? This operation cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearChatHistory()
+                        showClearConfirmDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Clear All Messages")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Dialog 3: Scan Web URL Modal
+    if (showWebScanDialog) {
+        AlertDialog(
+            onDismissRequest = { showWebScanDialog = false },
+            title = { Text("🌐 Scan & Index Web URL") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter a public URL to crawl, summarize, and index into Wasti OS Long-Term Knowledge Base:", fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = webUrlInput,
+                        onValueChange = { webUrlInput = it },
+                        label = { Text("Website URL") },
+                        placeholder = { Text("https://example.com/article") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (webUrlInput.isNotBlank()) {
+                            promptInput = "🌐 Scan Website: $webUrlInput"
+                            webUrlInput = ""
+                            showWebScanDialog = false
+                        }
+                    }
+                ) {
+                    Text("Index & Learn")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showWebScanDialog = false }) { Text("Cancel") }
             }
         )
     }
@@ -180,6 +280,25 @@ fun ChatWorkspaceScreen(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Toggle Search Bar
+                        IconButton(onClick = { isSearchActive = !isSearchActive }) {
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Default.SearchOff else Icons.Default.Search,
+                                contentDescription = "Search Messages",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        // Clear Chat History Button
+                        IconButton(onClick = { showClearConfirmDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = "Clear Chat History",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        // Voice Call Trigger
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = if (isVoiceActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
@@ -188,7 +307,7 @@ fun ChatWorkspaceScreen(
                                 .padding(end = 4.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
@@ -199,8 +318,8 @@ fun ChatWorkspaceScreen(
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (isVoiceActive) "🎙️ Wasti Voice Call" else "Voice Off",
-                                    fontSize = 10.sp,
+                                    text = if (isVoiceActive) "🎙️ Voice Call" else "Voice Off",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isVoiceActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -218,39 +337,109 @@ fun ChatWorkspaceScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Active Agent Selector Pills
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                // Active Model Selector & Wasti AI Super Agent Banner
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showModelMenu = true },
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                 ) {
-                    items(agents) { agent ->
-                        val isAgentSelected = agent.id == activeAgentId
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable { onSelectAgent(agent.id) },
-                            color = if (isAgentSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isAgentSelected) MaterialTheme.colorScheme.primary else Color.Gray)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = agent.name,
-                                    fontSize = 11.sp,
-                                    fontWeight = if (isAgentSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isAgentSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF34D399))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            val modelLabel = "Wasti AI Engine (Unified Intelligent Core)"
+                            Text(
+                                text = "⚡ Active Engine: $modelLabel",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         }
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Change Active Model",
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     }
+
+                    // Model Toggling Dropdown Menu
+                    DropdownMenu(
+                        expanded = showModelMenu,
+                        onDismissRequest = { showModelMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("⚡ Wasti AI Super-Brain (Auto-Orchestrated)") },
+                            onClick = {
+                                onSelectModel("wasti-super-ensemble")
+                                showModelMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🚀 Wasti Fast-Lane Speech & Text Engine") },
+                            onClick = {
+                                onSelectModel("wasti-fast-lane")
+                                showModelMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Default.Speed, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🌐 Wasti Standard Core Engine") },
+                            onClick = {
+                                onSelectModel("wasti-standard-core")
+                                showModelMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Default.Psychology, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🤖 Wasti Deep Reasoning Engine") },
+                            onClick = {
+                                onSelectModel("wasti-deep-reasoning")
+                                showModelMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🧠 Wasti Hybrid & Offline Mode") },
+                            onClick = {
+                                onSelectModel("wasti-hybrid-offline")
+                                showModelMenu = false
+                            },
+                            leadingIcon = { Icon(Icons.Default.Memory, contentDescription = null) }
+                        )
+                    }
+                }
+
+                // Expandable Search Bar
+                if (isSearchActive) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search messages in this session...", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
             }
         }
@@ -267,10 +456,9 @@ fun ChatWorkspaceScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(vertical = 16.dp)
         ) {
-            items(messages) { msg ->
+            items(filteredMessages) { msg ->
                 MessageItem(
                     message = msg,
-                    isThinkingVisible = isThinkingVisible,
                     ttsEngine = ttsEngine,
                     onCopyText = { text ->
                         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
@@ -280,6 +468,9 @@ fun ChatWorkspaceScreen(
                     },
                     onEditMessage = { text ->
                         promptInput = text
+                    },
+                    onEditAndResendMessage = { messageId, newPrompt ->
+                        onEditAndResendMessage(messageId, newPrompt)
                     }
                 )
             }
@@ -302,6 +493,40 @@ fun ChatWorkspaceScreen(
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+            }
+        }
+
+        // Hard TTS Interrupt Banner
+        if (isTtsSpeaking) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.VolumeUp, contentDescription = "Speaking", tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Wasti Speaking...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+                    }
+                    Button(
+                        onClick = {
+                            ttsEngine?.stop()
+                            isTtsSpeaking = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("STOP / INTERRUPT", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -336,7 +561,7 @@ fun ChatWorkspaceScreen(
             }
         }
 
-        // Input Bar
+        // Input Bar with Material OutlinedBox Alignment & Multimodal Attachment Options
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
@@ -348,6 +573,59 @@ fun ChatWorkspaceScreen(
                     .padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Multimodal Attachments '+' Button
+                Box {
+                    IconButton(
+                        onClick = { showAttachmentMenu = true },
+                        modifier = Modifier.testTag("attachment_menu_button")
+                    ) {
+                        Icon(Icons.Default.AddCircleOutline, contentDescription = "Attach File or Media", tint = MaterialTheme.colorScheme.primary)
+                    }
+
+                    DropdownMenu(
+                        expanded = showAttachmentMenu,
+                        onDismissRequest = { showAttachmentMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("📄 Attach Code / Document") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                promptInput += "\n[Attached Code File: MainActivity.kt]\n```kotlin\n// Code snippet attached\n```\n"
+                            },
+                            leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🌐 Scan & Train on Web URL") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                showWebScanDialog = true
+                            },
+                            leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📷 Attach Image / Camera Mock") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                promptInput += "\n[Attached Image: captured_diagram.png]\n"
+                            },
+                            leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🎙️ Voice Speech Dictation") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Wasti AI...")
+                                }
+                                speechLauncher.launch(intent)
+                            },
+                            leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null) }
+                        )
+                    }
+                }
+
                 IconButton(
                     onClick = { showVoiceModal = true },
                     modifier = Modifier.testTag("voice_input_button")
@@ -384,6 +662,7 @@ fun ChatWorkspaceScreen(
                         if (promptInput.isNotBlank() && !isGenerating) {
                             val textToSend = promptInput
                             promptInput = ""
+                            WastiIntentParser.parseAndExecute(context, textToSend)
                             onSendMessage(textToSend)
                         }
                     },
@@ -402,12 +681,14 @@ fun ChatWorkspaceScreen(
 @Composable
 private fun MessageItem(
     message: MessageEntity,
-    isThinkingVisible: Boolean,
     ttsEngine: TextToSpeech?,
     onCopyText: (String) -> Unit,
-    onEditMessage: (String) -> Unit
+    onEditMessage: (String) -> Unit,
+    onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> }
 ) {
     val isUser = message.role == "user"
+    var isEditingInline by remember { mutableStateOf(false) }
+    var editedText by remember(message.content) { mutableStateOf(message.content) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -415,17 +696,19 @@ private fun MessageItem(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = if (isUser) "You" else message.agentId,
+                text = if (isUser) "You" else "Wasti AI",
                 fontWeight = FontWeight.Bold,
                 fontSize = 11.sp,
                 color = if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
             )
             Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = "Model: ${message.modelUsed}",
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
+            if (!isUser) {
+                Text(
+                    text = "Wasti AI Engine",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
 
             Spacer(modifier = Modifier.width(6.dp))
 
@@ -443,9 +726,12 @@ private fun MessageItem(
             }
 
             if (isUser) {
-                // Edit Message Action Icon Button for user prompt
+                // Toggle inline edit state
                 IconButton(
-                    onClick = { onEditMessage(message.content) },
+                    onClick = {
+                        isEditingInline = !isEditingInline
+                        onEditMessage(message.content)
+                    },
                     modifier = Modifier.size(22.dp)
                 ) {
                     Icon(
@@ -458,8 +744,12 @@ private fun MessageItem(
             } else {
                 IconButton(
                     onClick = {
-                        val cleanText = message.content.replace(Regex("```[\\s\\S]*?```"), "Code block omitted.")
-                        ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "message_tts")
+                        val cleanText = WastiSpeechSanitizer.sanitizeForSpeech(message.content)
+                        if (cleanText.isNotBlank()) {
+                            val params = android.os.Bundle()
+                            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "message_tts")
+                            ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "message_tts")
+                        }
                     },
                     modifier = Modifier.size(22.dp)
                 ) {
@@ -486,33 +776,69 @@ private fun MessageItem(
             tonalElevation = 1.dp
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
-                // Check if message content has code blocks
-                val content = message.content
-                if (content.contains("```")) {
-                    val parts = content.split("```")
-                    parts.forEachIndexed { index, part ->
-                        if (index % 2 == 1) {
-                            // Code block
-                            val firstLineEnd = part.indexOf('\n')
-                            val lang = if (firstLineEnd != -1) part.substring(0, firstLineEnd).trim() else "code"
-                            val codeCode = if (firstLineEnd != -1) part.substring(firstLineEnd + 1) else part
-                            CodeBlockView(code = codeCode, language = lang)
-                        } else {
-                            if (part.isNotBlank()) {
-                                Text(
-                                    text = part,
-                                    fontSize = 14.sp,
-                                    color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
+                if (isEditingInline && isUser) {
+                    // Inline editor for exact index editing
+                    Column {
+                        OutlinedTextField(
+                            value = editedText,
+                            onValueChange = { editedText = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Edit Prompt (Index: ${message.id.take(8)})", fontSize = 11.sp) }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            TextButton(onClick = { isEditingInline = false }) {
+                                Text("Cancel", fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    if (editedText.isNotBlank()) {
+                                        isEditingInline = false
+                                        onEditAndResendMessage(message.id, editedText)
+                                    }
+                                }
+                            ) {
+                                Text("Save & Resend", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 } else {
-                    Text(
-                        text = content,
-                        fontSize = 14.sp,
-                        color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                    )
+                    // SelectionContainer fixes Text Selection Limitation: enables native word-by-word highlighting and copying!
+                    SelectionContainer {
+                        val content = message.content
+                        if (content.contains("```")) {
+                            val parts = content.split("```")
+                            Column {
+                                parts.forEachIndexed { index, part ->
+                                    if (index % 2 == 1) {
+                                        // Code block
+                                        val firstLineEnd = part.indexOf('\n')
+                                        val lang = if (firstLineEnd != -1) part.substring(0, firstLineEnd).trim() else "code"
+                                        val codeCode = if (firstLineEnd != -1) part.substring(firstLineEnd + 1) else part
+                                        CodeBlockView(code = codeCode, language = lang)
+                                    } else {
+                                        if (part.isNotBlank()) {
+                                            Text(
+                                                text = part,
+                                                fontSize = 14.sp,
+                                                color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = content,
+                                fontSize = 14.sp,
+                                color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
                 }
             }
         }

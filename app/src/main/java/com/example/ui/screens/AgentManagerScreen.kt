@@ -3,7 +3,6 @@ package com.example.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,67 +26,6 @@ fun AgentManagerScreen(
     onAddAgent: (String, String, String, String, String) -> Unit,
     onSelectAgentForChat: (String) -> Unit
 ) {
-    var showAddDialog by remember { mutableStateOf(false) }
-    var newName by remember { mutableStateOf("") }
-    var newRoleTitle by remember { mutableStateOf("") }
-    var newAgentType by remember { mutableStateOf("Custom") }
-    var newInstruction by remember { mutableStateOf("") }
-    var newCapabilities by remember { mutableStateOf("") }
-
-    if (showAddDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddDialog = false },
-            title = { Text("Deploy Custom Agent Node") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("Agent Name") },
-                        placeholder = { Text("e.g. Legal Compliance Agent") }
-                    )
-                    OutlinedTextField(
-                        value = newRoleTitle,
-                        onValueChange = { newRoleTitle = it },
-                        label = { Text("Role Title") },
-                        placeholder = { Text("e.g. Regulatory Advisor") }
-                    )
-                    OutlinedTextField(
-                        value = newInstruction,
-                        onValueChange = { newInstruction = it },
-                        label = { Text("System Instruction") },
-                        modifier = Modifier.height(100.dp)
-                    )
-                    OutlinedTextField(
-                        value = newCapabilities,
-                        onValueChange = { newCapabilities = it },
-                        label = { Text("Capabilities (comma separated)") },
-                        placeholder = { Text("e.g. Contract Review, Compliance Check") }
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (newName.isNotBlank() && newInstruction.isNotBlank()) {
-                            onAddAgent(newName, newRoleTitle, newAgentType, newInstruction, newCapabilities)
-                            newName = ""
-                            newRoleTitle = ""
-                            newInstruction = ""
-                            newCapabilities = ""
-                            showAddDialog = false
-                        }
-                    }
-                ) {
-                    Text("Deploy Agent")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -95,7 +33,7 @@ fun AgentManagerScreen(
             .testTag("agent_manager_screen"),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Unified J.A.R.V.I.S. Super-Agent Banner
+        // Single Unified Wasti AI Master Card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -108,155 +46,196 @@ fun AgentManagerScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "J.A.R.V.I.S. Unified Master Agent",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                text = "All specialized sub-agents combined into 1 Master AI Engine",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = "Wasti AI Logo",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Wasti AI — Unified Intelligent Engine",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = "Single Unified Master AI • Background Source & API Orchestration",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                        IconButton(
-                            onClick = { showAddDialog = true },
-                            modifier = Modifier.testTag("add_custom_agent_button")
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
                         ) {
-                            Icon(Icons.Default.AddCircle, contentDescription = "Deploy Capability", tint = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF34D399))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "ACTIVE",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "Rather than managing separate disconnected agents, J.A.R.V.I.S. unifies Coding, Business, Memory, Research, Automation, and Design into a single, cohesive, ultra-intelligent entity with natural voice speech.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Wasti AI operates as a single, cohesive, unified intelligence. Rather than exposing separate disconnected sub-agents, Wasti AI automatically selects the optimal reasoning models, voice pipelines, memory nodes, coding engines, and web search APIs in the background for each task.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 19.sp
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
-                        AgentNodeTypeBadge("J.A.R.V.I.S. Core", Color(0xFF38BDF8))
-                        AgentNodeTypeBadge("Code Engine", Color(0xFF818CF8))
-                        AgentNodeTypeBadge("Memory System", Color(0xFFF59E0B))
-                        AgentNodeTypeBadge("Voice Speech", Color(0xFF34D399))
+                        AgentNodeTypeBadge("Unified Core", Color(0xFF38BDF8))
+                        AgentNodeTypeBadge("Auto-Routing Engine", Color(0xFF818CF8))
+                        AgentNodeTypeBadge("Vector Memory", Color(0xFFF59E0B))
+                        AgentNodeTypeBadge("Neural Voice HD", Color(0xFF34D399))
                     }
                 }
             }
         }
 
+        // Unified Engine Capabilities
         item {
-            Text(text = "Active Specialized Agents (${agents.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
-
-        items(agents) { agent ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SmartToy,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(text = agent.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                Text(text = agent.roleTitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(if (agent.status == "Active") Color(0xFF34D399) else Color(0xFFF59E0B))
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(text = agent.status, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
+                Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = agent.systemInstruction,
+                        text = "Integrated Background Capabilities",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "All modules execute automatically under Wasti AI's central control loop:",
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        agent.capabilitiesCsv.split(",").forEach { cap ->
-                            if (cap.isNotBlank()) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                    val capabilities = listOf(
+                        "👨‍💻 Code Architecture & Kotlin/Python Debugging",
+                        "💼 Executive Business Analysis & Strategic Planning",
+                        "🔍 Real-Time Web Research & Fact Synthesis",
+                        "🧠 Persistent Long-Term Vector Memory & Knowledge Base",
+                        "🎙️ Real-Time Neural Speech & Voice Call Synthesis",
+                        "🔐 Encrypted Credential Vault & Hardware Security",
+                        "⚡ Automated Multi-Step Task & Workflow Planner"
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        capabilities.forEach { cap ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text(
-                                        text = cap.trim(),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                        fontSize = 10.sp,
+                                        text = cap,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                    Button(
+                        onClick = { onSelectAgentForChat("ceo_agent") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("launch_unified_wasti_chat_button"),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Button(
-                            onClick = { onSelectAgentForChat(agent.id) },
-                            modifier = Modifier.testTag("chat_with_${agent.id}_button"),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Launch Chat Session", fontSize = 12.sp)
-                        }
+                        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Launch Wasti AI Unified Workspace")
+                    }
+                }
+            }
+        }
+
+        // Background Processing Guarantee Banner
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Background Orchestration Active",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = "API sources, model selection, and tool execution are evaluated dynamically behind the scenes for every prompt.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                        )
                     }
                 }
             }

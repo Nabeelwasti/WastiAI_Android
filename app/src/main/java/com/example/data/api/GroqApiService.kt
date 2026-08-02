@@ -41,7 +41,8 @@ interface GroqApi {
 
 object GroqClient {
     private const val BASE_URL = "https://api.groq.com/"
-    const val DEFAULT_GROQ_KEY = "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"
+    val defaultGroqKey: String
+        get() = try { com.example.BuildConfig.GROQ_API_KEY } catch (e: Throwable) { "" }
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -68,7 +69,7 @@ object GroqClient {
         modelName: String = "llama-3.3-70b-versatile",
         customApiKey: String? = null
     ): String = withContext(Dispatchers.IO) {
-        val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey else DEFAULT_GROQ_KEY
+        val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey else defaultGroqKey
         val bearer = "Bearer $apiKey"
 
         val resolvedModel = when {

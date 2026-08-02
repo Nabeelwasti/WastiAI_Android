@@ -40,16 +40,16 @@ fun CommandPaletteDialog(
     var query by remember { mutableStateOf("") }
 
     val allOptions = listOf(
-        CommandOption("Chat Workspace", "Open natural multi-agent chat interface", Icons.Default.Chat, "Open Chat"),
-        CommandOption("Executive Brain Dashboard", "View system state, active agents & metrics", Icons.Default.Dashboard, "Open Dashboard"),
+        CommandOption("Chat Workspace", "Open Wasti AI natural chat interface", Icons.Default.Chat, "Open Chat"),
+        CommandOption("Executive Brain Dashboard", "View Wasti OS system state, metrics & active tasks", Icons.Default.Dashboard, "Open Dashboard"),
         CommandOption("Long-Term Memory & Knowledge", "Inspect vector memory records & knowledge base", Icons.Default.Memory, "Open Memory"),
-        CommandOption("Multi-Agent Manager", "Configure CEO, Coding, Research & custom agents", Icons.Default.Psychology, "Open Agents"),
+        CommandOption("Wasti AI Engine Core", "View unified intelligent core status & capabilities", Icons.Default.Psychology, "Open Agents"),
         CommandOption("Projects & Task Roadmap", "View project Kanban, tasks & AI planner", Icons.Default.AccountTree, "Open Projects"),
         CommandOption("Code & Prompt Workspace", "Generate Kotlin/Python code & build prompt library", Icons.Default.Code, "Open Code"),
         CommandOption("Integrations & System Logs", "View service connectors, MCP server & system logs", Icons.Default.Extension, "Open Integrations"),
         CommandOption("Settings & AI Secrets", "Configure API keys, model parameters & theme", Icons.Default.Settings, "Open Settings"),
-        CommandOption("Ask Research Agent", "Delegate web research & document analysis", Icons.Default.ManageSearch, "Research: "),
-        CommandOption("Ask Coding Agent", "Generate clean code or debug Kotlin/Python", Icons.Default.Terminal, "Code: ")
+        CommandOption("Ask Wasti AI Research", "Delegate web research & document analysis to Wasti AI", Icons.Default.ManageSearch, "Research: "),
+        CommandOption("Ask Wasti AI Code", "Generate clean code or debug Kotlin/Python with Wasti AI", Icons.Default.Terminal, "Code: ")
     )
 
     val filteredOptions = if (query.isBlank()) {

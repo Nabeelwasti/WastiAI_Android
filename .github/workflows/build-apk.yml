@@ -30,7 +30,7 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
 
     - name: Accept Android SDK Licenses
-      run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
     - name: Decode Debug Keystore
       run: |
@@ -40,14 +40,7 @@ jobs:
         fi
 
     - name: Build Debug APK
-      run: |
-        if [ -f "./gradlew" ]; then
-          chmod +x ./gradlew || true
-          ./gradlew assembleDebug --no-daemon --stacktrace
-        else
-          echo "gradlew not found, falling back to system gradle"
-          gradle assembleDebug --stacktrace
-        fi
+      run: gradle assembleDebug --stacktrace
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
@@ -56,7 +49,6 @@ jobs:
         path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Create or Update GitHub Release
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       uses: ncipollo/release-action@v1
       with:
         artifacts: "app/build/outputs/apk/debug/app-debug.apk"

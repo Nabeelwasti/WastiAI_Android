@@ -147,7 +147,7 @@ fun ProjectsTasksScreen(
                         }
                     }
                     Text(
-                        text = "Manage multi-agent projects and task execution graphs.",
+                        text = "Manage projects and task execution workflows in Wasti OS.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -303,7 +303,7 @@ fun ProjectsTasksScreen(
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = task.assignedAgentId,
+                            text = "Wasti AI",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,

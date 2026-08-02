@@ -23,6 +23,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.db.*
 
@@ -79,7 +81,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.primaryContainer
                         ) {
                             Text(
-                                text = "Gemini 3.5 Flash",
+                                text = "Wasti AI Engine",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -93,9 +95,10 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.img_wasti_app_icon_1785523199134),
+                        AsyncImage(
+                            model = R.drawable.img_wasti_app_icon_1785523199134,
                             contentDescription = "Wasti AI Logo",
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(48.dp)
                                 .clip(RoundedCornerShape(12.dp))
@@ -126,6 +129,72 @@ fun DashboardScreen(
                         QuickMetricBadge("Memories", "${memories.size}", Icons.Default.Memory)
                         QuickMetricBadge("Projects", "${projects.size}", Icons.Default.AccountTree)
                         QuickMetricBadge("Pending Tasks", "${tasks.count { !it.isCompleted }}", Icons.Default.CheckCircle)
+                    }
+                }
+            }
+        }
+
+        // Live Business Dashboard Card (Stripe & HubSpot Pipeline)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingUp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Business Progress & Revenue Pipeline",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        ) {
+                            Text(
+                                text = "HubSpot & Stripe Live",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Monthly Revenue", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("$14,850.00", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF34D399))
+                        }
+                        Divider(modifier = Modifier.height(30.dp).width(1.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("HubSpot Pipeline", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("6 Active Deals", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Divider(modifier = Modifier.height(30.dp).width(1.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Stripe Draft Quotes", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("2 Pending", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFF59E0B))
+                        }
                     }
                 }
             }
@@ -178,7 +247,7 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 QuickActionCard("AI Chat", Icons.Default.Chat, Modifier.weight(1f)) { onNavigateTab("chat") }
-                QuickActionCard("Agents", Icons.Default.Psychology, Modifier.weight(1f)) { onNavigateTab("agents") }
+                QuickActionCard("Wasti AI", Icons.Default.Psychology, Modifier.weight(1f)) { onNavigateTab("agents") }
                 QuickActionCard("Memory", Icons.Default.Memory, Modifier.weight(1f)) { onNavigateTab("memory") }
                 QuickActionCard("Projects", Icons.Default.AccountTree, Modifier.weight(1f)) { onNavigateTab("projects") }
             }
@@ -191,17 +260,61 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Wasti Master System Capabilities", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(text = "Wasti AI Engine Status", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 TextButton(onClick = { onNavigateTab("agents") }) {
-                    Text("System Settings")
+                    Text("Engine Details")
                 }
             }
 
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(agents.take(6)) { agent ->
-                    AgentStatusCard(agent = agent) {
-                        onNavigateTab("chat")
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateTab("chat") },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Psychology,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
                     }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = "Wasti AI — Unified Intelligent Engine", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF34D399))
+                            )
+                        }
+                        Text(
+                            text = "Auto-orchestrating speech, code, memory, and reasoning in the background",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "Open Chat",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
