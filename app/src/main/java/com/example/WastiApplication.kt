@@ -20,8 +20,10 @@ class WastiApplication : Application() {
 
         try {
             com.example.data.credential.CredentialRegistry.appContext = this.applicationContext
+            // Migrate any existing plain preferences into EncryptedSharedPreferences on startup
+            com.example.data.credential.CredentialRegistry.migrateIfNeeded(this)
         } catch (e: Throwable) {
-            Log.e("WastiApplication", "Error setting CredentialRegistry appContext", e)
+            Log.e("WastiApplication", "Error setting CredentialRegistry appContext or migrating credentials", e)
         }
 
         // Initialize Room DB and run memory migration in background safely
