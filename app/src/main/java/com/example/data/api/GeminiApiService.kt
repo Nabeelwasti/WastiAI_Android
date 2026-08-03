@@ -51,7 +51,9 @@ object GeminiClient {
         prompt: String,
         systemInstruction: String = "You are Wasti OS, an advanced AI Operating System.",
         modelName: String = "gemini-3.6-flash",
-        history: List<GeminiContent> = emptyList()
+        history: List<GeminiContent> = emptyList(),
+        imageInlineData: String? = null,
+        mimeType: String = "image/jpeg"
     ): String = withContext(Dispatchers.IO) {
         val apiKey = try {
             BuildConfig.GEMINI_API_KEY
@@ -68,12 +70,35 @@ object GeminiClient {
 
         val contentsList = mutableListOf<GeminiContent>()
         contentsList.addAll(history)
-        contentsList.add(GeminiContent(role = "user", parts = listOf(GeminiPart(text = prompt))))
+
+        val userParts = mutableListOf<GeminiPart>()
+        if (prompt.isNotBlank()) {
+            userParts.add(GeminiPart(text = prompt))
+        }
+        if (!imageInlineData.isNullOrBlank()) {
+            userParts.add(GeminiPart(inlineData = GeminiInlineData(mimeType = mimeType, data = imageInlineData)))
+        }
+        if (userParts.isEmpty()) {
+            userParts.add(GeminiPart(text = "Please analyze the attached media."))
+        }
+
+        contentsList.add(GeminiContent(role = "user", parts = userParts))
+
+        val isResearchQuery = prompt.lowercase().run {
+            contains("search") || contains("latest") || contains("news") || contains("research") ||
+            contains("price") || contains("who is") || contains("what is") || contains("current") ||
+            contains("find out") || contains("check online") || contains("today")
+        }
+
+        val toolsList = if (isResearchQuery || imageInlineData.isNullOrBlank()) {
+            listOf(GeminiTool())
+        } else null
 
         val request = GeminiRequest(
             contents = contentsList,
             systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = combinedSystemPrompt))),
-            generationConfig = GeminiGenerationConfig(temperature = 0.7f)
+            generationConfig = GeminiGenerationConfig(temperature = 0.7f),
+            tools = toolsList
         )
 
         val candidateModels = listOfNotNull(
@@ -96,7 +121,18 @@ object GeminiClient {
                     return@withContext text!!
                 }
             } catch (e: Exception) {
-                // Failover to next Gemini free model in sequence
+                if (request.tools != null) {
+                    try {
+                        val noToolsRequest = request.copy(tools = null)
+                        val response2 = api.generateContent(model = resolvedModel, apiKey = apiKey, request = noToolsRequest)
+                        val text2 = response2.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                        if (!text2.isNullClassOrBlank()) {
+                            return@withContext text2!!
+                        }
+                    } catch (_: Exception) {
+                        // Continue to failover
+                    }
+                }
             }
         }
 

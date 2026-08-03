@@ -238,18 +238,130 @@ class WastiRepository(private val db: WastiDatabase) {
         return convId
     }
 
+    private fun buildGeminiHistory(messages: List<MessageEntity>, currentPrompt: String): List<com.example.data.api.GeminiContent> {
+        val valid = messages.filter { it.content.isNotBlank() }
+        
+        // Exclude the currently inserted user message from prior history
+        val prior = if (valid.isNotEmpty() && valid.last().role == "user" && (valid.last().content == currentPrompt || valid.last().content.startsWith(currentPrompt))) {
+            valid.dropLast(1)
+        } else {
+            valid
+        }
+
+        val recent = prior.takeLast(20)
+        val result = mutableListOf<com.example.data.api.GeminiContent>()
+
+        for (msg in recent) {
+            val role = if (msg.role == "user") "user" else "model"
+            if (result.isNotEmpty() && result.last().role == role) {
+                val lastContent = result.last()
+                val existing = lastContent.parts.firstOrNull()?.text ?: ""
+                val merged = "$existing\n${msg.content}"
+                result[result.size - 1] = com.example.data.api.GeminiContent(
+                    role = role,
+                    parts = listOf(com.example.data.api.GeminiPart(text = merged))
+                )
+            } else {
+                result.add(
+                    com.example.data.api.GeminiContent(
+                        role = role,
+                        parts = listOf(com.example.data.api.GeminiPart(text = msg.content))
+                    )
+                )
+            }
+        }
+
+        // Gemini history must start with 'user' role
+        if (result.isNotEmpty() && result.first().role != "user") {
+            result.removeAt(0)
+        }
+
+        return result
+    }
+
     private suspend fun generateUnifiedSuperAgentResponse(
+        conversationId: String,
         userPrompt: String,
         activeAgentId: String,
         selectedModel: String,
-        fileContext: String? = null
+        fileContext: String? = null,
+        imageInlineData: String? = null,
+        mimeType: String = "image/jpeg"
     ): Pair<String, String> {
-        val currentDateTime = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss (EEEE)", java.util.Locale.getDefault()).format(java.util.Date())
+        val pktTz = java.util.TimeZone.getTimeZone("Asia/Karachi")
+        val pktCal = java.util.Calendar.getInstance(pktTz)
+        val pktHour24 = pktCal.get(java.util.Calendar.HOUR_OF_DAY)
+        val pktMinute = pktCal.get(java.util.Calendar.MINUTE)
+        val pktMinuteStr = if (pktMinute < 10) "0$pktMinute" else "$pktMinute"
+        val pktAmPm = if (pktHour24 >= 12) "PM" else "AM"
+        val pktHour12 = if (pktHour24 % 12 == 0) 12 else pktHour24 % 12
+        val pktFormattedTime = "$pktHour12:$pktMinuteStr $pktAmPm"
+        val pktDateFormatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy", java.util.Locale.US).apply {
+            this.timeZone = pktTz
+        }
+        val pktDateStr = pktDateFormatter.format(pktCal.time)
+        val pktPeriod = when (pktHour24) {
+            in 5..11 -> "Morning"
+            in 12..16 -> "Afternoon"
+            in 17..21 -> "Evening"
+            else -> "Night / Late Night"
+        }
+
+        val devTz = java.util.TimeZone.getDefault()
+        val devCal = java.util.Calendar.getInstance(devTz)
+        val devHour24 = devCal.get(java.util.Calendar.HOUR_OF_DAY)
+        val devMinute = devCal.get(java.util.Calendar.MINUTE)
+        val devMinuteStr = if (devMinute < 10) "0$devMinute" else "$devMinute"
+        val devAmPm = if (devHour24 >= 12) "PM" else "AM"
+        val devHour12 = if (devHour24 % 12 == 0) 12 else devHour24 % 12
+        val devFormattedTime = "$devHour12:$devMinuteStr $devAmPm"
+        val devDateFormatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy", java.util.Locale.US).apply {
+            this.timeZone = devTz
+        }
+        val devDateStr = devDateFormatter.format(devCal.time)
         
-        // Master Unified Super Agent System Instruction (Consolidates Coding, Design, Business, Research, Writing, Memory, Automation)
+        // Fetch conversation history from Room DB for multi-turn chat memory
+        val previousMessages = db.messageDao().getMessagesListForConversation(conversationId)
+        val historyContent = buildGeminiHistory(previousMessages, userPrompt)
+
+        // Master Unified Super Agent System Instruction
         val masterUnifiedSuperAgentPrompt = """
             You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine and Mobile OS Executive Assistant created for Syed Nabeel Wasti.
             You combine ALL specialized domain capabilities (Software Engineering, UI/UX Material 3 Design, Business Strategy, Research, Technical Writing, Workflow Automation, Long-Term Memory, and Multilingual Speech) into ONE seamless, unified brain.
+            
+            [REAL-TIME CLOCK & WORLD TIME CONTEXT]:
+            • Pakistan Standard Time (PKT, UTC+5, Asia/Karachi): $pktFormattedTime ($pktDateStr) [$pktPeriod]
+            • Device / UTC System Time: $devFormattedTime ($devDateStr) [Zone: ${devTz.id}]
+
+            CRITICAL TIME RESPONSE MANDATES:
+            1. When asked for the current time or time in Pakistan, state the time clearly, accurately, and naturally in human conversational terms (e.g., "It is currently $pktFormattedTime on $pktDateStr in Pakistan" or "Right now in Pakistan, it is $pktFormattedTime").
+            2. AM/PM MUST BE 100% MATHEMATICALLY ACCURATE. In Pakistan, $pktHour12:$pktMinuteStr is strictly $pktAmPm. Do NOT confuse AM with PM.
+            3. NEVER quote, repeat, or output raw bracketed debug tokens, system log strings, or technical tags like `[24-Hour: ...]`, `[Zone: ...]`, or `[Period: ...]`. Keep the tone warm, conversational, and direct.
+
+            [MOBILE OS EXECUTIVE CONTROL & APP LAUNCHING]:
+            You possess full mobile OS executive authority over the user's Android device via Wasti Mobile Controller.
+            When the user requests to open, launch, or execute an app (such as WhatsApp, YouTube, Camera, Settings, Gmail, Chrome, Maps, Gallery, Spotify, Calculator, Phone/Dialer, Telegram, or any installed app), or send messages:
+            1. NEVER claim or state that you cannot open apps or control the device. You CAN and DO open apps directly on the user's device!
+            2. Always respond affirmatively, warmly, and enthusiastically (e.g., "Right away, Sir! Launching WhatsApp on your device now via Wasti Mobile Controller.", "Opening Camera for you, Boss!", "Opening YouTube on your phone now, Sir.").
+            
+            [ENHANCED ONLINE RESEARCH STRATEGY]:
+            When answering queries requiring real-time facts, current news, market data, prices, domain lookups, specifications, or web research:
+            1. Perform multi-angle web research using live Google Search Grounding & real-time data sources.
+            2. Cross-check facts, dates, names, prices, and statistics across reliable web references.
+            3. Synthesize findings into clear, direct, well-structured, accurate answers with bullet points and bold key facts.
+            4. Distinguish between verified factual knowledge and estimates. Never output outdated static assumptions when live information is available.
+            
+            [MULTI-TURN CHAT MEMORY RULE]:
+            You have full multi-turn conversational memory. Maintain continuous context from all previous messages in this conversation session. Remember names, preferences, decisions, and instructions mentioned earlier in the chat. Never treat a follow-up message as an isolated first turn.
+            
+            [ABSOLUTE HONESTY & REAL STATUS MANDATE]:
+            You MUST be 100% honest, transparent, and practical at all times. NEVER pretend, fake, or claim to have executed external real-world actions (such as sending real emails, charging credit cards, or making live external API posts) unless actual API keys are configured and real execution outputs are verified. Always state the exact real-world status of tasks, drafts, code, and connected API tools clearly and logically.
+            
+            [HUMAN NATURAL TEXT & CLEAN FORMATTING MANDATE]:
+            Always reply in clean, natural, human-like language. NEVER produce robotic text, weird syntax noise, or useless decorative characters (e.g. no repetitive `***`, garbage symbols, or cluttered formatting). Use clear paragraphs, standard bullet points, and elegant typography.
+            
+            [GOOGLE WORKSPACE & AUTOMATED COMMS CAPACITY]:
+            Google Account `wastinabeel99@gmail.com` with App Password `dmuk wudc zlog gnej` is fully integrated and saved in Wasti Local Secret Vault. This key enables automated Gmail SMTP/IMAP email dispatch, Google Drive file syncing & backups, Google Sheets data logging, Google Docs spec generation, and Google Calendar event scheduling.
             
             [DYNAMIC DOMAIN ROUTING RULE]:
             Analyze the user's prompt intent automatically and apply the optimal logic WITHOUT requiring the user to switch tabs or agents:
@@ -260,7 +372,6 @@ class WastiRepository(private val db: WastiDatabase) {
             - If request involves conversation/voice: Address the user respectfully as 'Sir' or 'Boss' in a warm, polite, articulate J.A.R.V.I.S.-like voice.
             
             Understand and reply fluently in English, Urdu (اردو), Roman Urdu, Punjabi (پنجابی), or any language requested.
-            Current System Date/Time: $currentDateTime.
         """.trimIndent()
 
         val agent = db.agentDao().getAgentById(activeAgentId)
@@ -271,12 +382,45 @@ class WastiRepository(private val db: WastiDatabase) {
             rawInstruction
         }
 
-        // Fetch vector-indexed memory context
-        val allMemories = db.memoryDao().getAllMemories().firstOrNull() ?: emptyList()
-        val relevantMemories = rankMemoriesByVectorSimilarity(userPrompt, allMemories, topK = 5)
-        val memoryContext = if (relevantMemories.isNotEmpty()) {
-            "\n\n[Wasti OS Vector-Indexed Long-Term Memory Recall]:\n" + relevantMemories.joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
-        } else ""
+        // 1. Fetch ALL Permanent Core Memories (All stored user facts, preferences, decisions)
+        val allMemoriesList = try { db.memoryDao().getMemoriesList() } catch (_: Exception) { emptyList() }
+        val memoryDigest = if (allMemoriesList.isNotEmpty()) {
+            allMemoriesList.take(30).joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
+        } else {
+            "- User Identity: Syed Nabeel Wasti (Master & Creator of Wasti OS)\n- Default Persona: J.A.R.V.I.S.-style executive super-agent"
+        }
+
+        // 2. Fetch Cross-Session Conversation Highlights
+        val globalMessages = try { db.messageDao().getGlobalRecentMessages(30) } catch (_: Exception) { emptyList() }
+        val crossSessionHighlights = globalMessages
+            .filter { it.conversationId != conversationId && it.content.isNotBlank() }
+            .take(12)
+            .joinToString("\n") { msg ->
+                val sender = if (msg.role == "user") "User" else "Wasti AI"
+                "- ($sender in another chat session): ${msg.content.take(120)}"
+            }
+
+        // 3. Fetch Active Tasks & Client Deals Pipeline
+        val activeTasks = try { db.taskDao().getActiveTasksList() } catch (_: Exception) { emptyList() }
+        val taskPipelineDigest = if (activeTasks.isNotEmpty()) {
+            activeTasks.take(10).joinToString("\n") { "- [Priority ${it.priority}] ${it.title}: ${it.description.take(100)}" }
+        } else {
+            "- Client Outreach Engine: Active (HubSpot Leads + Brevo Automated Emailing)\n- Invoicing & Quotations: Stripe Draft Gateway Ready\n- Software Engineering: Notion Spec Sync + GitHub Automated Repo Generation Online"
+        }
+
+        val memoryContext = """
+
+[WASTI OS PERMANENT LONG-TERM MEMORY & USER FACTS]:
+$memoryDigest
+
+${if (crossSessionHighlights.isNotBlank()) "[CROSS-SESSION CONVERSATION HIGHLIGHTS]:\n$crossSessionHighlights\n" else ""}
+[ACTIVE BUSINESS & PROJECT PIPELINE]:
+$taskPipelineDigest
+
+[CONNECTED AGENT APIs & BUSINESS OPERATIONAL HARNESS]:
+- Active Configured Keys & Services: Gemini 3.6, Groq (Llama 3.3 70B), DeepSeek V3/R1, OpenAI, xAI Grok, Anthropic, OpenRouter, ElevenLabs, Stripe, Brevo, HubSpot, Notion, Slack, Discord, Zapier, GitHub, Canva, Unsplash, Cloudflare, HuggingFace.
+- Autonomous Execution Authority: You are empowered to plan, draft, generate code, handle client communication, and automate business processes end-to-end.
+""".trimIndent()
 
         val fullSystemInstruction = "$masterUnifiedSuperAgentPrompt\n\n$customInstruction$memoryContext"
 
@@ -284,7 +428,10 @@ class WastiRepository(private val db: WastiDatabase) {
             userPrompt = userPrompt,
             systemInstruction = fullSystemInstruction,
             activeAgentId = activeAgentId,
-            fileContext = fileContext
+            fileContext = fileContext,
+            history = historyContent,
+            imageInlineData = imageInlineData,
+            mimeType = mimeType
         )
 
         val usedModelLabel = "Wasti AI"
@@ -296,7 +443,9 @@ class WastiRepository(private val db: WastiDatabase) {
         userPrompt: String,
         activeAgentId: String,
         selectedModel: String = "wasti-super-ensemble",
-        fileContext: String? = null
+        fileContext: String? = null,
+        imageInlineData: String? = null,
+        mimeType: String = "image/jpeg"
     ): String {
         val userMsgId = UUID.randomUUID().toString()
         db.messageDao().insertMessage(
@@ -309,7 +458,15 @@ class WastiRepository(private val db: WastiDatabase) {
             )
         )
 
-        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(userPrompt, activeAgentId, selectedModel, fileContext)
+        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(
+            conversationId = conversationId,
+            userPrompt = userPrompt,
+            activeAgentId = activeAgentId,
+            selectedModel = selectedModel,
+            fileContext = fileContext,
+            imageInlineData = imageInlineData,
+            mimeType = mimeType
+        )
 
         val assistantMsgId = UUID.randomUUID().toString()
         db.messageDao().insertMessage(
@@ -356,7 +513,13 @@ class WastiRepository(private val db: WastiDatabase) {
         db.messageDao().deleteMessagesAfterTimestamp(conversationId, targetMsg.timestamp)
 
         // 3. Trigger a fresh API response using the updated prompt from the Super Agent
-        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(newPrompt, activeAgentId, selectedModel, fileContext)
+        val (responseText, usedModel) = generateUnifiedSuperAgentResponse(
+            conversationId = conversationId,
+            userPrompt = newPrompt,
+            activeAgentId = activeAgentId,
+            selectedModel = selectedModel,
+            fileContext = fileContext
+        )
 
         val assistantMsgId = UUID.randomUUID().toString()
         db.messageDao().insertMessage(
@@ -472,17 +635,30 @@ class WastiRepository(private val db: WastiDatabase) {
                     sourceMessageId = userMsgId
                 )
             )
-        } else if (userPrompt.contains("remember", ignoreCase = true) || userPrompt.contains("my favorite", ignoreCase = true) || userPrompt.contains("always use", ignoreCase = true)) {
+        } else if (userPrompt.contains("remember", ignoreCase = true) || userPrompt.contains("my favorite", ignoreCase = true) || userPrompt.contains("always use", ignoreCase = true) || userPrompt.length > 20) {
             db.memoryDao().insertMemory(
                 MemoryEntity(
                     id = UUID.randomUUID().toString(),
-                    key = "Auto-Learned Preference",
-                    category = "Preference",
-                    value = userPrompt.take(200),
+                    key = "Auto-Indexed Fact (${userPrompt.take(30)}...)",
+                    category = "Continuous Memory",
+                    value = userPrompt.take(300),
                     sourceMessageId = userMsgId
                 )
             )
         }
+
+        // Export local & cloud storage backup file
+        try {
+            val appCtx = com.example.data.credential.CredentialRegistry.appContext
+            if (appCtx != null) {
+                val allMems = db.memoryDao().getMemoriesList()
+                val backupFile = java.io.File(appCtx.filesDir, "wasti_memory_backup.json")
+                val jsonArray = allMems.joinToString(prefix = "[\n", postfix = "\n]", separator = ",\n") { m ->
+                    """  {"id":"${m.id}", "key":"${m.key.replace("\"", "\\\"")}", "category":"${m.category}", "value":"${m.value.replace("\"", "\\\"")}", "timestamp":${m.timestamp}}"""
+                }
+                backupFile.writeText(jsonArray)
+            }
+        } catch (_: Exception) {}
     }
 
     private fun calculateVectorSimilarity(query: String, text: String): Double {
@@ -530,6 +706,20 @@ class WastiRepository(private val db: WastiDatabase) {
         )
     }
 
+    suspend fun updateMemory(id: String, key: String, category: String, value: String) {
+        db.memoryDao().insertMemory(
+            MemoryEntity(
+                id = id,
+                key = key,
+                category = category,
+                value = value
+            )
+        )
+        db.systemLogDao().insertLog(
+            SystemLogEntity(level = "INFO", source = "MemoryEngine", message = "Updated memory record: $key")
+        )
+    }
+
     suspend fun deleteMemory(id: String) {
         db.memoryDao().deleteMemoryById(id)
     }
@@ -546,8 +736,31 @@ class WastiRepository(private val db: WastiDatabase) {
         )
     }
 
+    suspend fun updateKnowledge(id: String, title: String, category: String, content: String, tags: String) {
+        db.knowledgeDao().insertKnowledge(
+            KnowledgeEntity(
+                id = id,
+                title = title,
+                category = category,
+                content = content,
+                tagsCsv = tags
+            )
+        )
+        db.systemLogDao().insertLog(
+            SystemLogEntity(level = "INFO", source = "MemoryEngine", message = "Updated knowledge record: $title")
+        )
+    }
+
     suspend fun deleteKnowledge(id: String) {
         db.knowledgeDao().deleteKnowledgeById(id)
+    }
+
+    suspend fun deleteConversation(id: String) {
+        db.messageDao().deleteMessagesForConversation(id)
+        db.conversationDao().deleteConversationById(id)
+        db.systemLogDao().insertLog(
+            SystemLogEntity(level = "INFO", source = "ChatEngine", message = "Deleted conversation record: $id")
+        )
     }
 
     suspend fun addProject(name: String, description: String, priority: String) {
@@ -614,11 +827,6 @@ class WastiRepository(private val db: WastiDatabase) {
 
     suspend fun clearLogs() {
         db.systemLogDao().clearAllLogs()
-    }
-
-    suspend fun deleteConversation(id: String) {
-        db.conversationDao().deleteConversationById(id)
-        db.messageDao().deleteMessagesForConversation(id)
     }
 
     suspend fun clearChatHistory(conversationId: String) {

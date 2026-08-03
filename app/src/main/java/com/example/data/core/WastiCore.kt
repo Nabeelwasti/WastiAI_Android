@@ -36,8 +36,18 @@ object WastiCore {
             return RoutingTier.DEEP_LANE
         }
 
+        // Real-Time, Search, Clock, and Device Control queries -> STANDARD_LANE
+        val realTimeKeywords = listOf(
+            "time", "date", "clock", "pakistan", "news", "weather", "search",
+            "current", "latest", "today", "price", "who is", "what is", "where is",
+            "open", "launch", "whatsapp", "camera", "youtube"
+        )
+        if (realTimeKeywords.any { lower.contains(it) }) {
+            return RoutingTier.STANDARD_LANE
+        }
+
         // Fast Lane triggers
-        val fastKeywords = listOf("hi", "hello", "salam", "hey", "time", "date", "thanks", "kaise ho", "kya haal hai")
+        val fastKeywords = listOf("hi", "hello", "salam", "hey", "thanks", "kaise ho", "kya haal hai")
         if (trimmed.length < 35 || fastKeywords.any { lower == it || lower.startsWith("$it ") }) {
             return RoutingTier.FAST_LANE
         }
@@ -49,8 +59,22 @@ object WastiCore {
         userPrompt: String,
         systemInstruction: String,
         activeAgentId: String,
-        fileContext: String? = null
+        fileContext: String? = null,
+        history: List<com.example.data.api.GeminiContent> = emptyList(),
+        imageInlineData: String? = null,
+        mimeType: String = "image/jpeg"
     ): Pair<String, String> = withContext(Dispatchers.IO) {
+
+        val historyTranscript = if (history.isNotEmpty()) {
+            val lines = history.joinToString("\n") { item ->
+                val role = if (item.role == "user") "User" else "Wasti AI"
+                val text = item.parts.firstOrNull()?.text ?: ""
+                "[$role]: $text"
+            }
+            "\n\n[RECENT CONVERSATION HISTORY (Last 20 Messages)]:\n$lines\n[END CONVERSATION HISTORY]\n"
+        } else ""
+
+        val enrichedSystemInstruction = "$systemInstruction$historyTranscript"
 
         val tier = classifyIntentTier(userPrompt)
         val fullPrompt = if (!fileContext.isNullOrBlank()) {
@@ -71,11 +95,11 @@ object WastiCore {
             RoutingTier.FAST_LANE -> {
                 // Tier 1: Fast single call to Groq Llama 3.3 or Gemini Flash-Lite
                 val groqKey = try { BuildConfig.GROQ_API_KEY } catch (e: Throwable) { "" }
-                if (groqKey.isNotBlank()) {
+                if (groqKey.isNotBlank() && imageInlineData.isNullOrBlank()) {
                     try {
                         val res = GroqClient.generateText(
                             prompt = fullPrompt,
-                            systemInstruction = systemInstruction,
+                            systemInstruction = enrichedSystemInstruction,
                             modelName = "llama-3.3-70b-versatile"
                         )
                         if (res.isNotBlank()) return@withContext Pair(res, "Wasti AI Engine (Fast Lane)")
@@ -84,8 +108,11 @@ object WastiCore {
                 // Fallback to Gemini 3.5 Flash Lite
                 val geminiRes = GeminiClient.generateText(
                     prompt = fullPrompt,
-                    systemInstruction = systemInstruction,
-                    modelName = "gemini-3.5-flash-lite"
+                    systemInstruction = enrichedSystemInstruction,
+                    modelName = "gemini-3.5-flash-lite",
+                    history = history,
+                    imageInlineData = imageInlineData,
+                    mimeType = mimeType
                 )
                 Pair(geminiRes, "Wasti AI Engine (Fast Lane)")
             }
@@ -99,13 +126,13 @@ object WastiCore {
                         userPrompt.lowercase().contains("kotlin") ||
                         userPrompt.lowercase().contains("function")
 
-                if (isCodingTask) {
+                if (isCodingTask && imageInlineData.isNullOrBlank()) {
                     val deepSeekKey = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
                     if (deepSeekKey.isNotBlank()) {
                         try {
                             val dsRes = DeepSeekClient.generateText(
                                 prompt = fullPrompt,
-                                systemInstruction = "You are Wasti AI Code Synthesis Engine.",
+                                systemInstruction = enrichedSystemInstruction,
                                 apiKey = deepSeekKey
                             )
                             if (dsRes.isNotBlank()) return@withContext Pair(dsRes, "Wasti AI Engine (DeepSeek Code)")
@@ -113,12 +140,15 @@ object WastiCore {
                     }
                 }
 
-                // 1. Primary: Gemini 3.6 Flash
+                // 1. Primary: Gemini 3.6 Flash (Supports text + multimodal + multi-turn history)
                 try {
                     val res = GeminiClient.generateText(
                         prompt = fullPrompt,
-                        systemInstruction = systemInstruction,
-                        modelName = "gemini-3.6-flash"
+                        systemInstruction = enrichedSystemInstruction,
+                        modelName = "gemini-3.6-flash",
+                        history = history,
+                        imageInlineData = imageInlineData,
+                        mimeType = mimeType
                     )
                     if (res.isNotBlank() && !res.startsWith("Right away, Sir")) {
                         return@withContext Pair(res, "Wasti AI Engine")
@@ -131,7 +161,7 @@ object WastiCore {
                     try {
                         val res = GroqClient.generateText(
                             prompt = fullPrompt,
-                            systemInstruction = systemInstruction,
+                            systemInstruction = enrichedSystemInstruction,
                             modelName = "llama-3.3-70b-versatile"
                         )
                         if (res.isNotBlank()) return@withContext Pair(res, "Wasti AI Engine")
@@ -144,7 +174,7 @@ object WastiCore {
                     try {
                         val res = XAIClient.generateText(
                             prompt = fullPrompt,
-                            systemInstruction = systemInstruction,
+                            systemInstruction = enrichedSystemInstruction,
                             apiKey = xaiKey,
                             modelName = "grok-4.3"
                         )
@@ -160,7 +190,7 @@ object WastiCore {
                     try {
                         val res = OpenAIClient.generateText(
                             prompt = fullPrompt,
-                            systemInstruction = systemInstruction,
+                            systemInstruction = enrichedSystemInstruction,
                             apiKey = openAiKey,
                             modelName = "gpt-3.5-turbo"
                         )
@@ -174,7 +204,7 @@ object WastiCore {
                     try {
                         val res = OpenRouterClient.generateText(
                             prompt = fullPrompt,
-                            systemInstruction = systemInstruction,
+                            systemInstruction = enrichedSystemInstruction,
                             apiKey = openRouterKey,
                             modelName = "meta-llama/llama-3.3-70b-instruct:free"
                         )
@@ -185,7 +215,7 @@ object WastiCore {
                 // Final Fallback: Local On-Device Synthesis Engine
                 val localRes = GeminiClient.generateText(
                     prompt = fullPrompt,
-                    systemInstruction = systemInstruction,
+                    systemInstruction = enrichedSystemInstruction,
                     modelName = "gemini-3.6-flash"
                 )
                 Pair(localRes, "Wasti AI Engine")
@@ -195,18 +225,18 @@ object WastiCore {
                 // Tier 3: Parallel Execution via Coroutines -> Reviewer Merge (Gemini 3.6 Flash)
                 val task1 = async {
                     try {
-                        GeminiClient.generateText(prompt = fullPrompt, systemInstruction = systemInstruction, modelName = "gemini-3.6-flash")
+                        GeminiClient.generateText(prompt = fullPrompt, systemInstruction = enrichedSystemInstruction, modelName = "gemini-3.6-flash")
                     } catch (e: Exception) { "" }
                 }
                 val task2 = async {
                     try {
-                        GroqClient.generateText(prompt = fullPrompt, systemInstruction = systemInstruction, modelName = "llama-3.3-70b-versatile")
+                        GroqClient.generateText(prompt = fullPrompt, systemInstruction = enrichedSystemInstruction, modelName = "llama-3.3-70b-versatile")
                     } catch (e: Exception) { "" }
                 }
                 val task3 = async {
                     val deepSeekKey = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
                     if (deepSeekKey.isNotBlank()) {
-                        DeepSeekClient.generateText(prompt = fullPrompt, systemInstruction = systemInstruction, apiKey = deepSeekKey)
+                        DeepSeekClient.generateText(prompt = fullPrompt, systemInstruction = enrichedSystemInstruction, apiKey = deepSeekKey)
                     } else ""
                 }
 

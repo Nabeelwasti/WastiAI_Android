@@ -4,8 +4,15 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class GeminiInlineData(
+    @Json(name = "mimeType") val mimeType: String = "image/jpeg",
+    @Json(name = "data") val data: String
+)
+
+@JsonClass(generateAdapter = true)
 data class GeminiPart(
-    @Json(name = "text") val text: String? = null
+    @Json(name = "text") val text: String? = null,
+    @Json(name = "inlineData") val inlineData: GeminiInlineData? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -23,10 +30,16 @@ data class GeminiGenerationConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class GeminiTool(
+    @Json(name = "googleSearch") val googleSearch: Map<String, String>? = emptyMap()
+)
+
+@JsonClass(generateAdapter = true)
 data class GeminiRequest(
     @Json(name = "contents") val contents: List<GeminiContent>,
     @Json(name = "systemInstruction") val systemInstruction: GeminiContent? = null,
-    @Json(name = "generationConfig") val generationConfig: GeminiGenerationConfig? = null
+    @Json(name = "generationConfig") val generationConfig: GeminiGenerationConfig? = null,
+    @Json(name = "tools") val tools: List<GeminiTool>? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -72,6 +72,12 @@ fun CodePromptWorkspaceScreen(
             Tab(
                 selected = selectedTab == 1,
                 onClick = { selectedTab = 1 },
+                text = { Text("Dev Assistant", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Terminal, contentDescription = null) }
+            )
+            Tab(
+                selected = selectedTab == 2,
+                onClick = { selectedTab = 2 },
                 text = { Text("Prompt Library", fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.LibraryBooks, contentDescription = null) }
             )
@@ -120,10 +126,12 @@ fun CodePromptWorkspaceScreen(
 
                         OutlinedButton(
                             onClick = {
-                                codeOutput = "// Refactored Wasti OS Module\nclass WastiEngine {\n    fun execute() = true\n}"
+                                selectedTab = 1
                             }
                         ) {
-                            Text("Fast Preview")
+                            Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Dev Assistant")
                         }
                     }
                 }
@@ -136,6 +144,15 @@ fun CodePromptWorkspaceScreen(
                     }
                 }
             }
+        } else if (selectedTab == 1) {
+            DevAssistantScreen(
+                activeCodeContext = codeInput,
+                onCodeContextChange = { newCode ->
+                    codeInput = newCode
+                    onCodeContextChange(newCode)
+                },
+                onSendMessageToChat = onSendMessageToChat
+            )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),

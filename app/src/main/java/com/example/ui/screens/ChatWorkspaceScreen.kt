@@ -39,6 +39,53 @@ import com.example.util.WastiSpeechSanitizer
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+data class ActiveAttachment(
+    val name: String,
+    val mimeType: String,
+    val base64Data: String?,
+    val bitmap: android.graphics.Bitmap? = null,
+    val isImage: Boolean = true
+)
+
+private fun bitmapToBase64(bitmap: android.graphics.Bitmap): String {
+    val outputStream = java.io.ByteArrayOutputStream()
+    bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outputStream)
+    return android.util.Base64.encodeToString(outputStream.toByteArray(), android.util.Base64.NO_WRAP)
+}
+
+private fun uriToBase64(context: android.content.Context, uri: android.net.Uri): String? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val bytes = inputStream?.readBytes()
+        inputStream?.close()
+        if (bytes != null) android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun getFileName(context: android.content.Context, uri: android.net.Uri): String {
+    var result: String? = null
+    if (uri.scheme == "content") {
+        try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx != -1) result = cursor.getString(idx)
+                }
+            }
+        } catch (_: Exception) {}
+    }
+    if (result == null) {
+        result = uri.path
+        val cut = result?.lastIndexOf('/') ?: -1
+        if (cut != -1) {
+            result = result?.substring(cut + 1)
+        }
+    }
+    return result ?: "attachment"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatWorkspaceScreen(
@@ -53,7 +100,7 @@ fun ChatWorkspaceScreen(
     onSelectAgent: (String) -> Unit,
     onSelectModel: (String) -> Unit = {},
     onClearChatHistory: () -> Unit = {},
-    onSendMessage: (String) -> Unit,
+    onSendMessage: (prompt: String, imageInlineData: String?, mimeType: String) -> Unit,
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
     onCreateNewConversation: (String) -> Unit
 ) {
@@ -72,6 +119,82 @@ fun ChatWorkspaceScreen(
     var showWebScanDialog by remember { mutableStateOf(false) }
     var webUrlInput by remember { mutableStateOf("") }
 
+    var activeAttachment by remember { mutableStateOf<ActiveAttachment?>(null) }
+
+    // Real Camera Launcher
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val base64 = bitmapToBase64(bitmap)
+            activeAttachment = ActiveAttachment(
+                name = "Camera_Capture_${System.currentTimeMillis() % 10000}.jpg",
+                mimeType = "image/jpeg",
+                base64Data = base64,
+                bitmap = bitmap,
+                isImage = true
+            )
+        }
+    }
+
+    // Real Gallery / Photos Picker Launcher
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val name = getFileName(context, uri)
+            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+            val base64 = uriToBase64(context, uri)
+            activeAttachment = ActiveAttachment(
+                name = name,
+                mimeType = mime,
+                base64Data = base64,
+                isImage = true
+            )
+        }
+    }
+
+    // Real Device Storage / File Manager Launcher
+    val documentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            val name = getFileName(context, uri)
+            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val base64 = uriToBase64(context, uri)
+
+            if (mime.startsWith("image/")) {
+                activeAttachment = ActiveAttachment(
+                    name = name,
+                    mimeType = mime,
+                    base64Data = base64,
+                    isImage = true
+                )
+            } else {
+                // Read text / code file content directly into prompt if plain text
+                val textContent = try {
+                    context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                } catch (_: Exception) { null }
+
+                if (!textContent.isNullOrBlank()) {
+                    promptInput += "\n\n[Attached File: $name]\n```\n${textContent.take(4000)}\n```\n"
+                } else {
+                    activeAttachment = ActiveAttachment(
+                        name = name,
+                        mimeType = mime,
+                        base64Data = base64,
+                        isImage = false
+                    )
+                }
+            }
+        }
+    }
+
+    // Permission Launcher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ -> }
+
     // TextToSpeech setup for Wasti multilingual voice response
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
     var isVoiceActive by remember { mutableStateOf(true) }
@@ -82,7 +205,7 @@ fun ChatWorkspaceScreen(
         WastiVoiceCallModal(
             onDismiss = { showVoiceModal = false },
             onSendMessage = { prompt ->
-                onSendMessage(prompt)
+                onSendMessage(prompt, null, "image/jpeg")
             },
             lastAiResponse = messages.lastOrNull { it.role == "assistant" }?.content
         )
@@ -561,6 +684,46 @@ fun ChatWorkspaceScreen(
             }
         }
 
+        // Active Attachment Preview Badge
+        activeAttachment?.let { att ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = if (att.isImage) Icons.Default.Image else Icons.Default.InsertDriveFile,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Attached: ${att.name}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    IconButton(
+                        onClick = { activeAttachment = null },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Remove Attachment", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                }
+            }
+        }
+
         // Input Bar with Material OutlinedBox Alignment & Multimodal Attachment Options
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -587,12 +750,38 @@ fun ChatWorkspaceScreen(
                         onDismissRequest = { showAttachmentMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("📄 Attach Code / Document") },
+                            text = { Text("📸 Capture Device Camera Photo") },
                             onClick = {
                                 showAttachmentMenu = false
-                                promptInput += "\n[Attached Code File: MainActivity.kt]\n```kotlin\n// Code snippet attached\n```\n"
+                                try {
+                                    cameraLauncher.launch(null)
+                                } catch (_: Exception) {
+                                    permissionLauncher.launch(arrayOf(android.Manifest.permission.CAMERA))
+                                }
                             },
-                            leadingIcon = { Icon(Icons.Default.Code, contentDescription = null) }
+                            leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🖼️ Pick Gallery / Google Photos") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                try {
+                                    galleryLauncher.launch("image/*")
+                                } catch (_: Exception) {
+                                    permissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
+                                }
+                            },
+                            leadingIcon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("📁 Open Device Storage / File Manager") },
+                            onClick = {
+                                showAttachmentMenu = false
+                                try {
+                                    documentLauncher.launch("*/*")
+                                } catch (_: Exception) {}
+                            },
+                            leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null) }
                         )
                         DropdownMenuItem(
                             text = { Text("🌐 Scan & Train on Web URL") },
@@ -601,14 +790,6 @@ fun ChatWorkspaceScreen(
                                 showWebScanDialog = true
                             },
                             leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("📷 Attach Image / Camera Mock") },
-                            onClick = {
-                                showAttachmentMenu = false
-                                promptInput += "\n[Attached Image: captured_diagram.png]\n"
-                            },
-                            leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null) }
                         )
                         DropdownMenuItem(
                             text = { Text("🎙️ Voice Speech Dictation") },
@@ -659,11 +840,14 @@ fun ChatWorkspaceScreen(
 
                 FloatingActionButton(
                     onClick = {
-                        if (promptInput.isNotBlank() && !isGenerating) {
+                        if ((promptInput.isNotBlank() || activeAttachment != null) && !isGenerating) {
                             val textToSend = promptInput
+                            val att = activeAttachment
                             promptInput = ""
+                            activeAttachment = null
+
                             WastiIntentParser.parseAndExecute(context, textToSend)
-                            onSendMessage(textToSend)
+                            onSendMessage(textToSend, att?.base64Data, att?.mimeType ?: "image/jpeg")
                         }
                     },
                     modifier = Modifier

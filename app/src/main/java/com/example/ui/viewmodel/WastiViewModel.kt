@@ -117,9 +117,14 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage(prompt: String, explicitFileContext: String? = null) {
+    fun sendMessage(
+        prompt: String,
+        explicitFileContext: String? = null,
+        imageInlineData: String? = null,
+        mimeType: String = "image/jpeg"
+    ) {
         val convId = activeConversationId.value ?: return
-        if (prompt.isBlank()) return
+        if (prompt.isBlank() && imageInlineData.isNullOrBlank()) return
 
         val fileContextToPass = explicitFileContext
             ?: if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
@@ -129,7 +134,15 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             isGenerating.value = true
             try {
-                repository.sendMessage(convId, prompt, activeAgentId.value, selectedModel.value, fileContextToPass)
+                repository.sendMessage(
+                    conversationId = convId,
+                    userPrompt = prompt,
+                    activeAgentId = activeAgentId.value,
+                    selectedModel = selectedModel.value,
+                    fileContext = fileContextToPass,
+                    imageInlineData = imageInlineData,
+                    mimeType = mimeType
+                )
             } finally {
                 isGenerating.value = false
             }
@@ -160,6 +173,12 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateMemory(id: String, key: String, category: String, value: String) {
+        viewModelScope.launch {
+            repository.updateMemory(id, key, category, value)
+        }
+    }
+
     fun deleteMemory(id: String) {
         viewModelScope.launch {
             repository.deleteMemory(id)
@@ -172,9 +191,21 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateKnowledge(id: String, title: String, category: String, content: String, tags: String) {
+        viewModelScope.launch {
+            repository.updateKnowledge(id, title, category, content, tags)
+        }
+    }
+
     fun deleteKnowledge(id: String) {
         viewModelScope.launch {
             repository.deleteKnowledge(id)
+        }
+    }
+
+    fun deleteConversation(id: String) {
+        viewModelScope.launch {
+            repository.deleteConversation(id)
         }
     }
 

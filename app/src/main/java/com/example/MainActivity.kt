@@ -51,11 +51,15 @@ class MainActivity : ComponentActivity() {
                     kotlinx.coroutines.delay(1000)
                     val permissionsToRequest = mutableListOf(
                         Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.CAMERA,
                         Manifest.permission.READ_CONTACTS,
                         Manifest.permission.SEND_SMS
                     )
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                        permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
+                    } else {
+                        permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
                     }
                     permissionLauncher.launch(permissionsToRequest.toTypedArray())
                 } catch (e: Exception) {
@@ -179,7 +183,9 @@ class MainActivity : ComponentActivity() {
                                 onSelectAgent = { viewModel.selectAgent(it) },
                                 onSelectModel = { viewModel.setSelectedModel(it) },
                                 onClearChatHistory = { viewModel.clearChatHistory() },
-                                onSendMessage = { viewModel.sendMessage(it) },
+                                onSendMessage = { prompt, imageInlineData, mimeType ->
+                                    viewModel.sendMessage(prompt = prompt, imageInlineData = imageInlineData, mimeType = mimeType)
+                                },
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) }
                             )
@@ -196,10 +202,22 @@ class MainActivity : ComponentActivity() {
                             "memory" -> MemoryKnowledgeScreen(
                                 memories = memories,
                                 knowledge = knowledge,
+                                conversations = conversations,
                                 onAddMemory = { k, c, v -> viewModel.addMemory(k, c, v) },
+                                onUpdateMemory = { id, k, c, v -> viewModel.updateMemory(id, k, c, v) },
                                 onDeleteMemory = { id -> viewModel.deleteMemory(id) },
                                 onAddKnowledge = { t, c, content, tags -> viewModel.addKnowledge(t, c, content, tags) },
-                                onDeleteKnowledge = { id -> viewModel.deleteKnowledge(id) }
+                                onUpdateKnowledge = { id, t, c, content, tags -> viewModel.updateKnowledge(id, t, c, content, tags) },
+                                onDeleteKnowledge = { id -> viewModel.deleteKnowledge(id) },
+                                onSelectConversation = { convId ->
+                                    viewModel.selectConversation(convId)
+                                    viewModel.selectTab("chat")
+                                },
+                                onDeleteConversation = { convId -> viewModel.deleteConversation(convId) },
+                                onNavigateToChatWithPrompt = { promptText ->
+                                    viewModel.selectTab("chat")
+                                    viewModel.sendMessage(promptText)
+                                }
                             )
                             "projects" -> ProjectsTasksScreen(
                                 projects = projects,
@@ -229,6 +247,16 @@ class MainActivity : ComponentActivity() {
                                 onToggleTheme = { viewModel.toggleTheme() },
                                 selectedModel = selectedModel,
                                 onSelectModel = { viewModel.setSelectedModel(it) }
+                            )
+                            "dev_assistant" -> com.example.ui.screens.DevAssistantScreen(
+                                activeCodeContext = activeCodeContext,
+                                onCodeContextChange = { viewModel.setActiveCodeContext(it) },
+                                onSendMessageToChat = { prompt, codeCtx ->
+                                    viewModel.selectAgent("coding_agent")
+                                    viewModel.setActiveCodeContext(codeCtx)
+                                    viewModel.selectTab("chat")
+                                    viewModel.sendMessage(prompt, codeCtx)
+                                }
                             )
                             else -> DashboardScreen(
                                 conversations = conversations,

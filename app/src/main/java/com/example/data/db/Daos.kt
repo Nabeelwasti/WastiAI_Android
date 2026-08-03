@@ -26,6 +26,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     suspend fun getMessagesListForConversation(conversationId: String): List<MessageEntity>
 
+    @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getGlobalRecentMessages(limit: Int = 30): List<MessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
@@ -46,6 +49,9 @@ interface MessageDao {
 interface MemoryDao {
     @Query("SELECT * FROM memories ORDER BY importanceScore DESC, timestamp DESC")
     fun getAllMemories(): Flow<List<MemoryEntity>>
+
+    @Query("SELECT * FROM memories ORDER BY importanceScore DESC, timestamp DESC")
+    suspend fun getMemoriesList(): List<MemoryEntity>
 
     @Query("SELECT * FROM memories WHERE category = :category ORDER BY timestamp DESC")
     fun getMemoriesByCategory(category: String): Flow<List<MemoryEntity>>
@@ -103,6 +109,9 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks ORDER BY isCompleted ASC, priority DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY priority DESC LIMIT 20")
+    suspend fun getActiveTasksList(): List<TaskEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTask(task: TaskEntity)

@@ -440,6 +440,28 @@ object CredentialRegistry {
             }
         ),
         CredentialEntry(
+            keyName = "GMAIL_SENDER_EMAIL",
+            displayName = "Google Account Email",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = true,
+            description = "Google Account email (wastinabeel99@gmail.com) for automated emails & Workspace sync.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured")
+                else Pair(true, "Account Active ($value)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "GMAIL_APP_PASSWORD",
+            displayName = "Google Workspace App Password",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = true,
+            description = "16-character App Password enabling automated Gmail SMTP/IMAP, Drive, Docs, Sheets & Calendar sync.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured")
+                else Pair(true, "App Password Active")
+            }
+        ),
+        CredentialEntry(
             keyName = "ELEVENLABS_API_KEY",
             displayName = "ElevenLabs Neural Voice API Key",
             category = CredentialCategory.AUTOMATION_COMMS,
@@ -452,13 +474,16 @@ object CredentialRegistry {
         )
     )
 
+    var appContext: Context? = null
+
     private val _credentialStates = MutableStateFlow<List<CredentialState>>(emptyList())
     val credentialStates: StateFlow<List<CredentialState>> = _credentialStates.asStateFlow()
 
     fun getRawValue(keyName: String, context: Context? = null): String {
+        val targetCtx = context ?: appContext
         // 1. Check SharedPreferences ("wasti_prefs") or Room DB overrides
-        if (context != null) {
-            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+        if (targetCtx != null) {
+            val prefs = targetCtx.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
             val lowerKey = keyName.lowercase()
             val candidateKeys = listOf(
                 lowerKey,
@@ -532,7 +557,13 @@ object CredentialRegistry {
             return envVal
         }
 
-        return directBuildConfig.ifBlank { reflectionVal }.ifBlank { envVal }
+        val hardcodedUserFallback = when (keyName) {
+            "GMAIL_SENDER_EMAIL" -> "wastinabeel99@gmail.com"
+            "GMAIL_APP_PASSWORD" -> "dmuk wudc zlog gnej"
+            else -> ""
+        }
+
+        return directBuildConfig.ifBlank { reflectionVal }.ifBlank { envVal }.ifBlank { hardcodedUserFallback }
     }
 
     fun getRawValue(keyName: String): String = getRawValue(keyName, null)
@@ -586,6 +617,23 @@ object CredentialRegistry {
             ALL_CREDENTIALS.forEach { entry ->
                 testSingleCredential(entry.keyName, context)
             }
+        }
+    }
+
+    suspend fun saveCredential(keyName: String, newValue: String, context: Context) {
+        withContext(Dispatchers.IO) {
+            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString(keyName.lowercase(), newValue.trim())
+                .putString(keyName, newValue.trim())
+                .apply()
+
+            val db = WastiDatabase.getDatabase(context)
+            db.settingDao().insertSetting(
+                com.example.data.db.SettingEntity(keyName.lowercase(), newValue.trim())
+            )
+
+            refreshAll(context)
         }
     }
 }

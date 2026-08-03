@@ -18,6 +18,12 @@ class WastiApplication : Application() {
         super.onCreate()
         Log.i("WastiApplication", "Application starting — initializing assistant components")
 
+        try {
+            com.example.data.credential.CredentialRegistry.appContext = this.applicationContext
+        } catch (e: Throwable) {
+            Log.e("WastiApplication", "Error setting CredentialRegistry appContext", e)
+        }
+
         // Initialize Room DB and run memory migration in background safely
         try {
             val db = MemoryDatabase.getInstance(this)

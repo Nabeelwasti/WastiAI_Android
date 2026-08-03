@@ -21,6 +21,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.example.data.credential.CredentialCategory
 import com.example.data.credential.CredentialRegistry
 import com.example.data.credential.CredentialState
@@ -360,12 +365,99 @@ fun CredentialCardItem(
     state: CredentialState,
     onTestClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val entry = state.entry
     val rawVal = state.rawValue
-    val maskedVal = when {
+
+    var isRevealed by remember { mutableStateOf(false) }
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var pendingAuthMode by remember { mutableStateOf<String?>(null) } // "EYE" or "COPY"
+    var enteredPin by remember { mutableStateOf("") }
+    var authError by remember { mutableStateOf<String?>(null) }
+
+    fun performCopy(text: String, label: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(label, text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, "$label copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    val displayVal = when {
         rawVal.isBlank() || rawVal.startsWith("MY_") || rawVal.startsWith("YOUR_") -> "Not Configured (Placeholder Key)"
-        rawVal.length > 12 -> "${rawVal.take(6)}...${rawVal.takeLast(4)}"
-        else -> "${rawVal.take(3)}..."
+        isRevealed -> rawVal
+        else -> "••••••••••••••••••••"
+    }
+
+    if (showAuthDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showAuthDialog = false
+                pendingAuthMode = null
+                enteredPin = ""
+                authError = null
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sensitive Credential Verification")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Enter Mobile PIN / Passcode or Fingerprint to ${if (pendingAuthMode == "COPY") "copy" else "view"} ${entry.displayName}.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = enteredPin,
+                        onValueChange = { enteredPin = it },
+                        label = { Text("Passcode / PIN") },
+                        placeholder = { Text("e.g. 1234 or your PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (authError != null) {
+                        Text(text = authError!!, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (com.example.data.security.WastiSecurityManager.verifyPasscode(context, enteredPin.trim())) {
+                            if (pendingAuthMode == "EYE") {
+                                isRevealed = true
+                            } else if (pendingAuthMode == "COPY") {
+                                performCopy(rawVal, entry.displayName)
+                            }
+                            showAuthDialog = false
+                            pendingAuthMode = null
+                            enteredPin = ""
+                            authError = null
+                        } else {
+                            authError = "Incorrect PIN / Passcode. Try '1234' or your custom PIN."
+                        }
+                    }
+                ) {
+                    Text("Verify & Authenticate")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAuthDialog = false
+                        pendingAuthMode = null
+                        enteredPin = ""
+                        authError = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Card(
@@ -495,24 +587,63 @@ fun CredentialCardItem(
             ) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        text = "Value: $maskedVal",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = displayVal,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = {
+                                if (rawVal.isNotBlank()) {
+                                    pendingAuthMode = "COPY"
+                                    showAuthDialog = true
+                                } else {
+                                    Toast.makeText(context, "No key value set", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Secret", modifier = Modifier.size(14.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                if (!isRevealed) {
+                                    pendingAuthMode = "EYE"
+                                    showAuthDialog = true
+                                } else {
+                                    isRevealed = false
+                                }
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isRevealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Toggle Secret Visibility",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 OutlinedButton(
                     onClick = onTestClick,
                     modifier = Modifier.testTag("test_key_button_${entry.keyName}"),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Test Connection", fontSize = 11.sp)
+                    Text("Test", fontSize = 11.sp)
                 }
             }
 

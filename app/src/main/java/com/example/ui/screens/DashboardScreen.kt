@@ -149,14 +149,14 @@ fun DashboardScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.TrendingUp,
+                                imageVector = Icons.Default.Analytics,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Business Progress & Revenue Pipeline",
+                                text = "Wasti OS Live Building & System Metrics",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )
@@ -166,7 +166,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = "HubSpot & Stripe Live",
+                                text = "Real-Time System Active",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -182,18 +182,18 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Monthly Revenue", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("$14,850.00", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF34D399))
+                            Text("Active Sessions", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${conversations.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                         }
                         Divider(modifier = Modifier.height(30.dp).width(1.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("HubSpot Pipeline", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("6 Active Deals", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("Indexed Memory", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${memories.size} Items", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
                         Divider(modifier = Modifier.height(30.dp).width(1.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Stripe Draft Quotes", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("2 Pending", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFF59E0B))
+                            Text("System Log Events", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${logs.size} Logged", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF34D399))
                         }
                     }
                 }

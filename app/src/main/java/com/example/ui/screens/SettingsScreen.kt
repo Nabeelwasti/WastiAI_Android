@@ -16,12 +16,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.widget.Toast
 import com.example.data.security.WastiSecurityManager
 import kotlinx.coroutines.launch
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.credential.CredentialCategory
+import com.example.data.credential.CredentialEntry
+import com.example.data.credential.CredentialRegistry
+import com.example.data.credential.CredentialState
+import com.example.data.credential.CredentialStatus
 
 @Composable
 fun SettingsScreen(
@@ -772,7 +782,70 @@ fun SettingsScreen(
         // Biometric / PIN Secured Vault
         item {
             var isVaultUnlocked by remember { mutableStateOf(false) }
+            var showPasscodeAuthDialog by remember { mutableStateOf(false) }
+            var enteredPasscode by remember { mutableStateOf("") }
             var vaultAuthError by remember { mutableStateOf<String?>(null) }
+
+            if (showPasscodeAuthDialog) {
+                AlertDialog(
+                    onDismissRequest = { showPasscodeAuthDialog = false },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Vault Authentication")
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                text = "Enter Mobile PIN / Password / Fingerprint Passcode to access sensitive credentials, Google App Passwords, and API keys.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = enteredPasscode,
+                                onValueChange = { enteredPasscode = it },
+                                label = { Text("Passcode / PIN") },
+                                placeholder = { Text("e.g. 1234 or your PIN") },
+                                visualTransformation = PasswordVisualTransformation(),
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (vaultAuthError != null) {
+                                Text(text = vaultAuthError!!, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (WastiSecurityManager.verifyPasscode(context, enteredPasscode.trim())) {
+                                    isVaultUnlocked = true
+                                    showPasscodeAuthDialog = false
+                                    enteredPasscode = ""
+                                    vaultAuthError = null
+                                } else {
+                                    vaultAuthError = "Incorrect PIN / Passcode. Try '1234' or your custom PIN."
+                                }
+                            }
+                        ) {
+                            Text("Verify & Unlock")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showPasscodeAuthDialog = false
+                                enteredPasscode = ""
+                                vaultAuthError = null
+                            }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -780,14 +853,26 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(14.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = "Secure Credential Vault", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = "Secure Credential Vault", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        }
+
+                        if (isVaultUnlocked) {
+                            IconButton(onClick = { isVaultUnlocked = false }) {
+                                Icon(Icons.Default.Lock, contentDescription = "Lock Vault", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Access protected API tokens, Stripe keys, Zapier MCP credentials, and Google Drive backup secrets.",
+                        text = "Access protected API tokens, Stripe keys, Google App Passwords, and backup secrets.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -795,47 +880,15 @@ fun SettingsScreen(
 
                     if (!isVaultUnlocked) {
                         Button(
-                            onClick = {
-                                WastiSecurityManager.authenticateUserForSensitiveAction(
-                                    context = context,
-                                    title = "Unlock Secure Vault",
-                                    description = "Confirm biometric fingerprint or PIN to view credentials",
-                                    onSuccess = {
-                                        isVaultUnlocked = true
-                                        vaultAuthError = null
-                                    },
-                                    onError = { err ->
-                                        vaultAuthError = err
-                                        isVaultUnlocked = true
-                                    }
-                                )
-                            },
+                            onClick = { showPasscodeAuthDialog = true },
                             modifier = Modifier.fillMaxWidth().testTag("unlock_vault_button")
                         ) {
                             Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Authenticate to View Sensitive Credentials")
+                            Text("Authenticate (Passcode / PIN / Fingerprint)")
                         }
                     } else {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("🔓 Vault Unlocked (Biometric Verified)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("• GEMINI_API_KEY: Configured (Injected via BuildConfig)", fontSize = 11.sp)
-                                Text("• GROQ_API_KEY: Configured (gsk_IebD8f...)", fontSize = 11.sp)
-                                Text("• DRIVE_CLIENT_ID: Configured for Google Drive Encrypted Backup", fontSize = 11.sp)
-                                Text("• STRIPE_KEY: Draft Quotation Mode (Manual Approval Gate Active)", fontSize = 11.sp)
-                                Text("• ZAPIER_MCP_TOKEN: Connected for Workflow Automation", fontSize = 11.sp)
-                            }
-                        }
-                    }
-
-                    if (vaultAuthError != null && !isVaultUnlocked) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(text = "Note: $vaultAuthError", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                        CredentialVaultContent()
                     }
                 }
             }
@@ -969,6 +1022,331 @@ fun SettingsScreen(
                     Text(text = "Build: Clean MVVM Architecture • Room DB • Jetpack Compose", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(text = "Designed for high autonomy, speed, and privacy.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CredentialVaultContent() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        CredentialRegistry.refreshAll(context)
+    }
+
+    val credentialStates by CredentialRegistry.credentialStates.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategoryFilter by remember { mutableStateOf<CredentialCategory?>(null) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Wasti Local Secret & API Vault (35+ Keys Supported)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "• AI Studio platform limits Secrets to 10 keys and reserves `GEMINI_API_KEY`.\n" +
+                            "• In this Vault, you can enter, save, and test ALL 35+ API keys directly in local app storage.\n" +
+                            "• Saved keys take effect immediately across all Wasti AI agents & models.",
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+                )
+            }
+        }
+
+        // Search and Filter Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search keys (e.g., Gemini, DeepSeek, OpenAI, Groq...)") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                if (searchQuery.isNotBlank()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear search")
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            singleLine = true
+        )
+
+        // Filtered States
+        val filtered = credentialStates.filter { state ->
+            val matchesCat = selectedCategoryFilter == null || state.entry.category == selectedCategoryFilter
+            val matchesQuery = searchQuery.isBlank() ||
+                    state.entry.displayName.contains(searchQuery, ignoreCase = true) ||
+                    state.entry.keyName.contains(searchQuery, ignoreCase = true)
+            matchesCat && matchesQuery
+        }
+
+        if (filtered.isEmpty()) {
+            Text(
+                text = "No matching credentials found.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = 16.dp)
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                filtered.forEach { state ->
+                    CredentialItemCard(state = state)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CredentialItemCard(state: CredentialState) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var inputVal by remember(state.rawValue) { mutableStateOf(state.rawValue) }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var saveMessage by remember { mutableStateOf<String?>(null) }
+
+    var showAuthDialog by remember { mutableStateOf(false) }
+    var pendingAuthMode by remember { mutableStateOf<String?>(null) } // "EYE" or "COPY"
+    var enteredPin by remember { mutableStateOf("") }
+    var authError by remember { mutableStateOf<String?>(null) }
+
+    fun performCopy(text: String, label: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText(label, text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(context, "$label copied to clipboard", Toast.LENGTH_SHORT).show()
+    }
+
+    if (showAuthDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showAuthDialog = false
+                pendingAuthMode = null
+                enteredPin = ""
+                authError = null
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Sensitive Data Access")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Enter Mobile PIN / Password or Fingerprint to ${if (pendingAuthMode == "COPY") "copy" else "view"} ${state.entry.displayName}.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = enteredPin,
+                        onValueChange = { enteredPin = it },
+                        label = { Text("Passcode / PIN") },
+                        placeholder = { Text("e.g. 1234 or your PIN") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (authError != null) {
+                        Text(text = authError!!, fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (WastiSecurityManager.verifyPasscode(context, enteredPin.trim())) {
+                            if (pendingAuthMode == "EYE") {
+                                isPasswordVisible = true
+                            } else if (pendingAuthMode == "COPY") {
+                                performCopy(inputVal, state.entry.displayName)
+                            }
+                            showAuthDialog = false
+                            pendingAuthMode = null
+                            enteredPin = ""
+                            authError = null
+                        } else {
+                            authError = "Incorrect PIN / Passcode. Try '1234' or your custom PIN."
+                        }
+                    }
+                ) {
+                    Text("Verify & Authenticate")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAuthDialog = false
+                        pendingAuthMode = null
+                        enteredPin = ""
+                        authError = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = state.entry.displayName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(text = state.entry.keyName, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                }
+
+                val (statusColor, statusText) = when (val st = state.status) {
+                    is CredentialStatus.Connected -> MaterialTheme.colorScheme.primary to st.message
+                    is CredentialStatus.Error -> MaterialTheme.colorScheme.error to st.message
+                    is CredentialStatus.Testing -> MaterialTheme.colorScheme.tertiary to "Testing..."
+                    is CredentialStatus.NotConfigured -> {
+                        if (inputVal.isNotBlank()) MaterialTheme.colorScheme.primary to "Configured"
+                        else MaterialTheme.colorScheme.onSurfaceVariant to "Not Configured"
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = statusColor.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = statusText,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = statusColor,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            if (state.entry.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = state.entry.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = inputVal,
+                onValueChange = { inputVal = it },
+                label = { Text("API Key / Token Value") },
+                placeholder = { Text("Enter ${state.entry.keyName}...") },
+                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                if (inputVal.isNotBlank()) {
+                                    pendingAuthMode = "COPY"
+                                    showAuthDialog = true
+                                } else {
+                                    Toast.makeText(context, "No value to copy", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = "Copy Secret", modifier = Modifier.size(18.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                if (!isPasswordVisible) {
+                                    pendingAuthMode = "EYE"
+                                    showAuthDialog = true
+                                } else {
+                                    isPasswordVisible = false
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = "Toggle Visibility",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            CredentialRegistry.saveCredential(state.entry.keyName, inputVal, context)
+                            saveMessage = "Saved!"
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Save", fontSize = 11.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            if (inputVal != state.rawValue) {
+                                CredentialRegistry.saveCredential(state.entry.keyName, inputVal, context)
+                            }
+                            CredentialRegistry.testSingleCredential(state.entry.keyName, context)
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Test", fontSize = 11.sp)
+                }
+
+                if (inputVal.isNotBlank()) {
+                    IconButton(
+                        onClick = {
+                            inputVal = ""
+                            coroutineScope.launch {
+                                CredentialRegistry.saveCredential(state.entry.keyName, "", context)
+                                saveMessage = "Cleared"
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = "Clear", tint = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            if (saveMessage != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = saveMessage!!, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
             }
         }
     }
