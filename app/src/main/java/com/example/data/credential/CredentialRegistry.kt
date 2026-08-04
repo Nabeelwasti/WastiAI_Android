@@ -557,9 +557,12 @@ object CredentialRegistry {
             return envVal
         }
 
+        // NOTE: Hardcoded secret fallback removed (2026-08-04 security fix).
+        // Only the non-secret sender email keeps a default; the app password
+        // must always come from SharedPreferences, BuildConfig (CI secrets),
+        // or an environment variable — never from source code.
         val hardcodedUserFallback = when (keyName) {
             "GMAIL_SENDER_EMAIL" -> "wastinabeel99@gmail.com"
-            "GMAIL_APP_PASSWORD" -> "dmuk wudc zlog gnej"
             else -> ""
         }
 
