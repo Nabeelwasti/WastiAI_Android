@@ -94,7 +94,7 @@ object WastiCore {
         when (tier) {
             RoutingTier.FAST_LANE -> {
                 // Tier 1: Fast single call to Groq Llama 3.3 or Gemini Flash-Lite
-                val groqKey = try { BuildConfig.GROQ_API_KEY } catch (e: Throwable) { "" }
+                val groqKey = CredentialRegistry.getRawValue("GROQ_API_KEY")
                 if (groqKey.isNotBlank() && imageInlineData.isNullOrBlank()) {
                     try {
                         val res = GroqClient.generateText(
@@ -156,7 +156,7 @@ object WastiCore {
                 } catch (_: Exception) {}
 
                 // 2. Failover: Groq Llama 3.3 70B
-                val groqKey = try { BuildConfig.GROQ_API_KEY } catch (e: Throwable) { "" }
+                val groqKey = CredentialRegistry.getRawValue("GROQ_API_KEY")
                 if (groqKey.isNotBlank()) {
                     try {
                         val res = GroqClient.generateText(
