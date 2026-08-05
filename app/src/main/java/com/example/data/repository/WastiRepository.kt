@@ -1,7 +1,6 @@
 package com.example.data.repository
 
 import com.example.data.agent.MultiAgentRegistry
-import com.example.data.api.GeminiClient
 import com.example.data.core.WastiCore
 import com.example.data.db.*
 import com.example.data.device.WastiDeviceController
@@ -10,6 +9,10 @@ import kotlinx.coroutines.flow.firstOrNull
 import java.util.UUID
 
 class WastiRepository(private val db: WastiDatabase) {
+
+    init {
+        com.example.data.memory.MemoryManager.initialize(db.memoryDao())
+    }
 
     val conversations: Flow<List<ConversationEntity>> = db.conversationDao().getAllConversations()
     val memories: Flow<List<MemoryEntity>> = db.memoryDao().getAllMemories()

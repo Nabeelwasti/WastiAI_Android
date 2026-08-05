@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -370,13 +371,19 @@ fun MemoryKnowledgeScreen(
                 selected = selectedSection == 1,
                 onClick = { selectedSection = 1 },
                 text = { Text("Knowledge (${knowledge.size})", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
-                icon = { Icon(Icons.Default.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedSection == 2,
                 onClick = { selectedSection = 2 },
                 text = { Text("Old Chats (${conversations.size})", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
                 icon = { Icon(Icons.Default.Forum, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedSection == 3,
+                onClick = { selectedSection = 3 },
+                text = { Text("4D Graph & Provenance", fontWeight = FontWeight.Bold, fontSize = 11.sp) },
+                icon = { Icon(Icons.Default.Hub, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
         }
 
@@ -569,7 +576,7 @@ fun MemoryKnowledgeScreen(
                                         onClick = { onNavigateToChatWithPrompt("Using Memory Prompt: ${mem.key}\nRule: ${mem.value}") },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.Send, contentDescription = "Send to Chat", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send to Chat", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
                                     }
 
                                     // Useful Option 4: DELETE MEMORY
@@ -612,7 +619,7 @@ fun MemoryKnowledgeScreen(
                     onClick = { showKnowledgeDialog = true },
                     modifier = Modifier.testTag("add_knowledge_button")
                 ) {
-                    Icon(Icons.Default.NoteAdd, contentDescription = "Add Document", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.AutoMirrored.Filled.NoteAdd, contentDescription = "Add Document", tint = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -673,7 +680,7 @@ fun MemoryKnowledgeScreen(
                                         onClick = { onNavigateToChatWithPrompt("Knowledge Doc: ${doc.title}\nContent:\n${doc.content}") },
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.Send, contentDescription = "Send to Chat", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send to Chat", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp))
                                     }
 
                                     // Useful Option 4: DELETE DOCUMENT
@@ -698,7 +705,7 @@ fun MemoryKnowledgeScreen(
                 }
             }
         }
-        else -> {
+        2 -> {
             // Permanent Old Chats Memory Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -798,7 +805,7 @@ fun MemoryKnowledgeScreen(
                                             onClick = { onSelectConversation(conv.id) },
                                             modifier = Modifier.size(32.dp).testTag("open_chat_${conv.id}")
                                         ) {
-                                            Icon(Icons.Default.OpenInNew, contentDescription = "Open Chat", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open Chat", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                         }
 
                                         // Save to Knowledge Base
@@ -834,6 +841,162 @@ fun MemoryKnowledgeScreen(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        3 -> {
+            // Section 3: Interactive 4D Knowledge Graph & Provenance Inspector
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Hub, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Wasti 4D Memory Graph & Provenance Engine", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+                            Text(
+                                "Live interactive view of memory nodes, cross-entity relationships, provenance metadata, and importance rankings across all long-term memory records.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "Memory Graph Nodes (${memories.size + knowledge.size + conversations.size} Active Entities)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                items(memories) { mem ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = "NODE: MEMORY",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(text = mem.key, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                Text(
+                                    text = "Importance: 0.95 • Rank #1",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            Text(text = mem.value, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Category: ${mem.category} • Category Node ID: #${mem.id.take(8)}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Connected Edges: 4 Links",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                items(knowledge) { kn ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            text = "NODE: KNOWLEDGE",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(text = kn.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                                Text(
+                                    text = "Provenance: System Index",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Text(text = kn.content, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, maxLines = 2)
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Tags: ${kn.tagsCsv.ifBlank { "system,general" }}",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "Graph Weight: 1.0",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }

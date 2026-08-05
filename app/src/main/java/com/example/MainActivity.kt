@@ -9,20 +9,28 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.core.AppStartupManager
+import com.example.data.core.AppStartupState
 import com.example.ui.components.CommandPaletteDialog
 import com.example.ui.components.ExecutiveBrainHeader
+import com.example.ui.components.WastiStartupSplashScreen
 import com.example.ui.screens.*
 import com.example.ui.theme.WastiTheme
 import com.example.ui.viewmodel.WastiViewModel
@@ -39,34 +47,29 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.data.credential.CredentialRegistry.appContext = applicationContext
         enableEdgeToEdge()
 
         setContent {
+            val focusManager = LocalFocusManager.current
+            var triggerVoiceModalSignal by remember { mutableIntStateOf(0) }
             val permissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestMultiplePermissions()
             ) { _ -> }
 
             LaunchedEffect(Unit) {
                 try {
-                    kotlinx.coroutines.delay(1000)
-                    val permissionsToRequest = mutableListOf(
-                        Manifest.permission.RECORD_AUDIO,
-                        Manifest.permission.CAMERA,
-                        Manifest.permission.READ_CONTACTS,
-                        Manifest.permission.SEND_SMS
-                    )
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
-                        permissionsToRequest.add(Manifest.permission.READ_MEDIA_IMAGES)
-                    } else {
-                        permissionsToRequest.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    // Smooth 400ms splash display before automatically rendering workspace
+                    kotlinx.coroutines.delay(400)
+                    if (AppStartupManager.startupState.value !is AppStartupState.Ready) {
+                        AppStartupManager.setReady()
                     }
-                    permissionLauncher.launch(permissionsToRequest.toTypedArray())
                 } catch (e: Exception) {
-                    // Non-blocking fallback for preview environment
+                    AppStartupManager.setReady()
                 }
             }
 
+            val startupState by AppStartupManager.startupState.collectAsStateWithLifecycle()
             val darkTheme by viewModel.darkThemeEnabled.collectAsStateWithLifecycle()
             val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()
             val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
@@ -89,8 +92,9 @@ class MainActivity : ComponentActivity() {
             val activeAgentName = "Wasti AI"
 
             val navItems = listOf(
-                WastiNavDestination("dashboard", "Dashboard", Icons.Default.Dashboard),
+                WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
                 WastiNavDestination("chat", "AI Chat", Icons.Default.Chat),
+                WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),
                 WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
@@ -100,58 +104,80 @@ class MainActivity : ComponentActivity() {
             )
 
             WastiTheme(darkTheme = darkTheme) {
-                CommandPaletteDialog(
-                    isOpen = isCommandPaletteOpen,
-                    onDismiss = { viewModel.toggleCommandPalette() },
-                    onExecuteCommand = { cmd -> viewModel.executeQuickCommand(cmd) }
-                )
+                if (startupState !is AppStartupState.Ready) {
+                    WastiStartupSplashScreen(
+                        startupState = startupState,
+                        onRetry = {
+                            (application as? WastiApplication)?.initializeSubsystems()
+                        }
+                    )
+                } else {
+                    CommandPaletteDialog(
+                        isOpen = isCommandPaletteOpen,
+                        onDismiss = { viewModel.toggleCommandPalette() },
+                        onExecuteCommand = { cmd -> viewModel.executeQuickCommand(cmd) }
+                    )
 
-                Scaffold(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("wasti_main_scaffold"),
-                    topBar = {
-                        ExecutiveBrainHeader(
-                            activeAgentName = activeAgentName,
-                            isDarkTheme = darkTheme,
-                            onToggleTheme = { viewModel.toggleTheme() },
-                            onOpenCommandPalette = { viewModel.toggleCommandPalette() }
-                        )
-                    },
-                    bottomBar = {
-                        NavigationBar(
-                            modifier = Modifier
-                                .windowInsetsPadding(WindowInsets.navigationBars)
-                                .testTag("main_bottom_nav"),
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp
-                        ) {
-                            navItems.forEach { nav ->
-                                val isSelected = activeTab == nav.id
-                                NavigationBarItem(
-                                    selected = isSelected,
-                                    onClick = { viewModel.selectTab(nav.id) },
-                                    icon = {
-                                        Icon(
-                                            imageVector = nav.icon,
-                                            contentDescription = nav.title,
-                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    },
-                                    label = {
-                                        Text(
-                                            text = nav.title,
-                                            fontSize = 10.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1
-                                        )
-                                    },
-                                    modifier = Modifier.testTag("nav_item_${nav.id}")
-                                )
+                    Scaffold(
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("wasti_main_scaffold"),
+                        topBar = {
+                            ExecutiveBrainHeader(
+                                activeAgentName = activeAgentName,
+                                isDarkTheme = darkTheme,
+                                onToggleTheme = { viewModel.toggleTheme() },
+                                onOpenCommandPalette = { viewModel.toggleCommandPalette() },
+                                onOpenVoiceCall = {
+                                    focusManager.clearFocus()
+                                    viewModel.selectTab("chat")
+                                    triggerVoiceModalSignal++
+                                }
+                            )
+                        },
+                        bottomBar = {
+                            ScrollableTabRow(
+                                selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
+                                edgePadding = 8.dp,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                divider = {},
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .windowInsetsPadding(WindowInsets.navigationBars)
+                                    .testTag("main_bottom_nav")
+                            ) {
+                                navItems.forEach { nav ->
+                                    val isSelected = activeTab == nav.id
+                                    Tab(
+                                        selected = isSelected,
+                                        onClick = {
+                                            focusManager.clearFocus()
+                                            viewModel.selectTab(nav.id)
+                                        },
+                                        modifier = Modifier.testTag("nav_item_${nav.id}"),
+                                        text = {
+                                            Text(
+                                                text = nav.title,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        },
+                                        icon = {
+                                            Icon(
+                                                imageVector = nav.icon,
+                                                contentDescription = nav.title,
+                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    )
+                                }
                             }
                         }
-                    }
-                ) { innerPadding ->
+                    ) { innerPadding ->
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -171,6 +197,7 @@ class MainActivity : ComponentActivity() {
                                     viewModel.selectTab("chat")
                                 }
                             )
+                            "operations" -> OperationsDashboardScreen()
                             "chat" -> ChatWorkspaceScreen(
                                 conversations = conversations,
                                 activeConversationId = activeConversationId,
@@ -187,7 +214,8 @@ class MainActivity : ComponentActivity() {
                                     viewModel.sendMessage(prompt = prompt, imageInlineData = imageInlineData, mimeType = mimeType)
                                 },
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
-                                onCreateNewConversation = { title -> viewModel.createNewConversation(title) }
+                                onCreateNewConversation = { title -> viewModel.createNewConversation(title) },
+                                triggerVoiceCallSignal = triggerVoiceModalSignal
                             )
                             "agents" -> AgentManagerScreen(
                                 agents = agents,
@@ -277,4 +305,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 }

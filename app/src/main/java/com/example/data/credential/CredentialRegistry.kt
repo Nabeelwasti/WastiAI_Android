@@ -1,6 +1,9 @@
 package com.example.data.credential
 
 import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.example.data.db.WastiDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -479,11 +482,27 @@ object CredentialRegistry {
     private val _credentialStates = MutableStateFlow<List<CredentialState>>(emptyList())
     val credentialStates: StateFlow<List<CredentialState>> = _credentialStates.asStateFlow()
 
+    fun getSecureSharedPreferences(context: Context): SharedPreferences {
+        return try {
+            val masterKey = MasterKey.Builder(context)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+            EncryptedSharedPreferences.create(
+                context,
+                "wasti_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Throwable) {
+            context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+        }
+    }
+
     fun getRawValue(keyName: String, context: Context? = null): String {
         val targetCtx = context ?: appContext
-        // 1. Check SharedPreferences ("wasti_prefs") or Room DB overrides
+        // 1. Check EncryptedSharedPreferences and fallback SharedPreferences
         if (targetCtx != null) {
-            val prefs = targetCtx.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
             val lowerKey = keyName.lowercase()
             val candidateKeys = listOf(
                 lowerKey,
@@ -491,9 +510,25 @@ object CredentialRegistry {
                 "ai_key_${lowerKey.removeSuffix("_api_key")}",
                 "voice_provider_key_${lowerKey.removeSuffix("_api_key")}"
             )
+
+            // 1. Try EncryptedSharedPreferences
+            val securePrefs = getSecureSharedPreferences(targetCtx)
             for (ck in candidateKeys) {
-                val prefVal = prefs.getString(ck, "") ?: ""
+                val secVal = securePrefs.getString(ck, "") ?: ""
+                if (secVal.isNotBlank() && !isPlaceholder(secVal)) {
+                    return secVal
+                }
+            }
+
+            // 2. Legacy Migration Check: If present in unencrypted wasti_prefs, migrate to EncryptedSharedPreferences and purge legacy key
+            val legacyPrefs = targetCtx.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+            for (ck in candidateKeys) {
+                val prefVal = legacyPrefs.getString(ck, "") ?: ""
                 if (prefVal.isNotBlank() && !isPlaceholder(prefVal)) {
+                    // Transparently migrate to secure storage
+                    securePrefs.edit().putString(ck, prefVal).apply()
+                    // Purge plaintext secret from legacy SharedPreferences
+                    legacyPrefs.edit().remove(ck).apply()
                     return prefVal
                 }
             }
@@ -558,8 +593,12 @@ object CredentialRegistry {
         }
 
         val hardcodedUserFallback = when (keyName) {
+            "GROQ_API_KEY" -> "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"
+            "ELEVENLABS_API_KEY" -> "sk_225f55fff0c2c78725356a226862a57528e6612f97a40f15"
             "GMAIL_SENDER_EMAIL" -> "wastinabeel99@gmail.com"
             "GMAIL_APP_PASSWORD" -> "dmuk wudc zlog gnej"
+            "CANVA_CLIENT_ID" -> "33827419-3221-4d1a-82f2-10819712a2a1"
+            "SLACK_DOMAIN" -> "wasti-ai-os.slack.com"
             else -> ""
         }
 
@@ -567,6 +606,40 @@ object CredentialRegistry {
     }
 
     fun getRawValue(keyName: String): String = getRawValue(keyName, null)
+
+    suspend fun seedDefaultCredentialsIfMissing(context: Context) {
+        withContext(Dispatchers.IO) {
+            appContext = context.applicationContext
+            val securePrefs = getSecureSharedPreferences(context)
+            val secEditor = securePrefs.edit()
+            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+            val editor = prefs.edit()
+            val db = WastiDatabase.getDatabase(context)
+
+            val defaultSeedMap = mapOf(
+                "GROQ_API_KEY" to "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",
+                "ELEVENLABS_API_KEY" to "sk_225f55fff0c2c78725356a226862a57528e6612f97a40f15",
+                "GMAIL_SENDER_EMAIL" to "wastinabeel99@gmail.com",
+                "GMAIL_APP_PASSWORD" to "dmuk wudc zlog gnej",
+                "CANVA_CLIENT_ID" to "33827419-3221-4d1a-82f2-10819712a2a1",
+                "SLACK_DOMAIN" to "wasti-ai-os.slack.com"
+            )
+
+            defaultSeedMap.forEach { (key, defaultValue) ->
+                val existing = getRawValue(key, context)
+                if (existing.isBlank() || isPlaceholder(existing)) {
+                    secEditor.putString(key.lowercase(), defaultValue)
+                    secEditor.putString(key, defaultValue)
+                    // Purge legacy plaintext key if it exists
+                    editor.remove(key.lowercase()).remove(key)
+                    db.settingDao().insertSetting(com.example.data.db.SettingEntity(key.lowercase(), defaultValue))
+                }
+            }
+            secEditor.apply()
+            editor.apply()
+            refreshAll(context)
+        }
+    }
 
     suspend fun refreshAll(context: Context) {
         withContext(Dispatchers.IO) {
@@ -622,10 +695,17 @@ object CredentialRegistry {
 
     suspend fun saveCredential(keyName: String, newValue: String, context: Context) {
         withContext(Dispatchers.IO) {
-            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
-            prefs.edit()
+            val securePrefs = getSecureSharedPreferences(context)
+            securePrefs.edit()
                 .putString(keyName.lowercase(), newValue.trim())
                 .putString(keyName, newValue.trim())
+                .apply()
+
+            // Purge legacy plaintext SharedPreferences
+            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove(keyName.lowercase())
+                .remove(keyName)
                 .apply()
 
             val db = WastiDatabase.getDatabase(context)

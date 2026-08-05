@@ -23,7 +23,8 @@ fun ExecutiveBrainHeader(
     activeAgentName: String = "Wasti AI",
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
-    onOpenCommandPalette: () -> Unit
+    onOpenCommandPalette: () -> Unit,
+    onOpenVoiceCall: (() -> Unit)? = null
 ) {
     Surface(
         modifier = Modifier
@@ -81,8 +82,40 @@ fun ExecutiveBrainHeader(
                     }
                 }
 
-                // Quick Launch Search & Theme Actions
+                // Quick Launch Search, Voice & Theme Actions
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onOpenVoiceCall != null) {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .clickable { onOpenVoiceCall() }
+                                .testTag("header_voice_call_button"),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            tonalElevation = 1.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "Live Voice Chat",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Voice",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+
                     Surface(
                         modifier = Modifier
                             .clip(RoundedCornerShape(20.dp))
@@ -92,7 +125,7 @@ fun ExecutiveBrainHeader(
                         tonalElevation = 1.dp
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -101,9 +134,9 @@ fun ExecutiveBrainHeader(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "⌘K Search",
+                                text = "⌘K",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -111,7 +144,7 @@ fun ExecutiveBrainHeader(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     IconButton(
                         onClick = onToggleTheme,

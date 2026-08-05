@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -40,7 +41,7 @@ fun CommandPaletteDialog(
     var query by remember { mutableStateOf("") }
 
     val allOptions = listOf(
-        CommandOption("Chat Workspace", "Open Wasti AI natural chat interface", Icons.Default.Chat, "Open Chat"),
+        CommandOption("Chat Workspace", "Open Wasti AI natural chat interface", Icons.AutoMirrored.Filled.Chat, "Open Chat"),
         CommandOption("Executive Brain Dashboard", "View Wasti OS system state, metrics & active tasks", Icons.Default.Dashboard, "Open Dashboard"),
         CommandOption("Long-Term Memory & Knowledge", "Inspect vector memory records & knowledge base", Icons.Default.Memory, "Open Memory"),
         CommandOption("Wasti AI Engine Core", "View unified intelligent core status & capabilities", Icons.Default.Psychology, "Open Agents"),
@@ -48,7 +49,7 @@ fun CommandPaletteDialog(
         CommandOption("Code & Prompt Workspace", "Generate Kotlin/Python code & build prompt library", Icons.Default.Code, "Open Code"),
         CommandOption("Integrations & System Logs", "View service connectors, MCP server & system logs", Icons.Default.Extension, "Open Integrations"),
         CommandOption("Settings & AI Secrets", "Configure API keys, model parameters & theme", Icons.Default.Settings, "Open Settings"),
-        CommandOption("Ask Wasti AI Research", "Delegate web research & document analysis to Wasti AI", Icons.Default.ManageSearch, "Research: "),
+        CommandOption("Ask Wasti AI Research", "Delegate web research & document analysis to Wasti AI", Icons.AutoMirrored.Filled.ManageSearch, "Research: "),
         CommandOption("Ask Wasti AI Code", "Generate clean code or debug Kotlin/Python with Wasti AI", Icons.Default.Terminal, "Code: ")
     )
 

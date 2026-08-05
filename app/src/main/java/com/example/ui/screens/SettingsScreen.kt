@@ -703,13 +703,17 @@ fun SettingsScreen(
                                 xaiTestStatus = "Testing connection to Wasti Deep Intelligence API..."
                                 coroutineScope.launch {
                                     try {
-                                        val res = com.example.data.api.XAIClient.generateText(
+                                        val response = com.example.data.ai.AIManager.execute(
                                             prompt = "Hello! Confirm Wasti AI connection.",
                                             systemInstruction = "You are Wasti AI. Confirm connection in 1 brief sentence.",
-                                            apiKey = xaiApiKeyInput.trim(),
-                                            modelName = xaiModelSelected
+                                            preferredProviderId = "xai"
                                         )
-                                        xaiTestStatus = "✅ Connected: $res"
+                                        val res = response.content
+                                        if (response.isError) {
+                                            xaiTestStatus = "❌ Error: ${response.errorMessage ?: "Connection failed"}"
+                                        } else {
+                                            xaiTestStatus = "✅ Connected via ${response.providerName}: $res"
+                                        }
                                     } catch (e: Exception) {
                                         xaiTestStatus = "❌ Error: ${e.localizedMessage ?: "Connection failed"}"
                                     } finally {

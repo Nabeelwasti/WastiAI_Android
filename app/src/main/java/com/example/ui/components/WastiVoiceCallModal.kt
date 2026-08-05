@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,6 +50,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.data.device.WastiDeviceController
 import com.example.data.device.WastiIntentParser
+import com.example.data.voice.VoiceManager
+import com.example.data.voice.provider.STTState
 import com.example.util.WastiSpeechSanitizer
 import com.example.util.WastiUrduLanguageEngine
 import java.util.Locale
@@ -87,6 +90,28 @@ fun WastiVoiceCallModal(
     var simulatedInputText by remember { mutableStateOf("") }
     var rmsAudioLevel by remember { mutableFloatStateOf(0.1f) }
 
+    // Speech-To-Text Provider Observer
+    val sttProvider = remember { VoiceManager.sttProvider }
+    val sttState by (sttProvider?.currentState ?: remember { kotlinx.coroutines.flow.MutableStateFlow(STTState.IDLE) }).collectAsState()
+
+    LaunchedEffect(sttState) {
+        when (sttState) {
+            STTState.LISTENING -> {
+                isListening = true
+                voiceStatusText = "Listening... Speak now"
+            }
+            STTState.PROCESSING -> {
+                isListening = false
+                voiceStatusText = "Processing speech..."
+            }
+            STTState.ERROR -> {
+                isListening = false
+                voiceStatusText = "STT Error"
+            }
+            else -> {}
+        }
+    }
+
     // TextToSpeech Engine
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
 
@@ -114,11 +139,11 @@ fun WastiVoiceCallModal(
                     langType == WastiUrduLanguageEngine.LanguageType.ROMAN_URDU ||
                     langType == WastiUrduLanguageEngine.LanguageType.PUNJABI) {
                     
-                    val urResult = tts.setLanguage(Locale("ur", "PK"))
+                    val urResult = tts.setLanguage(Locale.forLanguageTag("ur-PK"))
                     if (urResult != TextToSpeech.LANG_MISSING_DATA && urResult != TextToSpeech.LANG_NOT_SUPPORTED) {
                         isSouthAsianVoiceAvailable = true
                     } else {
-                        val hiResult = tts.setLanguage(Locale("hi", "IN"))
+                        val hiResult = tts.setLanguage(Locale.forLanguageTag("hi-IN"))
                         if (hiResult != TextToSpeech.LANG_MISSING_DATA && hiResult != TextToSpeech.LANG_NOT_SUPPORTED) {
                             isSouthAsianVoiceAvailable = true
                         } else {
@@ -582,7 +607,7 @@ fun WastiVoiceCallModal(
                             .clickable { startNativeListening() }
                     ) {
                         Icon(
-                            imageVector = if (isSpeaking) Icons.Default.VolumeUp else if (isListening) Icons.Default.Mic else Icons.Default.GraphicEq,
+                            imageVector = if (isSpeaking) Icons.AutoMirrored.Filled.VolumeUp else if (isListening) Icons.Default.Mic else Icons.Default.GraphicEq,
                             contentDescription = "Voice Orb",
                             tint = Color.White,
                             modifier = Modifier.size(68.dp)
@@ -806,7 +831,7 @@ fun WastiVoiceCallModal(
                             shape = CircleShape
                         ) {
                             Icon(
-                                imageVector = if (simulatedInputText.isBlank()) Icons.Default.Mic else Icons.Default.Send,
+                                imageVector = if (simulatedInputText.isBlank()) Icons.Default.Mic else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send or Speak Native"
                             )
                         }

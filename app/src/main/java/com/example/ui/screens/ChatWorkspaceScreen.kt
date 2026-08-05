@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +34,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.db.AgentEntity
 import com.example.data.db.ConversationEntity
 import com.example.data.db.MessageEntity
+import com.example.data.voice.VoiceManager
+import com.example.data.voice.provider.STTState
 import com.example.data.device.WastiIntentParser
 import com.example.ui.components.CodeBlockView
 import com.example.ui.components.WastiVoiceCallModal
@@ -102,9 +106,11 @@ fun ChatWorkspaceScreen(
     onClearChatHistory: () -> Unit = {},
     onSendMessage: (prompt: String, imageInlineData: String?, mimeType: String) -> Unit,
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
-    onCreateNewConversation: (String) -> Unit
+    onCreateNewConversation: (String) -> Unit,
+    triggerVoiceCallSignal: Int = 0
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var promptInput by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
@@ -200,6 +206,16 @@ fun ChatWorkspaceScreen(
     var isVoiceActive by remember { mutableStateOf(true) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
     var showVoiceModal by remember { mutableStateOf(false) }
+
+    LaunchedEffect(triggerVoiceCallSignal) {
+        if (triggerVoiceCallSignal > 0) {
+            showVoiceModal = true
+        }
+    }
+
+    // Speech-To-Text Provider Integration
+    val sttProvider = remember { VoiceManager.sttProvider }
+    val sttState by (sttProvider?.currentState ?: remember { kotlinx.coroutines.flow.MutableStateFlow(STTState.IDLE) }).collectAsState()
 
     if (showVoiceModal) {
         WastiVoiceCallModal(
@@ -424,27 +440,28 @@ fun ChatWorkspaceScreen(
                         // Voice Call Trigger
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isVoiceActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            color = MaterialTheme.colorScheme.primaryContainer,
                             modifier = Modifier
                                 .clickable { showVoiceModal = true }
                                 .padding(end = 4.dp)
+                                .testTag("conversation_bar_voice_call_chip")
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (isVoiceActive) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                                    contentDescription = "Wasti Voice Mode",
-                                    tint = if (isVoiceActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "Wasti Live Voice Call",
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (isVoiceActive) "🎙️ Voice Call" else "Voice Off",
+                                    text = if (isVoiceActive) "🎙️ Live Voice (Active)" else "🎙️ Live Voice",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isVoiceActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.primary
                                 )
                             }
                         }
@@ -636,7 +653,7 @@ fun ChatWorkspaceScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.VolumeUp, contentDescription = "Speaking", tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = "Speaking", tint = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Wasti Speaking...", fontSize = 12.sp, color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
                     }
@@ -700,7 +717,7 @@ fun ChatWorkspaceScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Icon(
-                            imageVector = if (att.isImage) Icons.Default.Image else Icons.Default.InsertDriveFile,
+                            imageVector = if (att.isImage) Icons.Default.Image else Icons.AutoMirrored.Filled.InsertDriveFile,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
@@ -733,7 +750,7 @@ fun ChatWorkspaceScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp),
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Multimodal Attachments '+' Button
@@ -792,32 +809,58 @@ fun ChatWorkspaceScreen(
                             leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
                         )
                         DropdownMenuItem(
-                            text = { Text("🎙️ Voice Speech Dictation") },
+                            text = { Text("🎙️ Live Voice Call Modal") },
                             onClick = {
                                 showAttachmentMenu = false
-                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to Wasti AI...")
-                                }
-                                speechLauncher.launch(intent)
+                                showVoiceModal = true
                             },
-                            leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null) }
+                            leadingIcon = { Icon(Icons.Default.GraphicEq, contentDescription = null) }
                         )
                     }
                 }
 
+                // Dedicated Live Voice Call Modal Button
                 IconButton(
                     onClick = { showVoiceModal = true },
+                    modifier = Modifier.testTag("live_voice_call_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = "Open Live Voice Call",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                val isListening = sttState == STTState.LISTENING || sttState == STTState.PROCESSING
+                IconButton(
+                    onClick = {
+                        if (isListening) {
+                            sttProvider?.stopListening()
+                        } else {
+                            if (sttProvider?.isHardwareAvailable(context) == true) {
+                                sttProvider.startListening(context) { res ->
+                                    if (res.transcript.isNotBlank()) {
+                                        promptInput = res.transcript
+                                    }
+                                }
+                            } else {
+                                showVoiceModal = true
+                            }
+                        }
+                    },
                     modifier = Modifier.testTag("voice_input_button")
                 ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Live Voice Chat Modal", tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
+                        contentDescription = "Push to Talk Dictation",
+                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 OutlinedTextField(
                     value = promptInput,
                     onValueChange = { promptInput = it },
-                    placeholder = { Text("Command AETHER / Wasti AI...", fontSize = 12.sp) },
+                    placeholder = { Text("Command Wasti AI...", fontSize = 12.sp) },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("chat_prompt_input"),
@@ -845,6 +888,7 @@ fun ChatWorkspaceScreen(
                             val att = activeAttachment
                             promptInput = ""
                             activeAttachment = null
+                            focusManager.clearFocus()
 
                             WastiIntentParser.parseAndExecute(context, textToSend)
                             onSendMessage(textToSend, att?.base64Data, att?.mimeType ?: "image/jpeg")
@@ -855,7 +899,7 @@ fun ChatWorkspaceScreen(
                         .testTag("send_message_button"),
                     containerColor = MaterialTheme.colorScheme.primary
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send Message", tint = MaterialTheme.colorScheme.onPrimary)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Message", tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         }
@@ -938,7 +982,7 @@ private fun MessageItem(
                     modifier = Modifier.size(22.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.VolumeUp,
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
                         contentDescription = "Read aloud",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(13.dp)

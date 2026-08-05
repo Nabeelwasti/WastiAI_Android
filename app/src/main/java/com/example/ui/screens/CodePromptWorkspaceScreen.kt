@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -79,7 +80,7 @@ fun CodePromptWorkspaceScreen(
                 selected = selectedTab == 2,
                 onClick = { selectedTab = 2 },
                 text = { Text("Prompt Library", fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.LibraryBooks, contentDescription = null) }
+                icon = { Icon(Icons.AutoMirrored.Filled.LibraryBooks, contentDescription = null) }
             )
         }
 

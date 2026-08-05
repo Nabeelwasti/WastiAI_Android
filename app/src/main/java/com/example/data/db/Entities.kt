@@ -114,3 +114,31 @@ data class SettingEntity(
     @PrimaryKey val key: String,
     val value: String
 )
+
+@Entity(tableName = "vector_embeddings")
+data class VectorEmbeddingEntity(
+    @PrimaryKey val id: String,
+    val providerId: String,
+    val modelName: String,
+    val vectorLength: Int,
+    val vectorCsv: String,
+    val metadataJson: String = "{}"
+)
+
+@Entity(tableName = "knowledge_graph_nodes")
+data class KnowledgeGraphNodeEntity(
+    @PrimaryKey val id: String,
+    val label: String,
+    val nodeType: String,
+    val attributesJson: String = "{}"
+)
+
+@Entity(tableName = "knowledge_graph_edges")
+data class KnowledgeGraphEdgeEntity(
+    @PrimaryKey val id: String,
+    val sourceNodeId: String,
+    val targetNodeId: String,
+    val relationType: String,
+    val weight: Float = 1.0f
+)
+

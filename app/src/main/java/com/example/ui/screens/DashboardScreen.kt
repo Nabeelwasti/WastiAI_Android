@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import com.example.R
 import com.example.data.db.*
+import com.example.ui.components.AnimatedAiOrb
 
 @Composable
 fun DashboardScreen(
@@ -93,30 +95,37 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        AsyncImage(
-                            model = R.drawable.img_wasti_app_icon_1785523199134,
-                            contentDescription = "Wasti AI Logo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = "Wasti AI Operating System",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
-                                color = MaterialTheme.colorScheme.onSurface
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            AsyncImage(
+                                model = R.drawable.img_wasti_app_icon_1785523199134,
+                                contentDescription = "Wasti AI Logo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                             )
-                            Text(
-                                text = "Wasti Master Super-Agent active with voice speech engine & ${memories.size} indexed memories.",
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Wasti AI Operating System",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Wasti Master Super-Agent active with ${memories.size} indexed memories.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+                        AnimatedAiOrb(size = 52.dp)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -129,6 +138,34 @@ fun DashboardScreen(
                         QuickMetricBadge("Memories", "${memories.size}", Icons.Default.Memory)
                         QuickMetricBadge("Projects", "${projects.size}", Icons.Default.AccountTree)
                         QuickMetricBadge("Pending Tasks", "${tasks.count { !it.isCompleted }}", Icons.Default.CheckCircle)
+                    }
+                }
+            }
+        }
+
+        // Platform Navigation Quick Launch Grid
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Wasti OS Platform Modules",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        QuickLaunchItem("Telemetry & Ops", Icons.Default.Analytics) { onNavigateTab("operations") }
+                        QuickLaunchItem("AI Chat Workspace", Icons.Default.Chat) { onNavigateTab("chat") }
+                        QuickLaunchItem("Memory Graph", Icons.Default.Memory) { onNavigateTab("memory") }
+                        QuickLaunchItem("Code Studio", Icons.Default.Code) { onNavigateTab("code") }
                     }
                 }
             }
@@ -185,12 +222,12 @@ fun DashboardScreen(
                             Text("Active Sessions", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${conversations.size}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                         }
-                        Divider(modifier = Modifier.height(30.dp).width(1.dp))
+                        HorizontalDivider(modifier = Modifier.height(30.dp).width(1.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Indexed Memory", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${memories.size} Items", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
-                        Divider(modifier = Modifier.height(30.dp).width(1.dp))
+                        HorizontalDivider(modifier = Modifier.height(30.dp).width(1.dp))
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("System Log Events", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${logs.size} Logged", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF34D399))
@@ -246,7 +283,7 @@ fun DashboardScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                QuickActionCard("AI Chat", Icons.Default.Chat, Modifier.weight(1f)) { onNavigateTab("chat") }
+                QuickActionCard("AI Chat", Icons.AutoMirrored.Filled.Chat, Modifier.weight(1f)) { onNavigateTab("chat") }
                 QuickActionCard("Wasti AI", Icons.Default.Psychology, Modifier.weight(1f)) { onNavigateTab("agents") }
                 QuickActionCard("Memory", Icons.Default.Memory, Modifier.weight(1f)) { onNavigateTab("memory") }
                 QuickActionCard("Projects", Icons.Default.AccountTree, Modifier.weight(1f)) { onNavigateTab("projects") }
@@ -311,7 +348,7 @@ fun DashboardScreen(
                         )
                     }
                     Icon(
-                        imageVector = Icons.Default.ArrowForward,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Open Chat",
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -408,6 +445,24 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickLaunchItem(label: String, icon: ImageVector, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
         }
     }
 }
