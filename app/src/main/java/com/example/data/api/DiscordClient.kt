@@ -17,7 +17,7 @@ object DiscordClient {
 
     suspend fun getBotUserMe(): String = withContext(Dispatchers.IO) {
         val botToken = CredentialRegistry.getRawValue("DISCORD_BOT_KEY")
-        if (botToken.isBlank()) return@withContext "Not Configured"
+        if (botToken.isNullOrBlank()) return@withContext "Not Configured"
 
         val request = Request.Builder()
             .url("$BASE_URL/users/@me")

@@ -387,6 +387,7 @@ fun ChatWorkspaceScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .imePadding()
             .testTag("chat_workspace_screen")
     ) {
         // Conversation Top Selector Bar
@@ -477,86 +478,30 @@ fun ChatWorkspaceScreen(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Active Model Selector & Wasti AI Super Agent Banner
+                // Active Engine Banner (Unified Wasti AI)
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { showModelMenu = true },
+                        .clip(RoundedCornerShape(12.dp)),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.Start
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF34D399))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            val modelLabel = "Wasti AI Engine (Unified Intelligent Core)"
-                            Text(
-                                text = "⚡ Active Engine: $modelLabel",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Change Active Model",
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF34D399))
                         )
-                    }
-
-                    // Model Toggling Dropdown Menu
-                    DropdownMenu(
-                        expanded = showModelMenu,
-                        onDismissRequest = { showModelMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("⚡ Wasti AI Super-Brain (Auto-Orchestrated)") },
-                            onClick = {
-                                onSelectModel("wasti-super-ensemble")
-                                showModelMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🚀 Wasti Fast-Lane Speech & Text Engine") },
-                            onClick = {
-                                onSelectModel("wasti-fast-lane")
-                                showModelMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.Speed, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🌐 Wasti Standard Core Engine") },
-                            onClick = {
-                                onSelectModel("wasti-standard-core")
-                                showModelMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.Psychology, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🤖 Wasti Deep Reasoning Engine") },
-                            onClick = {
-                                onSelectModel("wasti-deep-reasoning")
-                                showModelMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.SmartToy, contentDescription = null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("🧠 Wasti Hybrid & Offline Mode") },
-                            onClick = {
-                                onSelectModel("wasti-hybrid-offline")
-                                showModelMenu = false
-                            },
-                            leadingIcon = { Icon(Icons.Default.Memory, contentDescription = null) }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "⚡ Wasti AI (Unified Orchestration Engine)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
@@ -628,7 +573,7 @@ fun ChatWorkspaceScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Wasti OS $activeAgentId synthesizing response...",
+                            text = "Wasti AI synthesizing response...",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.primary,
                             fontWeight = FontWeight.Medium

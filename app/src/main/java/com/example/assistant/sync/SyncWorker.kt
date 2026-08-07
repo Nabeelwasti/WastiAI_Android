@@ -14,7 +14,7 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
             val clientId = CredentialRegistry.getRawValue("DRIVE_CLIENT_ID")
             val clientSecret = CredentialRegistry.getRawValue("DRIVE_CLIENT_SECRET")
 
-            if (dbFile.exists() && clientId.isNotBlank()) {
+            if (dbFile.exists() && !clientId.isNullOrBlank()) {
                 // Perform scheduled encrypted backup zip
                 val backupFile = File(applicationContext.cacheDir, "wasti_encrypted_backup_${System.currentTimeMillis()}.bak")
                 backupFile.writeText("WASTI_ENCRYPTED_DB_BACKUP_V1\nClient:$clientId\nTimestamp:${System.currentTimeMillis()}")

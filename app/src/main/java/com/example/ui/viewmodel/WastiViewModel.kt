@@ -75,7 +75,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             try {
-                com.example.data.credential.CredentialRegistry.seedDefaultCredentialsIfMissing(application)
+                com.example.data.credential.CredentialRegistry.refreshAll(application)
                 repository.initDefaultDataIfNeeded()
                 // Set initial active conversation
                 val firstConv = repository.conversations.firstOrNull()?.firstOrNull()

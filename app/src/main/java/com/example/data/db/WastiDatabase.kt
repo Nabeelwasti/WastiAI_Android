@@ -48,6 +48,23 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `developer_logs` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `providerId` TEXT NOT NULL,
+                `errorMessage` TEXT NOT NULL,
+                `errorType` TEXT NOT NULL DEFAULT 'API_FAILURE',
+                `timestamp` INTEGER NOT NULL,
+                `details` TEXT
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -62,9 +79,10 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         SettingEntity::class,
         VectorEmbeddingEntity::class,
         KnowledgeGraphNodeEntity::class,
-        KnowledgeGraphEdgeEntity::class
+        KnowledgeGraphEdgeEntity::class,
+        DeveloperLogEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -78,6 +96,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun integrationDao(): IntegrationDao
     abstract fun systemLogDao(): SystemLogDao
     abstract fun settingDao(): SettingDao
+    abstract fun developerLogDao(): DeveloperLogDao
 
     companion object {
         @Volatile
@@ -90,7 +109,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

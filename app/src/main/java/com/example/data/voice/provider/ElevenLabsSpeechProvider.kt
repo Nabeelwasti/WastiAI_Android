@@ -13,7 +13,7 @@ class ElevenLabsSpeechProvider : SpeechProvider {
     override val name: String = "ElevenLabs Neural Voice AI"
 
     override fun isAvailable(): Boolean {
-        return CredentialRegistry.getRawValue("ELEVENLABS_API_KEY").isNotBlank()
+        return !CredentialRegistry.getRawValue("ELEVENLABS_API_KEY").isNullOrBlank()
     }
 
     override suspend fun getAvailableVoices(): List<VoiceProfile> {
@@ -27,7 +27,7 @@ class ElevenLabsSpeechProvider : SpeechProvider {
 
     override suspend fun synthesizeSpeech(request: SpeechSynthesisRequest): SpeechSynthesisResult {
         val apiKey = CredentialRegistry.getRawValue("ELEVENLABS_API_KEY")
-        if (apiKey.isBlank()) {
+        if (apiKey.isNullOrBlank()) {
             return SpeechSynthesisResult(
                 providerId = id,
                 isSuccess = false,

@@ -1,7 +1,9 @@
 package com.example.data.repository
 
+import android.util.Log
 import com.example.data.agent.MultiAgentRegistry
 import com.example.data.core.WastiCore
+import com.example.data.credential.CredentialRegistry
 import com.example.data.db.*
 import com.example.data.device.WastiDeviceController
 import kotlinx.coroutines.flow.Flow
@@ -364,7 +366,7 @@ class WastiRepository(private val db: WastiDatabase) {
             Always reply in clean, natural, human-like language. NEVER produce robotic text, weird syntax noise, or useless decorative characters (e.g. no repetitive `***`, garbage symbols, or cluttered formatting). Use clear paragraphs, standard bullet points, and elegant typography.
             
             [GOOGLE WORKSPACE & AUTOMATED COMMS CAPACITY]:
-            Google Account `wastinabeel99@gmail.com` with App Password `dmuk wudc zlog gnej` is fully integrated and saved in Wasti Local Secret Vault. This key enables automated Gmail SMTP/IMAP email dispatch, Google Drive file syncing & backups, Google Sheets data logging, Google Docs spec generation, and Google Calendar event scheduling.
+            Google Workspace integration is managed via Wasti Secure Secret Vault using EncryptedSharedPreferences. When configured, this enables automated Gmail SMTP/IMAP email dispatch, Google Drive file syncing & backups, Google Sheets data logging, Google Docs spec generation, and Google Calendar event scheduling.
             
             [DYNAMIC DOMAIN ROUTING RULE]:
             Analyze the user's prompt intent automatically and apply the optimal logic WITHOUT requiring the user to switch tabs or agents:
@@ -374,7 +376,8 @@ class WastiRepository(private val db: WastiDatabase) {
             - If request involves research/facts: Provide structured, verified factual summaries with clear headings.
             - If request involves conversation/voice: Address the user respectfully as 'Sir' or 'Boss' in a warm, polite, articulate J.A.R.V.I.S.-like voice.
             
-            Understand and reply fluently in English, Urdu (اردو), Roman Urdu, Punjabi (پنجابی), or any language requested.
+            CRITICAL LANGUAGE MIRRORING MANDATE:
+            CRITICAL: You must mirror the exact language and script the user uses. If the user types in English, reply in English. If the user types in Roman Urdu (e.g., 'kaise ho'), reply in Roman Urdu. If the user types in pure Urdu script, reply in pure Urdu script. Never force a language.
         """.trimIndent()
 
         val agent = db.agentDao().getAgentById(activeAgentId)
@@ -386,7 +389,12 @@ class WastiRepository(private val db: WastiDatabase) {
         }
 
         // 1. Fetch ALL Permanent Core Memories (All stored user facts, preferences, decisions)
-        val allMemoriesList = try { db.memoryDao().getMemoriesList() } catch (_: Exception) { emptyList() }
+        val allMemoriesList = try {
+            db.memoryDao().getMemoriesList()
+        } catch (e: Exception) {
+            Log.e("WastiRepository", "Failed to fetch long-term memories for orchestration context", e)
+            emptyList()
+        }
         val memoryDigest = if (allMemoriesList.isNotEmpty()) {
             allMemoriesList.take(30).joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
         } else {
@@ -394,7 +402,12 @@ class WastiRepository(private val db: WastiDatabase) {
         }
 
         // 2. Fetch Cross-Session Conversation Highlights
-        val globalMessages = try { db.messageDao().getGlobalRecentMessages(30) } catch (_: Exception) { emptyList() }
+        val globalMessages = try {
+            db.messageDao().getGlobalRecentMessages(30)
+        } catch (e: Exception) {
+            Log.e("WastiRepository", "Failed to fetch global recent messages for context", e)
+            emptyList()
+        }
         val crossSessionHighlights = globalMessages
             .filter { it.conversationId != conversationId && it.content.isNotBlank() }
             .take(12)
@@ -404,7 +417,12 @@ class WastiRepository(private val db: WastiDatabase) {
             }
 
         // 3. Fetch Active Tasks & Client Deals Pipeline
-        val activeTasks = try { db.taskDao().getActiveTasksList() } catch (_: Exception) { emptyList() }
+        val activeTasks = try {
+            db.taskDao().getActiveTasksList()
+        } catch (e: Exception) {
+            Log.e("WastiRepository", "Failed to fetch active tasks for orchestration context", e)
+            emptyList()
+        }
         val taskPipelineDigest = if (activeTasks.isNotEmpty()) {
             activeTasks.take(10).joinToString("\n") { "- [Priority ${it.priority}] ${it.title}: ${it.description.take(100)}" }
         } else {
@@ -553,30 +571,83 @@ $taskPipelineDigest
 
     private suspend fun processUserPromptAutomations(userPrompt: String, userMsgId: String) {
         val lowerPrompt = userPrompt.lowercase()
+
+        // 1. Voice Provider Integration
         if (lowerPrompt.contains("connect voice") || lowerPrompt.contains("elevenlabs") || lowerPrompt.contains("azure voice")) {
-            WastiDeviceController.connectVoiceProvider(
-                db = db,
-                providerName = if (lowerPrompt.contains("elevenlabs")) "ElevenLabs Voice AI" else "Online Voice Model",
-                apiKey = "registered_via_chat",
-                endpointUrl = "https://api.elevenlabs.io/v1",
-                voiceId = "wasti_hd_voice"
-            )
-        } else if (lowerPrompt.contains("connect ai") || lowerPrompt.contains("groq") || lowerPrompt.contains("openai") || lowerPrompt.contains("claude") || lowerPrompt.contains("deepseek")) {
-            val provider = when {
-                lowerPrompt.contains("groq") -> "Groq Ultra-Fast AI (Llama 3.3 70B)"
-                lowerPrompt.contains("openai") -> "OpenAI GPT-4o"
-                lowerPrompt.contains("claude") -> "Anthropic Claude"
-                lowerPrompt.contains("deepseek") -> "DeepSeek R1"
-                else -> "Online AI Engine"
+            val realKey = CredentialRegistry.getRawValue("ELEVENLABS_API_KEY")
+            if (!realKey.isNullOrBlank()) {
+                WastiDeviceController.connectVoiceProvider(
+                    db = db,
+                    providerName = if (lowerPrompt.contains("elevenlabs")) "ElevenLabs Voice AI" else "Online Voice Model",
+                    apiKey = realKey,
+                    endpointUrl = "https://api.elevenlabs.io/v1",
+                    voiceId = "wasti_hd_voice"
+                )
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "INFO",
+                        source = "voice_controller",
+                        message = "Voice provider configured with verified ElevenLabs API key",
+                        details = "Provider: ElevenLabs"
+                    )
+                )
+            } else {
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "WARN",
+                        source = "voice_controller",
+                        message = "Voice provider connection requested but ELEVENLABS_API_KEY is not configured",
+                        details = "Manual configuration in Settings / Secret Vault required."
+                    )
+                )
             }
-            WastiDeviceController.connectAiProvider(
-                db = db,
-                providerName = provider,
-                apiKey = if (lowerPrompt.contains("groq")) "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" else "registered_via_chat",
-                endpointUrl = if (lowerPrompt.contains("groq")) "https://api.groq.com/openai/v1" else "https://api.openai.com/v1",
-                modelName = if (lowerPrompt.contains("groq")) "llama-3.3-70b-versatile" else provider
-            )
-        } else if (lowerPrompt.contains("voice female") || lowerPrompt.contains("female voice") || lowerPrompt.contains("woman voice") || lowerPrompt.contains("girl voice") || lowerPrompt.contains("male voice") || lowerPrompt.contains("boy voice")) {
+        }
+        // 2. AI Model Integration
+        else if (lowerPrompt.contains("connect ai") || lowerPrompt.contains("groq") || lowerPrompt.contains("openai") || lowerPrompt.contains("claude") || lowerPrompt.contains("deepseek")) {
+            val keyName = when {
+                lowerPrompt.contains("groq") -> "GROQ_API_KEY"
+                lowerPrompt.contains("openai") -> "OPENAI_API_KEY"
+                lowerPrompt.contains("claude") -> "ANTHROPIC_API_KEY"
+                lowerPrompt.contains("deepseek") -> "DEEPSEEK_API_KEY"
+                else -> "GEMINI_API_KEY"
+            }
+            val realKey = CredentialRegistry.getRawValue(keyName)
+            if (!realKey.isNullOrBlank()) {
+                val provider = when {
+                    lowerPrompt.contains("groq") -> "Groq Ultra-Fast AI (Llama 3.3 70B)"
+                    lowerPrompt.contains("openai") -> "OpenAI GPT-4o"
+                    lowerPrompt.contains("claude") -> "Anthropic Claude"
+                    lowerPrompt.contains("deepseek") -> "DeepSeek R1"
+                    else -> "Online AI Engine"
+                }
+                WastiDeviceController.connectAiProvider(
+                    db = db,
+                    providerName = provider,
+                    apiKey = realKey,
+                    endpointUrl = if (lowerPrompt.contains("groq")) "https://api.groq.com/openai/v1" else "https://api.openai.com/v1",
+                    modelName = if (lowerPrompt.contains("groq")) "llama-3.3-70b-versatile" else provider
+                )
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "INFO",
+                        source = "ai_controller",
+                        message = "Connected $provider using verified API key",
+                        details = "Key configured: $keyName"
+                    )
+                )
+            } else {
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "WARN",
+                        source = "ai_controller",
+                        message = "AI model connection requested but $keyName is not configured",
+                        details = "Manual key entry required in Settings or Secret Vault."
+                    )
+                )
+            }
+        }
+        // 3. Voice Persona Settings
+        else if (lowerPrompt.contains("voice female") || lowerPrompt.contains("female voice") || lowerPrompt.contains("woman voice") || lowerPrompt.contains("girl voice") || lowerPrompt.contains("male voice") || lowerPrompt.contains("boy voice")) {
             val newVoice = when {
                 lowerPrompt.contains("female") || lowerPrompt.contains("woman") -> "WASTI_FEMALE"
                 lowerPrompt.contains("girl") -> "WASTI_GIRL"
@@ -584,70 +655,107 @@ $taskPipelineDigest
                 else -> "WASTI_MALE"
             }
             WastiDeviceController.updateAppSetting(db, "active_voice_persona", newVoice)
-        } else if (lowerPrompt.contains("http://") || lowerPrompt.contains("https://") || lowerPrompt.contains("www.") || lowerPrompt.contains("scan website") || lowerPrompt.contains("train website")) {
-            val extractedUrl = Regex("(https?://[^\\s]+|www\\.[^\\s]+)").find(userPrompt)?.value ?: "https://scanned-web-portal.com"
-            
-            db.knowledgeDao().insertKnowledge(
-                KnowledgeEntity(
-                    id = UUID.randomUUID().toString(),
-                    title = "Scanned Web Training: $extractedUrl",
-                    category = "Web Learning & Scanning",
-                    content = "Website URL $extractedUrl was opened, scanned, and indexed into Wasti OS Long-Term Knowledge Base.",
-                    tagsCsv = "website,scanned,url_training,wasti_learned"
-                )
-            )
-
-            db.memoryDao().insertMemory(
-                MemoryEntity(
-                    id = UUID.randomUUID().toString(),
-                    key = "Learned Website: $extractedUrl",
-                    category = "Web Training",
-                    value = "Parsed and trained on website $extractedUrl. Knowledge saved for permanent recall.",
-                    sourceMessageId = userMsgId
-                )
-            )
-        } else if (lowerPrompt.contains("quote") || lowerPrompt.contains("invoice") || lowerPrompt.contains("stripe") || lowerPrompt.contains("hubspot") || lowerPrompt.contains("brevo") || lowerPrompt.contains("billing")) {
-            val amountMatch = Regex("\\$([0-9,.]+)").find(userPrompt)?.value ?: "$1,250.00"
-            val quoteId = "DRAFT-QUO-${UUID.randomUUID().toString().take(6).uppercase()}"
-            
-            db.knowledgeDao().insertKnowledge(
-                KnowledgeEntity(
-                    id = UUID.randomUUID().toString(),
-                    title = "[PENDING APPROVAL] Stripe Draft Quotation: $quoteId",
-                    category = "Business & Revenue Operations",
-                    content = "Draft Quotation $quoteId created for amount $amountMatch. STATUS: REQUIRES USER MANUAL APPROVAL. No charge or final email dispatched until confirmed by user.",
-                    tagsCsv = "stripe,quote,draft,pending_approval,business_ops"
-                )
-            )
-
             db.systemLogDao().insertLog(
                 SystemLogEntity(
-                    level = "BUSINESS",
-                    source = "business_agent",
-                    message = "Draft Quotation Created ($quoteId) - Awaiting Manual Approval",
-                    details = "Draft quote for $amountMatch generated. Final execution paused pending user manual confirmation."
+                    level = "SETTING",
+                    source = "voice_persona",
+                    message = "Active voice persona updated to $newVoice",
+                    details = "User preference updated in database settings."
                 )
             )
+        }
+        // 4. Real Web HTTP Request
+        else if (lowerPrompt.contains("http://") || lowerPrompt.contains("https://") || lowerPrompt.contains("www.") || lowerPrompt.contains("scan website") || lowerPrompt.contains("train website")) {
+            val extractedUrl = Regex("(https?://[^\\s]+|www\\.[^\\s]+)").find(userPrompt)?.value
+            if (extractedUrl != null) {
+                val fullUrl = if (extractedUrl.startsWith("www.")) "https://$extractedUrl" else extractedUrl
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val client = okhttp3.OkHttpClient.Builder()
+                            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                            .build()
+                        val request = okhttp3.Request.Builder()
+                            .url(fullUrl)
+                            .header("User-Agent", "WastiOS/1.0 WebScraper")
+                            .build()
 
-            db.memoryDao().insertMemory(
-                MemoryEntity(
-                    id = UUID.randomUUID().toString(),
-                    key = "Pending Stripe Quote $quoteId",
-                    category = "BusinessOps",
-                    value = "Draft Quote $quoteId for $amountMatch generated and set to Pending Manual Approval state.",
-                    sourceMessageId = userMsgId
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val bodyText = response.body?.string()?.take(2000) ?: ""
+                                val titleMatch = Regex("<title>(.*?)</title>", RegexOption.IGNORE_CASE).find(bodyText)?.groupValues?.get(1) ?: fullUrl
+                                val cleanText = bodyText.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim().take(1000)
+
+                                db.knowledgeDao().insertKnowledge(
+                                    KnowledgeEntity(
+                                        id = UUID.randomUUID().toString(),
+                                        title = "Web Content: $titleMatch",
+                                        category = "Web Learning & Scanning",
+                                        content = "Fetched content from $fullUrl:\n$cleanText",
+                                        tagsCsv = "website,scanned,url_training,wasti_learned"
+                                    )
+                                )
+                                db.systemLogDao().insertLog(
+                                    SystemLogEntity(
+                                        level = "WEB",
+                                        source = "web_scraper",
+                                        message = "Successfully fetched content from $fullUrl",
+                                        details = "HTTP Status ${response.code}, Title: $titleMatch"
+                                    )
+                                )
+                            } else {
+                                db.systemLogDao().insertLog(
+                                    SystemLogEntity(
+                                        level = "WARN",
+                                        source = "web_scraper",
+                                        message = "HTTP request to $fullUrl failed with code ${response.code}",
+                                        details = "No content indexed due to server error."
+                                    )
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        db.systemLogDao().insertLog(
+                            SystemLogEntity(
+                                level = "WARN",
+                                source = "web_scraper",
+                                message = "Unable to fetch $fullUrl: ${e.message}",
+                                details = "Network connection or valid URL required."
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        // 5. Billing / Stripe / CRM Ops
+        else if (lowerPrompt.contains("quote") || lowerPrompt.contains("invoice") || lowerPrompt.contains("stripe") || lowerPrompt.contains("hubspot") || lowerPrompt.contains("brevo") || lowerPrompt.contains("billing")) {
+            val stripeKey = CredentialRegistry.getRawValue("STRIPE_SECRET_KEY") ?: CredentialRegistry.getRawValue("STRIPE_PUBLISHABLE_KEY")
+            val hubspotKey = CredentialRegistry.getRawValue("HUBSPOT_CONNECTION_ID")
+            val brevoKey = CredentialRegistry.getRawValue("BREVO_API_KEY")
+
+            if (!stripeKey.isNullOrBlank() || !hubspotKey.isNullOrBlank() || !brevoKey.isNullOrBlank()) {
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "BUSINESS",
+                        source = "business_agent",
+                        message = "Business workflow triggered with configured integration keys",
+                        details = "Keys active: Stripe=${!stripeKey.isNullOrBlank()}, HubSpot=${!hubspotKey.isNullOrBlank()}, Brevo=${!brevoKey.isNullOrBlank()}"
+                    )
                 )
-            )
-        } else if (userPrompt.contains("remember", ignoreCase = true) || userPrompt.contains("my favorite", ignoreCase = true) || userPrompt.contains("always use", ignoreCase = true) || userPrompt.length > 20) {
-            db.memoryDao().insertMemory(
-                MemoryEntity(
-                    id = UUID.randomUUID().toString(),
-                    key = "Auto-Indexed Fact (${userPrompt.take(30)}...)",
-                    category = "Continuous Memory",
-                    value = userPrompt.take(300),
-                    sourceMessageId = userMsgId
+            } else {
+                db.systemLogDao().insertLog(
+                    SystemLogEntity(
+                        level = "WARN",
+                        source = "business_agent",
+                        message = "Billing/CRM action requested but keys (Stripe/HubSpot/Brevo) are not configured",
+                        details = "Manual API key entry required in Settings or Secret Vault."
+                    )
                 )
-            )
+            }
+        }
+        // 6. Explicit User Memory Retention
+        else if (lowerPrompt.startsWith("remember") || lowerPrompt.contains("remember that") || lowerPrompt.contains("my favorite") || lowerPrompt.contains("always use")) {
+            com.example.data.memory.MemoryManager.processExplicitMemoryIntent(userPrompt, userMsgId)
         }
 
         // Export local & cloud storage backup file
@@ -661,7 +769,9 @@ $taskPipelineDigest
                 }
                 backupFile.writeText(jsonArray)
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e("WastiRepository", "Failed to export memory backup JSON", e)
+        }
     }
 
     private fun calculateVectorSimilarity(query: String, text: String): Double {

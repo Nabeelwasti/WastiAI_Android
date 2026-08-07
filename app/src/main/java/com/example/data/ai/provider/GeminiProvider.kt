@@ -23,7 +23,7 @@ class GeminiProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("GEMINI_API_KEY")
-        return key.isNotBlank() && key != "MY_GEMINI_API_KEY"
+        return !key.isNullOrBlank() && key != "MY_GEMINI_API_KEY"
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {

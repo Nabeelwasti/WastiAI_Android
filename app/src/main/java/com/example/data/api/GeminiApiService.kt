@@ -62,8 +62,8 @@ object GeminiClient {
         val langMandate = WastiUrduLanguageEngine.getLanguagePromptMandate(prompt)
         val combinedSystemPrompt = "$systemInstruction\n\n$langMandate"
 
-        if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-            throw IllegalStateException("Gemini API Key is not configured or is placeholder.")
+        if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
+            throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
         }
 
         val contentsList = mutableListOf<GeminiContent>()
@@ -187,7 +187,7 @@ object GeminiClient {
                 "Registered new Online Voice Model provider key & endpoint into Wasti OS. Speech synthesis connected successfully!"
             }
             lower.contains("groq") || lower.contains("gsk_") -> {
-                "Registered Groq Ultra-Fast AI Engine (`gsk_IebD8f...`) running Llama 3.3 70B Versatile into Wasti OS! Reasoning speed increased to 500+ tokens/sec."
+                "Registered Groq Ultra-Fast AI Engine running Llama 3.3 70B Versatile into Wasti OS! Reasoning speed increased to 500+ tokens/sec."
             }
             lower.contains("connect ai") || lower.contains("openai") || lower.contains("claude") || lower.contains("deepseek") || lower.contains("gpt-4") || lower.contains("ollama") -> {
                 "Connected external AI provider model into Wasti OS. Multi-AI model switching enabled."

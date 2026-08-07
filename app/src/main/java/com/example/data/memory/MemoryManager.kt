@@ -1,5 +1,6 @@
 package com.example.data.memory
 
+import android.util.Log
 import com.example.data.bus.WastiEvent
 import com.example.data.bus.WastiEventBus
 import com.example.data.db.MemoryDao
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 object MemoryManager {
@@ -49,27 +51,59 @@ object MemoryManager {
         }
     }
 
-    private suspend fun loadMemoriesFromDatabase() {
-        val dao = memoryDao ?: return
-        val list = dao.getMemoriesList()
-        activeMemoriesMap.clear()
+    private suspend fun loadMemoriesFromDatabase() = withContext(Dispatchers.IO) {
+        try {
+            val dao = memoryDao ?: return@withContext
+            val list = dao.getMemoriesList()
+            activeMemoriesMap.clear()
 
-        list.forEach { entity ->
-            val embedding = embeddingService.generateEmbedding(entity.value)
-            val item = MemoryItem(
-                id = entity.id,
-                key = entity.key,
-                category = entity.category,
-                value = entity.value,
-                importanceScore = entity.importanceScore,
-                timestamp = entity.timestamp,
-                sourceMessageId = entity.sourceMessageId,
-                embedding = embedding
-            )
-            activeMemoriesMap[entity.id] = item
-            vectorIndex.indexVector(entity.id, embedding, "{\"key\":\"${entity.key}\"}")
+            list.forEach { entity ->
+                val embedding = embeddingService.generateEmbedding(entity.value)
+                val item = MemoryItem(
+                    id = entity.id,
+                    key = entity.key,
+                    category = entity.category,
+                    value = entity.value,
+                    importanceScore = entity.importanceScore,
+                    timestamp = entity.timestamp,
+                    sourceMessageId = entity.sourceMessageId,
+                    embedding = embedding
+                )
+                activeMemoriesMap[entity.id] = item
+                vectorIndex.indexVector(entity.id, embedding, "{\"key\":\"${entity.key}\"}")
+            }
+            _memoriesFlow.value = activeMemoriesMap.values.toList()
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to load memories from Room database", e)
         }
-        _memoriesFlow.value = activeMemoriesMap.values.toList()
+    }
+
+    suspend fun processExplicitMemoryIntent(userPrompt: String, sourceMessageId: String? = null) = withContext(Dispatchers.IO) {
+        val lower = userPrompt.trim().lowercase()
+        val isExplicitMemory = lower.startsWith("remember") ||
+                lower.contains("remember that") ||
+                lower.contains("my favorite") ||
+                lower.contains("always use") ||
+                lower.contains("note that") ||
+                lower.contains("don't forget") ||
+                lower.contains("never forget")
+
+        if (isExplicitMemory) {
+            val key = when {
+                lower.contains("favorite") -> "User Favorite Preference"
+                lower.contains("always use") -> "User System Constraint"
+                lower.contains("don't forget") || lower.contains("never forget") -> "User Critical Fact"
+                else -> "User Stored Fact"
+            }
+            saveMemory(
+                key = "$key (${userPrompt.take(25)}...)",
+                category = "User Preferences",
+                value = userPrompt.trim(),
+                importanceScore = 0.95f,
+                sourceMessageId = sourceMessageId
+            )
+            Log.i("MemoryManager", "Explicit memory intent processed & indexed: $key")
+        }
     }
 
     suspend fun saveMemory(
@@ -78,7 +112,7 @@ object MemoryManager {
         value: String,
         importanceScore: Float = 0.9f,
         sourceMessageId: String? = null
-    ): MemoryItem {
+    ): MemoryItem = withContext(Dispatchers.IO) {
         val existingDuplicate = activeMemoriesMap.values.find {
             policyEngine.isDuplicate(it.value, value)
         }
@@ -95,7 +129,7 @@ object MemoryManager {
             )
             activeMemoriesMap[updated.id] = updated
             _memoriesFlow.value = activeMemoriesMap.values.toList()
-            return updated
+            return@withContext updated
         }
 
         val id = "mem_${UUID.randomUUID()}"
@@ -114,59 +148,68 @@ object MemoryManager {
         activeMemoriesMap[id] = newItem
         vectorIndex.indexVector(id, embedding, "{\"key\":\"$key\"}")
 
-        memoryDao?.insertMemory(
-            MemoryEntity(
-                id = id,
-                key = key,
-                category = category,
-                value = value,
-                importanceScore = importanceScore,
-                timestamp = newItem.timestamp,
-                sourceMessageId = sourceMessageId
+        try {
+            memoryDao?.insertMemory(
+                MemoryEntity(
+                    id = id,
+                    key = key,
+                    category = category,
+                    value = value,
+                    importanceScore = importanceScore,
+                    timestamp = newItem.timestamp,
+                    sourceMessageId = sourceMessageId
+                )
             )
-        )
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to persist memory entity to Room database", e)
+        }
 
         _memoriesFlow.value = activeMemoriesMap.values.toList()
         WastiEventBus.emit(WastiEvent.MemoryUpdated(id, "CREATED"))
-        return newItem
+        return@withContext newItem
     }
 
-    suspend fun hybridSearch(query: MemorySearchQuery): List<MemorySearchResult> {
+    suspend fun hybridSearch(query: MemorySearchQuery): List<MemorySearchResult> = withContext(Dispatchers.IO) {
         val (results, _) = retrievalEngine.retrieve(query, activeMemoriesMap)
-        return results
+        results
     }
 
-    suspend fun hybridSearchWithExplanations(query: MemorySearchQuery): Pair<List<MemorySearchResult>, List<com.example.data.memory.retrieval.RetrievalExplanation>> {
-        return retrievalEngine.retrieve(query, activeMemoriesMap)
+    suspend fun hybridSearchWithExplanations(query: MemorySearchQuery): Pair<List<MemorySearchResult>, List<com.example.data.memory.retrieval.RetrievalExplanation>> = withContext(Dispatchers.IO) {
+        retrievalEngine.retrieve(query, activeMemoriesMap)
     }
 
-    suspend fun retrieveRelevantContextPrompt(prompt: String): String {
-        val (results, explanations) = retrievalEngine.retrieve(
-            MemorySearchQuery(
-                queryText = prompt,
-                topK = 5,
-                minImportance = 0.3f
-            ),
-            activeMemoriesMap
-        )
+    suspend fun retrieveRelevantContextPrompt(prompt: String): String = withContext(Dispatchers.IO) {
+        try {
+            val (results, explanations) = retrievalEngine.retrieve(
+                MemorySearchQuery(
+                    queryText = prompt,
+                    topK = 5,
+                    minImportance = 0.3f
+                ),
+                activeMemoriesMap
+            )
 
-        if (results.isEmpty()) return ""
+            if (results.isEmpty()) return@withContext ""
 
-        val contextLines = results.mapIndexed { idx, res ->
-            val expl = explanations.getOrNull(idx)
-            val reasonStr = expl?.provenanceReason ?: "Relevance: ${"%.2f".format(res.relevanceScore)}"
-            "${idx + 1}. [${res.memory.category}] ${res.memory.key}: ${res.memory.value} ($reasonStr)"
+            val contextLines = results.mapIndexed { idx, res ->
+                val expl = explanations.getOrNull(idx)
+                val reasonStr = expl?.provenanceReason ?: "Relevance: ${"%.2f".format(res.relevanceScore)}"
+                "${idx + 1}. [${res.memory.category}] ${res.memory.key}: ${res.memory.value} ($reasonStr)"
+            }
+
+            val graphSummary = knowledgeGraphEngine.getGraphSummary()
+
+            """
+            [WAS TI PLATFORM ENTERPRISE MEMORY RETRIEVAL]:
+            ${contextLines.joinToString("\n")}
+
+            $graphSummary
+            [END MEMORY CONTEXT]
+            """.trimIndent()
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to retrieve relevant context prompt", e)
+            ""
         }
-
-        val graphSummary = knowledgeGraphEngine.getGraphSummary()
-
-        return """
-        [WAS TI PLATFORM ENTERPRISE MEMORY RETRIEVAL]:
-        ${contextLines.joinToString("\n")}
-
-        $graphSummary
-        [END MEMORY CONTEXT]
-        """.trimIndent()
     }
 
     fun getObservabilityStats(): MemoryObservabilityStats {

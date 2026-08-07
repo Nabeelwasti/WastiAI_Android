@@ -21,13 +21,13 @@ class DeepSeekProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
-        return key.isNotBlank() && key != "MY_DEEPSEEK_API_KEY"
+        return !key.isNullOrBlank() && key != "MY_DEEPSEEK_API_KEY"
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
         return try {
-            val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
+            val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY").orEmpty()
             val output = DeepSeekClient.generateText(
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction,

@@ -18,8 +18,7 @@ class OfflineProvider : AIProvider {
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
-        val textSnippet = request.prompt.take(100)
-        val responseText = "Sir, Wasti OS local neural controller processed your request: \"$textSnippet\". System status: Nominal, operating offline fallback."
+        val responseText = "Wasti OS Offline Fallback: Live API keys not detected or network unavailable."
         val latency = System.currentTimeMillis() - startTime
 
         return ProviderResponse(

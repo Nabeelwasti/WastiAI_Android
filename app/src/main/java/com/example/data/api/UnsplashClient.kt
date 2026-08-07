@@ -25,7 +25,7 @@ object UnsplashClient {
 
     suspend fun searchStockPhotos(query: String): List<UnsplashPhotoItem> = withContext(Dispatchers.IO) {
         val accessKey = CredentialRegistry.getRawValue("UNSPLASH_ACCESS_KEY")
-        if (accessKey.isBlank()) return@withContext emptyList()
+        if (accessKey.isNullOrBlank()) return@withContext emptyList()
 
         val request = Request.Builder()
             .url("$BASE_URL/search/photos?query=${query.trim()}&per_page=3")

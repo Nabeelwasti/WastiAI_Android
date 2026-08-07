@@ -19,49 +19,54 @@ class ProviderRouter(
         preferredProviderId: String? = null
     ): ProviderResponse {
 
-        // 1. Find providers matching required capabilities
-        val eligibleProviders = if (!preferredProviderId.isNullOrBlank()) {
+        // 1. Separate online providers from offline fallback provider
+        val allAvailable = capabilityRegistry.getAvailableProviders()
+        val onlineAvailable = allAvailable.filter { it.id != "offline" }
+
+        val onlineCandidates = if (!preferredProviderId.isNullOrBlank()) {
             val preferred = capabilityRegistry.getProvider(preferredProviderId)
-            if (preferred != null && preferred.isAvailable()) {
-                listOf(preferred) + capabilityRegistry.getAvailableProviders().filter { it.id != preferredProviderId }
+            if (preferred != null && preferred.id != "offline" && preferred.isAvailable()) {
+                listOf(preferred) + onlineAvailable.filter { it.id != preferredProviderId }
             } else {
-                capabilityRegistry.getAvailableProviders()
+                onlineAvailable
             }
         } else {
-            capabilityRegistry.findProvidersWithCapabilities(request.requiredCapabilities)
+            if (request.requiredCapabilities.isEmpty()) onlineAvailable
+            else capabilityRegistry.findProvidersWithCapabilities(request.requiredCapabilities).filter { it.id != "offline" }
         }
 
-        if (eligibleProviders.isEmpty()) {
-            val offline = capabilityRegistry.getProvider("offline")
-            if (offline != null) {
-                return offline.generate(request)
+        // 2. Sort online providers by HealthStatus and Latency, maintaining preferred provider at top if set
+        val sortedOnline = if (!preferredProviderId.isNullOrBlank() && onlineCandidates.firstOrNull()?.id == preferredProviderId) {
+            val head = onlineCandidates.first()
+            val tail = onlineCandidates.drop(1).sortedBy { provider ->
+                val health = healthMonitor.getHealth(provider.id)
+                val score = when (health?.status) {
+                    HealthStatus.HEALTHY -> 0
+                    HealthStatus.DEGRADED -> 1
+                    HealthStatus.UNHEALTHY -> 2
+                    null -> 0
+                }
+                val latency = health?.latencyMs ?: 0L
+                score * 100000 + latency
             }
-            return ProviderResponse(
-                content = "No AI providers currently available. Check system configuration or API keys.",
-                providerId = "none",
-                providerName = "System Router",
-                modelUsed = "none",
-                isError = true,
-                errorMessage = "No available provider matching requirements"
-            )
-        }
-
-        // 2. Sort providers by HealthStatus and Latency
-        val sortedProviders = eligibleProviders.sortedBy { provider ->
-            val health = healthMonitor.getHealth(provider.id)
-            val score = when (health?.status) {
-                HealthStatus.HEALTHY -> 0
-                HealthStatus.DEGRADED -> 1
-                HealthStatus.UNHEALTHY -> 2
-                null -> 0
+            listOf(head) + tail
+        } else {
+            onlineCandidates.sortedBy { provider ->
+                val health = healthMonitor.getHealth(provider.id)
+                val score = when (health?.status) {
+                    HealthStatus.HEALTHY -> 0
+                    HealthStatus.DEGRADED -> 1
+                    HealthStatus.UNHEALTHY -> 2
+                    null -> 0
+                }
+                val latency = health?.latencyMs ?: 0L
+                score * 100000 + latency
             }
-            val latency = health?.latencyMs ?: 0L
-            score * 100000 + latency
         }
 
-        // 3. Sequential Cascading Execution with Retry and Failover
+        // 3. Sequential Cascading Execution across online providers
         var lastErrorMsg = ""
-        for (provider in sortedProviders) {
+        for (provider in sortedOnline) {
             val startTime = System.currentTimeMillis()
             try {
                 val response = retryManager.executeWithRetry(actionName = "Call ${provider.name}") {
@@ -82,11 +87,11 @@ class ProviderRouter(
                     return response
                 } else {
                     healthMonitor.recordFailure(provider.id, provider.name)
-                    lastErrorMsg = response.errorMessage ?: "Empty response"
+                    lastErrorMsg = response.errorMessage ?: "Empty response from ${provider.name}"
                 }
             } catch (e: Exception) {
                 healthMonitor.recordFailure(provider.id, provider.name)
-                lastErrorMsg = e.message ?: "Execution exception"
+                lastErrorMsg = e.message ?: "Execution exception on ${provider.name}"
             }
         }
 

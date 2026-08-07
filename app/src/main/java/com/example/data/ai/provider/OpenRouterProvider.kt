@@ -20,13 +20,13 @@ class OpenRouterProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("OPENROUTER_API_KEY")
-        return key.isNotBlank() && key != "MY_OPENROUTER_API_KEY"
+        return !key.isNullOrBlank() && key != "MY_OPENROUTER_API_KEY"
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
         return try {
-            val key = CredentialRegistry.getRawValue("OPENROUTER_API_KEY")
+            val key = CredentialRegistry.getRawValue("OPENROUTER_API_KEY").orEmpty()
             val model = request.modelName ?: defaultModel
             val output = OpenRouterClient.generateText(
                 prompt = request.prompt,

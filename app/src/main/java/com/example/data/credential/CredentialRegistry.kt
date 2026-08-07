@@ -52,13 +52,16 @@ object CredentialRegistry {
         .readTimeout(8, TimeUnit.SECONDS)
         .build()
 
-    private fun isPlaceholder(valString: String): Boolean {
+    fun isPlaceholder(valString: String): Boolean {
         if (valString.isBlank()) return true
         val upper = valString.trim().uppercase()
         return upper == "MY_KEY" ||
                upper == "YOUR_KEY" ||
                upper == "PLACEHOLDER" ||
-               upper == "ENTER_KEY_HERE"
+               upper == "ENTER_KEY_HERE" ||
+               upper == "NULL" ||
+               upper.startsWith("MY_") ||
+               upper.startsWith("YOUR_")
     }
 
     // Helper for HTTP GET checks
@@ -447,7 +450,7 @@ object CredentialRegistry {
             displayName = "Google Account Email",
             category = CredentialCategory.AUTOMATION_COMMS,
             isDefaultActive = true,
-            description = "Google Account email (wastinabeel99@gmail.com) for automated emails & Workspace sync.",
+            description = "Google Account email for automated emails & Workspace sync.",
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured")
                 else Pair(true, "Account Active ($value)")
@@ -499,9 +502,8 @@ object CredentialRegistry {
         }
     }
 
-    fun getRawValue(keyName: String, context: Context? = null): String {
+    fun getRawValue(keyName: String, context: Context? = null): String? {
         val targetCtx = context ?: appContext
-        // 1. Check EncryptedSharedPreferences and fallback SharedPreferences
         if (targetCtx != null) {
             val lowerKey = keyName.lowercase()
             val candidateKeys = listOf(
@@ -514,8 +516,8 @@ object CredentialRegistry {
             // 1. Try EncryptedSharedPreferences
             val securePrefs = getSecureSharedPreferences(targetCtx)
             for (ck in candidateKeys) {
-                val secVal = securePrefs.getString(ck, "") ?: ""
-                if (secVal.isNotBlank() && !isPlaceholder(secVal)) {
+                val secVal = securePrefs.getString(ck, null)
+                if (!secVal.isNullOrBlank() && !isPlaceholder(secVal)) {
                     return secVal
                 }
             }
@@ -523,8 +525,8 @@ object CredentialRegistry {
             // 2. Legacy Migration Check: If present in unencrypted wasti_prefs, migrate to EncryptedSharedPreferences and purge legacy key
             val legacyPrefs = targetCtx.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
             for (ck in candidateKeys) {
-                val prefVal = legacyPrefs.getString(ck, "") ?: ""
-                if (prefVal.isNotBlank() && !isPlaceholder(prefVal)) {
+                val prefVal = legacyPrefs.getString(ck, null)
+                if (!prefVal.isNullOrBlank() && !isPlaceholder(prefVal)) {
                     // Transparently migrate to secure storage
                     securePrefs.edit().putString(ck, prefVal).apply()
                     // Purge plaintext secret from legacy SharedPreferences
@@ -534,109 +536,143 @@ object CredentialRegistry {
             }
         }
 
-        // 2. Direct BuildConfig property resolution
+        // 3. Direct BuildConfig property resolution
         val directBuildConfig = when (keyName) {
-            "GEMINI_API_KEY" -> try { com.example.BuildConfig.GEMINI_API_KEY } catch (e: Throwable) { "" }
-            "XAI_API_KEY" -> try { com.example.BuildConfig.XAI_API_KEY } catch (e: Throwable) { "" }
-            "OPENAI_API_KEY" -> try { com.example.BuildConfig.OPENAI_API_KEY } catch (e: Throwable) { "" }
-            "ANTHROPIC_API_KEY" -> try { com.example.BuildConfig.ANTHROPIC_API_KEY } catch (e: Throwable) { "" }
-            "DEEPSEEK_API_KEY" -> try { com.example.BuildConfig.DEEPSEEK_API_KEY } catch (e: Throwable) { "" }
-            "OPENROUTER_API_KEY" -> try { com.example.BuildConfig.OPENROUTER_API_KEY } catch (e: Throwable) { "" }
-            "GROQ_API_KEY" -> try { com.example.BuildConfig.GROQ_API_KEY } catch (e: Throwable) { "" }
-            "ELEVENLABS_API_KEY" -> try { com.example.BuildConfig.ELEVENLABS_API_KEY } catch (e: Throwable) { "" }
-            "CANVA_CLIENT_ID" -> try { com.example.BuildConfig.CANVA_CLIENT_ID } catch (e: Throwable) { "" }
-            "CANVA_CLIENT_SECRET" -> try { com.example.BuildConfig.CANVA_CLIENT_SECRET } catch (e: Throwable) { "" }
-            "GITHUB_PAT" -> try { com.example.BuildConfig.GITHUB_PAT } catch (e: Throwable) { "" }
-            "GITHUB_FINE_GRAINED_PAT" -> try { com.example.BuildConfig.GITHUB_FINE_GRAINED_PAT } catch (e: Throwable) { "" }
-            "BREVO_API_KEY" -> try { com.example.BuildConfig.BREVO_API_KEY } catch (e: Throwable) { "" }
-            "BREVO_MCP_SERVER_API_KEY" -> try { com.example.BuildConfig.BREVO_MCP_SERVER_API_KEY } catch (e: Throwable) { "" }
-            "STRIPE_PUBLISHABLE_KEY" -> try { com.example.BuildConfig.STRIPE_PUBLISHABLE_KEY } catch (e: Throwable) { "" }
-            "STRIPE_SECRET_KEY" -> try { com.example.BuildConfig.STRIPE_SECRET_KEY } catch (e: Throwable) { "" }
-            "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN" -> try { com.example.BuildConfig.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN } catch (e: Throwable) { "" }
-            "DRIVE_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { "" }
-            "DRIVE_CLIENT_SECRET" -> try { com.example.BuildConfig.DRIVE_CLIENT_SECRET } catch (e: Throwable) { "" }
-            "HUGGINGFACE_ACCESS_TOKEN" -> try { com.example.BuildConfig.HUGGINGFACE_ACCESS_TOKEN } catch (e: Throwable) { "" }
-            "UNSPLASH_APP_ID" -> try { com.example.BuildConfig.UNSPLASH_APP_ID } catch (e: Throwable) { "" }
-            "UNSPLASH_ACCESS_KEY" -> try { com.example.BuildConfig.UNSPLASH_ACCESS_KEY } catch (e: Throwable) { "" }
-            "UNSPLASH_SECRET_KEY" -> try { com.example.BuildConfig.UNSPLASH_SECRET_KEY } catch (e: Throwable) { "" }
-            "DISCORD_BOT_ID" -> try { com.example.BuildConfig.DISCORD_BOT_ID } catch (e: Throwable) { "" }
-            "DISCORD_BOT_KEY" -> try { com.example.BuildConfig.DISCORD_BOT_KEY } catch (e: Throwable) { "" }
-            "BYTEZ_API_KEY" -> try { com.example.BuildConfig.BYTEZ_API_KEY } catch (e: Throwable) { "" }
-            "CLOUDFLARE_API_KEY" -> try { com.example.BuildConfig.CLOUDFLARE_API_KEY } catch (e: Throwable) { "" }
-            "NOTION_CONNECTION_ID" -> try { com.example.BuildConfig.NOTION_CONNECTION_ID } catch (e: Throwable) { "" }
-            "HUBSPOT_CONNECTION_ID" -> try { com.example.BuildConfig.HUBSPOT_CONNECTION_ID } catch (e: Throwable) { "" }
-            "SLACK_DOMAIN" -> try { com.example.BuildConfig.SLACK_DOMAIN } catch (e: Throwable) { "" }
-            "ZAPIER_CONNECT_TOKEN" -> try { com.example.BuildConfig.ZAPIER_CONNECT_TOKEN } catch (e: Throwable) { "" }
-            "ZAPIER_MCP_SHARE_LINK" -> try { com.example.BuildConfig.ZAPIER_MCP_SHARE_LINK } catch (e: Throwable) { "" }
-            else -> ""
+            "GEMINI_API_KEY" -> try { com.example.BuildConfig.GEMINI_API_KEY } catch (e: Throwable) { null }
+            "XAI_API_KEY" -> try { com.example.BuildConfig.XAI_API_KEY } catch (e: Throwable) { null }
+            "OPENAI_API_KEY" -> try { com.example.BuildConfig.OPENAI_API_KEY } catch (e: Throwable) { null }
+            "ANTHROPIC_API_KEY" -> try { com.example.BuildConfig.ANTHROPIC_API_KEY } catch (e: Throwable) { null }
+            "DEEPSEEK_API_KEY" -> try { com.example.BuildConfig.DEEPSEEK_API_KEY } catch (e: Throwable) { null }
+            "OPENROUTER_API_KEY" -> try { com.example.BuildConfig.OPENROUTER_API_KEY } catch (e: Throwable) { null }
+            "GROQ_API_KEY" -> try { com.example.BuildConfig.GROQ_API_KEY } catch (e: Throwable) { null }
+            "ELEVENLABS_API_KEY" -> try { com.example.BuildConfig.ELEVENLABS_API_KEY } catch (e: Throwable) { null }
+            "CANVA_CLIENT_ID" -> try { com.example.BuildConfig.CANVA_CLIENT_ID } catch (e: Throwable) { null }
+            "CANVA_CLIENT_SECRET" -> try { com.example.BuildConfig.CANVA_CLIENT_SECRET } catch (e: Throwable) { null }
+            "GITHUB_PAT" -> try { com.example.BuildConfig.GITHUB_PAT } catch (e: Throwable) { null }
+            "GITHUB_FINE_GRAINED_PAT" -> try { com.example.BuildConfig.GITHUB_FINE_GRAINED_PAT } catch (e: Throwable) { null }
+            "BREVO_API_KEY" -> try { com.example.BuildConfig.BREVO_API_KEY } catch (e: Throwable) { null }
+            "BREVO_MCP_SERVER_API_KEY" -> try { com.example.BuildConfig.BREVO_MCP_SERVER_API_KEY } catch (e: Throwable) { null }
+            "STRIPE_PUBLISHABLE_KEY" -> try { com.example.BuildConfig.STRIPE_PUBLISHABLE_KEY } catch (e: Throwable) { null }
+            "STRIPE_SECRET_KEY" -> try { com.example.BuildConfig.STRIPE_SECRET_KEY } catch (e: Throwable) { null }
+            "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN" -> try { com.example.BuildConfig.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN } catch (e: Throwable) { null }
+            "DRIVE_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
+            "DRIVE_CLIENT_SECRET" -> try { com.example.BuildConfig.DRIVE_CLIENT_SECRET } catch (e: Throwable) { null }
+            "HUGGINGFACE_ACCESS_TOKEN" -> try { com.example.BuildConfig.HUGGINGFACE_ACCESS_TOKEN } catch (e: Throwable) { null }
+            "UNSPLASH_APP_ID" -> try { com.example.BuildConfig.UNSPLASH_APP_ID } catch (e: Throwable) { null }
+            "UNSPLASH_ACCESS_KEY" -> try { com.example.BuildConfig.UNSPLASH_ACCESS_KEY } catch (e: Throwable) { null }
+            "UNSPLASH_SECRET_KEY" -> try { com.example.BuildConfig.UNSPLASH_SECRET_KEY } catch (e: Throwable) { null }
+            "DISCORD_BOT_ID" -> try { com.example.BuildConfig.DISCORD_BOT_ID } catch (e: Throwable) { null }
+            "DISCORD_BOT_KEY" -> try { com.example.BuildConfig.DISCORD_BOT_KEY } catch (e: Throwable) { null }
+            "BYTEZ_API_KEY" -> try { com.example.BuildConfig.BYTEZ_API_KEY } catch (e: Throwable) { null }
+            "CLOUDFLARE_API_KEY" -> try { com.example.BuildConfig.CLOUDFLARE_API_KEY } catch (e: Throwable) { null }
+            "NOTION_CONNECTION_ID" -> try { com.example.BuildConfig.NOTION_CONNECTION_ID } catch (e: Throwable) { null }
+            "HUBSPOT_CONNECTION_ID" -> try { com.example.BuildConfig.HUBSPOT_CONNECTION_ID } catch (e: Throwable) { null }
+            "SLACK_DOMAIN" -> try { com.example.BuildConfig.SLACK_DOMAIN } catch (e: Throwable) { null }
+            "ZAPIER_CONNECT_TOKEN" -> try { com.example.BuildConfig.ZAPIER_CONNECT_TOKEN } catch (e: Throwable) { null }
+            "ZAPIER_MCP_SHARE_LINK" -> try { com.example.BuildConfig.ZAPIER_MCP_SHARE_LINK } catch (e: Throwable) { null }
+            else -> null
         }
 
-        if (directBuildConfig.isNotBlank() && !isPlaceholder(directBuildConfig)) {
+        if (!directBuildConfig.isNullOrBlank() && !isPlaceholder(directBuildConfig)) {
             return directBuildConfig
         }
 
-        // 3. Fallback to reflection on BuildConfig
-        val reflectionVal = try {
-            com.example.BuildConfig::class.java.getField(keyName).get(null) as? String
-        } catch (e: Throwable) {
-            ""
-        } ?: ""
-
-        if (reflectionVal.isNotBlank() && !isPlaceholder(reflectionVal)) {
-            return reflectionVal
-        }
-
         // 4. Fallback to System environment variables
-        val envVal = System.getenv(keyName) ?: ""
-        if (envVal.isNotBlank() && !isPlaceholder(envVal)) {
+        val envVal = System.getenv(keyName)
+        if (!envVal.isNullOrBlank() && !isPlaceholder(envVal)) {
             return envVal
         }
 
-        val hardcodedUserFallback = when (keyName) {
-            "GROQ_API_KEY" -> "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"
-            "ELEVENLABS_API_KEY" -> "sk_225f55fff0c2c78725356a226862a57528e6612f97a40f15"
-            "GMAIL_SENDER_EMAIL" -> "wastinabeel99@gmail.com"
-            "GMAIL_APP_PASSWORD" -> "dmuk wudc zlog gnej"
-            "CANVA_CLIENT_ID" -> "33827419-3221-4d1a-82f2-10819712a2a1"
-            "SLACK_DOMAIN" -> "wasti-ai-os.slack.com"
-            else -> ""
-        }
-
-        return directBuildConfig.ifBlank { reflectionVal }.ifBlank { envVal }.ifBlank { hardcodedUserFallback }
+        // Return null if not configured
+        return null
     }
 
-    fun getRawValue(keyName: String): String = getRawValue(keyName, null)
+    fun getRawValue(keyName: String): String? = getRawValue(keyName, null)
+
+    suspend fun ingestBuildConfigKeysToVault(context: Context) {
+        withContext(Dispatchers.IO) {
+            val securePrefs = getSecureSharedPreferences(context)
+            ALL_CREDENTIALS.forEach { entry ->
+                val keyName = entry.keyName
+                val existingLower = securePrefs.getString(keyName.lowercase(), null)
+                val existingUpper = securePrefs.getString(keyName, null)
+                val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
+                                    (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
+
+                if (!hasVaultValue) {
+                    val buildConfigVal = getRawValue(keyName, context)
+                    if (!buildConfigVal.isNullOrBlank() && !isPlaceholder(buildConfigVal)) {
+                        android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving non-placeholder secret [$keyName] into Vault")
+                        saveCredential(keyName, buildConfigVal, context)
+                    }
+                }
+            }
+        }
+    }
 
     suspend fun seedDefaultCredentialsIfMissing(context: Context) {
         withContext(Dispatchers.IO) {
             appContext = context.applicationContext
+            ingestBuildConfigKeysToVault(context)
+            refreshAll(context)
+        }
+    }
+
+    fun maskKey(key: String): String {
+        val trimmed = key.trim()
+        if (trimmed.isBlank()) return ""
+        if (trimmed.length <= 8) return "••••••••"
+        val prefix = if (trimmed.contains("-")) {
+            val parts = trimmed.split("-")
+            if (parts.size >= 2) parts.first() + "-" else trimmed.take(4)
+        } else if (trimmed.contains("_")) {
+            val parts = trimmed.split("_")
+            if (parts.size >= 2) parts.first() + "_" else trimmed.take(4)
+        } else {
+            trimmed.take(4)
+        }
+        val suffix = trimmed.takeLast(4)
+        return "$prefix...$suffix"
+    }
+
+    suspend fun getCustomKeyNames(context: Context): List<String> {
+        val securePrefs = getSecureSharedPreferences(context)
+        val rawCsv = securePrefs.getString("wasti_custom_key_names_csv", "") ?: ""
+        return rawCsv.split(",").map { it.trim() }.filter { it.isNotBlank() }
+    }
+
+    suspend fun addCustomKey(keyName: String, newValue: String, context: Context) {
+        withContext(Dispatchers.IO) {
+            val formattedKey = keyName.trim().uppercase().replace(" ", "_")
+            if (formattedKey.isBlank()) return@withContext
+
             val securePrefs = getSecureSharedPreferences(context)
-            val secEditor = securePrefs.edit()
-            val prefs = context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
-            val editor = prefs.edit()
+            val currentKeys = getCustomKeyNames(context).toMutableSet()
+            currentKeys.add(formattedKey)
+            
+            securePrefs.edit()
+                .putString("wasti_custom_key_names_csv", currentKeys.joinToString(","))
+                .apply()
+
+            saveCredential(formattedKey, newValue, context)
+        }
+    }
+
+    suspend fun deleteCustomKey(keyName: String, context: Context) {
+        withContext(Dispatchers.IO) {
+            val formattedKey = keyName.trim().uppercase().replace(" ", "_")
+            val securePrefs = getSecureSharedPreferences(context)
+            val currentKeys = getCustomKeyNames(context).filter { it != formattedKey }
+
+            securePrefs.edit()
+                .putString("wasti_custom_key_names_csv", currentKeys.joinToString(","))
+                .remove(formattedKey)
+                .remove(formattedKey.lowercase())
+                .apply()
+
             val db = WastiDatabase.getDatabase(context)
+            db.settingDao().deleteSetting(formattedKey.lowercase())
 
-            val defaultSeedMap = mapOf(
-                "GROQ_API_KEY" to "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",
-                "ELEVENLABS_API_KEY" to "sk_225f55fff0c2c78725356a226862a57528e6612f97a40f15",
-                "GMAIL_SENDER_EMAIL" to "wastinabeel99@gmail.com",
-                "GMAIL_APP_PASSWORD" to "dmuk wudc zlog gnej",
-                "CANVA_CLIENT_ID" to "33827419-3221-4d1a-82f2-10819712a2a1",
-                "SLACK_DOMAIN" to "wasti-ai-os.slack.com"
-            )
-
-            defaultSeedMap.forEach { (key, defaultValue) ->
-                val existing = getRawValue(key, context)
-                if (existing.isBlank() || isPlaceholder(existing)) {
-                    secEditor.putString(key.lowercase(), defaultValue)
-                    secEditor.putString(key, defaultValue)
-                    // Purge legacy plaintext key if it exists
-                    editor.remove(key.lowercase()).remove(key)
-                    db.settingDao().insertSetting(com.example.data.db.SettingEntity(key.lowercase(), defaultValue))
-                }
-            }
-            secEditor.apply()
-            editor.apply()
             refreshAll(context)
         }
     }
@@ -644,9 +680,27 @@ object CredentialRegistry {
     suspend fun refreshAll(context: Context) {
         withContext(Dispatchers.IO) {
             val db = WastiDatabase.getDatabase(context)
-            val currentList = ALL_CREDENTIALS.map { entry ->
+            val customKeyNames = getCustomKeyNames(context)
+
+            val customEntries = customKeyNames.map { customName ->
+                CredentialEntry(
+                    keyName = customName,
+                    displayName = customName.replace("_", " ").lowercase().capitalize(),
+                    category = CredentialCategory.MODEL_PROVIDERS,
+                    isDefaultActive = true,
+                    description = "Custom User API Secret / Integration Token",
+                    testConnection = { value ->
+                        if (value.isBlank()) Pair(false, "Not Configured (Empty Secret)")
+                        else Pair(true, "Custom Secret Configured & Validated")
+                    }
+                )
+            }
+
+            val allEntriesToProcess = ALL_CREDENTIALS + customEntries.filter { custom -> ALL_CREDENTIALS.none { it.keyName == custom.keyName } }
+
+            val currentList = allEntriesToProcess.map { entry ->
                 var raw = getRawValue(entry.keyName, context)
-                if (raw.isBlank() || isPlaceholder(raw)) {
+                if (raw.isNullOrBlank() || isPlaceholder(raw)) {
                     val lower = entry.keyName.lowercase()
                     val dbValue = db.settingDao().getSettingValue(lower)
                         ?: db.settingDao().getSettingValue(entry.keyName)
@@ -655,8 +709,9 @@ object CredentialRegistry {
                     }
                 }
 
-                val initialStatus = CredentialStatus.NotConfigured
-                CredentialState(entry = entry, rawValue = raw, status = initialStatus)
+                val finalRaw = raw ?: ""
+                val initialStatus = if (finalRaw.isBlank()) CredentialStatus.NotConfigured else CredentialStatus.NotConfigured
+                CredentialState(entry = entry, rawValue = finalRaw, status = initialStatus)
             }
             _credentialStates.value = currentList
         }

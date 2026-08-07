@@ -45,7 +45,7 @@ object StripeWorkerService {
         val cloudflareKey = CredentialRegistry.getRawValue("CLOUDFLARE_API_KEY")
         val publishableKey = CredentialRegistry.getRawValue("STRIPE_PUBLISHABLE_KEY")
 
-        if (cloudflareKey.isBlank()) {
+        if (cloudflareKey.isNullOrBlank()) {
             return@withContext StripeChargeResult(
                 success = false,
                 chargeId = null,

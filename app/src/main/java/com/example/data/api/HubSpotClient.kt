@@ -23,7 +23,7 @@ object HubSpotClient {
         clientEmail: String
     ): Boolean = withContext(Dispatchers.IO) {
         val connId = CredentialRegistry.getRawValue("HUBSPOT_CONNECTION_ID")
-        if (connId.isBlank()) return@withContext false
+        if (connId.isNullOrBlank()) return@withContext false
 
         val dealJson = """
             {

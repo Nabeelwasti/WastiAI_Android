@@ -5,11 +5,10 @@ import android.util.Log
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.example.assistant.memory.MemoryDatabase
-import com.example.assistant.memory.MemoryMigrator
 import com.example.assistant.sync.SyncWorker
 import com.example.data.core.AppStartupManager
 import com.example.data.core.StartupStage
+import com.example.data.db.WastiDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -43,6 +42,7 @@ class WastiApplication : Application() {
                 val t1 = System.currentTimeMillis()
                 try {
                     com.example.data.credential.CredentialRegistry.appContext = this@WastiApplication.applicationContext
+                    com.example.data.credential.CredentialRegistry.seedDefaultCredentialsIfMissing(this@WastiApplication)
                 } catch (e: Throwable) {
                     Log.e("WastiApplication", "Error setting CredentialRegistry appContext", e)
                     AppStartupManager.recordWarning(currentStage, "Failed to initialize CredentialRegistry context: ${e.message}")
@@ -87,6 +87,9 @@ class WastiApplication : Application() {
                 AppStartupManager.updateStageProgress(currentStage, "Mounting Memory & Knowledge Graph...", 0.80f)
                 val t5 = System.currentTimeMillis()
                 try {
+                    com.example.data.log.DeveloperLogger.initialize(this@WastiApplication)
+                    val db = WastiDatabase.getDatabase(this@WastiApplication)
+                    com.example.data.memory.MemoryManager.initialize(db.memoryDao())
                     val memStats = com.example.data.memory.MemoryManager.getObservabilityStats()
                     Log.d("WastiApplication", "MemoryManager initialized: $memStats")
                 } catch (e: Throwable) {
@@ -100,11 +103,11 @@ class WastiApplication : Application() {
                 AppStartupManager.updateStageProgress(currentStage, "Checking Database & Persistence...", 0.90f)
                 val t6 = System.currentTimeMillis()
                 try {
-                    val db = MemoryDatabase.getInstance(this@WastiApplication)
-                    MemoryMigrator.migrateIfNeeded(this@WastiApplication, db)
+                    val db = WastiDatabase.getDatabase(this@WastiApplication)
+                    db.openHelper.writableDatabase
                 } catch (e: Throwable) {
-                    Log.e("WastiApplication", "Error initializing MemoryDatabase", e)
-                    AppStartupManager.recordWarning(currentStage, "Database migration skipped: ${e.message}")
+                    Log.e("WastiApplication", "Error initializing WastiDatabase", e)
+                    AppStartupManager.recordWarning(currentStage, "Database initialization warning: ${e.message}")
                 }
                 AppStartupManager.recordStageCompletion(currentStage, System.currentTimeMillis() - t6)
 

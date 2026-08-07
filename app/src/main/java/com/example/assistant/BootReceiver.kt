@@ -11,15 +11,7 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action == Intent.ACTION_BOOT_COMPLETED) {
-            Log.i("BootReceiver", "Boot completed - restarting assistant or scheduling sync")
-            context?.let {
-                val svc = Intent(it, AssistantForegroundService::class.java)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    it.startForegroundService(svc)
-                } else {
-                    it.startService(svc)
-                }
-            }
+            Log.i("BootReceiver", "Boot completed - Wasti OS initialized")
         }
     }
 }

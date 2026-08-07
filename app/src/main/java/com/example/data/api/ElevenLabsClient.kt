@@ -66,7 +66,7 @@ object ElevenLabsClient {
         modelId: String = "eleven_multilingual_v2"
     ): ByteArray? = withContext(Dispatchers.IO) {
         val apiKey = CredentialRegistry.getRawValue("ELEVENLABS_API_KEY")
-        if (apiKey.isBlank()) return@withContext null
+        if (apiKey.isNullOrBlank()) return@withContext null
 
         try {
             val response = api.textToSpeech(

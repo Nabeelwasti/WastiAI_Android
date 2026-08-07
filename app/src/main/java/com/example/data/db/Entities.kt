@@ -142,3 +142,13 @@ data class KnowledgeGraphEdgeEntity(
     val weight: Float = 1.0f
 )
 
+@Entity(tableName = "developer_logs")
+data class DeveloperLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val providerId: String,
+    val errorMessage: String,
+    val errorType: String = "API_FAILURE",
+    val timestamp: Long = System.currentTimeMillis(),
+    val details: String? = null
+)
+

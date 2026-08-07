@@ -19,7 +19,7 @@ object HuggingFaceClient {
 
     suspend fun generateEmbedding(text: String): List<Float> = withContext(Dispatchers.IO) {
         val apiKey = CredentialRegistry.getRawValue("HUGGINGFACE_ACCESS_TOKEN")
-        if (apiKey.isBlank()) return@withContext emptyList()
+        if (apiKey.isNullOrBlank()) return@withContext emptyList()
 
         val json = """{"inputs": "$text"}"""
         val request = Request.Builder()

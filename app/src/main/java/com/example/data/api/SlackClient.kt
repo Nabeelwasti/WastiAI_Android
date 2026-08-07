@@ -18,7 +18,7 @@ object SlackClient {
 
     suspend fun sendSlackNotification(messageText: String): Boolean = withContext(Dispatchers.IO) {
         val domainOrWebhook = CredentialRegistry.getRawValue("SLACK_DOMAIN")
-        if (domainOrWebhook.isBlank()) return@withContext false
+        if (domainOrWebhook.isNullOrBlank()) return@withContext false
 
         val url = if (domainOrWebhook.startsWith("http")) {
             domainOrWebhook

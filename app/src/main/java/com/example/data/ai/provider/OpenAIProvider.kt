@@ -21,13 +21,13 @@ class OpenAIProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("OPENAI_API_KEY")
-        return key.isNotBlank() && key != "MY_OPENAI_API_KEY"
+        return !key.isNullOrBlank() && key != "MY_OPENAI_API_KEY"
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
         return try {
-            val key = CredentialRegistry.getRawValue("OPENAI_API_KEY")
+            val key = CredentialRegistry.getRawValue("OPENAI_API_KEY").orEmpty()
             val model = request.modelName ?: defaultModel
             val output = OpenAIClient.generateText(
                 prompt = request.prompt,

@@ -8,6 +8,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations ORDER BY isPinned DESC, updatedTimestamp DESC")
     fun getAllConversations(): Flow<List<ConversationEntity>>
 
+    @Query("SELECT * FROM conversations")
+    suspend fun getAllConversationsSync(): List<ConversationEntity>
+
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getConversationById(id: String): ConversationEntity?
 
@@ -22,6 +25,9 @@ interface ConversationDao {
 interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     fun getMessagesForConversation(conversationId: String): Flow<List<MessageEntity>>
+
+    @Query("SELECT * FROM messages ORDER BY timestamp ASC")
+    suspend fun getAllMessagesSync(): List<MessageEntity>
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     suspend fun getMessagesListForConversation(conversationId: String): List<MessageEntity>
@@ -49,6 +55,9 @@ interface MessageDao {
 interface MemoryDao {
     @Query("SELECT * FROM memories ORDER BY importanceScore DESC, timestamp DESC")
     fun getAllMemories(): Flow<List<MemoryEntity>>
+
+    @Query("SELECT * FROM memories")
+    suspend fun getAllMemoriesSync(): List<MemoryEntity>
 
     @Query("SELECT * FROM memories ORDER BY importanceScore DESC, timestamp DESC")
     suspend fun getMemoriesList(): List<MemoryEntity>
@@ -80,6 +89,9 @@ interface AgentDao {
     @Query("SELECT * FROM agents ORDER BY name ASC")
     fun getAllAgents(): Flow<List<AgentEntity>>
 
+    @Query("SELECT * FROM agents")
+    suspend fun getAllAgentsSync(): List<AgentEntity>
+
     @Query("SELECT * FROM agents WHERE id = :id")
     suspend fun getAgentById(id: String): AgentEntity?
 
@@ -109,6 +121,9 @@ interface TaskDao {
 
     @Query("SELECT * FROM tasks ORDER BY isCompleted ASC, priority DESC")
     fun getAllTasks(): Flow<List<TaskEntity>>
+
+    @Query("SELECT * FROM tasks")
+    suspend fun getAllTasksSync(): List<TaskEntity>
 
     @Query("SELECT * FROM tasks WHERE isCompleted = 0 ORDER BY priority DESC LIMIT 20")
     suspend fun getActiveTasksList(): List<TaskEntity>
@@ -149,9 +164,31 @@ interface SettingDao {
     @Query("SELECT * FROM settings")
     fun getAllSettings(): Flow<List<SettingEntity>>
 
+    @Query("SELECT * FROM settings")
+    suspend fun getAllSettingsSync(): List<SettingEntity>
+
     @Query("SELECT value FROM settings WHERE `key` = :key")
     suspend fun getSettingValue(key: String): String?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSetting(setting: SettingEntity)
+
+    @Query("DELETE FROM settings WHERE `key` = :key")
+    suspend fun deleteSetting(key: String)
 }
+
+@Dao
+interface DeveloperLogDao {
+    @Query("SELECT * FROM developer_logs ORDER BY timestamp DESC LIMIT 200")
+    fun getAllLogs(): Flow<List<DeveloperLogEntity>>
+
+    @Query("SELECT * FROM developer_logs ORDER BY timestamp DESC LIMIT 200")
+    suspend fun getAllLogsList(): List<DeveloperLogEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLog(log: DeveloperLogEntity)
+
+    @Query("DELETE FROM developer_logs")
+    suspend fun clearLogs()
+}
+

@@ -17,7 +17,7 @@ object CanvaClient {
         val clientId = CredentialRegistry.getRawValue("CANVA_CLIENT_ID")
         val clientSecret = CredentialRegistry.getRawValue("CANVA_CLIENT_SECRET")
 
-        if (clientId.isBlank() && clientSecret.isBlank()) return@withContext null
+        if (clientId.isNullOrBlank() && clientSecret.isNullOrBlank()) return@withContext null
 
         try {
             val exportDir = File(context.cacheDir, "canva_exports")
