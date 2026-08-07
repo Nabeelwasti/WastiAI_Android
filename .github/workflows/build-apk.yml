@@ -40,7 +40,6 @@ jobs:
         fi
 
     - name: Build Debug APK
-          - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Inject GitHub Secrets into .env file
