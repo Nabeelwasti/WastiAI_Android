@@ -38,8 +38,8 @@ jobs:
           base64 -d debug.keystore.base64 > debug.keystore
           echo "Restored debug.keystore from base64"
         fi
-        
-      - name: Inject GitHub Secrets into .env file
+
+              - name: Inject GitHub Secrets into .env file
         run: |
           echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
           echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
@@ -65,8 +65,10 @@ jobs:
           echo "CANVA_CLIENT_SECRET=${{ secrets.CANVA_CLIENT_SECRET }}" >> .env
           echo "DRIVE_CLIENT_ID=${{ secrets.BACKEND_DRIVE_CLIENT_ID }}" >> .env
           echo "DRIVE_CLIENT_SECRET=${{ secrets.BACKEND_DRIVE_CLIENT_SECRET }}" >> .env
-- name: Build Debug APK
+
+      - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
+        
         
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
