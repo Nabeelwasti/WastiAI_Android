@@ -68,7 +68,6 @@ jobs:
           echo "CANVA_CLIENT_SECRET=${{ secrets.CANVA_CLIENT_SECRET }}" >> .env
           echo "DRIVE_CLIENT_ID=${{ secrets.BACKEND_DRIVE_CLIENT_ID }}" >> .env
           echo "DRIVE_CLIENT_SECRET=${{ secrets.BACKEND_DRIVE_CLIENT_SECRET }}" >> .env
-      run: gradle assembleDebug --stacktrace
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
