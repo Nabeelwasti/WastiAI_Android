@@ -165,7 +165,8 @@ data class LeadEntity(
     val draftedPitch: String = "",
     val status: String = "DISCOVERED",
     val clientEmail: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isSynthetic: Boolean = false
 )
 
 @Entity(tableName = "invoices")
@@ -179,4 +180,3 @@ data class InvoiceEntity(
     val dueDate: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
-
