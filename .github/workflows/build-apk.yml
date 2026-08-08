@@ -28,6 +28,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.1.0'
 
       - name: Accept Android SDK Licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -86,4 +88,4 @@ jobs:
             - Fully secure EncryptedSharedPreferences vault
             - Multi-lane parallel orchestration engine
             - Automated GitHub Secret .env injection
-          token: ${{ secrets.GITHUB_PAT }}
+          token: ${{ secrets.GITHUB_TOKEN }}
