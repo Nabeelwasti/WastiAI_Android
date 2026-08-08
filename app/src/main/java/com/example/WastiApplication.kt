@@ -16,8 +16,15 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 class WastiApplication : Application() {
+
+    companion object {
+        var instance: WastiApplication? = null
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
+        instance = this
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
         // Install Global Uncaught Exception Handler for Crash Telemetry & Debugging

@@ -49,7 +49,7 @@ object GeminiClient {
 
     suspend fun generateText(
         prompt: String,
-        systemInstruction: String = "You are Wasti OS, an advanced AI Operating System.",
+        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
         modelName: String = "gemini-3.6-flash",
         history: List<GeminiContent> = emptyList(),
         imageInlineData: String? = null,
@@ -59,8 +59,7 @@ object GeminiClient {
         val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey
         else com.example.data.credential.CredentialRegistry.getRawValue("GEMINI_API_KEY")
 
-        val langMandate = WastiUrduLanguageEngine.getLanguagePromptMandate(prompt)
-        val combinedSystemPrompt = "$systemInstruction\n\n$langMandate"
+        val combinedSystemPrompt = "$systemInstruction\n\nCRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language."
 
         if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
             throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
@@ -82,21 +81,37 @@ object GeminiClient {
 
         contentsList.add(GeminiContent(role = "user", parts = userParts))
 
-        val isResearchQuery = prompt.lowercase().run {
-            contains("search") || contains("latest") || contains("news") || contains("research") ||
-            contains("price") || contains("who is") || contains("what is") || contains("current") ||
-            contains("find out") || contains("check online") || contains("today")
-        }
-
-        val toolsList = if (isResearchQuery || imageInlineData.isNullOrBlank()) {
-            listOf(GeminiTool())
-        } else null
+        val nativeScreenTools = listOf(
+            GeminiTool(googleSearch = emptyMap()),
+            GeminiTool(
+                functionDeclarations = listOf(
+                    GeminiFunctionDeclaration(
+                        name = "read_active_screen",
+                        description = "Returns the parsed text and UI nodes currently visible on the user's screen."
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "tap_element",
+                        description = "Instructs the OS to tap a specific text label or button ID on the screen.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "elementIdentifier" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "Text label or view ID of the element to tap on screen."
+                                )
+                            ),
+                            required = listOf("elementIdentifier")
+                        )
+                    )
+                )
+            )
+        )
 
         val request = GeminiRequest(
             contents = contentsList,
             systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = combinedSystemPrompt))),
             generationConfig = GeminiGenerationConfig(temperature = 0.7f),
-            tools = toolsList
+            tools = nativeScreenTools
         )
 
         val candidateModels = listOfNotNull(
@@ -116,7 +131,45 @@ object GeminiClient {
 
             try {
                 val response = api.generateContent(model = resolvedModel, apiKey = apiKey, request = request)
-                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                val candidatePart = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()
+                val functionCall = candidatePart?.functionCall
+
+                if (functionCall != null) {
+                    val resultOutput = when (functionCall.name) {
+                        "read_active_screen" -> com.example.data.device.WastiDeviceController.readScreenContent()
+                        "tap_element" -> {
+                            val targetId = functionCall.args?.get("elementIdentifier") ?: ""
+                            com.example.data.device.WastiDeviceController.simulateTap(targetElement = targetId).userFeedback
+                        }
+                        else -> "Function '${functionCall.name}' executed."
+                    }
+
+                    // Follow-up request carrying functionResponse
+                    val followUpContents = contentsList.toMutableList()
+                    followUpContents.add(GeminiContent(role = "model", parts = listOf(candidatePart)))
+                    followUpContents.add(
+                        GeminiContent(
+                            role = "user",
+                            parts = listOf(
+                                GeminiPart(
+                                    functionResponse = GeminiFunctionResponse(
+                                        name = functionCall.name,
+                                        response = mapOf("result" to resultOutput)
+                                    )
+                                )
+                            )
+                        )
+                    )
+
+                    val followUpReq = request.copy(contents = followUpContents)
+                    val followUpResponse = api.generateContent(model = resolvedModel, apiKey = apiKey, request = followUpReq)
+                    val text = followUpResponse.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                    if (!text.isNullClassOrBlank()) {
+                        return@withContext text!!
+                    }
+                }
+
+                val text = candidatePart?.text
                 if (!text.isNullClassOrBlank()) {
                     return@withContext text!!
                 }
@@ -140,27 +193,86 @@ object GeminiClient {
         throw lastException ?: Exception("Gemini API did not return text response.")
     }
 
+    suspend fun generateContentRaw(
+        contentsList: List<GeminiContent>,
+        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+        modelName: String = "gemini-3.6-flash",
+        customApiKey: String? = null
+    ): GeminiResponse = withContext(Dispatchers.IO) {
+        val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey
+        else com.example.data.credential.CredentialRegistry.getRawValue("GEMINI_API_KEY")
+
+        if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
+            throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
+        }
+
+        val nativeScreenTools = listOf(
+            GeminiTool(googleSearch = emptyMap()),
+            GeminiTool(
+                functionDeclarations = listOf(
+                    GeminiFunctionDeclaration(
+                        name = "read_active_screen",
+                        description = "Returns the parsed text and UI nodes currently visible on the user's screen."
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "tap_element",
+                        description = "Instructs the OS to tap a specific text label or button ID on the screen.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "elementIdentifier" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "Text label or view ID of the element to tap on screen."
+                                )
+                            ),
+                            required = listOf("elementIdentifier")
+                        )
+                    )
+                )
+            )
+        )
+
+        val request = GeminiRequest(
+            contents = contentsList,
+            systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = systemInstruction))),
+            generationConfig = GeminiGenerationConfig(temperature = 0.7f),
+            tools = nativeScreenTools
+        )
+
+        api.generateContent(model = modelName, apiKey = apiKey, request = request)
+    }
+
     private fun String?.isNullClassOrBlank(): Boolean = this == null || this.isBlank()
 
     private fun synthesizeLocalAiResponse(prompt: String, systemInstruction: String): String {
         val lower = prompt.lowercase().trim()
         val lang = WastiUrduLanguageEngine.detectLanguage(prompt)
 
-        // Pure Pakistani Urdu response generator for Urdu & Roman Urdu inputs
-        if (lang == WastiUrduLanguageEngine.LanguageType.ROMAN_URDU || lang == WastiUrduLanguageEngine.LanguageType.PURE_URDU) {
+        if (lang == WastiUrduLanguageEngine.LanguageType.ROMAN_URDU) {
             return when {
-                lower.contains("kaise") || lower.contains("haal") || lower.contains("kaise ho") || lower.contains("کیسے") || lower.contains("حال") ->
-                    "میں بالکل ٹھیک ہوں، جناب! آپ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟"
-                lower.contains("salam") || lower.contains("assalam") || lower.contains("سلام") ->
-                    "وعلیکم السلام، سر! واسطی اے آئی آپ کی خدمت میں حاضر ہے۔ فرمائیے کیا حکم ہے؟"
-                lower.contains("naam") || lower.contains("wasti") || lower.contains("نام") ->
-                    "میرا نام واسطی اے آئی (Wasti AI) ہے۔ میں سید نبیل واسطی کا ذاتی AI اسسٹنٹ اور موبائل OS کنٹرولر ہوں۔"
-                lower.contains("shukriya") || lower.contains("shukria") || lower.contains("thanks") || lower.contains("شکریہ") ->
-                    "بہت شکریہ، جناب! آپ کی خدمت کر کے مجھے دلی خوشی ہوئی اور افتخار حاصل ہوا۔"
-                lower.contains("open") || lower.contains("karo") || lower.contains("bhejo") || lower.contains("whatsapp") ->
-                    "جی بالکل جناب! میں آپ کا حکم پورا کر رہا ہوں۔ واسطی موبائل سسٹم فوری ایکشن لے رہا ہے۔"
+                lower.contains("kaise") || lower.contains("haal") || lower.contains("kaise ho") ->
+                    "Main bilkul theek hoon, Sir! Aap batayein, main aap ki kya khidmat kar sakta hoon?"
+                lower.contains("salam") || lower.contains("assalam") ->
+                    "Walaikum Assalam, Sir! Wasti AI aap ki khidmat mein hazir hai. Farmiye kya hukum hai?"
+                lower.contains("naam") || lower.contains("wasti") ->
+                    "Mera naam Wasti AI hai. Main aap ka personal AI assistant aur mobile OS controller hoon."
+                lower.contains("shukriya") || lower.contains("shukria") || lower.contains("thanks") ->
+                    "Bahat shukriya, Sir! Aap ki khidmat kar ke mujhe khushi hui."
                 else ->
-                    "جی جناب! میں آپ کی بات بالکل سمجھ گیا ہوں۔ واسطی اے آئی آپ کے حکم پر عمل کر رہا ہے: \"$prompt\"۔"
+                    "Ji Sir! Main aap ki baat samajh gaya hoon. Wasti AI aap ke hukum par amal kar raha hai."
+            }
+        }
+
+        if (lang == WastiUrduLanguageEngine.LanguageType.PURE_URDU) {
+            return when {
+                lower.contains("کیسے") || lower.contains("حال") ->
+                    "میں بالکل ٹھیک ہوں، جناب! آپ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟"
+                lower.contains("سلام") ->
+                    "وعلیکم السلام، سر! واسطی اے آئی آپ کی خدمت میں حاضر ہے۔ فرمائیے کیا حکم ہے؟"
+                lower.contains("نام") ->
+                    "میرا نام واسطی اے آئی (Wasti AI) ہے۔ میں آپ کا ذاتی AI اسسٹنٹ ہوں۔"
+                else ->
+                    "جی جناب! میں آپ کی بات بالکل سمجھ گیا ہوں۔ واسطی اے آئی آپ کے حکم پر عمل کر رہا ہے۔"
             }
         }
 

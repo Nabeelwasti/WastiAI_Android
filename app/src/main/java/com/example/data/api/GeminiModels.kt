@@ -10,9 +10,23 @@ data class GeminiInlineData(
 )
 
 @JsonClass(generateAdapter = true)
+data class GeminiFunctionCall(
+    @field:Json(name = "name") val name: String,
+    @field:Json(name = "args") val args: Map<String, String>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiFunctionResponse(
+    @field:Json(name = "name") val name: String,
+    @field:Json(name = "response") val response: Map<String, String>
+)
+
+@JsonClass(generateAdapter = true)
 data class GeminiPart(
     @field:Json(name = "text") val text: String? = null,
-    @field:Json(name = "inlineData") val inlineData: GeminiInlineData? = null
+    @field:Json(name = "inlineData") val inlineData: GeminiInlineData? = null,
+    @field:Json(name = "functionCall") val functionCall: GeminiFunctionCall? = null,
+    @field:Json(name = "functionResponse") val functionResponse: GeminiFunctionResponse? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -30,8 +44,29 @@ data class GeminiGenerationConfig(
 )
 
 @JsonClass(generateAdapter = true)
+data class GeminiProperty(
+    @field:Json(name = "type") val type: String = "STRING",
+    @field:Json(name = "description") val description: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiFunctionParameters(
+    @field:Json(name = "type") val type: String = "OBJECT",
+    @field:Json(name = "properties") val properties: Map<String, GeminiProperty>? = null,
+    @field:Json(name = "required") val required: List<String>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GeminiFunctionDeclaration(
+    @field:Json(name = "name") val name: String,
+    @field:Json(name = "description") val description: String,
+    @field:Json(name = "parameters") val parameters: GeminiFunctionParameters? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class GeminiTool(
-    @field:Json(name = "googleSearch") val googleSearch: Map<String, String>? = emptyMap()
+    @field:Json(name = "googleSearch") val googleSearch: Map<String, String>? = null,
+    @field:Json(name = "functionDeclarations") val functionDeclarations: List<GeminiFunctionDeclaration>? = null
 )
 
 @JsonClass(generateAdapter = true)

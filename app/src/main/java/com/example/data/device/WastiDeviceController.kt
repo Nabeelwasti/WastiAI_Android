@@ -12,6 +12,7 @@ import com.example.data.db.MemoryEntity
 import com.example.data.db.SettingEntity
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
+import com.example.service.WastiAccessibilityService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -211,24 +212,38 @@ object WastiDeviceController {
     }
 
     // 3. Screen Reader & Active UI Node Inspection
-    fun readScreenContent(context: Context): String {
+    fun readScreenContent(context: Context? = null): String {
+        val ctx = context ?: com.example.WastiApplication.instance
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            return service.dumpScreenContent()
+        }
+
         return """
-            [Wasti Live Screen Reader Active]
-            • Active Window: Wasti OS Mobile Assistant
-            • Current Screen Elements:
-              - App Header: "Wasti Master AI Super-Agent"
-              - Voice Control Status: "HD Voice Call Active"
-              - Active Input Field: "Prompt / Command Input"
-              - Interactive Buttons: "Mic", "Send", "Scan Website", "Open App", "Settings"
-              - System Status Bar: Battery 98%, WiFi Connected, Speech Engine Online
-            • Active Text Summary: "Wasti AI is ready to read screen, open apps, post messages, and execute commands."
+            [Wasti Accessibility Service Inactive]
+            • Wasti Accessibility Service is not currently enabled in Android Accessibility Settings.
+            • To enable real-time screen node reading and tap execution across apps, please enable 'Wasti OS' in Settings -> Accessibility.
+            • App Package: ${ctx?.packageName ?: "com.example"}
         """.trimIndent()
     }
 
     // 4. Tap / Click / Touch Simulation
-    fun simulateTap(context: Context, targetElement: String): DeviceCommandResult {
-        Toast.makeText(context, "Wasti AI: Tapping on '$targetElement'...", Toast.LENGTH_SHORT).show()
-        return DeviceCommandResult(true, "Simulated tap action on element: '$targetElement'", "SIMULATE_TAP")
+    fun simulateTap(context: Context? = null, targetElement: String): DeviceCommandResult {
+        val ctx = context ?: com.example.WastiApplication.instance
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.clickElement(targetElement)
+            return if (success) {
+                DeviceCommandResult(true, "Successfully executed ACTION_CLICK on target '$targetElement' via Wasti Accessibility Engine.", "SIMULATE_TAP")
+            } else {
+                DeviceCommandResult(false, "Wasti Accessibility Engine scanned the window but target '$targetElement' was not found or clickable.", "SIMULATE_TAP")
+            }
+        }
+
+        if (ctx != null) {
+            Toast.makeText(ctx, "Please enable Wasti Accessibility Service in Settings to tap '$targetElement'", Toast.LENGTH_LONG).show()
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Enable it in Settings -> Accessibility to perform real tap actions.", "SERVICE_INACTIVE")
     }
 
     // 5. Connect Online Voice & AI Provider Models

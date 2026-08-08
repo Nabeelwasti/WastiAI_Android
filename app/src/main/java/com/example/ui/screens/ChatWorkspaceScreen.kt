@@ -259,6 +259,29 @@ fun ChatWorkspaceScreen(
         }
     }
 
+    fun launchNativeSpeechToText() {
+        try {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now to Wasti AI...")
+            }
+            speechLauncher.launch(intent)
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(context, "Speech recognition unavailable on this device", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            launchNativeSpeechToText()
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for voice recognition.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     val listState = rememberLazyListState()
 
     val filteredMessages = remember(messages, searchQuery) {
@@ -776,29 +799,25 @@ fun ChatWorkspaceScreen(
                     )
                 }
 
-                val isListening = sttState == STTState.LISTENING || sttState == STTState.PROCESSING
                 IconButton(
                     onClick = {
-                        if (isListening) {
-                            sttProvider?.stopListening()
+                        val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                            context,
+                            android.Manifest.permission.RECORD_AUDIO
+                        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                        if (hasPermission) {
+                            launchNativeSpeechToText()
                         } else {
-                            if (sttProvider?.isHardwareAvailable(context) == true) {
-                                sttProvider.startListening(context) { res ->
-                                    if (res.transcript.isNotBlank()) {
-                                        promptInput = res.transcript
-                                    }
-                                }
-                            } else {
-                                showVoiceModal = true
-                            }
+                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
                     },
                     modifier = Modifier.testTag("voice_input_button")
                 ) {
                     Icon(
-                        imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
-                        contentDescription = "Push to Talk Dictation",
-                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Native Speech Recognition",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
 
