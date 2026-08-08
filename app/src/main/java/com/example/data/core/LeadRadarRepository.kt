@@ -42,7 +42,8 @@ data class LeadItemEntity(
     val draftedPitch: String = "",
     var status: LeadStatus = LeadStatus.DISCOVERED,
     val clientEmail: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val isSynthetic: Boolean = false
 )
 
 object LeadRadarRepository {
@@ -85,10 +86,10 @@ object LeadRadarRepository {
 
         val defaultLeads = listOf(
             LeadItemEntity(
-                title = "Need High-Volume Reels & YouTube Shorts Video Editor",
-                link = "https://www.upwork.com/jobs/~01wasti101",
-                description = "Looking for a dedicated specialist in Premiere Pro & After Effects to handle 10-15 short-form videos weekly with fast turnaround.",
-                pubDate = "10 mins ago",
+                title = "[Sample] Need High-Volume Reels & YouTube Shorts Video Editor",
+                link = "",
+                description = "This is an example lead shown on first launch so you can see how Lead Radar works. It is not a real client posting. Looking for a dedicated specialist in Premiere Pro & After Effects to handle 10-15 short-form videos weekly with fast turnaround.",
+                pubDate = "Sample data",
                 category = "Video Editing",
                 matchScore = 96,
                 matchedSkills = listOf("Video Editing", "AI Automation"),
@@ -107,13 +108,14 @@ object LeadRadarRepository {
                     I am ready to start immediately. Let's discuss your project requirements!
                 """.trimIndent(),
                 status = LeadStatus.DISCOVERED,
-                clientEmail = "hiring.manager@clientcorp.com"
+                clientEmail = "",
+                isSynthetic = true
             ),
             LeadItemEntity(
-                title = "Graphic Designer Needed for Complete Brand Identity & Vector Logos",
-                link = "https://www.upwork.com/jobs/~02wasti102",
-                description = "Seeking a top candidate for CorelDRAW, Photoshop logo design, social media banners, and print-ready CDR/vector templates.",
-                pubDate = "25 mins ago",
+                title = "[Sample] Graphic Designer Needed for Complete Brand Identity & Vector Logos",
+                link = "",
+                description = "This is an example lead shown on first launch so you can see how Lead Radar works. It is not a real client posting. Seeking a top candidate for CorelDRAW, Photoshop logo design, social media banners, and print-ready CDR/vector templates.",
+                pubDate = "Sample data",
                 category = "Graphic Design",
                 matchScore = 92,
                 matchedSkills = listOf("Graphic Design", "CorelDRAW", "Canva"),
@@ -124,14 +126,15 @@ object LeadRadarRepository {
 
                     Equipped with advanced CorelDRAW, Illustrator, and Photoshop design suites, I guarantee clean geometry, premium aesthetics, and swift deliverables.
                 """.trimIndent(),
-                status = LeadStatus.PROPOSAL_SENT,
-                clientEmail = "brand.studio@agency.org"
+                status = LeadStatus.DISCOVERED,
+                clientEmail = "",
+                isSynthetic = true
             ),
             LeadItemEntity(
-                title = "Architectural Floor Plan 2D & 3D AutoCAD Drafting",
-                link = "https://www.upwork.com/jobs/~03wasti103",
-                description = "Require a CAD draftsman to convert architectural PDF hand sketches into precise 2D DWG layout plans.",
-                pubDate = "1 hour ago",
+                title = "[Sample] Architectural Floor Plan 2D & 3D AutoCAD Drafting",
+                link = "",
+                description = "This is an example lead shown on first launch so you can see how Lead Radar works. It is not a real client posting. Require a CAD draftsman to convert architectural PDF hand sketches into precise 2D DWG layout plans.",
+                pubDate = "Sample data",
                 category = "AutoCAD",
                 matchScore = 88,
                 matchedSkills = listOf("AutoCAD"),
@@ -142,8 +145,9 @@ object LeadRadarRepository {
 
                     Available to start immediately with rapid revision cycles.
                 """.trimIndent(),
-                status = LeadStatus.NEGOTIATING,
-                clientEmail = "contact@buildtech.io"
+                status = LeadStatus.DISCOVERED,
+                clientEmail = "",
+                isSynthetic = true
             )
         )
 
@@ -170,10 +174,13 @@ object LeadRadarRepository {
                 matchScore = eval.matchScore,
                 matchedSkills = eval.matchedSkills,
                 draftedPitch = eval.draftedPitch,
-                status = LeadStatus.DISCOVERED
+                status = LeadStatus.DISCOVERED,
+                isSynthetic = lead.isSynthetic
             )
 
-            if (eval.matchScore >= 85) {
+            // Never notify or encourage outreach for synthetic/fallback demo leads —
+            // they are not real client postings and have no valid contact link.
+            if (eval.matchScore >= 85 && !lead.isSynthetic) {
                 WastiNotificationManager.sendHighMatchLeadNotification(
                     context = context,
                     leadTitle = lead.title,
@@ -235,7 +242,8 @@ object LeadRadarRepository {
             draftedPitch = draftedPitch,
             status = status.name,
             clientEmail = clientEmail,
-            timestamp = timestamp
+            timestamp = timestamp,
+            isSynthetic = isSynthetic
         )
     }
 
@@ -252,7 +260,8 @@ object LeadRadarRepository {
             draftedPitch = draftedPitch,
             status = try { LeadStatus.valueOf(status) } catch (_: Exception) { LeadStatus.DISCOVERED },
             clientEmail = clientEmail,
-            timestamp = timestamp
+            timestamp = timestamp,
+            isSynthetic = isSynthetic
         )
     }
 
