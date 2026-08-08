@@ -123,7 +123,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         LeadEntity::class,
         InvoiceEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -162,4 +162,3 @@ abstract class WastiDatabase : RoomDatabase() {
         }
     }
 }
-
