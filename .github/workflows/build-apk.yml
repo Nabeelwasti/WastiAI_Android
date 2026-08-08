@@ -67,7 +67,7 @@ jobs:
           echo "DRIVE_CLIENT_SECRET=${{ secrets.BACKEND_DRIVE_CLIENT_SECRET }}" >> .env
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
