@@ -65,7 +65,7 @@ object GroqClient {
 
     suspend fun generateText(
         prompt: String,
-        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+        systemInstruction: String = "STRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.",
         modelName: String = "llama-3.3-70b-versatile",
         customApiKey: String? = null
     ): String = withContext(Dispatchers.IO) {

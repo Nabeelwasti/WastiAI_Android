@@ -93,6 +93,34 @@ object WorkflowEngine {
             )
         )
 
+        registerRule(
+            WorkflowRule(
+                id = "rule_lead_radar_auto_scan",
+                name = "Lead Radar Auto-Scan & Evaluation",
+                description = "Automatically scans live job RSS feeds for user's SkillMatrix services and evaluates client match scores.",
+                trigger = WorkflowTrigger(type = TriggerType.ON_SCHEDULE),
+                primaryAction = WorkflowAction(
+                    type = ActionType.RUN_TOOL,
+                    targetId = "lead_radar",
+                    payloadParameters = mapOf("query" to "Video Editing & Graphic Design")
+                )
+            )
+        )
+
+        registerRule(
+            WorkflowRule(
+                id = "rule_auto_proposal_drafting",
+                name = "Auto Client Proposal Generator",
+                description = "Drafts custom proposals and outreach messages automatically when high-scoring client opportunities are discovered.",
+                trigger = WorkflowTrigger(type = TriggerType.ON_EVENT),
+                primaryAction = WorkflowAction(
+                    type = ActionType.STORE_MEMORY,
+                    targetId = "Last_Auto_Proposal_Draft",
+                    payloadParameters = mapOf("value" to "Respected Hiring Client, I came across your job request and am equipped with full SkillMatrix expertise to deliver with top precision.")
+                )
+            )
+        )
+
         // Listen for WastiEventBus events to evaluate triggers automatically
         scope.launch {
             WastiEventBus.events.collect { event ->

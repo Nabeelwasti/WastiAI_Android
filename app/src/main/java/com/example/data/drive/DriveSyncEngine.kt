@@ -199,7 +199,7 @@ object DriveSyncEngine {
                 id = firstFile.getString("id"),
                 name = firstFile.optString("name", BACKUP_FILE_NAME),
                 mimeType = firstFile.optString("mimeType", "application/json"),
-                modifiedTime = firstFile.optString("modifiedTime", null),
+                modifiedTime = firstFile.optString("modifiedTime", ""),
                 size = if (firstFile.has("size")) firstFile.getLong("size") else null
             )
         }
@@ -387,8 +387,8 @@ object DriveSyncEngine {
                                 agentId = obj.optString("agentId", "executive_brain"),
                                 modelUsed = obj.optString("modelUsed", "gemini-3.5-flash"),
                                 tokensUsed = obj.optInt("tokensUsed", 0),
-                                toolCallsJson = obj.optString("toolCallsJson", null),
-                                thinkingContent = obj.optString("thinkingContent", null)
+                                toolCallsJson = obj.optString("toolCallsJson", ""),
+                                thinkingContent = obj.optString("thinkingContent", "")
                             )
                         )
                     }
@@ -406,7 +406,7 @@ object DriveSyncEngine {
                                 value = obj.getString("value"),
                                 importanceScore = obj.optDouble("importanceScore", 0.9).toFloat(),
                                 timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                                sourceMessageId = obj.optString("sourceMessageId", null)
+                                sourceMessageId = obj.optString("sourceMessageId", "")
                             )
                         )
                     }

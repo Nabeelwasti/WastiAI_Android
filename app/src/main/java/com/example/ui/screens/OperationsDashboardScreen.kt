@@ -21,12 +21,19 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.core.AppStartupManager
+import com.example.data.core.ClientInvoiceItem
+import com.example.data.core.ClientInvoiceManager
+import com.example.data.core.InvoiceStatus
+import com.example.data.core.LeadItemEntity
+import com.example.data.core.LeadRadarRepository
+import com.example.data.core.LeadStatus
 import com.example.data.evaluation.AIEvaluationEngine
 import com.example.data.evaluation.ProviderQualityScore
 import com.example.data.ops.OperationsManager
@@ -34,17 +41,30 @@ import com.example.data.ops.ProviderHealthSummary
 import com.example.data.tool.ToolRegistry
 import com.example.data.worker.BackgroundTaskManager
 import com.example.data.workflow.WorkflowEngine
+import kotlinx.coroutines.launch
 
 @Composable
 fun OperationsDashboardScreen() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val stats by OperationsManager.dashboardStatsFlow.collectAsStateWithLifecycle()
     val bgJobs by BackgroundTaskManager.jobsStateFlow.collectAsStateWithLifecycle()
     val workflowRules by WorkflowEngine.rulesStateFlow.collectAsStateWithLifecycle()
     val qualityScores by AIEvaluationEngine.qualityScoresFlow.collectAsStateWithLifecycle()
+    val leads by LeadRadarRepository.leadsFlow.collectAsStateWithLifecycle()
+    val invoices by ClientInvoiceManager.invoicesFlow.collectAsStateWithLifecycle()
     val tools = remember { ToolRegistry.getAllTools() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Telemetry & Health", "Background Maintenance", "AI Quality Scores", "Tools & Workflows")
+    val tabTitles = listOf("Telemetry & Health", "Lead Radar & CRM", "Invoices & Ledger", "Background Maintenance", "AI Quality Scores", "Tools & Workflows")
+
+    var customKeywordInput by remember { mutableStateOf("Video Editing & Graphic Design") }
+    var isScanningLeads by remember { mutableStateOf(false) }
+    var selectedKanbanFilter by remember { mutableStateOf<LeadStatus?>(null) }
+
+    var newClientName by remember { mutableStateOf("") }
+    var newMilestone by remember { mutableStateOf("") }
+    var newAmount by remember { mutableStateOf("") }
 
     LazyColumn(
         modifier = Modifier
@@ -245,6 +265,288 @@ fun OperationsDashboardScreen() {
             }
 
             1 -> {
+                // Lead Radar & CRM Kanban
+                item {
+                    Text(
+                        text = "Lead Radar & Client CRM Kanban",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Custom Client Scraping Profile", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = customKeywordInput,
+                                    onValueChange = { customKeywordInput = it },
+                                    label = { Text("Target Skill / Query", fontSize = 11.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                                Button(
+                                    onClick = {
+                                        if (customKeywordInput.isNotBlank()) {
+                                            isScanningLeads = true
+                                            coroutineScope.launch {
+                                                LeadRadarRepository.scanAndEvaluateLeads(context, customKeywordInput)
+                                                isScanningLeads = false
+                                            }
+                                        }
+                                    },
+                                    enabled = !isScanningLeads,
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    if (isScanningLeads) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                                    } else {
+                                        Icon(Icons.Default.Radar, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                            // One-Tap Analytics & Data Export Toolbar
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val csv = LeadRadarRepository.exportLeadsToCsv(leads)
+                                        LeadRadarRepository.copyToClipboard(context, "Leads CSV Data", csv)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(4.dp)
+                                ) {
+                                    Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("CSV Export", fontSize = 11.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        val json = LeadRadarRepository.exportLeadsToJson(leads)
+                                        LeadRadarRepository.copyToClipboard(context, "Leads JSON Data", json)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("JSON Export", fontSize = 11.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        val txt = LeadRadarRepository.exportProposalsToText(leads)
+                                        LeadRadarRepository.copyToClipboard(context, "Proposals Export", txt)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(4.dp)
+                                ) {
+                                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("Proposals", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Kanban Stage Filter Row
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedKanbanFilter == null,
+                                onClick = { selectedKanbanFilter = null },
+                                label = { Text("All (${leads.size})", fontSize = 11.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = selectedKanbanFilter == LeadStatus.DISCOVERED,
+                                onClick = { selectedKanbanFilter = LeadStatus.DISCOVERED },
+                                label = { Text("🔍 Discovered (${leads.count { it.status == LeadStatus.DISCOVERED }})", fontSize = 11.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = selectedKanbanFilter == LeadStatus.PROPOSAL_SENT,
+                                onClick = { selectedKanbanFilter = LeadStatus.PROPOSAL_SENT },
+                                label = { Text("✉️ Sent (${leads.count { it.status == LeadStatus.PROPOSAL_SENT }})", fontSize = 11.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = selectedKanbanFilter == LeadStatus.NEGOTIATING,
+                                onClick = { selectedKanbanFilter = LeadStatus.NEGOTIATING },
+                                label = { Text("🤝 Negotiating (${leads.count { it.status == LeadStatus.NEGOTIATING }})", fontSize = 11.sp) }
+                            )
+                        }
+                        item {
+                            FilterChip(
+                                selected = selectedKanbanFilter == LeadStatus.CLOSED,
+                                onClick = { selectedKanbanFilter = LeadStatus.CLOSED },
+                                label = { Text("✅ Closed (${leads.count { it.status == LeadStatus.CLOSED }})", fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+
+                val filteredLeads = if (selectedKanbanFilter != null) {
+                    leads.filter { it.status == selectedKanbanFilter }
+                } else leads
+
+                if (filteredLeads.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Text(
+                                text = "No lead records in this CRM stage yet.",
+                                modifier = Modifier.padding(16.dp),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                } else {
+                    items(filteredLeads) { lead ->
+                        KanbanLeadCard(lead = lead, context = context)
+                    }
+                }
+            }
+
+            2 -> {
+                // Invoices & Ledger
+                item {
+                    Text(
+                        text = "Automated Billing Ledger & Client Invoices",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // Summary Row
+                item {
+                    val totalInvoiced = invoices.sumOf { it.amountUsd }
+                    val totalPaid = invoices.filter { it.status == InvoiceStatus.PAID }.sumOf { it.amountUsd }
+                    val totalPending = invoices.filter { it.status == InvoiceStatus.PENDING_PAYMENT || it.status == InvoiceStatus.INVOICED }.sumOf { it.amountUsd }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Total Revenue", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                Text("$${"%.0f".format(totalInvoiced)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Paid Received", fontSize = 10.sp, color = Color(0xFF047857))
+                                Text("$${"%.0f".format(totalPaid)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF047857))
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("Pending Due", fontSize = 10.sp, color = Color(0xFFB45309))
+                                Text("$${"%.0f".format(totalPending)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFB45309))
+                            }
+                        }
+                    }
+                }
+
+                // Create Invoice Form
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Draft New Client Invoice", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            OutlinedTextField(
+                                value = newClientName,
+                                onValueChange = { newClientName = it },
+                                label = { Text("Client Name / Agency", fontSize = 11.sp) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = newMilestone,
+                                onValueChange = { newMilestone = it },
+                                label = { Text("Project Milestone / Deliverables", fontSize = 11.sp) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedTextField(
+                                    value = newAmount,
+                                    onValueChange = { newAmount = it },
+                                    label = { Text("Amount ($ USD)", fontSize = 11.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true
+                                )
+                                Button(
+                                    onClick = {
+                                        val amt = newAmount.toDoubleOrNull() ?: 250.0
+                                        if (newClientName.isNotBlank() && newMilestone.isNotBlank()) {
+                                            ClientInvoiceManager.createInvoice(newClientName, newMilestone, amt)
+                                            newClientName = ""
+                                            newMilestone = ""
+                                            newAmount = ""
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Log Invoice", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                items(invoices) { invoice ->
+                    InvoiceLedgerCard(invoice = invoice, context = context)
+                }
+            }
+
+            3 -> {
                 // Background Maintenance Jobs
                 item {
                     Text(
@@ -298,7 +600,7 @@ fun OperationsDashboardScreen() {
                 }
             }
 
-            2 -> {
+            4 -> {
                 // AI Quality Scores
                 item {
                     Text(
@@ -331,7 +633,7 @@ fun OperationsDashboardScreen() {
                 }
             }
 
-            3 -> {
+            5 -> {
                 // Tools & Workflows
                 item {
                     Text(
@@ -601,6 +903,270 @@ fun StartupDiagnosticsCard(summary: com.example.data.core.StartupDiagnostic) {
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
+    var expandedPitch by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = when (lead.status) {
+                        LeadStatus.DISCOVERED -> Color(0xFF3B82F6)
+                        LeadStatus.PROPOSAL_SENT -> Color(0xFF8B5CF6)
+                        LeadStatus.NEGOTIATING -> Color(0xFFF59E0B)
+                        LeadStatus.CLOSED -> Color(0xFF10B981)
+                    }
+                ) {
+                    Text(
+                        text = lead.status.name,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${lead.matchScore}% Match",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF047857)
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = lead.title,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = lead.description,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (expandedPitch) 10 else 2
+            )
+
+            if (lead.matchedSkills.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    lead.matchedSkills.forEach { skill ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = skill,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+            // 1-Tap Client Outreach Toolbar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Button(
+                    onClick = { LeadRadarRepository.dispatchViaWhatsApp(context, lead.draftedPitch) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                    onClick = { LeadRadarRepository.dispatchViaEmail(context, "Proposal: ${lead.title}", lead.draftedPitch, lead.clientEmail) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Email Pitch", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = { expandedPitch = !expandedPitch },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text(if (expandedPitch) "Hide Pitch" else "View Pitch", fontSize = 10.sp)
+                }
+            }
+
+            if (expandedPitch && lead.draftedPitch.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text("Drafted Proposal Pitch:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(lead.draftedPitch, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // Move Stage Toolbar
+            Text("Move Stage:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                LeadStatus.values().forEach { st ->
+                    FilterChip(
+                        selected = lead.status == st,
+                        onClick = { LeadRadarRepository.updateLeadStatus(lead.id, st) },
+                        label = { Text(st.name.take(6), fontSize = 9.sp) },
+                        modifier = Modifier.height(26.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Context) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = invoice.clientName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = when (invoice.status) {
+                        InvoiceStatus.DRAFT -> MaterialTheme.colorScheme.surfaceVariant
+                        InvoiceStatus.INVOICED -> Color(0xFF3B82F6)
+                        InvoiceStatus.PENDING_PAYMENT -> Color(0xFFF59E0B)
+                        InvoiceStatus.PAID -> Color(0xFF10B981)
+                    }
+                ) {
+                    Text(
+                        text = invoice.status.name,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            Text(
+                text = invoice.projectMilestone,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Amount: $${String.format(java.util.Locale.US, "%.2f", invoice.amountUsd)} USD",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Due: ${invoice.dueDate}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = { ClientInvoiceManager.copyInvoiceToClipboard(context, invoice) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Copy Invoice", fontSize = 10.sp)
+                }
+
+                OutlinedButton(
+                    onClick = { ClientInvoiceManager.shareInvoiceViaEmail(context, invoice) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Email Client", fontSize = 10.sp)
+                }
+
+                if (invoice.status != InvoiceStatus.PAID) {
+                    Button(
+                        onClick = { ClientInvoiceManager.updateStatus(invoice.id, InvoiceStatus.PAID) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                    ) {
+                        Text("Mark Paid", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

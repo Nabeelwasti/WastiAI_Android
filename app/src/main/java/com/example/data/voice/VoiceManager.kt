@@ -55,6 +55,11 @@ object VoiceManager {
         }
     }
 
+    fun stopSpeaking() {
+        _isSpeaking.value = false
+        WastiEventBus.tryEmit(WastiEvent.VoiceSessionChanged(false, _activeProviderId.value))
+    }
+
     suspend fun synthesizeSpeech(
         text: String,
         preferredProviderId: String? = null,

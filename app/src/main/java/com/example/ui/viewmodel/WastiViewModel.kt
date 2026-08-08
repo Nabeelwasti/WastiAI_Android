@@ -118,6 +118,8 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var activeGenerationJob: kotlinx.coroutines.Job? = null
+
     fun sendMessage(
         prompt: String,
         explicitFileContext: String? = null,
@@ -132,7 +134,8 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 activeCodeContext.value.ifBlank { null }
             } else null
 
-        viewModelScope.launch {
+        activeGenerationJob?.cancel()
+        val job = viewModelScope.launch {
             isGenerating.value = true
             try {
                 repository.sendMessage(
@@ -144,10 +147,22 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                     imageInlineData = imageInlineData,
                     mimeType = mimeType
                 )
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    android.util.Log.i("WastiViewModel", "AI Generation cancelled by user")
+                } else {
+                    android.util.Log.e("WastiViewModel", "Error sending message", e)
+                }
             } finally {
                 isGenerating.value = false
+                activeGenerationJob = null
+                com.example.data.ai.AIManager.setActiveJob(null)
+                com.example.data.core.WastiCore.setActiveJob(null)
             }
         }
+        activeGenerationJob = job
+        com.example.data.ai.AIManager.setActiveJob(job)
+        com.example.data.core.WastiCore.setActiveJob(job)
     }
 
     fun editMessageAndResend(messageId: String, newPrompt: String) {
@@ -158,14 +173,35 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
             activeCodeContext.value.ifBlank { null }
         } else null
 
-        viewModelScope.launch {
+        activeGenerationJob?.cancel()
+        val job = viewModelScope.launch {
             isGenerating.value = true
             try {
                 repository.editMessageAndRegenerate(convId, messageId, newPrompt, activeAgentId.value, selectedModel.value, fileContextToPass)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) {
+                    android.util.Log.i("WastiViewModel", "AI Generation cancelled by user")
+                } else {
+                    android.util.Log.e("WastiViewModel", "Error in editMessageAndResend", e)
+                }
             } finally {
                 isGenerating.value = false
+                activeGenerationJob = null
+                com.example.data.ai.AIManager.setActiveJob(null)
+                com.example.data.core.WastiCore.setActiveJob(null)
             }
         }
+        activeGenerationJob = job
+        com.example.data.ai.AIManager.setActiveJob(job)
+        com.example.data.core.WastiCore.setActiveJob(job)
+    }
+
+    fun cancelActiveGeneration() {
+        activeGenerationJob?.cancel()
+        activeGenerationJob = null
+        isGenerating.value = false
+        com.example.data.ai.AIManager.cancelActiveGeneration()
+        com.example.data.core.WastiCore.cancelActiveGeneration()
     }
 
     fun addMemory(key: String, category: String, value: String) {

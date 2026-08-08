@@ -192,3 +192,42 @@ interface DeveloperLogDao {
     suspend fun clearLogs()
 }
 
+@Dao
+interface LeadDao {
+    @Query("SELECT * FROM leads ORDER BY timestamp DESC")
+    fun getAllLeads(): Flow<List<LeadEntity>>
+
+    @Query("SELECT * FROM leads ORDER BY timestamp DESC")
+    suspend fun getAllLeadsSync(): List<LeadEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLead(lead: LeadEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLeads(leads: List<LeadEntity>)
+
+    @Query("UPDATE leads SET status = :status WHERE id = :id")
+    suspend fun updateLeadStatus(id: String, status: String)
+
+    @Query("DELETE FROM leads WHERE id = :id")
+    suspend fun deleteLeadById(id: String)
+}
+
+@Dao
+interface InvoiceDao {
+    @Query("SELECT * FROM invoices ORDER BY timestamp DESC")
+    fun getAllInvoices(): Flow<List<InvoiceEntity>>
+
+    @Query("SELECT * FROM invoices ORDER BY timestamp DESC")
+    suspend fun getAllInvoicesSync(): List<InvoiceEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertInvoice(invoice: InvoiceEntity)
+
+    @Query("UPDATE invoices SET status = :status WHERE id = :id")
+    suspend fun updateInvoiceStatus(id: String, status: String)
+
+    @Query("DELETE FROM invoices WHERE id = :id")
+    suspend fun deleteInvoiceById(id: String)
+}
+

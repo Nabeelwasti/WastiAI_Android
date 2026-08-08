@@ -216,6 +216,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) },
+                                onCancelGeneration = { viewModel.cancelActiveGeneration() },
                                 triggerVoiceCallSignal = triggerVoiceModalSignal
                             )
                             "agents" -> AgentManagerScreen(

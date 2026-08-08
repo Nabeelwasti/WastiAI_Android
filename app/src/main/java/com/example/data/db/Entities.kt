@@ -152,3 +152,31 @@ data class DeveloperLogEntity(
     val details: String? = null
 )
 
+@Entity(tableName = "leads")
+data class LeadEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val link: String,
+    val description: String,
+    val pubDate: String = "",
+    val category: String = "",
+    val matchScore: Int = 85,
+    val matchedSkillsCsv: String = "",
+    val draftedPitch: String = "",
+    val status: String = "DISCOVERED",
+    val clientEmail: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "invoices")
+data class InvoiceEntity(
+    @PrimaryKey val id: String,
+    val clientName: String,
+    val projectMilestone: String,
+    val amountUsd: Double,
+    val status: String = "DRAFT",
+    val issueDate: String = "",
+    val dueDate: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+

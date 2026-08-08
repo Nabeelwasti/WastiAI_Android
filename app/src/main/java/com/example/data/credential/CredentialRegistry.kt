@@ -477,6 +477,42 @@ object CredentialRegistry {
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else httpGetCheck("https://api.elevenlabs.io/v1/user", mapOf("xi-api-key" to value))
             }
+        ),
+
+        // --- FREELANCE & UPWORK ---
+        CredentialEntry(
+            keyName = "UPWORK_OAUTH_CLIENT_ID",
+            displayName = "Upwork OAuth Client ID",
+            category = CredentialCategory.BUSINESS_PAYMENTS,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Client ID for Upwork GraphQL & REST API contract integration.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Client ID)")
+                else Pair(true, "Client ID Configured (${value.take(10)}...)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "UPWORK_OAUTH_CLIENT_SECRET",
+            displayName = "Upwork OAuth Client Secret",
+            category = CredentialCategory.BUSINESS_PAYMENTS,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Client Secret for authenticating Upwork contract API tokens.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Secret)")
+                else Pair(true, "Secret Configured (Protected)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "UPWORK_RSS_CUSTOM_URL",
+            displayName = "Upwork / Freelance Custom RSS Feed Token URL",
+            category = CredentialCategory.BUSINESS_PAYMENTS,
+            isDefaultActive = true,
+            description = "Private Upwork or Freelance contract RSS feed token URL for direct job scraping.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Default Scraper Active)")
+                else if (value.startsWith("http")) Pair(true, "Custom RSS URL Configured")
+                else Pair(false, "Invalid URL (Must start with http:// or https://)")
+            }
         )
     )
 

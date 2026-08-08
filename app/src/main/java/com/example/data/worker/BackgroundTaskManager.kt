@@ -20,7 +20,8 @@ enum class TaskType {
     DATABASE_MAINTENANCE,
     PLUGIN_UPDATES,
     TELEMETRY_SYNC,
-    ANALYTICS
+    ANALYTICS,
+    LEAD_RADAR_SCAN
 }
 
 enum class TaskState {
@@ -66,6 +67,14 @@ object BackgroundTaskManager {
             intervalMs = 60_000L // every 1 minute
         ) {
             com.example.data.ops.OperationsManager.refreshStats()
+        }
+
+        scheduleRecurringTask(
+            name = "Lead Radar RSS Auto-Scan & High-Match Alerts",
+            type = TaskType.LEAD_RADAR_SCAN,
+            intervalMs = 300_000L // every 5 minutes
+        ) {
+            com.example.data.core.LeadScraperEngine.fetchLeadsForQuery("Video Editing & Graphic Design")
         }
     }
 

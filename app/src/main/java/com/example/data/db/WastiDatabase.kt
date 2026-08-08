@@ -65,6 +65,45 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `leads` (
+                `id` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `link` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `pubDate` TEXT NOT NULL DEFAULT '',
+                `category` TEXT NOT NULL DEFAULT '',
+                `matchScore` INTEGER NOT NULL DEFAULT 85,
+                `matchedSkillsCsv` TEXT NOT NULL DEFAULT '',
+                `draftedPitch` TEXT NOT NULL DEFAULT '',
+                `status` TEXT NOT NULL DEFAULT 'DISCOVERED',
+                `clientEmail` TEXT NOT NULL DEFAULT '',
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `invoices` (
+                `id` TEXT NOT NULL,
+                `clientName` TEXT NOT NULL,
+                `projectMilestone` TEXT NOT NULL,
+                `amountUsd` REAL NOT NULL,
+                `status` TEXT NOT NULL DEFAULT 'DRAFT',
+                `issueDate` TEXT NOT NULL DEFAULT '',
+                `dueDate` TEXT NOT NULL DEFAULT '',
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -80,9 +119,11 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         VectorEmbeddingEntity::class,
         KnowledgeGraphNodeEntity::class,
         KnowledgeGraphEdgeEntity::class,
-        DeveloperLogEntity::class
+        DeveloperLogEntity::class,
+        LeadEntity::class,
+        InvoiceEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -97,6 +138,8 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun systemLogDao(): SystemLogDao
     abstract fun settingDao(): SettingDao
     abstract fun developerLogDao(): DeveloperLogDao
+    abstract fun leadDao(): LeadDao
+    abstract fun invoiceDao(): InvoiceDao
 
     companion object {
         @Volatile
@@ -109,7 +152,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

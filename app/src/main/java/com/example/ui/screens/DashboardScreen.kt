@@ -277,14 +277,15 @@ fun DashboardScreen(
 
         // Quick Module Launchers
         item {
-            Text(text = "Quick Actions", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(text = "Quick Actions & Business Launchers", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 QuickActionCard("AI Chat", Icons.AutoMirrored.Filled.Chat, Modifier.weight(1f)) { onNavigateTab("chat") }
-                QuickActionCard("Wasti AI", Icons.Default.Psychology, Modifier.weight(1f)) { onNavigateTab("agents") }
+                QuickActionCard("Lead Radar", Icons.Default.Radar, Modifier.weight(1f)) { onNavigateTab("chat") }
+                QuickActionCard("Operations", Icons.Default.Tune, Modifier.weight(1f)) { onNavigateTab("operations") }
                 QuickActionCard("Memory", Icons.Default.Memory, Modifier.weight(1f)) { onNavigateTab("memory") }
                 QuickActionCard("Projects", Icons.Default.AccountTree, Modifier.weight(1f)) { onNavigateTab("projects") }
             }

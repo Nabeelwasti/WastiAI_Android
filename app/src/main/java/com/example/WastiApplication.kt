@@ -120,15 +120,20 @@ class WastiApplication : Application() {
 
                 // Stage 7: Background Sync Worker (Optional)
                 currentStage = StartupStage.SYNC_WORKER
-                AppStartupManager.updateStageProgress(currentStage, "Scheduling Periodic Backup & Sync...", 0.95f)
+                AppStartupManager.updateStageProgress(currentStage, "Scheduling Periodic Backup & Lead/Invoice Sync...", 0.95f)
                 val t7 = System.currentTimeMillis()
                 try {
+                    com.example.data.core.LeadRadarRepository.initDatabase(this@WastiApplication)
+                    com.example.data.core.ClientInvoiceManager.initDatabase(this@WastiApplication)
+
                     val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(4, TimeUnit.HOURS).build()
                     WorkManager.getInstance(this@WastiApplication).enqueueUniquePeriodicWork(
                         "wasti_sync_worker",
                         ExistingPeriodicWorkPolicy.KEEP,
                         syncRequest
                     )
+
+                    com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
                 } catch (e: Throwable) {
                     Log.e("WastiApplication", "Failed to schedule SyncWorker safely", e)
                     AppStartupManager.recordWarning(currentStage, "Sync worker background scheduling deferred: ${e.message}")

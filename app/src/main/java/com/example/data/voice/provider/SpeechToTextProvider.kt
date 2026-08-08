@@ -22,7 +22,12 @@ interface SpeechToTextProvider {
     val name: String
     val currentState: StateFlow<STTState>
     fun isHardwareAvailable(context: Context): Boolean
-    fun startListening(context: Context, languageTag: String = "en-US", onResult: (STTResult) -> Unit)
+    fun startListening(
+        context: Context,
+        languageTag: String = "en-US",
+        onBeginningOfSpeech: (() -> Unit)? = null,
+        onResult: (STTResult) -> Unit
+    )
     fun stopListening()
     fun destroy()
 }

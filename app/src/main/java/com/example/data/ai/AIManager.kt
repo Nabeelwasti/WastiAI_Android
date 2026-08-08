@@ -74,7 +74,7 @@ object AIManager {
 
     suspend fun execute(
         prompt: String,
-        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+        systemInstruction: String = "CRITICAL DYNAMIC MULTI-TURN LANGUAGE MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used in the LATEST user prompt. The user may dynamically change languages from message to message in the same chat. IGNORE the language used in previous conversation history or past assistant turns.",
         history: List<GeminiContent> = emptyList(),
         imageInlineData: String? = null,
         mimeType: String = "image/jpeg",
@@ -84,7 +84,8 @@ object AIManager {
     ): ProviderResponse {
 
         val formattedHistory = conversationCoordinator.formatHistoryTranscript(history)
-        val enrichedSystemPrompt = "$systemInstruction$formattedHistory"
+        val dynamicLanguageMandate = "\n\nCRITICAL DYNAMIC MULTI-TURN LANGUAGE MANDATE:\nYou MUST reply in the EXACT SAME language, script, and dialect as the LATEST USER PROMPT. The user may switch languages dynamically from message to message in the same chat. IGNORE the language used in previous conversation history or past assistant turns. If the latest prompt is in English -> Reply strictly 100% in English! If in Urdu script (اردو) -> Reply strictly 100% in Urdu script! If in Roman Urdu -> Reply in Roman Urdu! If in Spanish, French, German, Arabic, Punjabi, Hindi, or any other language -> Reply strictly 100% in that exact language! NEVER default to Roman Urdu or any other language unless the latest user prompt itself is in that language!"
+        val enrichedSystemPrompt = "$systemInstruction$formattedHistory$dynamicLanguageMandate"
         val enrichedPrompt = conversationCoordinator.enrichPromptWithContext(
             userPrompt = prompt,
             fileContext = fileContext
@@ -114,6 +115,18 @@ object AIManager {
             systemInstruction = systemInstruction
         )
         return streamingEngine.streamFromProvider(provider, req)
+    }
+
+    @Volatile
+    private var activeJob: kotlinx.coroutines.Job? = null
+
+    fun setActiveJob(job: kotlinx.coroutines.Job?) {
+        activeJob = job
+    }
+
+    fun cancelActiveGeneration() {
+        activeJob?.cancel()
+        activeJob = null
     }
 
     fun getHealthState(): StateFlow<Map<String, ProviderHealth>> = healthMonitor.healthFlow

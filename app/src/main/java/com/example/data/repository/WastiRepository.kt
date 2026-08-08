@@ -376,7 +376,15 @@ class WastiRepository(private val db: WastiDatabase) {
             - If request involves research/facts: Provide structured, verified factual summaries with clear headings.
             - If request involves conversation/voice: Address the user respectfully as 'Sir' or 'Boss' in a warm, polite, articulate J.A.R.V.I.S.-like voice.
             
-            CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.
+            CRITICAL DYNAMIC MULTI-TURN LANGUAGE RULE:
+            The user MAY change languages dynamically from prompt to prompt within the exact same chat session.
+            You MUST reply in the EXACT SAME language, dialect, and script used in the LATEST user prompt.
+            - IGNORE the language or script used in previous conversation history or past assistant turns.
+            - If the latest user prompt is in English -> reply strictly 100% in English!
+            - If the latest user prompt is in Urdu script (اردو) -> reply strictly 100% in Urdu script!
+            - If the latest user prompt is in Roman Urdu -> reply in Roman Urdu!
+            - If the latest user prompt is in Spanish, French, German, Arabic, Punjabi, Hindi, or any other language -> reply strictly in that exact language!
+            - NEVER default to Roman Urdu unless the latest user prompt itself is written in Roman Urdu!
         """.trimIndent()
 
         val agent = db.agentDao().getAgentById(activeAgentId)

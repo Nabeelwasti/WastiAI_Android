@@ -33,6 +33,7 @@ class AndroidSpeechToTextProvider : SpeechToTextProvider {
     override fun startListening(
         context: Context,
         languageTag: String,
+        onBeginningOfSpeech: (() -> Unit)?,
         onResult: (STTResult) -> Unit
     ) {
         if (!isHardwareAvailable(context)) {
@@ -57,6 +58,7 @@ class AndroidSpeechToTextProvider : SpeechToTextProvider {
 
                 override fun onBeginningOfSpeech() {
                     _currentState.value = STTState.LISTENING
+                    onBeginningOfSpeech?.invoke()
                 }
 
                 override fun onRmsChanged(rmsdB: Float) {}

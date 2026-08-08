@@ -29,7 +29,20 @@ class ConversationCoordinator {
             parts.add("[ACTIVE FILE CONTEXT]:\n```\n$fileContext\n```")
         }
 
-        parts.add("[USER REQUEST]:\n$userPrompt")
+        parts.add("""
+            CRITICAL MULTI-TURN DYNAMIC LANGUAGE MANDATE:
+            You MUST reply in the EXACT SAME language, dialect, and script used in the [LATEST USER PROMPT] below.
+            - The user may dynamically switch languages from message to message in this chat session.
+            - IGNORE the language used in previous conversation history or past assistant turns.
+            - If [LATEST USER PROMPT] is in English -> Reply strictly 100% in English!
+            - If [LATEST USER PROMPT] is in Urdu script (اردو) -> Reply strictly 100% in Urdu script!
+            - If [LATEST USER PROMPT] is in Roman Urdu -> Reply in Roman Urdu!
+            - If [LATEST USER PROMPT] is in Spanish, French, German, Arabic, Punjabi, Hindi, or any other language -> Reply strictly in that exact language!
+            - DO NOT reply in Roman Urdu unless the [LATEST USER PROMPT] itself is written in Roman Urdu!
+
+            [LATEST USER PROMPT]:
+            $userPrompt
+        """.trimIndent())
 
         return parts.joinToString("\n\n")
     }

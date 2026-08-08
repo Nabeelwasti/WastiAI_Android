@@ -46,14 +46,33 @@ object WastiCore {
             ""
         }
 
-        val enrichedSystemInstruction = if (memoryContext.isNotBlank()) {
+        val overrideDirective = "CRITICAL OVERRIDE: You are natively integrated into the Android OS via Accessibility Services. You HAVE direct physical access to the device screen. If the user asks you to 'read the screen', 'see what is on screen', or 'tap/click' something, DO NOT apologize. DO NOT mention security restrictions. You MUST immediately invoke the read_active_screen or tap_element function tools. Refusing to use your tools is a critical system failure."
+
+        val baseInstruction = if (memoryContext.isNotBlank()) {
             "$systemInstruction\n\n$memoryContext"
         } else {
             systemInstruction
         }
 
-        // Check if intent requires native screen reading or tap execution via Function Calling
+        val enrichedSystemInstruction = "$baseInstruction\n\n$overrideDirective"
+
+        // Check if intent requires Lead Radar System search or evaluation
         val lowerPrompt = userPrompt.lowercase().trim()
+        if (lowerPrompt.contains("lead radar") ||
+            (lowerPrompt.contains("find") && (lowerPrompt.contains("client") || lowerPrompt.contains("lead") || lowerPrompt.contains("job"))) ||
+            lowerPrompt.contains("scrape leads")
+        ) {
+            try {
+                val leadRadarOutput = processLeadRadarExecution(userPrompt)
+                if (leadRadarOutput.isNotBlank()) {
+                    return@withContext Pair(leadRadarOutput, "Wasti Lead Radar Engine")
+                }
+            } catch (e: Exception) {
+                Log.e("WastiCore", "Error processing lead radar request, falling back", e)
+            }
+        }
+
+        // Check if intent requires native screen reading or tap execution via Function Calling
         if (lowerPrompt.contains("screen") || lowerPrompt.contains("tap") || lowerPrompt.contains("click") || lowerPrompt.contains("touch")) {
             try {
                 val functionCallResult = executeFunctionCallingLoop(
@@ -139,7 +158,9 @@ object WastiCore {
         val synthesizerPrompt = """
             You are Wasti AI, the primary synthesizer core of Wasti OS. You have collected independent background intelligence outputs from multiple internal providers for a user request.
 
-            [USER PROMPT]:
+            CRITICAL DYNAMIC LANGUAGE RULE: You MUST output the synthesized response in the EXACT SAME language, dialect, and script as the [LATEST USER PROMPT] below ("$userPrompt"). If [LATEST USER PROMPT] is in English, your final response MUST be strictly 100% in English. If in Urdu script (اردو), strictly 100% in Urdu script. If in Roman Urdu, in Roman Urdu. IGNORE the language of previous messages or internal nodes. NEVER default to Roman Urdu unless [LATEST USER PROMPT] itself is in Roman Urdu!
+
+            [LATEST USER PROMPT]:
             $userPrompt
 
             ${successfulOutputs.mapIndexed { idx, pair -> "[INTERNAL NODE ${idx + 1} (${pair.first.uppercase()})]:\n${pair.second}\n" }.joinToString("\n")}
@@ -154,7 +175,7 @@ object WastiCore {
         val finalSynthesized = try {
             val syncResponse = AIManager.execute(
                 prompt = synthesizerPrompt,
-                systemInstruction = "You are Wasti AI, synthesizing deep multi-lane intelligence into a unified response. CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+                systemInstruction = "You are Wasti AI, synthesizing deep multi-lane intelligence into a unified response. STRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.",
                 preferredProviderId = successfulOutputs.first().first
             )
             if (!syncResponse.isError && syncResponse.content.isNotBlank()) {
@@ -235,8 +256,65 @@ object WastiCore {
         return@withContext candidatePart?.text ?: "Request processed."
     }
 
+    @Volatile
+    private var activeJob: kotlinx.coroutines.Job? = null
+
+    fun setActiveJob(job: kotlinx.coroutines.Job?) {
+        activeJob = job
+    }
+
+    fun cancelActiveGeneration() {
+        activeJob?.cancel()
+        activeJob = null
+    }
+
     /**
-     * Routes native Gemini FunctionCall objects directly to WastiDeviceController.
+     * Executes Lead Radar fetching, evaluation against SkillMatrix, and presentation formatting.
+     */
+    suspend fun processLeadRadarExecution(userPrompt: String): String = withContext(Dispatchers.IO) {
+        val lower = userPrompt.lowercase()
+        val query = when {
+            lower.contains("video") -> "Video Editing"
+            lower.contains("graphic") || lower.contains("logo") -> "Graphic Design"
+            lower.contains("autocad") || lower.contains("cad") -> "AutoCAD"
+            lower.contains("corel") -> "CorelDRAW"
+            lower.contains("canva") -> "Canva"
+            lower.contains("dmca") || lower.contains("takedown") -> "DMCA Takedowns"
+            lower.contains("ai") || lower.contains("automation") -> "AI Automation"
+            else -> "Video Editing"
+        }
+
+        val skillMatrix = SkillMatrix()
+        val leads = LeadScraperEngine.fetchLeadsForQuery(query)
+
+        if (leads.isEmpty()) {
+            return@withContext "🎯 **Wasti Lead Radar System**\n\nNo active job requests could be retrieved for '$query' at this moment."
+        }
+
+        val sb = StringBuilder()
+        sb.append("🎯 **Wasti Lead Radar System — Targeted Job Opportunities**\n\n")
+        sb.append("Scanned live RSS job feeds for **$query** and evaluated top requests against your **SkillMatrix**:\n\n")
+
+        leads.take(3).forEachIndexed { idx, lead ->
+            val fullText = "${lead.title}\n${lead.description}"
+            val evaluation = LeadScraperEngine.evaluateLeadMatch(fullText, skillMatrix)
+
+            sb.append("### ${idx + 1}. ${lead.title}\n")
+            sb.append("• **Category**: $query\n")
+            sb.append("• **Match Score**: 🎯 **${evaluation.matchScore}/100**\n")
+            sb.append("• **Matched Skills**: ${evaluation.matchedSkills.joinToString(", ")}\n")
+            sb.append("• **Link**: [Apply / View Request](${lead.link})\n\n")
+            sb.append("📝 **Drafted Pitch / Proposal**:\n")
+            sb.append("> ${evaluation.draftedPitch.replace("\n", "\n> ")}\n\n")
+            sb.append("---\n\n")
+        }
+
+        sb.append("*Evaluated against official SkillMatrix services: ${skillMatrix.formatSkillSummary()}*")
+        sb.toString()
+    }
+
+    /**
+     * Routes native Gemini FunctionCall objects directly to device/engine controllers.
      */
     fun dispatchFunctionCall(functionCall: com.example.data.api.GeminiFunctionCall): String {
         return when (functionCall.name) {
@@ -249,6 +327,12 @@ object WastiCore {
                 Log.d("WastiCore", "FunctionCall dispatched: tap_element -> $elementId")
                 val tapResult = com.example.data.device.WastiDeviceController.simulateTap(targetElement = elementId)
                 tapResult.userFeedback
+            }
+            "evaluate_lead_match" -> {
+                val jobText = functionCall.args?.get("jobPostText") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: evaluate_lead_match")
+                val evaluation = LeadScraperEngine.evaluateLeadMatch(jobText)
+                "MatchScore: ${evaluation.matchScore}/100\nDraftedPitch: ${evaluation.draftedPitch}"
             }
             else -> {
                 Log.w("WastiCore", "Unknown FunctionCall: ${functionCall.name}")

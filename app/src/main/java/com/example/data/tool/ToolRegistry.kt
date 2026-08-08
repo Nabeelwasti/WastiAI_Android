@@ -47,12 +47,27 @@ class DeviceControlTool : WastiTool {
     }
 }
 
+class LeadRadarTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "lead_radar",
+        name = "Lead Radar Engine",
+        category = "Business Automation",
+        description = "Scans live job feeds, evaluates SkillMatrix matches, and drafts client proposal pitches."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val query = parameters["query"]?.toString() ?: "Video Editing"
+        return com.example.data.core.WastiCore.processLeadRadarExecution("lead radar for $query")
+    }
+}
+
 object ToolRegistry {
     private val toolsMap = java.util.concurrent.ConcurrentHashMap<String, WastiTool>()
 
     init {
         registerTool(MemorySearchTool())
         registerTool(DeviceControlTool())
+        registerTool(LeadRadarTool())
     }
 
     fun registerTool(tool: WastiTool) {

@@ -107,6 +107,7 @@ fun ChatWorkspaceScreen(
     onSendMessage: (prompt: String, imageInlineData: String?, mimeType: String) -> Unit,
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
     onCreateNewConversation: (String) -> Unit,
+    onCancelGeneration: () -> Unit = {},
     triggerVoiceCallSignal: Int = 0
 ) {
     val context = LocalContext.current
@@ -247,36 +248,25 @@ fun ChatWorkspaceScreen(
         }
     }
 
-    // Android Multilingual Speech Recognizer Launcher
-    val speechLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-            if (!spokenText.isNullOrBlank()) {
-                promptInput = spokenText
-            }
-        }
-    }
-
-    fun launchNativeSpeechToText() {
-        try {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
-                putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now to Wasti AI...")
-            }
-            speechLauncher.launch(intent)
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(context, "Speech recognition unavailable on this device", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
+    // Background Speech Recognizer integration (No external popup UI)
     val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            launchNativeSpeechToText()
+            sttProvider?.startListening(
+                context = context,
+                languageTag = "en-US",
+                onBeginningOfSpeech = {
+                    // Voice Barge-in: interrupt AI TTS playback immediately upon user speech
+                    ttsEngine?.stop()
+                    VoiceManager.stopSpeaking()
+                },
+                onResult = { res ->
+                    if (res.transcript.isNotBlank()) {
+                        promptInput = res.transcript
+                    }
+                }
+            )
         } else {
             android.widget.Toast.makeText(context, "Microphone permission is required for voice recognition.", android.widget.Toast.LENGTH_SHORT).show()
         }
@@ -301,12 +291,7 @@ fun ChatWorkspaceScreen(
             WastiIntentParser.parseAndExecute(context, lastMsg.content)
 
             if (lastMsg.role == "assistant" && isVoiceActive) {
-                val cleanText = WastiSpeechSanitizer.sanitizeForSpeech(lastMsg.content)
-                if (cleanText.isNotBlank()) {
-                    val params = android.os.Bundle()
-                    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_auto_tts")
-                    ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "chat_auto_tts")
-                }
+                speakDualPipelineTts(ttsEngine, lastMsg.content)
             }
         }
     }
@@ -807,17 +792,35 @@ fun ChatWorkspaceScreen(
                         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
                         if (hasPermission) {
-                            launchNativeSpeechToText()
+                            if (sttState == STTState.LISTENING) {
+                                sttProvider?.stopListening()
+                            } else {
+                                sttProvider?.startListening(
+                                    context = context,
+                                    languageTag = "en-US",
+                                    onBeginningOfSpeech = {
+                                        // Voice Barge-in: interrupt AI TTS playback immediately upon user speech
+                                        ttsEngine?.stop()
+                                        VoiceManager.stopSpeaking()
+                                    },
+                                    onResult = { res ->
+                                        if (res.transcript.isNotBlank()) {
+                                            promptInput = res.transcript
+                                        }
+                                    }
+                                )
+                            }
                         } else {
                             recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                         }
                     },
                     modifier = Modifier.testTag("voice_input_button")
                 ) {
+                    val isListening = sttState == STTState.LISTENING
                     Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Native Speech Recognition",
-                        tint = MaterialTheme.colorScheme.primary
+                        imageVector = if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
+                        contentDescription = "Background Speech Recognition",
+                        tint = if (isListening) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                 }
 
@@ -847,7 +850,9 @@ fun ChatWorkspaceScreen(
 
                 FloatingActionButton(
                     onClick = {
-                        if ((promptInput.isNotBlank() || activeAttachment != null) && !isGenerating) {
+                        if (isGenerating) {
+                            onCancelGeneration()
+                        } else if (promptInput.isNotBlank() || activeAttachment != null) {
                             val textToSend = promptInput
                             val att = activeAttachment
                             promptInput = ""
@@ -860,10 +865,22 @@ fun ChatWorkspaceScreen(
                     },
                     modifier = Modifier
                         .size(46.dp)
-                        .testTag("send_message_button"),
-                    containerColor = MaterialTheme.colorScheme.primary
+                        .testTag(if (isGenerating) "stop_generation_button" else "send_message_button"),
+                    containerColor = if (isGenerating) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send Message", tint = MaterialTheme.colorScheme.onPrimary)
+                    if (isGenerating) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "Stop Generation",
+                            tint = MaterialTheme.colorScheme.onError
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send Message",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
                 }
             }
         }
@@ -936,12 +953,7 @@ private fun MessageItem(
             } else {
                 IconButton(
                     onClick = {
-                        val cleanText = WastiSpeechSanitizer.sanitizeForSpeech(message.content)
-                        if (cleanText.isNotBlank()) {
-                            val params = android.os.Bundle()
-                            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "message_tts")
-                            ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, params, "message_tts")
-                        }
+                        speakDualPipelineTts(ttsEngine, message.content)
                     },
                     modifier = Modifier.size(22.dp)
                 ) {
@@ -1030,9 +1042,96 @@ private fun MessageItem(
                                 color = if (isUser) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                             )
                         }
+
+                        if (!isUser && (content.contains("Respected Hiring Client") || content.contains("Drafted Pitch") || content.contains("Match Score") || content.contains("Lead Radar"))) {
+                            val context = LocalContext.current
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "⚡ 1-Tap Client Outreach Dispatch",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Button(
+                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchViaWhatsApp(context, content) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("WhatsApp", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                Button(
+                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchViaEmail(context, "Proposal / Outreach Pitch", content) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Email", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { onCopyText(content) },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Copy Pitch", fontSize = 11.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
+    if (ttsEngine == null || text.isBlank()) return
+    val cleanText = WastiSpeechSanitizer.sanitizeForSpeech(text)
+    if (cleanText.isBlank()) return
+
+    // Dual-Pipeline TTS Routing
+    val isUrduScript = cleanText.any { it in '\u0600'..'\u06FF' }
+    val convertedPureUrdu = com.example.util.WastiUrduLanguageEngine.romanUrduToPureUrduScript(cleanText)
+    val isRomanUrduConverted = !isUrduScript && convertedPureUrdu != cleanText
+
+    val (ttsTextToSpeak, targetLocale) = when {
+        isUrduScript -> Pair(cleanText, Locale("ur", "PK"))
+        isRomanUrduConverted -> Pair(convertedPureUrdu, Locale("ur", "PK"))
+        else -> {
+            val lower = cleanText.lowercase()
+            val romanUrduKeywords = setOf("hai", "hain", "kya", "kaise", "ap", "aap", "mein", "main", "ho", "nahi", "nahin", "bohot", "bht", "ji", "ha", "shukriya", "salam", "shukria", "kaam", "karo", "karein", "jee", "ye", "yeh", "wo", "woh")
+            val words = lower.split("\\s+".toRegex())
+            if (words.any { it in romanUrduKeywords }) {
+                Pair(convertedPureUrdu, Locale("ur", "PK"))
+            } else {
+                Pair(cleanText, Locale.getDefault())
+            }
+        }
+    }
+
+    try {
+        val result = ttsEngine.setLanguage(targetLocale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            ttsEngine.language = Locale.ENGLISH
+        }
+    } catch (e: Exception) {
+        android.util.Log.e("ChatWorkspaceTTS", "Error setting TTS language", e)
+    }
+
+    val params = android.os.Bundle()
+    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
+    ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
 }

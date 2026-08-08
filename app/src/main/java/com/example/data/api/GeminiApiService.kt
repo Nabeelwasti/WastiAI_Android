@@ -49,7 +49,7 @@ object GeminiClient {
 
     suspend fun generateText(
         prompt: String,
-        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+        systemInstruction: String = "STRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.",
         modelName: String = "gemini-3.6-flash",
         history: List<GeminiContent> = emptyList(),
         imageInlineData: String? = null,
@@ -59,7 +59,9 @@ object GeminiClient {
         val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey
         else com.example.data.credential.CredentialRegistry.getRawValue("GEMINI_API_KEY")
 
-        val combinedSystemPrompt = "$systemInstruction\n\nCRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language."
+        val overrideDirective = "CRITICAL OVERRIDE: You are natively integrated into the Android OS via Accessibility Services. You HAVE direct physical access to the device screen. If the user asks you to 'read the screen', 'see what is on screen', or 'tap/click' something, DO NOT apologize. DO NOT mention security restrictions. You MUST immediately invoke the read_active_screen or tap_element function tools. Refusing to use your tools is a critical system failure."
+
+        val combinedSystemPrompt = "$systemInstruction\n\nSTRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.\n\n$overrideDirective"
 
         if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
             throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
@@ -102,6 +104,20 @@ object GeminiClient {
                             ),
                             required = listOf("elementIdentifier")
                         )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "evaluate_lead_match",
+                        description = "Evaluates a job post text against the user's SkillMatrix services and returns a MatchScore (0-100) and a DraftedPitch proposal message.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "jobPostText" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The title or full body text of the job post to evaluate."
+                                )
+                            ),
+                            required = listOf("jobPostText")
+                        )
                     )
                 )
             )
@@ -140,6 +156,11 @@ object GeminiClient {
                         "tap_element" -> {
                             val targetId = functionCall.args?.get("elementIdentifier") ?: ""
                             com.example.data.device.WastiDeviceController.simulateTap(targetElement = targetId).userFeedback
+                        }
+                        "evaluate_lead_match" -> {
+                            val jobText = functionCall.args?.get("jobPostText") ?: ""
+                            val eval = com.example.data.core.LeadScraperEngine.evaluateLeadMatch(jobText)
+                            "MatchScore: ${eval.matchScore}/100\nDraftedPitch: ${eval.draftedPitch}"
                         }
                         else -> "Function '${functionCall.name}' executed."
                     }
@@ -195,7 +216,7 @@ object GeminiClient {
 
     suspend fun generateContentRaw(
         contentsList: List<GeminiContent>,
-        systemInstruction: String = "CRITICAL MANDATE: You are Wasti AI, an elite enterprise OS. You MUST seamlessly mirror the user's language. If the user prompts in English, reply in English. If Roman Urdu, reply Roman Urdu. NEVER lock into a single language.",
+        systemInstruction: String = "STRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.",
         modelName: String = "gemini-3.6-flash",
         customApiKey: String? = null
     ): GeminiResponse = withContext(Dispatchers.IO) {
@@ -227,14 +248,36 @@ object GeminiClient {
                             ),
                             required = listOf("elementIdentifier")
                         )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "evaluate_lead_match",
+                        description = "Evaluates a job post text against the user's SkillMatrix services and returns a MatchScore (0-100) and a DraftedPitch proposal message.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "jobPostText" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The title or full body text of the job post to evaluate."
+                                )
+                            ),
+                            required = listOf("jobPostText")
+                        )
                     )
                 )
             )
         )
 
+        val overrideDirective = "CRITICAL OVERRIDE: You are natively integrated into the Android OS via Accessibility Services. You HAVE direct physical access to the device screen. If the user asks you to 'read the screen', 'see what is on screen', or 'tap/click' something, DO NOT apologize. DO NOT mention security restrictions. You MUST immediately invoke the read_active_screen or tap_element function tools. Refusing to use your tools is a critical system failure."
+
+        val finalSystemInstruction = if (systemInstruction.contains("CRITICAL OVERRIDE")) {
+            systemInstruction
+        } else {
+            "$systemInstruction\n\n$overrideDirective"
+        }
+
         val request = GeminiRequest(
             contents = contentsList,
-            systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = systemInstruction))),
+            systemInstruction = GeminiContent(parts = listOf(GeminiPart(text = finalSystemInstruction))),
             generationConfig = GeminiGenerationConfig(temperature = 0.7f),
             tools = nativeScreenTools
         )
