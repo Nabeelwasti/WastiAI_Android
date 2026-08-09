@@ -154,6 +154,34 @@ object GeminiClient {
                             ),
                             required = listOf("query")
                         )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "read_web_page",
+                        description = "Reads, scrapes, and extracts clean text content from a specified web page URL for analysis.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "url" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The full HTTP/HTTPS URL of the web page to scrape and analyze."
+                                )
+                            ),
+                            required = listOf("url")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "post_to_linkedin",
+                        description = "Drafts a post to be published on LinkedIn. Intercepts execution for user review and approval before publishing via LinkedIn API.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "content" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The commentary/body text content of the LinkedIn post."
+                                )
+                            ),
+                            required = listOf("content")
+                        )
                     )
                 )
             )
@@ -209,6 +237,16 @@ object GeminiClient {
                         "search_web" -> {
                             val query = functionCall.args?.get("query") ?: ""
                             com.example.data.ops.WebSearchEngine.search(query)
+                        }
+                        "read_web_page" -> {
+                            val url = functionCall.args?.get("url") ?: ""
+                            com.example.data.ops.WebSearchEngine.scrapeWebPage(url)
+                        }
+                        "post_to_linkedin" -> {
+                            val content = functionCall.args?.get("content") ?: ""
+                            val draft = com.example.data.core.LinkedInDraft(content = content)
+                            com.example.data.core.WastiCore.setPendingLinkedInDraft(draft)
+                            "LinkedIn post draft created. Paused AI execution for user approval."
                         }
                         else -> "Function '${functionCall.name}' executed."
                     }
@@ -345,6 +383,34 @@ object GeminiClient {
                                 )
                             ),
                             required = listOf("query")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "read_web_page",
+                        description = "Reads, scrapes, and extracts clean text content from a specified web page URL for analysis.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "url" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The full HTTP/HTTPS URL of the web page to scrape and analyze."
+                                )
+                            ),
+                            required = listOf("url")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "post_to_linkedin",
+                        description = "Drafts a post to be published on LinkedIn. Intercepts execution for user review and approval before publishing via LinkedIn API.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "content" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The commentary/body text content of the LinkedIn post."
+                                )
+                            ),
+                            required = listOf("content")
                         )
                     )
                 )

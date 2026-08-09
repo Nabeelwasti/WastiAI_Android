@@ -27,10 +27,19 @@ data class EmailDraft(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class LinkedInDraft(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val content: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 object WastiCore {
 
     private val _pendingEmailDraft = MutableStateFlow<EmailDraft?>(null)
     val pendingEmailDraft: StateFlow<EmailDraft?> = _pendingEmailDraft.asStateFlow()
+
+    private val _pendingLinkedInDraft = MutableStateFlow<LinkedInDraft?>(null)
+    val pendingLinkedInDraft: StateFlow<LinkedInDraft?> = _pendingLinkedInDraft.asStateFlow()
 
     fun setPendingEmailDraft(draft: EmailDraft?) {
         _pendingEmailDraft.value = draft
@@ -38,6 +47,14 @@ object WastiCore {
 
     fun clearPendingEmailDraft() {
         _pendingEmailDraft.value = null
+    }
+
+    fun setPendingLinkedInDraft(draft: LinkedInDraft?) {
+        _pendingLinkedInDraft.value = draft
+    }
+
+    fun clearPendingLinkedInDraft() {
+        _pendingLinkedInDraft.value = null
     }
 
     fun classifyIntentTier(prompt: String): RoutingTier {
@@ -95,8 +112,8 @@ object WastiCore {
             }
         }
 
-        // Check if intent requires native tools (screen, tap, email draft, web search) via Function Calling
-        if (lowerPrompt.contains("screen") || lowerPrompt.contains("tap") || lowerPrompt.contains("click") || lowerPrompt.contains("touch") || lowerPrompt.contains("email") || lowerPrompt.contains("draft") || lowerPrompt.contains("outreach") || lowerPrompt.contains("search") || lowerPrompt.contains("google") || lowerPrompt.contains("web") || lowerPrompt.contains("news") || lowerPrompt.contains("online") || lowerPrompt.contains("find") || lowerPrompt.contains("latest")) {
+        // Check if intent requires native tools (screen, tap, email draft, linkedin, web search, page scraping) via Function Calling
+        if (lowerPrompt.contains("screen") || lowerPrompt.contains("tap") || lowerPrompt.contains("click") || lowerPrompt.contains("touch") || lowerPrompt.contains("email") || lowerPrompt.contains("draft") || lowerPrompt.contains("outreach") || lowerPrompt.contains("linkedin") || lowerPrompt.contains("post") || lowerPrompt.contains("social") || lowerPrompt.contains("search") || lowerPrompt.contains("google") || lowerPrompt.contains("web") || lowerPrompt.contains("news") || lowerPrompt.contains("online") || lowerPrompt.contains("find") || lowerPrompt.contains("latest") || lowerPrompt.contains("http") || lowerPrompt.contains("url") || lowerPrompt.contains("scrape") || lowerPrompt.contains("page") || lowerPrompt.contains("read") || lowerPrompt.contains("site") || lowerPrompt.contains("link")) {
             try {
                 val functionCallResult = executeFunctionCallingLoop(
                     userPrompt = userPrompt,
@@ -369,10 +386,22 @@ object WastiCore {
                 setPendingEmailDraft(draft)
                 "Email draft created for $to. Paused AI execution awaiting user approval in Chat Workspace."
             }
+            "post_to_linkedin" -> {
+                val content = functionCall.args?.get("content") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: post_to_linkedin")
+                val draft = LinkedInDraft(content = content)
+                setPendingLinkedInDraft(draft)
+                "LinkedIn post draft created. Paused AI execution awaiting user approval in Chat Workspace."
+            }
             "search_web" -> {
                 val query = functionCall.args?.get("query") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: search_web -> $query")
                 com.example.data.ops.WebSearchEngine.search(query, context)
+            }
+            "read_web_page" -> {
+                val url = functionCall.args?.get("url") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: read_web_page -> $url")
+                com.example.data.ops.WebSearchEngine.scrapeWebPage(url)
             }
             else -> {
                 Log.w("WastiCore", "Unknown FunctionCall: ${functionCall.name}")

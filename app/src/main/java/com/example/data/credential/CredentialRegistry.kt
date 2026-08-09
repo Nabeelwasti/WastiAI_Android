@@ -365,6 +365,39 @@ object CredentialRegistry {
 
         // --- AUTOMATION & COMMUNICATIONS ---
         CredentialEntry(
+            keyName = "LINKEDIN_CLIENT_ID",
+            displayName = "LinkedIn OAuth Client ID",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Client ID for LinkedIn API social media integration.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
+                else Pair(true, "Configured (${value.take(10)}...)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "LINKEDIN_CLIENT_SECRET",
+            displayName = "LinkedIn OAuth Client Secret",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Client Secret for LinkedIn API social media posting.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
+                else Pair(true, "Configured (Secret Set)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "LINKEDIN_OAUTH_TOKEN",
+            displayName = "LinkedIn OAuth Access Token",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = true,
+            description = "Bearer Access Token with w_member_social scope for posting to LinkedIn.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
+                else httpGetCheck("https://api.linkedin.com/v2/userinfo", mapOf("Authorization" to "Bearer $value"))
+            }
+        ),
+        CredentialEntry(
             keyName = "ZAPIER_CONNECT_TOKEN",
             displayName = "Zapier NLA Connect Token",
             category = CredentialCategory.AUTOMATION_COMMS,

@@ -129,6 +129,7 @@ fun ChatWorkspaceScreen(
     var activeAttachment by remember { mutableStateOf<ActiveAttachment?>(null) }
     val scope = rememberCoroutineScope()
     val pendingDraft by com.example.data.core.WastiCore.pendingEmailDraft.collectAsState()
+    val pendingLinkedInDraft by com.example.data.core.WastiCore.pendingLinkedInDraft.collectAsState()
 
     // Real Camera Launcher
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -702,27 +703,72 @@ fun ChatWorkspaceScreen(
                 draft = draft,
                 onApprove = {
                     scope.launch {
-                        val success = com.example.data.gmail.GmailOAuthService.sendEmail(
+                        val result = com.example.data.gmail.GmailOAuthService.sendEmailDetailed(
                             to = draft.to,
                             subject = draft.subject,
                             body = draft.body,
                             context = context
                         )
                         com.example.data.core.WastiCore.clearPendingEmailDraft()
-                        if (success) {
-                            onSendMessage(
-                                "✅ [EMAIL APPROVED & SENT]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nEmail dispatched via Gmail OAuth 2.0 API.",
-                                null,
-                                "image/jpeg"
-                            )
-                        } else {
-                            android.widget.Toast.makeText(context, "Failed to send email via Gmail API.", android.widget.Toast.LENGTH_SHORT).show()
+                        when (result) {
+                            is com.example.data.gmail.SendEmailResult.Success -> {
+                                onSendMessage(
+                                    "✅ [EMAIL APPROVED & SENT]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nEmail dispatched via Gmail OAuth 2.0 API.",
+                                    null,
+                                    "image/jpeg"
+                                )
+                            }
+                            is com.example.data.gmail.SendEmailResult.Error -> {
+                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                onSendMessage(
+                                    "❌ [EMAIL FAILED]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nError: ${result.message}",
+                                    null,
+                                    "image/jpeg"
+                                )
+                            }
                         }
                     }
                 },
                 onReject = {
                     promptInput = "Draft email to ${draft.to} with subject '${draft.subject}':\n${draft.body}"
                     com.example.data.core.WastiCore.clearPendingEmailDraft()
+                }
+            )
+        }
+
+        // Pending LinkedIn Post Approval Card
+        pendingLinkedInDraft?.let { draft ->
+            LinkedInDraftApprovalCard(
+                draft = draft,
+                onApprove = {
+                    scope.launch {
+                        val result = com.example.data.linkedin.LinkedInOAuthService.postToLinkedIn(
+                            content = draft.content,
+                            context = context
+                        )
+                        com.example.data.core.WastiCore.clearPendingLinkedInDraft()
+                        when (result) {
+                            is com.example.data.linkedin.LinkedInPostResult.Success -> {
+                                onSendMessage(
+                                    "✅ [LINKEDIN POST APPROVED & PUBLISHED]\n\nContent:\n${draft.content}\n\nPost ID: ${result.postId}\nPublished via LinkedIn OAuth 2.0 API.",
+                                    null,
+                                    "image/jpeg"
+                                )
+                            }
+                            is com.example.data.linkedin.LinkedInPostResult.Error -> {
+                                android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_LONG).show()
+                                onSendMessage(
+                                    "❌ [LINKEDIN POST FAILED]\n\nContent:\n${draft.content}\n\nError: ${result.message}",
+                                    null,
+                                    "image/jpeg"
+                                )
+                            }
+                        }
+                    }
+                },
+                onReject = {
+                    promptInput = "Draft LinkedIn post:\n${draft.content}"
+                    com.example.data.core.WastiCore.clearPendingLinkedInDraft()
                 }
             )
         }
@@ -1283,6 +1329,119 @@ fun EmailDraftApprovalCard(
                     Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Approve & Send", fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LinkedInDraftApprovalCard(
+    draft: com.example.data.core.LinkedInDraft,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("linkedin_draft_approval_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Draft LinkedIn Post",
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "💼 LinkedIn Social Post Draft (Approval Required)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = "PAUSED",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "Post Content:",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = draft.content,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onReject,
+                    modifier = Modifier.testTag("reject_linkedin_draft_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Reject / Edit", fontSize = 12.sp)
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = onApprove,
+                    modifier = Modifier.testTag("approve_linkedin_draft_button"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Approve & Post", fontSize = 12.sp)
                 }
             }
         }

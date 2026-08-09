@@ -134,28 +134,8 @@ class SelfEnhancementWorker(
 
             Result.success()
         } catch (e: Exception) {
-            Log.e(TAG, "Error executing SelfEnhancementWorker", e)
-            val currentMatrix = WastiRootController.activeSkillMatrix.value
-            val added = listOf("Python Automation", "AI Workflows")
-            val proposed = currentMatrix.services + added
-            val diff = JSONObject().apply {
-                put("currentServices", JSONArray(currentMatrix.services))
-                put("proposedServices", JSONArray(proposed))
-                put("addedSkills", JSONArray(added))
-                put("reasoning", "Automated analysis detected high client demand in Python Automation and AI Workflows.")
-            }.toString(2)
-
-            val proposal = ProposedSkillMatrixChange(
-                currentServices = currentMatrix.services,
-                proposedServices = proposed,
-                addedSkills = added,
-                removedSkills = emptyList(),
-                reasoning = "Automated analysis detected high client demand in Python Automation and AI Workflows.",
-                jsonDiff = diff
-            )
-            WastiRootController.submitSkillMatrixProposal(proposal)
-
-            Result.success()
+            Log.e(TAG, "Error executing SelfEnhancementWorker AI analysis", e)
+            Result.retry()
         }
     }
 }

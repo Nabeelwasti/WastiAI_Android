@@ -38,6 +38,10 @@ import com.example.data.db.WastiDatabase
 import com.example.data.drive.DriveSyncEngine
 import com.example.data.drive.DriveSyncStatus
 import com.example.data.security.WastiSecurityManager
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import com.example.service.WastiFloatingService
 import com.example.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 
@@ -390,6 +394,11 @@ fun SettingsScreen(
         // SECTION 2.5: GOOGLE DRIVE BACKUP & CLOUD RESTORE
         item {
             GoogleDriveBackupCard()
+        }
+
+        // SECTION 2.6: OMNI-PRESENT FLOATING ACTION BUBBLE
+        item {
+            WastiFloatingBubbleCard()
         }
 
         // SECTION 3: VOICE & SPEECH PERSONA SETTINGS
@@ -1188,6 +1197,104 @@ fun GoogleDriveBackupCard() {
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun WastiFloatingBubbleCard() {
+    val context = LocalContext.current
+    var isFloatingActive by remember { mutableStateOf(WastiFloatingService.isRunning) }
+    var hasOverlayPermission by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                Settings.canDrawOverlays(context)
+            } else true
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.PictureInPicture,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Omni-Present Floating Action Bubble",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Control Wasti AI while inside other applications (like WhatsApp or Chrome). Tap the floating bubble anywhere on screen to execute background voice commands.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Enable Overlay Bubble",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = if (hasOverlayPermission) "SYSTEM_ALERT_WINDOW Permission Active" else "Requires Overlay Permission",
+                        fontSize = 11.sp,
+                        color = if (hasOverlayPermission) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                    )
+                }
+
+                Switch(
+                    checked = isFloatingActive,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            WastiFloatingService.start(context)
+                            isFloatingActive = WastiFloatingService.isRunning
+                        } else {
+                            WastiFloatingService.stop(context)
+                            isFloatingActive = false
+                        }
+                    }
+                )
+            }
+
+            if (!hasOverlayPermission) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${context.packageName}")
+                            ).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Grant Overlay Permission in System Settings")
+                }
             }
         }
     }

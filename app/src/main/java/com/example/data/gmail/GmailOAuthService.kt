@@ -69,6 +69,9 @@ object GmailOAuthService {
         Log.i(TAG, "Initiating Secure Gmail OAuth 2.0 email dispatch to: $to")
 
         val token = getAccessToken(context)
+        if (token.isNullOrBlank()) {
+            return@withContext SendEmailResult.Error("Gmail not connected — go to Settings to connect your Google account before sending outreach emails.")
+        }
 
         // Construct RFC 2822 raw message
         val rawMimeMessage = buildString {
@@ -88,63 +91,44 @@ object GmailOAuthService {
             put("raw", base64Raw)
         }.toString()
 
-        if (!token.isNullOrBlank()) {
-            try {
-                val url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
-                val mediaType = "application/json; charset=utf-8".toMediaType()
-                val request = Request.Builder()
-                    .url(url)
-                    .addHeader("Authorization", "Bearer $token")
-                    .post(jsonPayload.toRequestBody(mediaType))
-                    .build()
+        try {
+            val url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
+            val mediaType = "application/json; charset=utf-8".toMediaType()
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $token")
+                .post(jsonPayload.toRequestBody(mediaType))
+                .build()
 
-                httpClient.newCall(request).execute().use { response ->
-                    val responseBody = response.body?.string() ?: ""
-                    if (response.isSuccessful) {
-                        val respJson = JSONObject(responseBody)
-                        val msgId = respJson.optString("id", "gmail_msg_${System.currentTimeMillis()}")
-                        Log.i(TAG, "Email successfully sent via Gmail API! Message ID: $msgId")
+            httpClient.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
+                if (response.isSuccessful) {
+                    val respJson = JSONObject(responseBody)
+                    val msgId = respJson.optString("id", "gmail_msg_${System.currentTimeMillis()}")
+                    Log.i(TAG, "Email successfully sent via Gmail API! Message ID: $msgId")
 
-                        if (context != null) {
-                            try {
-                                val db = WastiDatabase.getDatabase(context)
-                                db.systemLogDao().insertLog(
-                                    SystemLogEntity(
-                                        level = "INFO",
-                                        source = "GmailOAuthService",
-                                        message = "Gmail OAuth 2.0 outreach email sent to $to (ID: $msgId)"
-                                    )
+                    if (context != null) {
+                        try {
+                            val db = WastiDatabase.getDatabase(context)
+                            db.systemLogDao().insertLog(
+                                SystemLogEntity(
+                                    level = "INFO",
+                                    source = "GmailOAuthService",
+                                    message = "Gmail OAuth 2.0 outreach email sent to $to (ID: $msgId)"
                                 )
-                            } catch (_: Exception) {}
-                        }
-
-                        return@withContext SendEmailResult.Success(msgId, "Email sent via Gmail API")
-                    } else {
-                        Log.e(TAG, "Gmail API returned HTTP ${response.code}: $responseBody")
+                            )
+                        } catch (_: Exception) {}
                     }
+
+                    return@withContext SendEmailResult.Success(msgId, "Email sent via Gmail API")
+                } else {
+                    Log.e(TAG, "Gmail API returned HTTP ${response.code}: $responseBody")
+                    return@withContext SendEmailResult.Error("Gmail API returned HTTP ${response.code}: $responseBody")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error executing Gmail REST API call", e)
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing Gmail REST API call", e)
+            return@withContext SendEmailResult.Error("Gmail dispatch failed: ${e.message ?: "Unknown error"}")
         }
-
-        // Fallback: If no OAuth token is configured yet, record dispatch into system logs and simulate successful outreach delivery
-        val fallbackMsgId = "wasti_outreach_${System.currentTimeMillis()}"
-        Log.i(TAG, "Dispatched outreach email in Wasti Secure Engine: $to | Subject: $subject")
-
-        if (context != null) {
-            try {
-                val db = WastiDatabase.getDatabase(context)
-                db.systemLogDao().insertLog(
-                    SystemLogEntity(
-                        level = "INFO",
-                        source = "GmailOAuthService",
-                        message = "Wasti Outreach Engine: Email prepared & sent to $to with subject '$subject'"
-                    )
-                )
-            } catch (_: Exception) {}
-        }
-
-        SendEmailResult.Success(fallbackMsgId, "Outreach email dispatched successfully")
     }
 }

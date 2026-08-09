@@ -234,9 +234,9 @@ object WastiDeviceController {
         if (service != null && WastiAccessibilityService.isServiceActive) {
             val success = service.clickElement(targetElement)
             return if (success) {
-                DeviceCommandResult(true, "Successfully executed ACTION_CLICK on target '$targetElement' via Wasti Accessibility Engine.", "SIMULATE_TAP")
+                DeviceCommandResult(true, "Successfully executed tap gesture on target '$targetElement' via Wasti Coordinate Gesture Engine.", "SIMULATE_TAP")
             } else {
-                DeviceCommandResult(false, "Wasti Accessibility Engine scanned the window but target '$targetElement' was not found or clickable.", "SIMULATE_TAP")
+                DeviceCommandResult(false, "Wasti Accessibility Engine scanned the screen but target '$targetElement' was not found or gesture dispatch failed.", "SIMULATE_TAP")
             }
         }
 

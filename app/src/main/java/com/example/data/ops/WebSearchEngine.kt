@@ -159,7 +159,7 @@ object WebSearchEngine {
             listOf(
                 SearchResultItem(
                     title = "Web Intelligence Search: $query",
-                    snippet = "Live web search request processed for query '$query'. Top intelligence synthesized.",
+                    snippet = "Automated search did not return results — use this link to search directly.",
                     link = "https://www.google.com/search?q=${URLEncoder.encode(query, "UTF-8")}"
                 )
             )
@@ -208,5 +208,80 @@ object WebSearchEngine {
             put("result_count", results.size)
             put("results", jsonArray)
         }.toString(2)
+    }
+
+    /**
+     * Fetches raw HTML of a web page URL and extracts readable text.
+     * Strips <script>, <style>, and HTML tags, capping output at 4000 characters.
+     */
+    suspend fun scrapeWebPage(url: String): String = withContext(Dispatchers.IO) {
+        if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
+            return@withContext "Error: Invalid or empty URL provided. URL must start with http:// or https://"
+        }
+
+        Log.i(TAG, "Scraping web page content from URL: $url")
+
+        try {
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 WastiAI/1.0")
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext "Error: HTTP ${response.code} ${response.message} while fetching $url"
+                }
+
+                val rawHtml = response.body?.string() ?: ""
+                if (rawHtml.isBlank()) {
+                    return@withContext "Error: Web page returned empty content."
+                }
+
+                val cleanText = cleanHtmlToText(rawHtml)
+                if (cleanText.isBlank()) {
+                    return@withContext "Web page $url contained no readable text after stripping HTML tags."
+                }
+
+                val cappedText = if (cleanText.length > 4000) {
+                    cleanText.substring(0, 4000) + "\n\n[...Content truncated at 4,000 characters for optimal processing...]"
+                } else {
+                    cleanText
+                }
+
+                return@withContext "Web Page Content ($url):\n\n$cappedText"
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to scrape web page: $url", e)
+            return@withContext "Error scraping web page ($url): ${e.message ?: e.toString()}"
+        }
+    }
+
+    private fun cleanHtmlToText(html: String): String {
+        return try {
+            // Remove <script>...</script>
+            var text = html.replace(Regex("""(?s)<script.*?>.*?</script>""", RegexOption.IGNORE_CASE), " ")
+            // Remove <style>...</style>
+            text = text.replace(Regex("""(?s)<style.*?>.*?</style>""", RegexOption.IGNORE_CASE), " ")
+            // Remove HTML comments
+            text = text.replace(Regex("""(?s)<!--.*?-->"""), " ")
+            // Replace block elements tags with newlines
+            text = text.replace(Regex("""(?i)<(p|br|div|h[1-6]|li|tr|section|article)[^>]*>"""), "\n")
+            // Remove remaining HTML tags
+            text = text.replace(Regex("""<[^>]+>"""), " ")
+            // Unescape common HTML entities
+            text = text.replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+            // Collapse multiple empty lines / spaces
+            text.lines()
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString("\n")
+        } catch (e: Exception) {
+            html.take(4000)
+        }
     }
 }

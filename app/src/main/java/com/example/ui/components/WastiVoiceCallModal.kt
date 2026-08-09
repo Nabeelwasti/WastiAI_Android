@@ -43,7 +43,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.util.Log
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -112,28 +116,50 @@ fun WastiVoiceCallModal(
         }
     }
 
-    // TextToSpeech Engine
+    val coroutineScope = rememberCoroutineScope()
+    var startNativeListeningCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    // MediaPlayer & TextToSpeech Engine
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
 
     // Hard Stop / Interrupt Function
-    fun stopTTS() {
-        ttsEngine?.stop()
+    fun stopAudioAndTTS() {
+        try {
+            mediaPlayer?.let { mp ->
+                if (mp.isPlaying) {
+                    mp.stop()
+                }
+                mp.release()
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        mediaPlayer = null
+
+        try {
+            ttsEngine?.stop()
+        } catch (e: Exception) {
+            // ignore
+        }
+
         isSpeaking = false
         voiceStatusText = "Speech interrupted."
     }
 
-    // High-quality Multilingual TTS Speaker with Pure Urdu Phonetic Conversion for Roman Urdu
-    fun speakWithPersona(rawText: String, persona: WastiVoicePersona) {
-        if (rawText.isBlank()) return
+    fun stopTTS() {
+        stopAudioAndTTS()
+    }
 
+    // Fallback Android System TextToSpeech Speaker
+    fun fallbackToAndroidTts(textToSpeak: String, persona: WastiVoicePersona) {
         ttsEngine?.let { tts ->
-            tts.stop() // Hard interrupt previous speech before new output
+            tts.stop()
             isSpeaking = true
 
-            val langType = WastiUrduLanguageEngine.detectLanguage(rawText)
+            val langType = WastiUrduLanguageEngine.detectLanguage(textToSpeak)
             var isSouthAsianVoiceAvailable = false
 
-            // Locale configuration with Hindi (hi-IN) fallback for Urdu phonetics
             try {
                 if (langType == WastiUrduLanguageEngine.LanguageType.PURE_URDU ||
                     langType == WastiUrduLanguageEngine.LanguageType.ROMAN_URDU ||
@@ -157,14 +183,12 @@ fun WastiVoiceCallModal(
                 tts.setLanguage(Locale.ENGLISH)
             }
 
-            // Select best speech text representation
             val ttsText = if (isSouthAsianVoiceAvailable || langType == WastiUrduLanguageEngine.LanguageType.PURE_URDU) {
-                WastiUrduLanguageEngine.prepareTextForTts(rawText)
+                WastiUrduLanguageEngine.prepareTextForTts(textToSpeak)
             } else {
-                WastiSpeechSanitizer.sanitizeForSpeech(rawText)
+                WastiSpeechSanitizer.sanitizeForSpeech(textToSpeak)
             }
 
-            // Find best matching HD voice profile in system TTS
             try {
                 val systemVoices = tts.voices
                 if (!systemVoices.isNullOrEmpty()) {
@@ -195,26 +219,112 @@ fun WastiVoiceCallModal(
             tts.setPitch(persona.pitch)
             tts.setSpeechRate(persona.speed)
 
-            voiceStatusText = "Wasti Speaking (${persona.title})..."
+            voiceStatusText = "Wasti Speaking (${persona.title} - System TTS)..."
             
-            // Set utterance listener to track when speaking finishes
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     isSpeaking = true
                 }
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
-                    voiceStatusText = "Wasti Voice Assistant • Ready"
+                    coroutineScope.launch(Dispatchers.Main) {
+                        voiceStatusText = "Wasti Voice Assistant • Ready"
+                        startNativeListeningCallback?.invoke()
+                    }
                 }
                 override fun onError(utteranceId: String?) {
                     isSpeaking = false
-                    voiceStatusText = "Speech playback complete."
+                    coroutineScope.launch(Dispatchers.Main) {
+                        voiceStatusText = "Speech playback complete."
+                    }
                 }
             })
 
             val params = Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "wasti_clean_speech")
             tts.speak(ttsText, TextToSpeech.QUEUE_FLUSH, params, "wasti_clean_speech")
+        }
+    }
+
+    // High-quality ElevenLabs Neural Voice Synthesizer with MediaPlayer Pipeline
+    fun speakWithPersona(rawText: String, persona: WastiVoicePersona) {
+        if (rawText.isBlank()) return
+
+        stopAudioAndTTS()
+
+        coroutineScope.launch(Dispatchers.Main) {
+            voiceStatusText = "Synthesizing ElevenLabs HD Voice..."
+            
+            val result = withContext(Dispatchers.IO) {
+                VoiceManager.synthesizeSpeech(
+                    text = rawText,
+                    preferredProviderId = "elevenlabs"
+                )
+            }
+
+            if (result.isSuccess && result.audioBytes != null && result.audioBytes.isNotEmpty() && result.providerId == "elevenlabs") {
+                try {
+                    val tempFile = File.createTempFile("wasti_elevenlabs_", ".mp3", context.cacheDir)
+                    tempFile.deleteOnExit()
+                    FileOutputStream(tempFile).use { fos ->
+                        fos.write(result.audioBytes)
+                        fos.flush()
+                    }
+
+                    val mp = MediaPlayer()
+                    mp.setDataSource(tempFile.absolutePath)
+                    mp.prepareAsync()
+
+                    mp.setOnPreparedListener { player ->
+                        mediaPlayer = player
+                        isSpeaking = true
+                        voiceStatusText = "Wasti ElevenLabs HD Speaking..."
+                        player.start()
+                    }
+
+                    mp.setOnCompletionListener { player ->
+                        isSpeaking = false
+                        try {
+                            player.stop()
+                            player.release()
+                        } catch (e: Exception) {}
+                        if (mediaPlayer == player) {
+                            mediaPlayer = null
+                        }
+                        try {
+                            tempFile.delete()
+                        } catch (e: Exception) {}
+
+                        voiceStatusText = "Wasti HD Speech complete • Reopening mic..."
+                        // Task 30B: Continuous conversation loop
+                        startNativeListeningCallback?.invoke()
+                    }
+
+                    mp.setOnErrorListener { player, what, extra ->
+                        Log.e("WastiVoiceCallModal", "MediaPlayer error ($what, $extra). Falling back to Android TTS.")
+                        isSpeaking = false
+                        try {
+                            player.release()
+                        } catch (e: Exception) {}
+                        if (mediaPlayer == player) {
+                            mediaPlayer = null
+                        }
+                        try {
+                            tempFile.delete()
+                        } catch (e: Exception) {}
+
+                        fallbackToAndroidTts(rawText, persona)
+                        true
+                    }
+
+                } catch (e: Exception) {
+                    Log.e("WastiVoiceCallModal", "Failed to play ElevenLabs audio: ${e.message}", e)
+                    fallbackToAndroidTts(rawText, persona)
+                }
+            } else {
+                Log.w("WastiVoiceCallModal", "ElevenLabs synthesis failed or unconfigured (${result.errorMessage}). Falling back to Android system TTS.")
+                fallbackToAndroidTts(rawText, persona)
+            }
         }
     }
 
@@ -230,8 +340,16 @@ fun WastiVoiceCallModal(
             }
         }
         onDispose {
-            tts.stop()
-            tts.shutdown()
+            try {
+                mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) mp.stop()
+                    mp.release()
+                }
+            } catch (e: Exception) {}
+            try {
+                tts.stop()
+                tts.shutdown()
+            } catch (e: Exception) {}
         }
     }
 
@@ -299,7 +417,6 @@ fun WastiVoiceCallModal(
 
     // Background Native SpeechRecognizer without external Google dialog popups
     var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
-    val coroutineScope = rememberCoroutineScope()
     var micRecordingJob by remember { mutableStateOf<Job?>(null) }
 
     DisposableEffect(context) {
@@ -481,6 +598,10 @@ fun WastiVoiceCallModal(
         }
         
         startBackgroundAudioRecordMonitor()
+    }
+
+    SideEffect {
+        startNativeListeningCallback = { startNativeListening() }
     }
 
     LaunchedEffect(startListeningOnPermissionGranted) {

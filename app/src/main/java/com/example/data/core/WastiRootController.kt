@@ -41,42 +41,6 @@ object WastiRootController {
     val activeSkillMatrix: StateFlow<SkillMatrix> = _activeSkillMatrix.asStateFlow()
 
     /**
-     * Privileged write access method that can write code or scripts to the
-     * app/src/main/java/com/example/data/worker/ directory or internal files.
-     */
-    fun privilegedExecute(
-        context: Context,
-        targetFileName: String,
-        fileContent: String,
-        subDir: String = "app/src/main/java/com/example/data/worker/"
-    ): Boolean {
-        return try {
-            val projectDir = context.filesDir.parentFile?.parentFile ?: context.filesDir
-            val targetFolder = File(projectDir, subDir)
-            if (!targetFolder.exists()) {
-                targetFolder.mkdirs()
-            }
-            val targetFile = File(targetFolder, targetFileName)
-            targetFile.writeText(fileContent)
-            Log.i(TAG, "Privileged execution written successfully to ${targetFile.absolutePath}")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Privileged execution failed writing $targetFileName to $subDir", e)
-            try {
-                val fallbackFolder = File(context.filesDir, "workers")
-                if (!fallbackFolder.exists()) fallbackFolder.mkdirs()
-                val fallbackFile = File(fallbackFolder, targetFileName)
-                fallbackFile.writeText(fileContent)
-                Log.i(TAG, "Privileged execution fallback written to ${fallbackFile.absolutePath}")
-                true
-            } catch (ex: Exception) {
-                Log.e(TAG, "Fallback privileged execution failed", ex)
-                false
-            }
-        }
-    }
-
-    /**
      * Save/append match scores and client feedback into TrainingLog.json
      * for the Continuous Learning Loop.
      */
