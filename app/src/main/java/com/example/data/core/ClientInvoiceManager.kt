@@ -37,7 +37,8 @@ data class ClientInvoiceItem(
     val amountUsd: Double,
     var status: InvoiceStatus = InvoiceStatus.DRAFT,
     val issueDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-    val dueDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(System.currentTimeMillis() + 864000000L)) // 10 days
+    val dueDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(System.currentTimeMillis() + 864000000L)), // 10 days
+    val clientFeedback: String? = null
 )
 
 object ClientInvoiceManager {
@@ -150,7 +151,8 @@ object ClientInvoiceManager {
             amountUsd = amountUsd,
             status = status.name,
             issueDate = issueDate,
-            dueDate = dueDate
+            dueDate = dueDate,
+            clientFeedback = clientFeedback
         )
     }
 
@@ -162,7 +164,8 @@ object ClientInvoiceManager {
             amountUsd = amountUsd,
             status = try { InvoiceStatus.valueOf(status) } catch (_: Exception) { InvoiceStatus.DRAFT },
             issueDate = issueDate,
-            dueDate = dueDate
+            dueDate = dueDate,
+            clientFeedback = clientFeedback
         )
     }
 

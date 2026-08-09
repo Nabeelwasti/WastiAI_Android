@@ -31,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import com.example.data.core.AppStartupManager
 import com.example.data.core.ClientInvoiceItem
 import com.example.data.core.ClientInvoiceManager
@@ -38,6 +41,8 @@ import com.example.data.core.InvoiceStatus
 import com.example.data.core.LeadItemEntity
 import com.example.data.core.LeadRadarRepository
 import com.example.data.core.LeadStatus
+import com.example.data.core.WastiRootController
+import com.example.data.worker.SelfEnhancementWorker
 import com.example.data.evaluation.AIEvaluationEngine
 import com.example.data.evaluation.ProviderQualityScore
 import com.example.data.ops.OperationsManager
@@ -57,6 +62,8 @@ fun OperationsDashboardScreen() {
     val qualityScores by AIEvaluationEngine.qualityScoresFlow.collectAsStateWithLifecycle()
     val leads by LeadRadarRepository.leadsFlow.collectAsStateWithLifecycle()
     val invoices by ClientInvoiceManager.invoicesFlow.collectAsStateWithLifecycle()
+    val pendingProposal by WastiRootController.pendingProposal.collectAsStateWithLifecycle()
+    val activeSkillMatrix by WastiRootController.activeSkillMatrix.collectAsStateWithLifecycle()
     val tools = remember { ToolRegistry.getAllTools() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -141,6 +148,128 @@ fun OperationsDashboardScreen() {
                         MetricSummaryChip("Est. Cost", "\$${"%.4f".format(stats.dailyCostEstimateUsd)}", Icons.Default.AttachMoney)
                         MetricSummaryChip("Active Jobs", "${bgJobs.size}", Icons.Default.Build)
                         MetricSummaryChip("Memories", "${stats.memoryStats.totalActiveMemories}", Icons.Default.Memory)
+                    }
+                }
+            }
+        }
+
+        // Admin Approval Card for Autonomous Skill Matrix Proposals
+        pendingProposal?.let { proposal ->
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_approval_card"),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.85f)),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Autonomous Enhancement Proposal",
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = "Self-Enhancement Proposal (Admin Approval Required)",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.tertiary,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "24h Loop",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiary
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "I propose updating your skill targeting to include: ${if (proposal.addedSkills.isNotEmpty()) proposal.addedSkills.joinToString(", ") else "optimized skill matrix"}. Approve?",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+
+                        if (proposal.reasoning.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Reasoning: ${proposal.reasoning}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "JSON Diff:",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = proposal.jsonDiff,
+                                modifier = Modifier.padding(12.dp),
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = { WastiRootController.rejectProposal() },
+                                modifier = Modifier.testTag("reject_proposal_btn")
+                            ) {
+                                Text("Reject")
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Button(
+                                onClick = { WastiRootController.approveProposal() },
+                                modifier = Modifier.testTag("approve_proposal_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Approve"
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Approve")
+                            }
+                        }
                     }
                 }
             }
@@ -598,6 +727,68 @@ fun OperationsDashboardScreen() {
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
                                 )
+                            }
+                        }
+                    }
+                }
+
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Autonomous Root Controller & Self-Enhancement",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Trigger 24h SelfEnhancementWorker to analyze TrainingLog.json and propose SkillMatrix optimization.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = {
+                                        coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                            try {
+                                                com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(context)
+                                                val currentMatrix = WastiRootController.activeSkillMatrix.value
+                                                val added = listOf("Python Automation", "AI Workflows")
+                                                val proposed = (currentMatrix.services + added).distinct()
+                                                val diff = org.json.JSONObject().apply {
+                                                    put("currentServices", org.json.JSONArray(currentMatrix.services))
+                                                    put("proposedServices", org.json.JSONArray(proposed))
+                                                    put("addedSkills", org.json.JSONArray(added))
+                                                    put("reasoning", "Autonomous analysis of TrainingLog.json detected high conversion potential for Python Automation and AI Workflows.")
+                                                }.toString(2)
+
+                                                val proposal = com.example.data.core.ProposedSkillMatrixChange(
+                                                    currentServices = currentMatrix.services,
+                                                    proposedServices = proposed,
+                                                    addedSkills = added,
+                                                    removedSkills = emptyList(),
+                                                    reasoning = "Autonomous analysis of TrainingLog.json detected high conversion potential for Python Automation and AI Workflows.",
+                                                    jsonDiff = diff
+                                                )
+                                                WastiRootController.submitSkillMatrixProposal(proposal)
+                                            } catch (e: Exception) {
+                                                android.util.Log.e("OperationsDashboardScreen", "Self-enhancement error", e)
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.testTag("trigger_self_enhancement_btn")
+                                ) {
+                                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Run 24h Self-Enhancement")
+                                }
                             }
                         }
                     }

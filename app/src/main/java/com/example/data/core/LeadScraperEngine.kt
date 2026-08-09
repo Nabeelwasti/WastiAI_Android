@@ -103,7 +103,7 @@ object LeadScraperEngine {
         }
 
         if (leads.isEmpty()) {
-            return@withContext getFallbackLeadsForUrl(feedUrl)
+            return@withContext emptyList<LeadItem>()
         }
 
         return@withContext leads
@@ -215,42 +215,5 @@ object LeadScraperEngine {
             .replace(Regex("&gt;"), ">")
             .replace(Regex("\\s+"), " ")
             .trim()
-    }
-
-    private fun getFallbackLeadsForUrl(feedUrl: String): List<LeadItem> {
-        val category = when {
-            feedUrl.lowercase().contains("video") -> "Video Editing"
-            feedUrl.lowercase().contains("graphic") -> "Graphic Design"
-            feedUrl.lowercase().contains("autocad") -> "AutoCAD"
-            feedUrl.lowercase().contains("corel") -> "CorelDRAW"
-            feedUrl.lowercase().contains("canva") -> "Canva"
-            feedUrl.lowercase().contains("dmca") -> "DMCA Takedowns"
-            feedUrl.lowercase().contains("automation") -> "AI Automation"
-            else -> "Video Editing"
-        }
-
-        return listOf(
-            LeadItem(
-                title = "Need Expert $category Specialist for Long-Term Project",
-                link = "https://www.upwork.com/jobs/~01wasti101",
-                description = "Looking for a skilled professional in $category to handle high-volume creative assets, editing, and workflow design.",
-                pubDate = "Just now",
-                category = category
-            ),
-            LeadItem(
-                title = "Urgent $category & Visual Graphic Production",
-                link = "https://www.upwork.com/jobs/~02wasti102",
-                description = "Seeking a top candidate for $category, social media templates, and custom vector layouts with fast turnaround times.",
-                pubDate = "15 mins ago",
-                category = category
-            ),
-            LeadItem(
-                title = "Automated Workflows & $category Project",
-                link = "https://www.upwork.com/jobs/~03wasti103",
-                description = "We require an expert in $category and AI automation to streamline digital media production and content safety.",
-                pubDate = "45 mins ago",
-                category = category
-            )
-        )
     }
 }

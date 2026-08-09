@@ -104,6 +104,12 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `invoices` ADD COLUMN `clientFeedback` TEXT DEFAULT NULL")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -123,7 +129,7 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         LeadEntity::class,
         InvoiceEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -152,7 +158,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

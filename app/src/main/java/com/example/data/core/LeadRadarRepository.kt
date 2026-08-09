@@ -69,86 +69,10 @@ object LeadRadarRepository {
             // Observe Room DB updates reactively
             launch {
                 dao.getAllLeads().collect { dbLeads ->
-                    if (dbLeads.isEmpty()) {
-                        populateInitialLeadsInDb(context)
-                    } else {
-                        _leadsFlow.value = dbLeads.map { it.toUiModel() }
-                    }
+                    _leadsFlow.value = dbLeads.map { it.toUiModel() }
                 }
             }
         }
-    }
-
-    private suspend fun populateInitialLeadsInDb(context: Context) {
-        val db = WastiDatabase.getDatabase(context)
-        val dao = db.leadDao()
-
-        val defaultLeads = listOf(
-            LeadItemEntity(
-                title = "Need High-Volume Reels & YouTube Shorts Video Editor",
-                link = "https://www.upwork.com/jobs/~01wasti101",
-                description = "Looking for a dedicated specialist in Premiere Pro & After Effects to handle 10-15 short-form videos weekly with fast turnaround.",
-                pubDate = "10 mins ago",
-                category = "Video Editing",
-                matchScore = 96,
-                matchedSkills = listOf("Video Editing", "AI Automation"),
-                draftedPitch = """
-                    Respected Hiring Client,
-
-                    I came across your job request for a High-Volume Video Editor and am exceptionally equipped to deliver this with top-tier professional precision.
-
-                    As an experienced specialist in Video Editing & AI Automation, I bring end-to-end expertise, fast delivery timelines, and polished visual execution.
-
-                    Why Choose My Services:
-                    • Direct Mastery in Premiere Pro, After Effects, and short-form Reels production.
-                    • Complete End-to-End Workflow & Rapid Turnarounds.
-                    • 100% Client Satisfaction & Revisions Guarantee.
-
-                    I am ready to start immediately. Let's discuss your project requirements!
-                """.trimIndent(),
-                status = LeadStatus.DISCOVERED,
-                clientEmail = "hiring.manager@clientcorp.com"
-            ),
-            LeadItemEntity(
-                title = "Graphic Designer Needed for Complete Brand Identity & Vector Logos",
-                link = "https://www.upwork.com/jobs/~02wasti102",
-                description = "Seeking a top candidate for CorelDRAW, Photoshop logo design, social media banners, and print-ready CDR/vector templates.",
-                pubDate = "25 mins ago",
-                category = "Graphic Design",
-                matchScore = 92,
-                matchedSkills = listOf("Graphic Design", "CorelDRAW", "Canva"),
-                draftedPitch = """
-                    Respected Hiring Client,
-
-                    I reviewed your brand design request and can deliver modern, high-impact vector graphics and print-ready brand collateral tailored to your brand goals.
-
-                    Equipped with advanced CorelDRAW, Illustrator, and Photoshop design suites, I guarantee clean geometry, premium aesthetics, and swift deliverables.
-                """.trimIndent(),
-                status = LeadStatus.PROPOSAL_SENT,
-                clientEmail = "brand.studio@agency.org"
-            ),
-            LeadItemEntity(
-                title = "Architectural Floor Plan 2D & 3D AutoCAD Drafting",
-                link = "https://www.upwork.com/jobs/~03wasti103",
-                description = "Require a CAD draftsman to convert architectural PDF hand sketches into precise 2D DWG layout plans.",
-                pubDate = "1 hour ago",
-                category = "AutoCAD",
-                matchScore = 88,
-                matchedSkills = listOf("AutoCAD"),
-                draftedPitch = """
-                    Respected Hiring Client,
-
-                    I can convert your architectural PDF sketches into clean, layered, production-grade AutoCAD DWG plans with exact dimensions and line weights.
-
-                    Available to start immediately with rapid revision cycles.
-                """.trimIndent(),
-                status = LeadStatus.NEGOTIATING,
-                clientEmail = "contact@buildtech.io"
-            )
-        )
-
-        val entities = defaultLeads.map { it.toRoomEntity() }
-        dao.insertLeads(entities)
     }
 
     suspend fun scanAndEvaluateLeads(context: Context, query: String): List<LeadItemEntity> = withContext(Dispatchers.IO) {
@@ -189,6 +113,12 @@ object LeadRadarRepository {
         if (evaluatedEntities.isNotEmpty()) {
             val db = WastiDatabase.getDatabase(context)
             db.leadDao().insertLeads(evaluatedEntities.map { it.toRoomEntity() })
+        } else {
+            val errorMsg = "No live leads found from the current feed. Please verify the RSS URL or connection."
+            Log.w(TAG, errorMsg)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+            }
         }
 
         evaluatedEntities

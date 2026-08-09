@@ -11,6 +11,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.data.core.ClientInvoiceManager
 import com.example.data.core.LeadRadarRepository
+import com.example.data.core.WastiRootController
 import com.example.data.credential.CredentialRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,7 +70,15 @@ class LeadSyncWorker(
             val evaluatedLeads = LeadRadarRepository.scanAndEvaluateLeads(context, lastQuery)
             Log.d(TAG, "Background scan completed. Processed ${evaluatedLeads.size} leads.")
 
-            // 3. Reconcile Stripe Webhook & Payment Intents
+            // 3. Continuous Learning Loop: Log MatchScores and feedback into TrainingLog.json
+            val matchScores = evaluatedLeads.map { Pair(it.title, it.matchScore) }
+            val invoices = ClientInvoiceManager.invoicesFlow.value
+            val feedbackList = invoices.mapNotNull { inv ->
+                inv.clientFeedback?.let { Pair(inv.projectMilestone, it) }
+            }
+            WastiRootController.logTrainingMetrics(context, matchScores, feedbackList)
+
+            // 4. Reconcile Stripe Webhook & Payment Intents
             val StripeSyncedInvoices = ClientInvoiceManager.syncPaymentsWithStripe(context)
             Log.d(TAG, "Stripe payment sync completed. Updated $StripeSyncedInvoices invoices.")
 

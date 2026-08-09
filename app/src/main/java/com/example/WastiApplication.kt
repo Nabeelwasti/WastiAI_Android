@@ -134,6 +134,7 @@ class WastiApplication : Application() {
                     )
 
                     com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
+                    com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
                 } catch (e: Throwable) {
                     Log.e("WastiApplication", "Failed to schedule SyncWorker safely", e)
                     AppStartupManager.recordWarning(currentStage, "Sync worker background scheduling deferred: ${e.message}")
