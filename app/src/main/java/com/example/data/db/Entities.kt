@@ -178,5 +178,7 @@ data class InvoiceEntity(
     val status: String = "DRAFT",
     val issueDate: String = "",
     val dueDate: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val currency: String = "USD",
+    val isSynthetic: Boolean = false
 )
