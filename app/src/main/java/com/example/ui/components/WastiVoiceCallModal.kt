@@ -85,6 +85,7 @@ fun WastiVoiceCallModal(
     var selectedPersona by remember { mutableStateOf(WastiVoicePersona.GROQ_VOICE) }
     var isListening by remember { mutableStateOf(false) }
     var isSpeaking by remember { mutableStateOf(false) }
+    var resumeListenTrigger by remember { mutableIntStateOf(0) }
     var voiceStatusText by remember { mutableStateOf("Wasti Native Speech Engine • Tap mic or speak") }
     var liveTranscript by remember { mutableStateOf("Tap the microphone or say commands in English, Urdu, or Punjabi...") }
     var simulatedInputText by remember { mutableStateOf("") }
@@ -205,10 +206,14 @@ fun WastiVoiceCallModal(
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
                     voiceStatusText = "Wasti Voice Assistant • Ready"
+                    // Auto-resume listening so voice chat is a real continuous conversation,
+                    // not just single tap-to-speak exchanges.
+                    resumeListenTrigger++
                 }
                 override fun onError(utteranceId: String?) {
                     isSpeaking = false
                     voiceStatusText = "Speech playback complete."
+                    resumeListenTrigger++
                 }
             })
 
@@ -487,6 +492,18 @@ fun WastiVoiceCallModal(
         if (startListeningOnPermissionGranted) {
             startListeningOnPermissionGranted = false
             startNativeListening()
+        }
+    }
+
+    // Completes the continuous "live voice chat" loop: once Wasti finishes speaking a
+    // reply, automatically resume listening for the user's next turn instead of requiring
+    // a manual mic tap every exchange. Skipped on trigger == 0 (initial composition).
+    LaunchedEffect(resumeListenTrigger) {
+        if (resumeListenTrigger > 0) {
+            kotlinx.coroutines.delay(400) // let TTS audio output fully release before mic starts
+            if (!isListening) {
+                startNativeListening()
+            }
         }
     }
 
