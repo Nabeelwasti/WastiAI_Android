@@ -52,8 +52,6 @@ jobs:
         ELEVENLABS_API_KEY=${{ secrets.ELEVENLABS_API_KEY }}
         CANVA_CLIENT_ID=${{ secrets.CANVA_CLIENT_ID }}
         CANVA_CLIENT_SECRET=${{ secrets.CANVA_CLIENT_SECRET }}
-        GITHUB_PAT=${{ secrets.GITHUB_PAT }}
-        GITHUB_FINE_GRAINED_PAT=${{ secrets.GITHUB_FINE_GRAINED_PAT }}
         BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}
         BREVO_MCP_SERVER_API_KEY=${{ secrets.BREVO_MCP_SERVER_API_KEY }}
         STRIPE_PUBLISHABLE_KEY=${{ secrets.STRIPE_PUBLISHABLE_KEY }}
