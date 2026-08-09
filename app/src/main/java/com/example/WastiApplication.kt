@@ -126,7 +126,7 @@ class WastiApplication : Application() {
                     com.example.data.core.LeadRadarRepository.initDatabase(this@WastiApplication)
                     com.example.data.core.ClientInvoiceManager.initDatabase(this@WastiApplication)
 
-                    val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(4, TimeUnit.HOURS).build()
+                    val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(1, TimeUnit.HOURS).build()
                     WorkManager.getInstance(this@WastiApplication).enqueueUniquePeriodicWork(
                         "wasti_sync_worker",
                         ExistingPeriodicWorkPolicy.KEEP,
@@ -154,5 +154,3 @@ class WastiApplication : Application() {
         }
     }
 }
-
-
