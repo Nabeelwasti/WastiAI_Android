@@ -1,12 +1,10 @@
 package com.example.assistant
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import android.text.TextUtils
 
 /**
  * Helpers to open system settings pages so the user can grant special permissions.
@@ -45,28 +43,5 @@ object SpecialPermissionHelper {
     fun openNotificationPolicyAccess(activity: Activity) {
         val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
         activity.startActivity(intent)
-    }
-
-    /**
-     * Checks whether the user has actually enabled WastiAccessibilityService in system
-     * Settings. This CANNOT be true unless the user manually toggled it on — Android does
-     * not allow apps to self-grant accessibility access. Use this to show a real "enable
-     * screen reading" prompt in the UI instead of silently failing when it's off.
-     */
-    fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expectedServiceName = "${context.packageName}/com.example.service.WastiAccessibilityService"
-        val enabledServicesSetting = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-
-        val colonSplitter = TextUtils.SimpleStringSplitter(':')
-        colonSplitter.setString(enabledServicesSetting)
-        while (colonSplitter.hasNext()) {
-            if (colonSplitter.next().equals(expectedServiceName, ignoreCase = true)) {
-                return true
-            }
-        }
-        return false
     }
 }

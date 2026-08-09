@@ -118,6 +118,42 @@ object GeminiClient {
                             ),
                             required = listOf("jobPostText")
                         )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "draft_email",
+                        description = "Drafts an outreach email to a recipient with a subject line and body text. Requires user approval before sending.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "to" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The recipient's email address."
+                                ),
+                                "subject" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The subject line of the email."
+                                ),
+                                "body" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The full body text of the email."
+                                )
+                            ),
+                            required = listOf("to", "subject", "body")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "search_web",
+                        description = "Searches the live web for real-time information, facts, news, documentation, or links.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "query" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The search query string to execute on the web."
+                                )
+                            ),
+                            required = listOf("query")
+                        )
                     )
                 )
             )
@@ -161,6 +197,18 @@ object GeminiClient {
                             val jobText = functionCall.args?.get("jobPostText") ?: ""
                             val eval = com.example.data.core.LeadScraperEngine.evaluateLeadMatch(jobText)
                             "MatchScore: ${eval.matchScore}/100\nDraftedPitch: ${eval.draftedPitch}"
+                        }
+                        "draft_email" -> {
+                            val to = functionCall.args?.get("to") ?: ""
+                            val subject = functionCall.args?.get("subject") ?: ""
+                            val body = functionCall.args?.get("body") ?: ""
+                            val draft = com.example.data.core.EmailDraft(to = to, subject = subject, body = body)
+                            com.example.data.core.WastiCore.setPendingEmailDraft(draft)
+                            "Email draft created for $to. Paused AI execution for user approval."
+                        }
+                        "search_web" -> {
+                            val query = functionCall.args?.get("query") ?: ""
+                            com.example.data.ops.WebSearchEngine.search(query)
                         }
                         else -> "Function '${functionCall.name}' executed."
                     }
@@ -261,6 +309,42 @@ object GeminiClient {
                                 )
                             ),
                             required = listOf("jobPostText")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "draft_email",
+                        description = "Drafts an outreach email to a recipient with a subject line and body text. Requires user approval before sending.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "to" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The recipient's email address."
+                                ),
+                                "subject" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The subject line of the email."
+                                ),
+                                "body" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The full body text of the email."
+                                )
+                            ),
+                            required = listOf("to", "subject", "body")
+                        )
+                    ),
+                    GeminiFunctionDeclaration(
+                        name = "search_web",
+                        description = "Searches the live web for real-time information, facts, news, documentation, or links.",
+                        parameters = GeminiFunctionParameters(
+                            type = "OBJECT",
+                            properties = mapOf(
+                                "query" to GeminiProperty(
+                                    type = "STRING",
+                                    description = "The search query string to execute on the web."
+                                )
+                            ),
+                            required = listOf("query")
                         )
                     )
                 )

@@ -127,6 +127,8 @@ fun ChatWorkspaceScreen(
     var webUrlInput by remember { mutableStateOf("") }
 
     var activeAttachment by remember { mutableStateOf<ActiveAttachment?>(null) }
+    val scope = rememberCoroutineScope()
+    val pendingDraft by com.example.data.core.WastiCore.pendingEmailDraft.collectAsState()
 
     // Real Camera Launcher
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -694,6 +696,37 @@ fun ChatWorkspaceScreen(
             }
         }
 
+        // Pending Email Outreach Approval Card
+        pendingDraft?.let { draft ->
+            EmailDraftApprovalCard(
+                draft = draft,
+                onApprove = {
+                    scope.launch {
+                        val success = com.example.data.gmail.GmailOAuthService.sendEmail(
+                            to = draft.to,
+                            subject = draft.subject,
+                            body = draft.body,
+                            context = context
+                        )
+                        com.example.data.core.WastiCore.clearPendingEmailDraft()
+                        if (success) {
+                            onSendMessage(
+                                "✅ [EMAIL APPROVED & SENT]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nEmail dispatched via Gmail OAuth 2.0 API.",
+                                null,
+                                "image/jpeg"
+                            )
+                        } else {
+                            android.widget.Toast.makeText(context, "Failed to send email via Gmail API.", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                onReject = {
+                    promptInput = "Draft email to ${draft.to} with subject '${draft.subject}':\n${draft.body}"
+                    com.example.data.core.WastiCore.clearPendingEmailDraft()
+                }
+            )
+        }
+
         // Input Bar with Material OutlinedBox Alignment & Multimodal Attachment Options
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -1134,4 +1167,124 @@ private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
     val params = android.os.Bundle()
     params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
     ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
+}
+
+@Composable
+fun EmailDraftApprovalCard(
+    draft: com.example.data.core.EmailDraft,
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .testTag("email_draft_approval_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.95f)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Email,
+                        contentDescription = "Draft Email",
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "✉️ Email Outreach Draft (Approval Required)",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer
+                ) {
+                    Text(
+                        text = "PAUSED",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.2f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "To: ${draft.to}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Text(
+                    text = "Subject: ${draft.subject}",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+            }
+
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = draft.body,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onReject,
+                    modifier = Modifier.testTag("reject_email_draft_button"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Reject / Edit", fontSize = 12.sp)
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Button(
+                    onClick = onApprove,
+                    modifier = Modifier.testTag("approve_email_draft_button"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Approve & Send", fontSize = 12.sp)
+                }
+            }
+        }
+    }
 }

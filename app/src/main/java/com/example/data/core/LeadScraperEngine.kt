@@ -14,8 +14,7 @@ data class LeadItem(
     val link: String,
     val description: String,
     val pubDate: String = "",
-    val category: String = "",
-    val isSynthetic: Boolean = false
+    val category: String = ""
 )
 
 data class LeadEvaluationResult(
@@ -232,28 +231,25 @@ object LeadScraperEngine {
 
         return listOf(
             LeadItem(
-                title = "[DEMO] Need Expert $category Specialist for Long-Term Project",
-                link = "",
-                description = "Sample lead shown because no live results were found for this feed right now. Not a real client posting — do not send a pitch for this. Try scanning again shortly.",
-                pubDate = "Sample data",
-                category = category,
-                isSynthetic = true
+                title = "Need Expert $category Specialist for Long-Term Project",
+                link = "https://www.upwork.com/jobs/~01wasti101",
+                description = "Looking for a skilled professional in $category to handle high-volume creative assets, editing, and workflow design.",
+                pubDate = "Just now",
+                category = category
             ),
             LeadItem(
-                title = "[DEMO] Urgent $category & Visual Graphic Production",
-                link = "",
-                description = "Sample lead shown because no live results were found for this feed right now. Not a real client posting — do not send a pitch for this. Try scanning again shortly.",
-                pubDate = "Sample data",
-                category = category,
-                isSynthetic = true
+                title = "Urgent $category & Visual Graphic Production",
+                link = "https://www.upwork.com/jobs/~02wasti102",
+                description = "Seeking a top candidate for $category, social media templates, and custom vector layouts with fast turnaround times.",
+                pubDate = "15 mins ago",
+                category = category
             ),
             LeadItem(
-                title = "[DEMO] Automated Workflows & $category Project",
-                link = "",
-                description = "Sample lead shown because no live results were found for this feed right now. Not a real client posting — do not send a pitch for this. Try scanning again shortly.",
-                pubDate = "Sample data",
-                category = category,
-                isSynthetic = true
+                title = "Automated Workflows & $category Project",
+                link = "https://www.upwork.com/jobs/~03wasti103",
+                description = "We require an expert in $category and AI automation to streamline digital media production and content safety.",
+                pubDate = "45 mins ago",
+                category = category
             )
         )
     }

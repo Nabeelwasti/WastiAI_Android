@@ -8,6 +8,10 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
 
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
 enum class RoutingTier {
     FAST_LANE,     // Tier 1
     STANDARD_LANE, // Tier 2
@@ -15,7 +19,26 @@ enum class RoutingTier {
     OFFLINE_LANE   // Tier 4
 }
 
+data class EmailDraft(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val to: String,
+    val subject: String,
+    val body: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 object WastiCore {
+
+    private val _pendingEmailDraft = MutableStateFlow<EmailDraft?>(null)
+    val pendingEmailDraft: StateFlow<EmailDraft?> = _pendingEmailDraft.asStateFlow()
+
+    fun setPendingEmailDraft(draft: EmailDraft?) {
+        _pendingEmailDraft.value = draft
+    }
+
+    fun clearPendingEmailDraft() {
+        _pendingEmailDraft.value = null
+    }
 
     fun classifyIntentTier(prompt: String): RoutingTier {
         return RoutingTier.DEEP_LANE
@@ -72,8 +95,8 @@ object WastiCore {
             }
         }
 
-        // Check if intent requires native screen reading or tap execution via Function Calling
-        if (lowerPrompt.contains("screen") || lowerPrompt.contains("tap") || lowerPrompt.contains("click") || lowerPrompt.contains("touch")) {
+        // Check if intent requires native tools (screen, tap, email draft, web search) via Function Calling
+        if (lowerPrompt.contains("screen") || lowerPrompt.contains("tap") || lowerPrompt.contains("click") || lowerPrompt.contains("touch") || lowerPrompt.contains("email") || lowerPrompt.contains("draft") || lowerPrompt.contains("outreach") || lowerPrompt.contains("search") || lowerPrompt.contains("google") || lowerPrompt.contains("web") || lowerPrompt.contains("news") || lowerPrompt.contains("online") || lowerPrompt.contains("find") || lowerPrompt.contains("latest")) {
             try {
                 val functionCallResult = executeFunctionCallingLoop(
                     userPrompt = userPrompt,
@@ -316,7 +339,10 @@ object WastiCore {
     /**
      * Routes native Gemini FunctionCall objects directly to device/engine controllers.
      */
-    fun dispatchFunctionCall(functionCall: com.example.data.api.GeminiFunctionCall): String {
+    suspend fun dispatchFunctionCall(
+        functionCall: com.example.data.api.GeminiFunctionCall,
+        context: android.content.Context? = null
+    ): String {
         return when (functionCall.name) {
             "read_active_screen" -> {
                 Log.d("WastiCore", "FunctionCall dispatched: read_active_screen")
@@ -333,6 +359,20 @@ object WastiCore {
                 Log.d("WastiCore", "FunctionCall dispatched: evaluate_lead_match")
                 val evaluation = LeadScraperEngine.evaluateLeadMatch(jobText)
                 "MatchScore: ${evaluation.matchScore}/100\nDraftedPitch: ${evaluation.draftedPitch}"
+            }
+            "draft_email" -> {
+                val to = functionCall.args?.get("to") ?: ""
+                val subject = functionCall.args?.get("subject") ?: ""
+                val body = functionCall.args?.get("body") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: draft_email -> $to")
+                val draft = EmailDraft(to = to, subject = subject, body = body)
+                setPendingEmailDraft(draft)
+                "Email draft created for $to. Paused AI execution awaiting user approval in Chat Workspace."
+            }
+            "search_web" -> {
+                val query = functionCall.args?.get("query") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: search_web -> $query")
+                com.example.data.ops.WebSearchEngine.search(query, context)
             }
             else -> {
                 Log.w("WastiCore", "Unknown FunctionCall: ${functionCall.name}")

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -21,8 +22,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -912,9 +916,46 @@ fun StartupDiagnosticsCard(summary: com.example.data.core.StartupDiagnostic) {
 @Composable
 fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
     var expandedPitch by remember { mutableStateOf(false) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+
+    val cardOffsetAnim by animateFloatAsState(
+        targetValue = offsetX,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "KanbanDragOffset"
+    )
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(cardOffsetAnim.roundToInt(), 0) }
+            .pointerInput(lead.id, lead.status) {
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        if (offsetX > 120f) {
+                            val nextStatus = when (lead.status) {
+                                LeadStatus.DISCOVERED -> LeadStatus.PROPOSAL_SENT
+                                LeadStatus.PROPOSAL_SENT -> LeadStatus.NEGOTIATING
+                                LeadStatus.NEGOTIATING -> LeadStatus.CLOSED
+                                LeadStatus.CLOSED -> LeadStatus.CLOSED
+                            }
+                            LeadRadarRepository.updateLeadStatus(context, lead.id, nextStatus)
+                        } else if (offsetX < -120f) {
+                            val prevStatus = when (lead.status) {
+                                LeadStatus.CLOSED -> LeadStatus.NEGOTIATING
+                                LeadStatus.NEGOTIATING -> LeadStatus.PROPOSAL_SENT
+                                LeadStatus.PROPOSAL_SENT -> LeadStatus.DISCOVERED
+                                LeadStatus.DISCOVERED -> LeadStatus.DISCOVERED
+                            }
+                            LeadRadarRepository.updateLeadStatus(context, lead.id, prevStatus)
+                        }
+                        offsetX = 0f
+                    },
+                    onDragCancel = { offsetX = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        offsetX = (offsetX + dragAmount).coerceIn(-300f, 300f)
+                    }
+                )
+            },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
