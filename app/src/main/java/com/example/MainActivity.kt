@@ -280,11 +280,15 @@ class MainActivity : ComponentActivity() {
                             "account_hub" -> AccountHubScreen(
                                 onNavigateBack = { viewModel.selectTab("settings") }
                             )
+                            "wakeword_settings" -> com.example.ui.screens.WakeWordSettingsScreen(
+                                onNavigateBack = { viewModel.selectTab("settings") }
+                            )
                             "settings" -> SettingsScreen(
                                 isDarkTheme = darkTheme,
                                 onToggleTheme = { viewModel.toggleTheme() },
                                 selectedModel = selectedModel,
-                                onSelectModel = { viewModel.setSelectedModel(it) }
+                                onSelectModel = { viewModel.setSelectedModel(it) },
+                                onOpenWakeWordSettings = { viewModel.selectTab("wakeword_settings") }
                             )
                             "dev_assistant" -> com.example.ui.screens.DevAssistantScreen(
                                 activeCodeContext = activeCodeContext,

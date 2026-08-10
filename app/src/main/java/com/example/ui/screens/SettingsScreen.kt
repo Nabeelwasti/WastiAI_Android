@@ -52,6 +52,7 @@ fun SettingsScreen(
     onToggleTheme: () -> Unit,
     selectedModel: String = "groq-llama-3.3-70b",
     onSelectModel: (String) -> Unit = {},
+    onOpenWakeWordSettings: (() -> Unit)? = null,
     settingsViewModel: SettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -461,6 +462,32 @@ fun SettingsScreen(
                                 enableExtraVoiceModels = isChecked
                                 prefs.edit().putBoolean("enable_extra_voice_models", isChecked).apply()
                             }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onOpenWakeWordSettings?.invoke() }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = "Offline Vosk Wake-Word Settings", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            Text(
+                                text = "Manage 'Hey Wasti' offline keyword detector & acoustic calibration.",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Open Vosk Settings",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }

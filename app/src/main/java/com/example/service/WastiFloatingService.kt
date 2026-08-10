@@ -14,6 +14,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -104,6 +105,7 @@ class WastiFloatingService : Service() {
     private val sttProvider = AndroidSpeechToTextProvider()
 
     private var isListeningState = false
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -111,6 +113,15 @@ class WastiFloatingService : Service() {
         super.onCreate()
         isRunning = true
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WastiOS:FloatingServiceWakeLock").apply {
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to acquire PARTIAL_WAKE_LOCK in WastiFloatingService", e)
+        }
 
         createNotificationChannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -139,6 +150,17 @@ class WastiFloatingService : Service() {
         isRunning = false
         sttProvider.destroy()
         serviceScope.cancel()
+
+        try {
+            wakeLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing WakeLock", e)
+        }
+        wakeLock = null
 
         floatingContainer?.let {
             try {

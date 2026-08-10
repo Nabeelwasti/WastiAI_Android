@@ -47,11 +47,13 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaPlayer
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.example.data.device.WastiDeviceController
@@ -119,6 +121,8 @@ fun WastiVoiceCallModal(
     }
 
     val coroutineScope = rememberCoroutineScope()
+    var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
+    var micRecordingJob by remember { mutableStateOf<Job?>(null) }
     var startNativeListeningCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // MediaPlayer & TextToSpeech Engine
@@ -151,6 +155,140 @@ fun WastiVoiceCallModal(
 
     fun stopTTS() {
         stopAudioAndTTS()
+    }
+
+    // Permission launcher for microphone
+    var startListeningOnPermissionGranted by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            voiceStatusText = "Permission granted! Tap mic to speak."
+            startListeningOnPermissionGranted = true
+        } else {
+            voiceStatusText = "Microphone permission required for voice calls."
+        }
+    }
+
+    // Direct background microphone stream recorder (for real-time soundwave visualization & Voice Barge-In interruption)
+    fun startBackgroundAudioRecordMonitor() {
+        micRecordingJob?.cancel()
+        micRecordingJob = coroutineScope.launch(Dispatchers.IO) {
+            val sampleRate = 16000
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+            val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+
+            if (minBufferSize <= 0) return@launch
+
+            var audioRecord: AudioRecord? = null
+            var aec: AcousticEchoCanceler? = null
+            try {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    audioRecord = AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        sampleRate,
+                        channelConfig,
+                        audioFormat,
+                        minBufferSize.coerceAtLeast(2048)
+                    )
+                    if (audioRecord.state == AudioRecord.STATE_INITIALIZED) {
+                        val sessionId = audioRecord.audioSessionId
+                        if (AcousticEchoCanceler.isAvailable() && sessionId != 0) {
+                            try {
+                                aec = AcousticEchoCanceler.create(sessionId)
+                                aec?.enabled = true
+                                Log.i("WastiVoiceCallModal", "AcousticEchoCanceler enabled on audio session $sessionId")
+                            } catch (e: Exception) {
+                                Log.w("WastiVoiceCallModal", "Failed enabling AcousticEchoCanceler", e)
+                            }
+                        }
+
+                        audioRecord.startRecording()
+                        val buffer = ShortArray(1024)
+
+                        while (coroutineContext.isActive && (isListening || isSpeaking || (mediaPlayer != null && mediaPlayer?.isPlaying == true))) {
+                            val read = audioRecord.read(buffer, 0, buffer.size)
+                            if (read > 0) {
+                                var sum = 0.0
+                                for (i in 0 until read) {
+                                    sum += (buffer[i] * buffer[i]).toDouble()
+                                }
+                                val amplitude = Math.sqrt(sum / read) / 32768.0
+                                withContext(Dispatchers.Main) {
+                                    if (isListening) {
+                                        rmsAudioLevel = (amplitude * 6.0).toFloat().coerceIn(0.15f, 1.0f)
+                                    }
+
+                                    // Task 37C: Voice Barge-In (Interruption)
+                                    // If user speaks (mic detects audio spike above amplitude threshold) while AI audio is playing, stop playback and switch to listening mode
+                                    val isAiSpeakingCurrently = isSpeaking || (mediaPlayer != null && mediaPlayer?.isPlaying == true)
+                                    if (isAiSpeakingCurrently && amplitude > 0.22) {
+                                        Log.i("WastiVoiceCallModal", ">>> Voice Barge-In Interruption triggered! Amplitude: $amplitude")
+                                        stopAudioAndTTS()
+                                        voiceStatusText = "Voice Barge-In! Speech interrupted • Listening..."
+                                        startNativeListeningCallback?.invoke()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("WastiVoiceCallModal", "Error in microphone audio record loop", e)
+            } finally {
+                try {
+                    aec?.release()
+                } catch (e: Exception) {}
+                try {
+                    audioRecord?.stop()
+                    audioRecord?.release()
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    fun startNativeListening() {
+        // Hard stop any ongoing TTS speech before listening
+        stopTTS()
+
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+
+        if (isListening) {
+            // Toggle off if already listening
+            isListening = false
+            rmsAudioLevel = 0.1f
+            speechRecognizer?.stopListening()
+            micRecordingJob?.cancel()
+            voiceStatusText = "Background listening stopped."
+            return
+        }
+
+        isListening = true
+        voiceStatusText = "Listening in background... Speak in Urdu or English"
+
+        val recognizer = speechRecognizer
+        if (recognizer != null) {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ur-PK")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ur-PK")
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            }
+            try {
+                recognizer.startListening(intent)
+            } catch (e: Exception) {
+                // Keep listening active using direct PCM AudioRecord monitor
+            }
+        }
+        
+        startBackgroundAudioRecordMonitor()
     }
 
     // Fallback Android System TextToSpeech Speaker
@@ -226,6 +364,7 @@ fun WastiVoiceCallModal(
             tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     isSpeaking = true
+                    startBackgroundAudioRecordMonitor()
                 }
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
@@ -277,12 +416,13 @@ fun WastiVoiceCallModal(
                     mp.setDataSource(tempFile.absolutePath)
                     mp.prepareAsync()
 
-                    mp.setOnPreparedListener { player ->
-                        mediaPlayer = player
-                        isSpeaking = true
-                        voiceStatusText = "Wasti ElevenLabs HD Speaking..."
-                        player.start()
-                    }
+            mp.setOnPreparedListener { player ->
+                mediaPlayer = player
+                isSpeaking = true
+                voiceStatusText = "Wasti ElevenLabs HD Speaking..."
+                player.start()
+                startBackgroundAudioRecordMonitor()
+            }
 
                     mp.setOnCompletionListener { player ->
                         isSpeaking = false
@@ -420,9 +560,6 @@ fun WastiVoiceCallModal(
     }
 
     // Background Native SpeechRecognizer without external Google dialog popups
-    var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
-    var micRecordingJob by remember { mutableStateOf<Job?>(null) }
-
     DisposableEffect(context) {
         if (SpeechRecognizer.isRecognitionAvailable(context)) {
             val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
@@ -493,115 +630,6 @@ fun WastiVoiceCallModal(
             speechRecognizer?.destroy()
             micRecordingJob?.cancel()
         }
-    }
-
-    // Direct background microphone stream recorder (for real-time soundwave visualization in preview)
-    fun startBackgroundAudioRecordMonitor() {
-        micRecordingJob?.cancel()
-        micRecordingJob = coroutineScope.launch(Dispatchers.IO) {
-            val sampleRate = 16000
-            val channelConfig = AudioFormat.CHANNEL_IN_MONO
-            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-            val minBufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
-
-            if (minBufferSize <= 0) return@launch
-
-            var audioRecord: AudioRecord? = null
-            try {
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                    audioRecord = AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
-                        sampleRate,
-                        channelConfig,
-                        audioFormat,
-                        minBufferSize.coerceAtLeast(2048)
-                    )
-                    if (audioRecord.state == AudioRecord.STATE_INITIALIZED) {
-                        audioRecord.startRecording()
-                        val buffer = ShortArray(1024)
-
-                        while (isListening) {
-                            val read = audioRecord.read(buffer, 0, buffer.size)
-                            if (read > 0) {
-                                var sum = 0.0
-                                for (i in 0 until read) {
-                                    sum += (buffer[i] * buffer[i]).toDouble()
-                                }
-                                val amplitude = Math.sqrt(sum / read) / 32768.0
-                                withContext(Dispatchers.Main) {
-                                    if (isListening) {
-                                        rmsAudioLevel = (amplitude * 6.0).toFloat().coerceIn(0.15f, 1.0f)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                // Graceful fallback if mic is blocked or in preview environment
-            } finally {
-                try {
-                    audioRecord?.stop()
-                    audioRecord?.release()
-                } catch (e: Exception) {}
-            }
-        }
-    }
-
-    // Permission launcher for microphone
-    var startListeningOnPermissionGranted by remember { mutableStateOf(false) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            voiceStatusText = "Permission granted! Tap mic to speak."
-            startListeningOnPermissionGranted = true
-        } else {
-            voiceStatusText = "Microphone permission required for voice calls."
-        }
-    }
-
-    fun startNativeListening() {
-        // Hard stop any ongoing TTS speech before listening
-        stopTTS()
-
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-            return
-        }
-
-        if (isListening) {
-            // Toggle off if already listening
-            isListening = false
-            rmsAudioLevel = 0.1f
-            speechRecognizer?.stopListening()
-            micRecordingJob?.cancel()
-            voiceStatusText = "Background listening stopped."
-            return
-        }
-
-        isListening = true
-        voiceStatusText = "Listening in background... Speak in Urdu or English"
-
-        val recognizer = speechRecognizer
-        if (recognizer != null) {
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ur-PK")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ur-PK")
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-            }
-            try {
-                recognizer.startListening(intent)
-            } catch (e: Exception) {
-                // Keep listening active using direct PCM AudioRecord monitor
-            }
-        }
-        
-        startBackgroundAudioRecordMonitor()
     }
 
     SideEffect {
