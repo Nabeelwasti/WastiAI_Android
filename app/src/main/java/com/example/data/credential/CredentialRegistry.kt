@@ -295,8 +295,8 @@ object CredentialRegistry {
 
         // --- CODE & REPOSITORIES ---
         CredentialEntry(
-            keyName = "GITHUB_FINE_GRAINED_PAT",
-            displayName = "GitHub Fine-Grained PAT (ACTIVE DEFAULT)",
+            keyName = "WASTI_GIT_FINE_GRAINED_PAT",
+            displayName = "Wasti Git Fine-Grained PAT (ACTIVE DEFAULT)",
             category = CredentialCategory.CODE_REPOS,
             isDefaultActive = true,
             description = "Primary scoped token for GitHub repository actions, commits, & MCP agent sync.",
@@ -306,8 +306,8 @@ object CredentialRegistry {
             }
         ),
         CredentialEntry(
-            keyName = "GITHUB_PAT",
-            displayName = "GitHub Classic PAT (Fallback)",
+            keyName = "WASTI_GIT_PAT",
+            displayName = "Wasti Git Classic PAT (Fallback)",
             category = CredentialCategory.CODE_REPOS,
             isDefaultActive = false,
             description = "Classic Personal Access Token (secondary fallback if fine-grained is unconfigured).",
@@ -617,8 +617,8 @@ object CredentialRegistry {
             "ELEVENLABS_API_KEY" -> try { com.example.BuildConfig.ELEVENLABS_API_KEY } catch (e: Throwable) { null }
             "CANVA_CLIENT_ID" -> try { com.example.BuildConfig.CANVA_CLIENT_ID } catch (e: Throwable) { null }
             "CANVA_CLIENT_SECRET" -> try { com.example.BuildConfig.CANVA_CLIENT_SECRET } catch (e: Throwable) { null }
-            "GITHUB_PAT" -> try { com.example.BuildConfig.GITHUB_PAT } catch (e: Throwable) { null }
-            "GITHUB_FINE_GRAINED_PAT" -> try { com.example.BuildConfig.GITHUB_FINE_GRAINED_PAT } catch (e: Throwable) { null }
+            "WASTI_GIT_PAT" -> try { com.example.BuildConfig.WASTI_GIT_PAT } catch (e: Throwable) { null }
+            "WASTI_GIT_FINE_GRAINED_PAT" -> try { com.example.BuildConfig.WASTI_GIT_FINE_GRAINED_PAT } catch (e: Throwable) { null }
             "BREVO_API_KEY" -> try { com.example.BuildConfig.BREVO_API_KEY } catch (e: Throwable) { null }
             "BREVO_MCP_SERVER_API_KEY" -> try { com.example.BuildConfig.BREVO_MCP_SERVER_API_KEY } catch (e: Throwable) { null }
             "STRIPE_PUBLISHABLE_KEY" -> try { com.example.BuildConfig.STRIPE_PUBLISHABLE_KEY } catch (e: Throwable) { null }

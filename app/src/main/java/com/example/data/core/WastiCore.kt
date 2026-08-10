@@ -96,10 +96,31 @@ object WastiCore {
 
         val enrichedSystemInstruction = "$baseInstruction\n\n$overrideDirective"
 
-        // Check if intent requires Lead Radar System search or evaluation
+        // Check for B2B X-Ray Search intent
         val lowerPrompt = userPrompt.lowercase().trim()
+        if (lowerPrompt.contains("x-ray") ||
+            lowerPrompt.contains("xray") ||
+            lowerPrompt.contains("b2b") ||
+            lowerPrompt.contains("find clients") ||
+            lowerPrompt.contains("find client") ||
+            lowerPrompt.contains("search linkedin") ||
+            lowerPrompt.contains("find businesses") ||
+            lowerPrompt.contains("find business") ||
+            lowerPrompt.contains("client search")
+        ) {
+            try {
+                val xrayOutput = processB2BXRaySearchExecution(userPrompt)
+                if (xrayOutput.isNotBlank()) {
+                    return@withContext Pair(xrayOutput, "Wasti B2B X-Ray Engine")
+                }
+            } catch (e: Exception) {
+                Log.e("WastiCore", "Error processing B2B X-Ray search request, falling back", e)
+            }
+        }
+
+        // Check if intent requires Lead Radar System search or evaluation
         if (lowerPrompt.contains("lead radar") ||
-            (lowerPrompt.contains("find") && (lowerPrompt.contains("client") || lowerPrompt.contains("lead") || lowerPrompt.contains("job"))) ||
+            (lowerPrompt.contains("find") && (lowerPrompt.contains("lead") || lowerPrompt.contains("job"))) ||
             lowerPrompt.contains("scrape leads")
         ) {
             try {
@@ -354,6 +375,92 @@ object WastiCore {
     }
 
     /**
+     * Executes B2B X-Ray Search by formatting an optimized Google X-Ray search string via Gemini,
+     * querying WebSearchEngine, and presenting structured leads to the user.
+     */
+    suspend fun processB2BXRaySearchExecution(
+        userPrompt: String,
+        context: android.content.Context? = null
+    ): String = withContext(Dispatchers.IO) {
+        Log.i("WastiCore", "Initiating B2B X-Ray search pipeline for request: $userPrompt")
+
+        val promptForXRayQuery = """
+            You are a B2B Growth Specialist and Boolean X-Ray Search Expert.
+            Convert the user request into an optimized Google X-Ray search query string that targets client profiles, decision-makers, or hiring managers on networks like LinkedIn (site:linkedin.com/in), Twitter/X, Instagram, or company sites without violating anti-bot terms.
+
+            Examples:
+            - User request: "find video editor clients in Lahore hiring now" -> site:linkedin.com/in "Lahore" "hiring" "video editor"
+            - User request: "search linkedin for marketing agency owners in Dubai" -> site:linkedin.com/in "Marketing Agency Owner" OR "Managing Director" "Dubai"
+            - User request: "find B2B clients for SaaS development" -> site:linkedin.com/in "CTO" OR "VP of Engineering" OR "Founder" "hiring" "SaaS"
+
+            CRITICAL RULE: Output ONLY the exact raw search query string. Do NOT enclose in quotes, code blocks, or add explanations.
+            User Request: "$userPrompt"
+        """.trimIndent()
+
+        val xrayQueryRaw = try {
+            val resp = AIManager.execute(
+                prompt = promptForXRayQuery,
+                systemInstruction = "You generate precise Google X-Ray search queries. Return ONLY the search string."
+            )
+            if (!resp.isError && resp.content.isNotBlank()) {
+                resp.content.trim().trim('"', '\'', '`')
+            } else null
+        } catch (e: Exception) {
+            Log.w("WastiCore", "Gemini X-Ray query generation failed, using fallback rule", e)
+            null
+        }
+
+        val xrayQuery = if (!xrayQueryRaw.isNullOrBlank() && xrayQueryRaw.lines().size == 1 && xrayQueryRaw.length < 250) {
+            xrayQueryRaw
+        } else {
+            val cleanPrompt = userPrompt.replace(Regex("(?i)(find clients|find client|b2b|x-ray|xray|search linkedin for|search linkedin|find businesses|find business|search for|find)"), "").trim()
+            if (cleanPrompt.isNotBlank()) {
+                "site:linkedin.com/in \"$cleanPrompt\""
+            } else {
+                "site:linkedin.com/in \"hiring\" \"clients\""
+            }
+        }
+
+        Log.i("WastiCore", "Executing WebSearchEngine query: $xrayQuery")
+        val jsonResult = com.example.data.ops.WebSearchEngine.search(xrayQuery, context)
+
+        val sb = StringBuilder()
+        sb.append("🔍 **Wasti B2B X-Ray Lead Discovery**\n\n")
+        sb.append("Targeted Google X-Ray Query: `$xrayQuery`\n\n")
+
+        try {
+            val jsonObject = org.json.JSONObject(jsonResult)
+            val resultsArray = jsonObject.optJSONArray("results")
+
+            if (resultsArray != null && resultsArray.length() > 0) {
+                sb.append("### Identified B2B Prospects & Decision-Makers:\n\n")
+                var count = 0
+                for (i in 0 until resultsArray.length()) {
+                    val item = resultsArray.optJSONObject(i) ?: continue
+                    val title = item.optString("title", "Lead Result ${i + 1}")
+                    val snippet = item.optString("snippet", "No summary available.")
+                    val link = item.optString("link", "#")
+
+                    count++
+                    sb.append("#### ${count}. $title\n")
+                    sb.append("• **Overview**: $snippet\n")
+                    sb.append("• **Direct Profile Link**: [$link]($link)\n\n")
+                }
+                sb.append("---\n")
+                sb.append("💡 *Tip: Tap profile links to connect directly or use Wasti Email/LinkedIn drafter to generate personalized outreach.*")
+            } else {
+                sb.append("No direct X-Ray results retrieved for query `$xrayQuery`. Try broadening your location or role keywords.")
+            }
+        } catch (e: Exception) {
+            Log.e("WastiCore", "Error parsing X-Ray search JSON", e)
+            sb.append("### Search Output:\n")
+            sb.append(jsonResult)
+        }
+
+        sb.toString()
+    }
+
+    /**
      * Routes native Gemini FunctionCall objects directly to device/engine controllers.
      */
     suspend fun dispatchFunctionCall(
@@ -397,6 +504,11 @@ object WastiCore {
                 val query = functionCall.args?.get("query") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: search_web -> $query")
                 com.example.data.ops.WebSearchEngine.search(query, context)
+            }
+            "b2b_xray_search" -> {
+                val query = functionCall.args?.get("query") ?: ""
+                Log.d("WastiCore", "FunctionCall dispatched: b2b_xray_search -> $query")
+                processB2BXRaySearchExecution(query, context)
             }
             "read_web_page" -> {
                 val url = functionCall.args?.get("url") ?: ""

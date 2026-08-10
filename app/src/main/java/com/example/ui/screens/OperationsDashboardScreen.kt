@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
@@ -60,7 +61,16 @@ fun OperationsDashboardScreen() {
     val bgJobs by BackgroundTaskManager.jobsStateFlow.collectAsStateWithLifecycle()
     val workflowRules by WorkflowEngine.rulesStateFlow.collectAsStateWithLifecycle()
     val qualityScores by AIEvaluationEngine.qualityScoresFlow.collectAsStateWithLifecycle()
+    val accuracyThreshold by AIEvaluationEngine.accuracyThreshold.collectAsStateWithLifecycle()
+    val riskSensitivity by AIEvaluationEngine.riskSensitivity.collectAsStateWithLifecycle()
+    val maxLatencyToleranceMs by AIEvaluationEngine.maxLatencyToleranceMs.collectAsStateWithLifecycle()
+    val autoFallbackEnabled by AIEvaluationEngine.autoFallbackEnabled.collectAsStateWithLifecycle()
+    val voskCalibrationFactor by AIEvaluationEngine.voskCalibrationFactor.collectAsStateWithLifecycle()
+    val voskListeningMode by AIEvaluationEngine.voskListeningMode.collectAsStateWithLifecycle()
+    val voskLastCalibratedMs by AIEvaluationEngine.voskLastCalibratedMs.collectAsStateWithLifecycle()
+    val voskIsCalibrating by AIEvaluationEngine.voskIsCalibrating.collectAsStateWithLifecycle()
     val leads by LeadRadarRepository.leadsFlow.collectAsStateWithLifecycle()
+    val prospects by LeadRadarRepository.prospectsFlow.collectAsStateWithLifecycle()
     val invoices by ClientInvoiceManager.invoicesFlow.collectAsStateWithLifecycle()
     val pendingProposal by WastiRootController.pendingProposal.collectAsStateWithLifecycle()
     val activeSkillMatrix by WastiRootController.activeSkillMatrix.collectAsStateWithLifecycle()
@@ -72,10 +82,36 @@ fun OperationsDashboardScreen() {
     var customKeywordInput by remember { mutableStateOf("Video Editing & Graphic Design") }
     var isScanningLeads by remember { mutableStateOf(false) }
     var selectedKanbanFilter by remember { mutableStateOf<LeadStatus?>(null) }
+    var selectedCrmStageFilter by remember { mutableStateOf<String?>(null) }
+
+    var totalRevenueUsd by remember { mutableDoubleStateOf(0.0) }
+    var totalPaidUsd by remember { mutableDoubleStateOf(0.0) }
+    var totalPendingUsd by remember { mutableDoubleStateOf(0.0) }
+
+    LaunchedEffect(invoices) {
+        var sumAll = 0.0
+        var sumPaid = 0.0
+        var sumPending = 0.0
+        for (inv in invoices) {
+            val converted = ClientInvoiceManager.convertToUsd(inv.amountUsd, inv.currency)
+            sumAll += converted
+            if (inv.status == InvoiceStatus.PAID) {
+                sumPaid += converted
+            } else if (inv.status == InvoiceStatus.PENDING_PAYMENT || inv.status == InvoiceStatus.INVOICED) {
+                sumPending += converted
+            }
+        }
+        totalRevenueUsd = sumAll
+        totalPaidUsd = sumPaid
+        totalPendingUsd = sumPending
+    }
 
     var newClientName by remember { mutableStateOf("") }
     var newMilestone by remember { mutableStateOf("") }
     var newAmount by remember { mutableStateOf("") }
+    var selectedCurrency by remember { mutableStateOf("USD") }
+    var currencyDropdownExpanded by remember { mutableStateOf(false) }
+    val currencyOptions = remember { listOf("USD", "EUR", "GBP", "PKR", "AUD") }
 
     LazyColumn(
         modifier = Modifier
@@ -554,7 +590,7 @@ fun OperationsDashboardScreen() {
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Text(
-                                text = "No lead records in this CRM stage yet.",
+                                text = "No lead records in this search stage yet.",
                                 modifier = Modifier.padding(16.dp),
                                 fontSize = 12.sp
                             )
@@ -563,6 +599,101 @@ fun OperationsDashboardScreen() {
                 } else {
                     items(filteredLeads) { lead ->
                         KanbanLeadCard(lead = lead, context = context)
+                    }
+                }
+
+                // Persistent CRM Pipeline Section
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Persistent CRM Pipeline View (${prospects.size} Deals)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // CRM Pipeline Funnel Stage Summary Row
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF3B82F6).copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Contacted", fontSize = 10.sp, color = Color(0xFF1D4ED8), fontWeight = FontWeight.Bold)
+                                Text("${prospects.count { it.status.equals("Contacted", ignoreCase = true) }}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF1D4ED8))
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Replied", fontSize = 10.sp, color = Color(0xFFB45309), fontWeight = FontWeight.Bold)
+                                Text("${prospects.count { it.status.equals("Replied", ignoreCase = true) }}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFB45309))
+                            }
+                        }
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("Closed Deals", fontSize = 10.sp, color = Color(0xFF047857), fontWeight = FontWeight.Bold)
+                                Text("${prospects.count { it.status.equals("Closed", ignoreCase = true) }}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF047857))
+                            }
+                        }
+                    }
+                }
+
+                // CRM Stage Filter Row
+                item {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = selectedCrmStageFilter == null,
+                                onClick = { selectedCrmStageFilter = null },
+                                label = { Text("All CRM (${prospects.size})", fontSize = 11.sp) }
+                            )
+                        }
+                        listOf("Contacted", "Replied", "Closed").forEach { stage ->
+                            item {
+                                FilterChip(
+                                    selected = selectedCrmStageFilter.equals(stage, ignoreCase = true),
+                                    onClick = { selectedCrmStageFilter = stage },
+                                    label = { Text("$stage (${prospects.count { it.status.equals(stage, ignoreCase = true) }})", fontSize = 11.sp) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val filteredProspects = if (selectedCrmStageFilter != null) {
+                    prospects.filter { it.status.equals(selectedCrmStageFilter, ignoreCase = true) }
+                } else prospects
+
+                if (filteredProspects.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        ) {
+                            Text(
+                                text = "No persistent CRM prospects in this stage yet. Click 'Add to CRM' on any discovered lead above.",
+                                modifier = Modifier.padding(14.dp),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                } else {
+                    items(filteredProspects) { prospect ->
+                        ProspectCard(prospect = prospect, context = context)
                     }
                 }
             }
@@ -580,10 +711,6 @@ fun OperationsDashboardScreen() {
 
                 // Summary Row
                 item {
-                    val totalInvoiced = invoices.sumOf { it.amountUsd }
-                    val totalPaid = invoices.filter { it.status == InvoiceStatus.PAID }.sumOf { it.amountUsd }
-                    val totalPending = invoices.filter { it.status == InvoiceStatus.PENDING_PAYMENT || it.status == InvoiceStatus.INVOICED }.sumOf { it.amountUsd }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -593,8 +720,8 @@ fun OperationsDashboardScreen() {
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Total Revenue", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
-                                Text("$${"%.0f".format(totalInvoiced)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("Total Revenue (USD)", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                                Text(ClientInvoiceManager.formatCurrencyAmount(totalRevenueUsd, "USD"), fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                         }
                         Card(
@@ -602,8 +729,8 @@ fun OperationsDashboardScreen() {
                             colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Paid Received", fontSize = 10.sp, color = Color(0xFF047857))
-                                Text("$${"%.0f".format(totalPaid)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF047857))
+                                Text("Paid Received (USD)", fontSize = 10.sp, color = Color(0xFF047857))
+                                Text(ClientInvoiceManager.formatCurrencyAmount(totalPaidUsd, "USD"), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF047857))
                             }
                         }
                         Card(
@@ -611,8 +738,8 @@ fun OperationsDashboardScreen() {
                             colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.15f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
-                                Text("Pending Due", fontSize = 10.sp, color = Color(0xFFB45309))
-                                Text("$${"%.0f".format(totalPending)} USD", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFB45309))
+                                Text("Pending Due (USD)", fontSize = 10.sp, color = Color(0xFFB45309))
+                                Text(ClientInvoiceManager.formatCurrencyAmount(totalPendingUsd, "USD"), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFFB45309))
                             }
                         }
                     }
@@ -649,20 +776,51 @@ fun OperationsDashboardScreen() {
                                 OutlinedTextField(
                                     value = newAmount,
                                     onValueChange = { newAmount = it },
-                                    label = { Text("Amount ($ USD)", fontSize = 11.sp) },
-                                    modifier = Modifier.weight(1f),
+                                    label = { Text("Amount", fontSize = 11.sp) },
+                                    modifier = Modifier.weight(1.2f),
                                     singleLine = true
                                 )
+                                Box(modifier = Modifier.weight(1f)) {
+                                    OutlinedButton(
+                                        onClick = { currencyDropdownExpanded = true },
+                                        modifier = Modifier.fillMaxWidth().height(56.dp).padding(top = 8.dp),
+                                        shape = RoundedCornerShape(4.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Text(text = selectedCurrency, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = "Select Currency",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = currencyDropdownExpanded,
+                                        onDismissRequest = { currencyDropdownExpanded = false }
+                                    ) {
+                                        currencyOptions.forEach { curr ->
+                                            DropdownMenuItem(
+                                                text = { Text(curr, fontWeight = if (curr == selectedCurrency) FontWeight.Bold else FontWeight.Normal) },
+                                                onClick = {
+                                                    selectedCurrency = curr
+                                                    currencyDropdownExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
                                 Button(
                                     onClick = {
                                         val amt = newAmount.toDoubleOrNull() ?: 250.0
                                         if (newClientName.isNotBlank() && newMilestone.isNotBlank()) {
-                                            ClientInvoiceManager.createInvoice(newClientName, newMilestone, amt)
+                                            ClientInvoiceManager.createInvoice(context, newClientName, newMilestone, amt, selectedCurrency)
                                             newClientName = ""
                                             newMilestone = ""
                                             newAmount = ""
+                                            selectedCurrency = "USD"
                                         }
                                     },
+                                    modifier = Modifier.height(56.dp).padding(top = 8.dp),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -674,8 +832,30 @@ fun OperationsDashboardScreen() {
                     }
                 }
 
-                items(invoices) { invoice ->
-                    InvoiceLedgerCard(invoice = invoice, context = context)
+                if (invoices.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No active invoices. Start prospecting.",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(invoices) { invoice ->
+                        InvoiceLedgerCard(invoice = invoice, context = context)
+                    }
                 }
             }
 
@@ -796,8 +976,22 @@ fun OperationsDashboardScreen() {
             }
 
             4 -> {
-                // AI Quality Scores
+                // AI Risk & Accuracy Evaluation Settings + Vosk Offline Wake-Word Setup & Calibration
                 item {
+                    RiskAndAccuracySettingsCard(
+                        accuracyThreshold = accuracyThreshold,
+                        riskSensitivity = riskSensitivity,
+                        maxLatencyToleranceMs = maxLatencyToleranceMs,
+                        autoFallbackEnabled = autoFallbackEnabled,
+                        voskCalibrationFactor = voskCalibrationFactor,
+                        voskListeningMode = voskListeningMode,
+                        voskLastCalibratedMs = voskLastCalibratedMs,
+                        voskIsCalibrating = voskIsCalibrating
+                    )
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = "AI Quality & Accuracy Benchmarks",
                         fontWeight = FontWeight.Bold,
@@ -1232,7 +1426,7 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-            // 1-Tap Client Outreach Toolbar
+            // 1-Tap Client Outreach Toolbar & CRM Action
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1258,12 +1452,22 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     Text("Email Pitch", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                 }
 
+                FilledTonalButton(
+                    onClick = { LeadRadarRepository.ingestToCrm(lead) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add to CRM", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
                 OutlinedButton(
                     onClick = { expandedPitch = !expandedPitch },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                     modifier = Modifier.height(30.dp)
                 ) {
-                    Text(if (expandedPitch) "Hide Pitch" else "View Pitch", fontSize = 10.sp)
+                    Text(if (expandedPitch) "Hide Pitch" else "Pitch", fontSize = 10.sp)
                 }
             }
 
@@ -1352,7 +1556,7 @@ fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Conte
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Amount: $${String.format(java.util.Locale.US, "%.2f", invoice.amountUsd)} USD",
+                    text = "Amount: ${ClientInvoiceManager.formatCurrencyAmount(invoice.amountUsd, invoice.currency)}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.primary
@@ -1392,7 +1596,7 @@ fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Conte
 
                 if (invoice.status != InvoiceStatus.PAID) {
                     Button(
-                        onClick = { ClientInvoiceManager.updateStatus(invoice.id, InvoiceStatus.PAID) },
+                        onClick = { ClientInvoiceManager.updateStatus(context, invoice.id, InvoiceStatus.PAID) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.height(30.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
@@ -1404,3 +1608,268 @@ fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Conte
         }
     }
 }
+
+@Composable
+fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.content.Context) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = prospect.title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = when (prospect.status.lowercase()) {
+                        "contacted" -> Color(0xFF3B82F6)
+                        "replied" -> Color(0xFFF59E0B)
+                        "closed" -> Color(0xFF10B981)
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                ) {
+                    Text(
+                        text = prospect.status.uppercase(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            if (prospect.category.isNotBlank()) {
+                Text("Category: ${prospect.category} | Match: ${prospect.matchScore}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Text("Status Pipeline Track:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("Contacted", "Replied", "Closed").forEach { status ->
+                    FilterChip(
+                        selected = prospect.status.equals(status, ignoreCase = true),
+                        onClick = { LeadRadarRepository.updateProspectStatus(context, prospect.id, status) },
+                        label = { Text(status, fontSize = 10.sp) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RiskAndAccuracySettingsCard(
+    accuracyThreshold: Float,
+    riskSensitivity: String,
+    maxLatencyToleranceMs: Long,
+    autoFallbackEnabled: Boolean,
+    voskCalibrationFactor: Float,
+    voskListeningMode: String,
+    voskLastCalibratedMs: Long,
+    voskIsCalibrating: Boolean
+) {
+    val context = LocalContext.current
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "AI Risk & Vosk Wake-Word Settings",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Surface(
+                    color = Color(0xFF10B981).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = if (voskIsCalibrating) "Calibrating..." else "Vosk Active ('Hey Wasti')",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF047857)
+                    )
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            // 1. Minimum Accuracy Threshold
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Minimum Accuracy Threshold", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("${"%.0f".format(accuracyThreshold)}%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(75.0f, 80.0f, 85.0f, 90.0f, 95.0f).forEach { targetPct ->
+                        FilterChip(
+                            selected = (accuracyThreshold == targetPct),
+                            onClick = { AIEvaluationEngine.updateAccuracyThreshold(targetPct) },
+                            label = { Text("${targetPct.toInt()}%", fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // 2. Risk Sensitivity
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Risk Sensitivity Level", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Permissive", "Balanced", "Strict").forEach { sensitivity ->
+                        FilterChip(
+                            selected = riskSensitivity.equals(sensitivity, ignoreCase = true),
+                            onClick = { AIEvaluationEngine.updateRiskSensitivity(sensitivity) },
+                            label = { Text(sensitivity, fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // 3. Vosk Offline Listening Mode
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Vosk Keyword Detection Mode", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Continuous Standby", "Balanced", "High Accuracy", "Low Power").forEach { mode ->
+                        FilterChip(
+                            selected = voskListeningMode.equals(mode, ignoreCase = true),
+                            onClick = { AIEvaluationEngine.updateVoskListeningMode(mode) },
+                            label = { Text(mode, fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // 4. Vosk Sensitivity Calibration Multiplier
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Vosk Sensitivity Multiplier", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("${"%.1f".format(voskCalibrationFactor)}x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(0.8f to "0.8x Quiet", 1.0f to "1.0x Normal", 1.2f to "1.2x Sensitive", 1.5f to "1.5x Loud Noise").forEach { (factor, label) ->
+                        FilterChip(
+                            selected = (voskCalibrationFactor == factor),
+                            onClick = { AIEvaluationEngine.updateVoskCalibrationFactor(factor) },
+                            label = { Text(label, fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // 5. Max Latency Tolerance
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Max Latency Tolerance", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("${maxLatencyToleranceMs}ms", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1000L, 2500L, 5000L).forEach { latency ->
+                        FilterChip(
+                            selected = (maxLatencyToleranceMs == latency),
+                            onClick = { AIEvaluationEngine.updateMaxLatencyTolerance(latency) },
+                            label = { Text("${latency}ms", fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
+                }
+            }
+
+            // 6. Vosk Setup & Mic Noise Floor Auto-Calibration Trigger
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Vosk 'Hey Wasti' Auto-Calibration", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    val lastCalibStr = if (voskLastCalibratedMs > 0) {
+                        val secondsAgo = (System.currentTimeMillis() - voskLastCalibratedMs) / 1000
+                        if (secondsAgo < 60) "Just now" else "${secondsAgo / 60}m ago"
+                    } else "Never"
+                    Text("Last Calibrated: $lastCalibStr • Mode: $voskListeningMode", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Button(
+                    onClick = {
+                        AIEvaluationEngine.runVoskCalibration()
+                        Toast.makeText(context, "Vosk Offline Wake-Word ('Hey Wasti') Sensor Calibration complete!", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.height(36.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                    enabled = !voskIsCalibrating
+                ) {
+                    Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Calibrate Mic", fontSize = 11.sp)
+                }
+            }
+
+            // 7. Auto-fallback Toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Auto-Fallback on Low Accuracy", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Reroutes prompts to backup model if score falls below threshold", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = autoFallbackEnabled,
+                    onCheckedChange = { AIEvaluationEngine.updateAutoFallback(it) }
+                )
+            }
+        }
+    }
+}
+

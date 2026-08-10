@@ -231,3 +231,25 @@ interface InvoiceDao {
     suspend fun deleteInvoiceById(id: String)
 }
 
+@Dao
+interface ProspectDao {
+    @Query("SELECT * FROM prospects ORDER BY timestamp DESC")
+    fun getAllProspects(): Flow<List<ProspectEntity>>
+
+    @Query("SELECT * FROM prospects WHERE status = :status ORDER BY timestamp DESC")
+    fun getProspectsByStatus(status: String): Flow<List<ProspectEntity>>
+
+    @Query("SELECT * FROM prospects ORDER BY timestamp DESC")
+    suspend fun getAllProspectsSync(): List<ProspectEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProspect(prospect: ProspectEntity)
+
+    @Query("UPDATE prospects SET status = :status WHERE id = :id")
+    suspend fun updateProspectStatus(id: String, status: String)
+
+    @Query("DELETE FROM prospects WHERE id = :id")
+    suspend fun deleteProspectById(id: String)
+}
+
+

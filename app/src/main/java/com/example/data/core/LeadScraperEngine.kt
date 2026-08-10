@@ -1,9 +1,12 @@
 package com.example.data.core
 
+import android.content.Context
 import android.util.Log
 import android.util.Xml
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 import java.net.HttpURLConnection
 import java.net.URL
@@ -112,9 +115,10 @@ object LeadScraperEngine {
     /**
      * Constructs RSS query URL (e.g. Upwork RSS feed) and fetches lead items.
      * Uses UPWORK_RSS_CUSTOM_URL if configured in CredentialRegistry.
+     * If RSS fetch returns 0 items, falls back to WebSearchEngine deep web search.
      */
-    suspend fun fetchLeadsForQuery(query: String): List<LeadItemEntity> {
-        val customRssUrl = com.example.data.credential.CredentialRegistry.getRawValue("UPWORK_RSS_CUSTOM_URL")
+    suspend fun fetchLeadsForQuery(query: String, context: Context? = null): List<LeadItemEntity> {
+        val customRssUrl = com.example.data.credential.CredentialRegistry.getRawValue("UPWORK_RSS_CUSTOM_URL", context)
         val encodedQuery = try {
             URLEncoder.encode(query, "UTF-8")
         } catch (_: Exception) {
@@ -126,7 +130,20 @@ object LeadScraperEngine {
         } else {
             "https://www.upwork.com/ab/feed/jobs/rss?q=$encodedQuery"
         }
-        val rawItems = fetchRssFeed(rssUrl)
+        val rawItems = fetchRssFeed(rssUrl).toMutableList()
+
+        if (rawItems.isEmpty()) {
+            Log.i(TAG, "RSS fetch returned 0 items. Intercepting flow and searching live web for leads...")
+            try {
+                val searchQuery = "latest freelance jobs for graphic design video editing"
+                val searchResultJson = com.example.data.ops.WebSearchEngine.search(searchQuery, context)
+                val webLeads = parseSearchResultsToLeadItems(searchResultJson)
+                rawItems.addAll(webLeads)
+            } catch (e: Exception) {
+                Log.e(TAG, "Deep web search fallback failed", e)
+            }
+        }
+
         return rawItems.map { raw ->
             LeadItemEntity(
                 title = raw.title,
@@ -136,6 +153,34 @@ object LeadScraperEngine {
                 category = raw.category.ifBlank { query }
             )
         }
+    }
+
+    private fun parseSearchResultsToLeadItems(jsonString: String): List<LeadItem> {
+        val leadItems = mutableListOf<LeadItem>()
+        try {
+            val json = JSONObject(jsonString)
+            val resultsArray = json.optJSONArray("results") ?: JSONArray()
+            for (i in 0 until resultsArray.length()) {
+                val itemObj = resultsArray.getJSONObject(i)
+                val title = itemObj.optString("title", "Freelance Job Opportunity")
+                val snippet = itemObj.optString("snippet", "")
+                val link = itemObj.optString("link", "")
+                if (title.isNotBlank() || snippet.isNotBlank()) {
+                    leadItems.add(
+                        LeadItem(
+                            title = title,
+                            link = link,
+                            description = snippet,
+                            pubDate = "Live Web",
+                            category = "Deep Web Sourced"
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing web search results into LeadItems", e)
+        }
+        return leadItems
     }
 
     /**

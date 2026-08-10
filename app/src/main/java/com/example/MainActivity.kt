@@ -101,6 +101,7 @@ class MainActivity : ComponentActivity() {
                 WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
                 WastiNavDestination("code", "Code", Icons.Default.Code),
                 WastiNavDestination("integrations", "Connectors", Icons.Default.Extension),
+                WastiNavDestination("account_hub", "Account Hub", Icons.Default.VpnKey),
                 WastiNavDestination("settings", "Settings", Icons.Default.Settings)
             )
 
@@ -271,6 +272,13 @@ class MainActivity : ComponentActivity() {
                                 integrations = integrations,
                                 logs = logs,
                                 onClearLogs = { viewModel.clearLogs() }
+                            )
+                            "welcome" -> WelcomeAuthScreen(
+                                onLaunchWorkspace = { viewModel.selectTab("dashboard") },
+                                onOpenAccountHub = { viewModel.selectTab("account_hub") }
+                            )
+                            "account_hub" -> AccountHubScreen(
+                                onNavigateBack = { viewModel.selectTab("settings") }
                             )
                             "settings" -> SettingsScreen(
                                 isDarkTheme = darkTheme,

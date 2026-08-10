@@ -126,6 +126,7 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.8.1")
   // AppCompat for AlertDialog used in PermissionManager
   implementation("androidx.appcompat:appcompat:1.6.1")
+  implementation("com.alphacephei:vosk-android:0.3.47")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
   testImplementation(libs.androidx.junit)

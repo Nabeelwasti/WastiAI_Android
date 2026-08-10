@@ -27,8 +27,8 @@ object GitHubApiClient {
     private val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
 
     suspend fun getRecentRepositories(): List<GitHubRepoItem> = withContext(Dispatchers.IO) {
-        val pat = CredentialRegistry.getRawValue("GITHUB_FINE_GRAINED_PAT")
-            ?: CredentialRegistry.getRawValue("GITHUB_PAT")
+        val pat = CredentialRegistry.getRawValue("WASTI_GIT_FINE_GRAINED_PAT")
+            ?: CredentialRegistry.getRawValue("WASTI_GIT_PAT")
         if (pat.isNullOrBlank()) return@withContext emptyList()
 
         val request = Request.Builder()

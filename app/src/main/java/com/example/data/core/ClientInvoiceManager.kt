@@ -35,6 +35,7 @@ data class ClientInvoiceItem(
     val clientName: String,
     val projectMilestone: String,
     val amountUsd: Double,
+    val currency: String = "USD",
     var status: InvoiceStatus = InvoiceStatus.DRAFT,
     val issueDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
     val dueDate: String = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(System.currentTimeMillis() + 864000000L)), // 10 days
@@ -58,54 +59,35 @@ object ClientInvoiceManager {
             val db = WastiDatabase.getDatabase(context)
             val dao = db.invoiceDao()
 
+            // Purge legacy seeded fake invoice data if present
+            try {
+                val existing = dao.getAllInvoicesSync()
+                existing.filter {
+                    it.clientName == "ClientCorp Media Studio" ||
+                    it.clientName == "BuildTech Architectural Agency" ||
+                    it.clientName == "BrandStudio Global"
+                }.forEach { fakeInvoice ->
+                    dao.deleteInvoiceById(fakeInvoice.id)
+                }
+            } catch (e: Exception) {
+                Log.e("ClientInvoiceManager", "Error clearing legacy fake invoices", e)
+            }
+
             launch {
                 dao.getAllInvoices().collect { dbInvoices ->
-                    if (dbInvoices.isEmpty()) {
-                        populateInitialInvoicesInDb(context)
-                    } else {
-                        _invoicesFlow.value = dbInvoices.map { it.toUiModel() }
-                    }
+                    _invoicesFlow.value = dbInvoices.map { it.toUiModel() }
                 }
             }
         }
     }
 
-    private suspend fun populateInitialInvoicesInDb(context: Context) {
-        val db = WastiDatabase.getDatabase(context)
-        val dao = db.invoiceDao()
-
-        val defaultInvoices = listOf(
-            ClientInvoiceItem(
-                clientName = "ClientCorp Media Studio",
-                projectMilestone = "Milestone 1: 10 Short-Form Reels & YouTube Shorts Production",
-                amountUsd = 450.0,
-                status = InvoiceStatus.PAID
-            ),
-            ClientInvoiceItem(
-                clientName = "BuildTech Architectural Agency",
-                projectMilestone = "Milestone 2: 2D Floor Plan DWG Conversion & Layouts",
-                amountUsd = 350.0,
-                status = InvoiceStatus.INVOICED
-            ),
-            ClientInvoiceItem(
-                clientName = "BrandStudio Global",
-                projectMilestone = "Complete Vector Logo Suite & CorelDRAW Brand Kit",
-                amountUsd = 600.0,
-                status = InvoiceStatus.PENDING_PAYMENT
-            )
-        )
-
-        defaultInvoices.forEach { invoice ->
-            dao.insertInvoice(invoice.toRoomEntity())
-        }
-    }
-
-    fun createInvoice(context: Context, clientName: String, milestone: String, amountUsd: Double): ClientInvoiceItem {
+    fun createInvoice(context: Context, clientName: String, milestone: String, amountUsd: Double, currency: String = "USD"): ClientInvoiceItem {
         initDatabase(context)
         val newInvoice = ClientInvoiceItem(
             clientName = clientName,
             projectMilestone = milestone,
             amountUsd = amountUsd,
+            currency = currency,
             status = InvoiceStatus.INVOICED
         )
         scope.launch {
@@ -115,11 +97,12 @@ object ClientInvoiceManager {
         return newInvoice
     }
 
-    fun createInvoice(clientName: String, milestone: String, amountUsd: Double): ClientInvoiceItem {
+    fun createInvoice(clientName: String, milestone: String, amountUsd: Double, currency: String = "USD"): ClientInvoiceItem {
         val newInvoice = ClientInvoiceItem(
             clientName = clientName,
             projectMilestone = milestone,
             amountUsd = amountUsd,
+            currency = currency,
             status = InvoiceStatus.INVOICED
         )
         val current = _invoicesFlow.value.toMutableList()
@@ -149,6 +132,7 @@ object ClientInvoiceManager {
             clientName = clientName,
             projectMilestone = projectMilestone,
             amountUsd = amountUsd,
+            currency = currency,
             status = status.name,
             issueDate = issueDate,
             dueDate = dueDate,
@@ -162,11 +146,83 @@ object ClientInvoiceManager {
             clientName = clientName,
             projectMilestone = projectMilestone,
             amountUsd = amountUsd,
+            currency = currency ?: "USD",
             status = try { InvoiceStatus.valueOf(status) } catch (_: Exception) { InvoiceStatus.DRAFT },
             issueDate = issueDate,
             dueDate = dueDate,
             clientFeedback = clientFeedback
         )
+    }
+
+    private val fallbackRates = mapOf(
+        "USD" to 1.0,
+        "EUR" to 1.09,
+        "GBP" to 1.28,
+        "PKR" to 0.0036, // ~278 PKR = 1 USD
+        "AUD" to 0.65,
+        "CAD" to 0.73,
+        "INR" to 0.012
+    )
+
+    /**
+     * Live currency conversion rates using api.exchangerate-api.com / open.er-api.com
+     */
+    suspend fun getLiveExchangeRate(base: String, target: String): Double = withContext(Dispatchers.IO) {
+        val baseUpper = base.uppercase()
+        val targetUpper = target.uppercase()
+        if (baseUpper == targetUpper) return@withContext 1.0
+
+        try {
+            val url = "https://open.er-api.com/v6/latest/$baseUpper"
+            val request = Request.Builder().url(url).get().build()
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val json = JSONObject(body)
+                    val ratesObj = json.optJSONObject("rates")
+                    if (ratesObj != null && ratesObj.has(targetUpper)) {
+                        val rate = ratesObj.getDouble(targetUpper)
+                        Log.i("ClientInvoiceManager", "Live exchange rate fetched: 1 $baseUpper = $rate $targetUpper")
+                        return@withContext rate
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("ClientInvoiceManager", "Live exchange rate API fetch failed ($baseUpper -> $targetUpper): ${e.message}")
+        }
+
+        // Fallback computation using static rates table
+        val baseInUsd = fallbackRates[baseUpper] ?: 1.0
+        val targetInUsd = fallbackRates[targetUpper] ?: 1.0
+        val fallbackRate = baseInUsd / targetInUsd
+        Log.i("ClientInvoiceManager", "Using fallback exchange rate: 1 $baseUpper = $fallbackRate $targetUpper")
+        fallbackRate
+    }
+
+    /**
+     * Converts any currency amount to USD equivalent.
+     */
+    suspend fun convertToUsd(amount: Double, currency: String): Double {
+        if (currency.equals("USD", ignoreCase = true)) return amount
+        val rate = getLiveExchangeRate(currency, "USD")
+        return amount * rate
+    }
+
+    fun formatCurrencyAmount(amount: Double, currency: String): String {
+        val symbol = when (currency.uppercase()) {
+            "USD" -> "$"
+            "EUR" -> "€"
+            "GBP" -> "£"
+            "PKR" -> "₨"
+            "AUD" -> "A$"
+            else -> currency
+        }
+        val formattedNumber = if (amount % 1.0 == 0.0 && amount >= 1000) {
+            String.format(Locale.US, "%,.0f", amount)
+        } else {
+            String.format(Locale.US, "%,.2f", amount)
+        }
+        return "$symbol $formattedNumber"
     }
 
     fun generateInvoiceText(invoice: ClientInvoiceItem): String {
@@ -183,7 +239,7 @@ object ClientInvoiceManager {
             ${invoice.projectMilestone}
 
             -----------------------------------------
-            TOTAL AMOUNT DUE: $${String.format(Locale.US, "%.2f", invoice.amountUsd)} USD
+            TOTAL AMOUNT DUE: ${formatCurrencyAmount(invoice.amountUsd, invoice.currency)}
             STATUS: ${invoice.status.name}
             -----------------------------------------
 

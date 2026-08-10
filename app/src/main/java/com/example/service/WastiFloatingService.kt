@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -112,7 +113,16 @@ class WastiFloatingService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            } else {
+                0
+            }
+            startForeground(NOTIFICATION_ID, buildForegroundNotification(), serviceType)
+        } else {
+            startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        }
 
         setupFloatingView()
         observeSTTState()

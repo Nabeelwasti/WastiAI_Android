@@ -113,6 +113,23 @@ fun ChatWorkspaceScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var promptInput by remember { mutableStateOf("") }
+
+    // Auto-restore draft prompt on initial composition
+    LaunchedEffect(Unit) {
+        val savedDraft = com.example.data.persistence.DraftPersistenceManager.getDraftPrompt(context)
+        if (savedDraft.isNotBlank() && promptInput.isBlank()) {
+            promptInput = savedDraft
+        }
+    }
+
+    // Real-time auto-save unsubmitted prompt drafts
+    LaunchedEffect(promptInput) {
+        if (promptInput.isNotBlank()) {
+            com.example.data.persistence.DraftPersistenceManager.saveDraftPrompt(context, promptInput)
+        } else {
+            com.example.data.persistence.DraftPersistenceManager.clearDraftPrompt(context)
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchActive by remember { mutableStateOf(false) }
 

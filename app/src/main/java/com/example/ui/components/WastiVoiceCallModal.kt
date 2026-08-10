@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -227,14 +229,14 @@ fun WastiVoiceCallModal(
                 }
                 override fun onDone(utteranceId: String?) {
                     isSpeaking = false
-                    coroutineScope.launch(Dispatchers.Main) {
+                    Handler(Looper.getMainLooper()).post {
                         voiceStatusText = "Wasti Voice Assistant • Ready"
                         startNativeListeningCallback?.invoke()
                     }
                 }
                 override fun onError(utteranceId: String?) {
                     isSpeaking = false
-                    coroutineScope.launch(Dispatchers.Main) {
+                    Handler(Looper.getMainLooper()).post {
                         voiceStatusText = "Speech playback complete."
                     }
                 }
@@ -295,9 +297,11 @@ fun WastiVoiceCallModal(
                             tempFile.delete()
                         } catch (e: Exception) {}
 
-                        voiceStatusText = "Wasti HD Speech complete • Reopening mic..."
-                        // Task 30B: Continuous conversation loop
-                        startNativeListeningCallback?.invoke()
+                        Handler(Looper.getMainLooper()).post {
+                            voiceStatusText = "Wasti HD Speech complete • Reopening mic..."
+                            // Task 30B: Continuous conversation loop
+                            startNativeListeningCallback?.invoke()
+                        }
                     }
 
                     mp.setOnErrorListener { player, what, extra ->

@@ -1,6 +1,7 @@
 package com.example.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "conversations")
@@ -174,10 +175,31 @@ data class InvoiceEntity(
     val clientName: String,
     val projectMilestone: String,
     val amountUsd: Double,
+    val currency: String = "USD",
     val status: String = "DRAFT",
     val issueDate: String = "",
     val dueDate: String = "",
     val clientFeedback: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(
+    tableName = "prospects",
+    indices = [Index(value = ["status"])]
+)
+data class ProspectEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val link: String,
+    val description: String,
+    val pubDate: String = "",
+    val category: String = "",
+    val matchScore: Int = 85,
+    val matchedSkillsCsv: String = "",
+    val draftedPitch: String = "",
+    val status: String = "Contacted", // Contacted, Replied, Closed
+    val clientEmail: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 

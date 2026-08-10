@@ -8,6 +8,7 @@ import android.net.Uri
 import android.util.Log
 import android.widget.Toast
 import com.example.data.db.LeadEntity
+import com.example.data.db.ProspectEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.notification.WastiNotificationManager
 import kotlinx.coroutines.CoroutineScope
@@ -53,32 +54,105 @@ object LeadRadarRepository {
     private val _leadsFlow = MutableStateFlow<List<LeadItemEntity>>(emptyList())
     val leadsFlow: StateFlow<List<LeadItemEntity>> = _leadsFlow.asStateFlow()
 
+    private val _prospectsFlow = MutableStateFlow<List<ProspectEntity>>(emptyList())
+    val prospectsFlow: StateFlow<List<ProspectEntity>> = _prospectsFlow.asStateFlow()
+
     private val _lastSearchQuery = MutableStateFlow("Video Editing & Graphic Design")
     val lastSearchQuery: StateFlow<String> = _lastSearchQuery.asStateFlow()
 
     private var isDbInitialized = false
 
     fun initDatabase(context: Context) {
+        appContext = context.applicationContext
         if (isDbInitialized) return
         isDbInitialized = true
 
         scope.launch {
             val db = WastiDatabase.getDatabase(context)
-            val dao = db.leadDao()
+            val leadDao = db.leadDao()
+            val prospectDao = db.prospectDao()
 
             // Observe Room DB updates reactively
             launch {
-                dao.getAllLeads().collect { dbLeads ->
+                leadDao.getAllLeads().collect { dbLeads ->
                     _leadsFlow.value = dbLeads.map { it.toUiModel() }
                 }
             }
+
+            launch {
+                prospectDao.getAllProspects().collect { dbProspects ->
+                    _prospectsFlow.value = dbProspects
+                }
+            }
+        }
+    }
+
+    suspend fun ingestToCrm(context: Context, lead: LeadItemEntity, status: String = "Contacted") = withContext(Dispatchers.IO) {
+        initDatabase(context)
+        val db = WastiDatabase.getDatabase(context)
+        val prospect = ProspectEntity(
+            id = lead.id,
+            title = lead.title,
+            link = lead.link,
+            description = lead.description,
+            pubDate = lead.pubDate,
+            category = lead.category,
+            matchScore = lead.matchScore,
+            matchedSkillsCsv = lead.matchedSkills.joinToString(","),
+            draftedPitch = lead.draftedPitch,
+            status = status,
+            clientEmail = lead.clientEmail,
+            timestamp = System.currentTimeMillis()
+        )
+        db.prospectDao().insertProspect(prospect)
+        withContext(Dispatchers.Main) {
+            Toast.makeText(context, "Added lead '${lead.title.take(20)}...' to CRM!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun ingestToCrm(lead: LeadItemEntity) {
+        val targetContext = appContext
+        if (targetContext != null) {
+            scope.launch {
+                ingestToCrm(targetContext, lead)
+            }
+        } else {
+            // Local fallback
+            val existing = _prospectsFlow.value.toMutableList()
+            if (existing.none { it.id == lead.id }) {
+                existing.add(
+                    ProspectEntity(
+                        id = lead.id,
+                        title = lead.title,
+                        link = lead.link,
+                        description = lead.description,
+                        pubDate = lead.pubDate,
+                        category = lead.category,
+                        matchScore = lead.matchScore,
+                        matchedSkillsCsv = lead.matchedSkills.joinToString(","),
+                        draftedPitch = lead.draftedPitch,
+                        status = "Contacted",
+                        clientEmail = lead.clientEmail,
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+                _prospectsFlow.value = existing
+            }
+        }
+    }
+
+    fun updateProspectStatus(context: Context, prospectId: String, newStatus: String) {
+        scope.launch {
+            initDatabase(context)
+            val db = WastiDatabase.getDatabase(context)
+            db.prospectDao().updateProspectStatus(prospectId, newStatus)
         }
     }
 
     suspend fun scanAndEvaluateLeads(context: Context, query: String): List<LeadItemEntity> = withContext(Dispatchers.IO) {
         initDatabase(context)
         _lastSearchQuery.value = query
-        val rawLeads = LeadScraperEngine.fetchLeadsForQuery(query)
+        val rawLeads = LeadScraperEngine.fetchLeadsForQuery(query, context)
         val skillMatrix = SkillMatrix()
 
         val evaluatedEntities = rawLeads.map { lead ->

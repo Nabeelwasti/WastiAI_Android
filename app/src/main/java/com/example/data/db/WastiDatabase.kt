@@ -110,6 +110,42 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `invoices` ADD COLUMN `currency` TEXT NOT NULL DEFAULT 'USD'")
+    }
+}
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `prospects` (
+                `id` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `link` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `pubDate` TEXT NOT NULL DEFAULT '',
+                `category` TEXT NOT NULL DEFAULT '',
+                `matchScore` INTEGER NOT NULL DEFAULT 85,
+                `matchedSkillsCsv` TEXT NOT NULL DEFAULT '',
+                `draftedPitch` TEXT NOT NULL DEFAULT '',
+                `status` TEXT NOT NULL DEFAULT 'Contacted',
+                `clientEmail` TEXT NOT NULL DEFAULT '',
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_prospects_status` ON `prospects` (`status`)")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -127,9 +163,10 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         KnowledgeGraphEdgeEntity::class,
         DeveloperLogEntity::class,
         LeadEntity::class,
-        InvoiceEntity::class
+        InvoiceEntity::class,
+        ProspectEntity::class
     ],
-    version = 5,
+    version = 8,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -146,6 +183,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun developerLogDao(): DeveloperLogDao
     abstract fun leadDao(): LeadDao
     abstract fun invoiceDao(): InvoiceDao
+    abstract fun prospectDao(): ProspectDao
 
     companion object {
         @Volatile
@@ -158,7 +196,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()
