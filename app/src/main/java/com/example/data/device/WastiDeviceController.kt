@@ -12,6 +12,7 @@ import com.example.data.db.MemoryEntity
 import com.example.data.db.SettingEntity
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
+import com.example.data.persistence.DraftPersistenceManager
 import com.example.service.WastiAccessibilityService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -216,7 +217,16 @@ object WastiDeviceController {
         val ctx = context ?: com.example.WastiApplication.instance
         val service = WastiAccessibilityService.instance
         if (service != null && WastiAccessibilityService.isServiceActive) {
+            val jsonScrape = service.scrapeActiveScreen()
+            if (jsonScrape.isNotBlank() && jsonScrape != "[]") {
+                return jsonScrape
+            }
             return service.dumpScreenContent()
+        }
+
+        val cached = ctx?.let { DraftPersistenceManager.getScrapedScreenData(it) } ?: ""
+        if (cached.isNotBlank() && cached != "[]") {
+            return "[Cached Screen Nodes]\n$cached"
         }
 
         return """
@@ -227,14 +237,24 @@ object WastiDeviceController {
         """.trimIndent()
     }
 
-    // 4. Tap / Click / Touch Simulation
+    // 4. Tap / Click / Touch & Swipe Simulation (Command Dispatcher via IPC)
     fun simulateTap(context: Context? = null, targetElement: String): DeviceCommandResult {
         val ctx = context ?: com.example.WastiApplication.instance
+
+        // Send IPC broadcast intent to WastiCommandReceiver
+        val intent = Intent("com.wasti.os.ACTION_EXECUTE_GESTURE").apply {
+            putExtra("actionType", "TAP_TEXT")
+            putExtra("targetText", targetElement)
+            putExtra("targetElement", targetElement)
+            if (ctx != null) setPackage(ctx.packageName)
+        }
+        ctx?.sendBroadcast(intent)
+
         val service = WastiAccessibilityService.instance
         if (service != null && WastiAccessibilityService.isServiceActive) {
             val success = service.clickElement(targetElement)
             return if (success) {
-                DeviceCommandResult(true, "Successfully executed tap gesture on target '$targetElement' via Wasti Coordinate Gesture Engine.", "SIMULATE_TAP")
+                DeviceCommandResult(true, "Successfully executed tap gesture on target '$targetElement' via Wasti IPC Bridge.", "SIMULATE_TAP")
             } else {
                 DeviceCommandResult(false, "Wasti Accessibility Engine scanned the screen but target '$targetElement' was not found or gesture dispatch failed.", "SIMULATE_TAP")
             }
@@ -243,7 +263,65 @@ object WastiDeviceController {
         if (ctx != null) {
             Toast.makeText(ctx, "Please enable Wasti Accessibility Service in Settings to tap '$targetElement'", Toast.LENGTH_LONG).show()
         }
-        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Enable it in Settings -> Accessibility to perform real tap actions.", "SERVICE_INACTIVE")
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Intent dispatched to local IPC bridge.", "SERVICE_INACTIVE")
+    }
+
+    fun simulateTapAt(context: Context? = null, x: Float, y: Float): DeviceCommandResult {
+        val ctx = context ?: com.example.WastiApplication.instance
+
+        val intent = Intent("com.wasti.os.ACTION_EXECUTE_GESTURE").apply {
+            putExtra("actionType", "TAP")
+            putExtra("x", x)
+            putExtra("y", y)
+            if (ctx != null) setPackage(ctx.packageName)
+        }
+        ctx?.sendBroadcast(intent)
+
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performTapAt(x, y)
+            return if (success) {
+                DeviceCommandResult(true, "Successfully executed tap gesture at coordinates ($x, $y) via Wasti IPC Bridge.", "SIMULATE_TAP")
+            } else {
+                DeviceCommandResult(false, "Coordinate tap gesture dispatch failed at ($x, $y).", "SIMULATE_TAP")
+            }
+        }
+
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Intent dispatched to local IPC bridge.", "SERVICE_INACTIVE")
+    }
+
+    fun simulateSwipe(
+        context: Context? = null,
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long = 300L
+    ): DeviceCommandResult {
+        val ctx = context ?: com.example.WastiApplication.instance
+
+        val intent = Intent("com.wasti.os.ACTION_EXECUTE_GESTURE").apply {
+            putExtra("actionType", "SWIPE")
+            putExtra("startX", startX)
+            putExtra("startY", startY)
+            putExtra("endX", endX)
+            putExtra("endY", endY)
+            putExtra("duration", durationMs)
+            if (ctx != null) setPackage(ctx.packageName)
+        }
+        ctx?.sendBroadcast(intent)
+
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performSwipe(startX, startY, endX, endY, durationMs)
+            return if (success) {
+                DeviceCommandResult(true, "Successfully executed swipe gesture from ($startX, $startY) to ($endX, $endY).", "SIMULATE_SWIPE")
+            } else {
+                DeviceCommandResult(false, "Swipe gesture dispatch failed.", "SIMULATE_SWIPE")
+            }
+        }
+
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Intent dispatched to local IPC bridge.", "SERVICE_INACTIVE")
     }
 
     // 5. Connect Online Voice & AI Provider Models

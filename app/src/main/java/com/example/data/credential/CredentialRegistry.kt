@@ -234,6 +234,28 @@ object CredentialRegistry {
                 else Pair(true, "Configured (Secret Set)")
             }
         ),
+        CredentialEntry(
+            keyName = "GOOGLE_WEB_CLIENT_ID",
+            displayName = "Google OAuth Web Client ID",
+            category = CredentialCategory.DESIGN_BACKUP,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Web Application Client ID for CredentialManager Google Auth & Firebase Auth.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
+                else Pair(true, "Configured (${value.take(12)}...)")
+            }
+        ),
+        CredentialEntry(
+            keyName = "GOOGLE_ANDROID_CLIENT_ID",
+            displayName = "Google OAuth Android Client ID",
+            category = CredentialCategory.DESIGN_BACKUP,
+            isDefaultActive = true,
+            description = "OAuth 2.0 Android Client ID matching package com.aistudio.wastios.k9v2pz and release keystore SHA-256.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
+                else Pair(true, "Configured (${value.take(12)}...)")
+            }
+        ),
 
         // --- BUSINESS & PAYMENTS ---
         CredentialEntry(
@@ -501,6 +523,17 @@ object CredentialRegistry {
             }
         ),
         CredentialEntry(
+            keyName = "GOOGLE_ACCOUNT_PASSWORD",
+            displayName = "Google Account Password (Legacy/Optional)",
+            category = CredentialCategory.AUTOMATION_COMMS,
+            isDefaultActive = false,
+            description = "Optional Google Account Password. Note: Google requires App Passwords or OAuth for API access.",
+            testConnection = { value ->
+                if (value.isBlank()) Pair(false, "Not Configured (Optional)")
+                else Pair(true, "Stored (App Password Recommended)")
+            }
+        ),
+        CredentialEntry(
             keyName = "ELEVENLABS_API_KEY",
             displayName = "ElevenLabs Neural Voice API Key",
             category = CredentialCategory.AUTOMATION_COMMS,
@@ -626,6 +659,8 @@ object CredentialRegistry {
             "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN" -> try { com.example.BuildConfig.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN } catch (e: Throwable) { null }
             "DRIVE_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
             "DRIVE_CLIENT_SECRET" -> try { com.example.BuildConfig.DRIVE_CLIENT_SECRET } catch (e: Throwable) { null }
+            "GOOGLE_WEB_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID.ifBlank { "206322177649-fs2048huimberjvb4etaih1scn7ldh30.apps.googleusercontent.com" } } catch (e: Throwable) { "206322177649-fs2048huimberjvb4etaih1scn7ldh30.apps.googleusercontent.com" }
+            "GOOGLE_ANDROID_CLIENT_ID" -> try { "206322177649-dmntaoaft0r4fj8qaurnpoapqmav4lrj.apps.googleusercontent.com" } catch (e: Throwable) { null }
             "HUGGINGFACE_ACCESS_TOKEN" -> try { com.example.BuildConfig.HUGGINGFACE_ACCESS_TOKEN } catch (e: Throwable) { null }
             "UNSPLASH_APP_ID" -> try { com.example.BuildConfig.UNSPLASH_APP_ID } catch (e: Throwable) { null }
             "UNSPLASH_ACCESS_KEY" -> try { com.example.BuildConfig.UNSPLASH_ACCESS_KEY } catch (e: Throwable) { null }
@@ -639,6 +674,9 @@ object CredentialRegistry {
             "SLACK_DOMAIN" -> try { com.example.BuildConfig.SLACK_DOMAIN } catch (e: Throwable) { null }
             "ZAPIER_CONNECT_TOKEN" -> try { com.example.BuildConfig.ZAPIER_CONNECT_TOKEN } catch (e: Throwable) { null }
             "ZAPIER_MCP_SHARE_LINK" -> try { com.example.BuildConfig.ZAPIER_MCP_SHARE_LINK } catch (e: Throwable) { null }
+            "GMAIL_SENDER_EMAIL" -> try { com.example.BuildConfig.GMAIL_SENDER_EMAIL } catch (e: Throwable) { null }
+            "GMAIL_APP_PASSWORD" -> try { com.example.BuildConfig.GMAIL_APP_PASSWORD } catch (e: Throwable) { null }
+            "GOOGLE_ACCOUNT_PASSWORD" -> try { com.example.BuildConfig.GMAIL_APP_PASSWORD } catch (e: Throwable) { null }
             else -> null
         }
 

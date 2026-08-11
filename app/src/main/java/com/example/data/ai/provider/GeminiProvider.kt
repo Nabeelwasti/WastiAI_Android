@@ -36,7 +36,8 @@ class GeminiProvider : AIProvider {
                 modelName = model,
                 history = request.history,
                 imageInlineData = request.imageInlineData,
-                mimeType = request.mimeType
+                mimeType = request.mimeType,
+                mediaList = request.mediaList
             )
             val latency = System.currentTimeMillis() - startTime
             val promptTokens = (request.prompt.length + request.systemInstruction.length) / 4

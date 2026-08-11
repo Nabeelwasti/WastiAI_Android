@@ -146,6 +146,42 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `clientName` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `companyName` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `country` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `region` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `email` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `phone` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `whatsappNumber` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `websiteUrl` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `paymentInfo` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `leadSource` TEXT NOT NULL DEFAULT 'Google X-Ray'")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `opportunityNature` TEXT NOT NULL DEFAULT 'Video Editing'")
+        db.execSQL("ALTER TABLE `prospects` ADD COLUMN `aiDraftedMessage` TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `messages` ADD COLUMN `attachedMediaUris` TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `media_vault` (
+                `id` TEXT NOT NULL,
+                `conversationId` TEXT NOT NULL,
+                `messageId` TEXT NOT NULL DEFAULT '',
+                `uri` TEXT NOT NULL,
+                `mimeType` TEXT NOT NULL DEFAULT 'image/jpeg',
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -164,9 +200,10 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         DeveloperLogEntity::class,
         LeadEntity::class,
         InvoiceEntity::class,
-        ProspectEntity::class
+        ProspectEntity::class,
+        MediaVaultEntity::class
     ],
-    version = 8,
+    version = 10,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -184,6 +221,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun leadDao(): LeadDao
     abstract fun invoiceDao(): InvoiceDao
     abstract fun prospectDao(): ProspectDao
+    abstract fun mediaVaultDao(): MediaVaultDao
 
     companion object {
         @Volatile
@@ -196,7 +234,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     .fallbackToDestructiveMigration()
                     .fallbackToDestructiveMigrationOnDowngrade()
                     .build()

@@ -19,6 +19,26 @@ enum class RoutingTier {
     OFFLINE_LANE   // Tier 4
 }
 
+enum class ProgressStage {
+    IDLE,
+    CONNECTING,
+    SCRAPING,
+    ANALYZING,
+    DISPATCHING,
+    VERIFYING,
+    COMPLETED,
+    FAILED
+}
+
+data class ToolProgressState(
+    val stage: ProgressStage = ProgressStage.IDLE,
+    val statusMessage: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+) {
+    val isActive: Boolean
+        get() = stage != ProgressStage.IDLE && stage != ProgressStage.COMPLETED && stage != ProgressStage.FAILED
+}
+
 data class EmailDraft(
     val id: String = java.util.UUID.randomUUID().toString(),
     val to: String,
@@ -34,6 +54,14 @@ data class LinkedInDraft(
 )
 
 object WastiCore {
+
+    private val _toolProgressState = MutableStateFlow(ToolProgressState())
+    val toolProgressState: StateFlow<ToolProgressState> = _toolProgressState.asStateFlow()
+
+    fun updateProgress(stage: ProgressStage, message: String) {
+        _toolProgressState.value = ToolProgressState(stage, message)
+        Log.d("WastiCore", "ToolProgressState: stage=$stage, message=$message")
+    }
 
     private val _pendingEmailDraft = MutableStateFlow<EmailDraft?>(null)
     val pendingEmailDraft: StateFlow<EmailDraft?> = _pendingEmailDraft.asStateFlow()
@@ -68,7 +96,8 @@ object WastiCore {
         fileContext: String? = null,
         history: List<com.example.data.api.GeminiContent> = emptyList(),
         imageInlineData: String? = null,
-        mimeType: String = "image/jpeg"
+        mimeType: String = "image/jpeg",
+        mediaList: List<com.example.data.ai.model.AttachedMediaData> = emptyList()
     ): Pair<String, String> = withContext(Dispatchers.IO) {
 
         // 1. Process explicit user memory intent ("Remember that...", "Note down...", etc.)
@@ -161,6 +190,7 @@ object WastiCore {
                         history = history,
                         imageInlineData = imageInlineData,
                         mimeType = mimeType,
+                        mediaList = mediaList,
                         fileContext = fileContext,
                         preferredProviderId = providerId
                     )
@@ -333,6 +363,7 @@ object WastiCore {
      * Executes Lead Radar fetching, evaluation against SkillMatrix, and presentation formatting.
      */
     suspend fun processLeadRadarExecution(userPrompt: String): String = withContext(Dispatchers.IO) {
+        updateProgress(ProgressStage.CONNECTING, "Connecting to Lead Radar Engine...")
         val lower = userPrompt.lowercase()
         val query = when {
             lower.contains("video") -> "Video Editing"
@@ -345,13 +376,16 @@ object WastiCore {
             else -> "Video Editing"
         }
 
+        updateProgress(ProgressStage.SCRAPING, "Scraping live RSS job feeds for '$query'...")
         val skillMatrix = SkillMatrix()
         val leads = LeadScraperEngine.fetchLeadsForQuery(query)
 
         if (leads.isEmpty()) {
+            updateProgress(ProgressStage.COMPLETED, "Lead Radar query returned 0 active feeds.")
             return@withContext "🎯 **Wasti Lead Radar System**\n\nNo active job requests could be retrieved for '$query' at this moment."
         }
 
+        updateProgress(ProgressStage.ANALYZING, "Evaluating ${leads.size} leads against SkillMatrix...")
         val sb = StringBuilder()
         sb.append("🎯 **Wasti Lead Radar System — Targeted Job Opportunities**\n\n")
         sb.append("Scanned live RSS job feeds for **$query** and evaluated top requests against your **SkillMatrix**:\n\n")
@@ -371,7 +405,23 @@ object WastiCore {
         }
 
         sb.append("*Evaluated against official SkillMatrix services: ${skillMatrix.formatSkillSummary()}*")
-        sb.toString()
+        val finalOutput = sb.toString()
+
+        updateProgress(ProgressStage.VERIFYING, "Verifying Lead Radar payload with TaskValidator...")
+        val validation = TaskValidator.validateExecution(
+            actionName = "processLeadRadarExecution",
+            isSuccess = true,
+            responseCode = 200,
+            message = "Retrieved and evaluated ${leads.size} job leads for query '$query'."
+        )
+
+        if (!validation.isVerified) {
+            updateProgress(ProgressStage.FAILED, "Lead Radar validation failed.")
+            return@withContext "ERROR [LeadRadar]: ${validation.errorExplanation}"
+        }
+
+        updateProgress(ProgressStage.COMPLETED, "Lead Radar scan completed.")
+        finalOutput
     }
 
     /**
@@ -382,6 +432,7 @@ object WastiCore {
         userPrompt: String,
         context: android.content.Context? = null
     ): String = withContext(Dispatchers.IO) {
+        updateProgress(ProgressStage.CONNECTING, "Connecting to B2B X-Ray Engine...")
         Log.i("WastiCore", "Initiating B2B X-Ray search pipeline for request: $userPrompt")
 
         val promptForXRayQuery = """
@@ -397,6 +448,7 @@ object WastiCore {
             User Request: "$userPrompt"
         """.trimIndent()
 
+        updateProgress(ProgressStage.ANALYZING, "Generating targeted Google X-Ray query via Gemini...")
         val xrayQueryRaw = try {
             val resp = AIManager.execute(
                 prompt = promptForXRayQuery,
@@ -421,6 +473,7 @@ object WastiCore {
             }
         }
 
+        updateProgress(ProgressStage.SCRAPING, "Querying WebSearchEngine ($xrayQuery)...")
         Log.i("WastiCore", "Executing WebSearchEngine query: $xrayQuery")
         val jsonResult = com.example.data.ops.WebSearchEngine.search(xrayQuery, context)
 
@@ -428,11 +481,13 @@ object WastiCore {
         sb.append("🔍 **Wasti B2B X-Ray Lead Discovery**\n\n")
         sb.append("Targeted Google X-Ray Query: `$xrayQuery`\n\n")
 
+        var isSearchSuccess = false
         try {
             val jsonObject = org.json.JSONObject(jsonResult)
             val resultsArray = jsonObject.optJSONArray("results")
 
             if (resultsArray != null && resultsArray.length() > 0) {
+                isSearchSuccess = true
                 sb.append("### Identified B2B Prospects & Decision-Makers:\n\n")
                 var count = 0
                 for (i in 0 until resultsArray.length()) {
@@ -445,6 +500,19 @@ object WastiCore {
                     sb.append("#### ${count}. $title\n")
                     sb.append("• **Overview**: $snippet\n")
                     sb.append("• **Direct Profile Link**: [$link]($link)\n\n")
+
+                    // Automatically ingest discovered X-Ray lead into CRM with Gemini & Search Enrichment
+                    val leadItem = LeadItemEntity(
+                        title = title,
+                        link = link,
+                        description = snippet,
+                        category = "Google X-Ray"
+                    )
+                    if (context != null) {
+                        LeadRadarRepository.ingestToCrm(context, leadItem, "NEW")
+                    } else {
+                        LeadRadarRepository.ingestToCrm(leadItem)
+                    }
                 }
                 sb.append("---\n")
                 sb.append("💡 *Tip: Tap profile links to connect directly or use Wasti Email/LinkedIn drafter to generate personalized outreach.*")
@@ -457,7 +525,24 @@ object WastiCore {
             sb.append(jsonResult)
         }
 
-        sb.toString()
+        val resultOutput = sb.toString()
+
+        updateProgress(ProgressStage.VERIFYING, "Validating B2B X-Ray execution payload...")
+        val validation = TaskValidator.validateExecution(
+            actionName = "processB2BXRaySearchExecution",
+            isSuccess = true,
+            responseCode = if (isSearchSuccess) 200 else 204,
+            message = "B2B X-Ray search completed for query '$xrayQuery'.",
+            context = context
+        )
+
+        if (!validation.isVerified && validation.responseCode in 400..599) {
+            updateProgress(ProgressStage.FAILED, "B2B X-Ray search failed.")
+            return@withContext "ERROR [B2BXRay]: ${validation.errorExplanation}"
+        }
+
+        updateProgress(ProgressStage.COMPLETED, "B2B X-Ray search finished.")
+        resultOutput
     }
 
     /**
@@ -467,59 +552,92 @@ object WastiCore {
         functionCall: com.example.data.api.GeminiFunctionCall,
         context: android.content.Context? = null
     ): String {
-        return when (functionCall.name) {
+        updateProgress(ProgressStage.DISPATCHING, "Dispatching tool '${functionCall.name}'...")
+
+        val (rawResult, isSuccess, code) = when (functionCall.name) {
             "read_active_screen" -> {
                 Log.d("WastiCore", "FunctionCall dispatched: read_active_screen")
-                com.example.data.device.WastiDeviceController.readScreenContent()
+                updateProgress(ProgressStage.SCRAPING, "Scraping active screen content...")
+                val res = com.example.data.device.WastiDeviceController.readScreenContent()
+                Triple(res, res.isNotBlank() && res != "[]", 200)
             }
             "tap_element" -> {
                 val elementId = functionCall.args?.get("elementIdentifier") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: tap_element -> $elementId")
+                updateProgress(ProgressStage.DISPATCHING, "Simulating tap on '$elementId'...")
                 val tapResult = com.example.data.device.WastiDeviceController.simulateTap(targetElement = elementId)
-                tapResult.userFeedback
+                Triple(tapResult.userFeedback, tapResult.success, if (tapResult.success) 200 else 400)
             }
             "evaluate_lead_match" -> {
                 val jobText = functionCall.args?.get("jobPostText") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: evaluate_lead_match")
+                updateProgress(ProgressStage.ANALYZING, "Evaluating lead match against SkillMatrix...")
                 val evaluation = LeadScraperEngine.evaluateLeadMatch(jobText)
-                "MatchScore: ${evaluation.matchScore}/100\nDraftedPitch: ${evaluation.draftedPitch}"
+                Triple("MatchScore: ${evaluation.matchScore}/100\nDraftedPitch: ${evaluation.draftedPitch}", true, 200)
             }
             "draft_email" -> {
                 val to = functionCall.args?.get("to") ?: ""
                 val subject = functionCall.args?.get("subject") ?: ""
                 val body = functionCall.args?.get("body") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: draft_email -> $to")
+                updateProgress(ProgressStage.VERIFYING, "Drafting email for $to...")
                 val draft = EmailDraft(to = to, subject = subject, body = body)
                 setPendingEmailDraft(draft)
-                "Email draft created for $to. Paused AI execution awaiting user approval in Chat Workspace."
+                Triple("Email draft created for $to. Paused AI execution awaiting user approval in Chat Workspace.", true, 200)
             }
             "post_to_linkedin" -> {
                 val content = functionCall.args?.get("content") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: post_to_linkedin")
+                updateProgress(ProgressStage.VERIFYING, "Drafting LinkedIn post...")
                 val draft = LinkedInDraft(content = content)
                 setPendingLinkedInDraft(draft)
-                "LinkedIn post draft created. Paused AI execution awaiting user approval in Chat Workspace."
+                Triple("LinkedIn post draft created. Paused AI execution awaiting user approval in Chat Workspace.", true, 200)
             }
             "search_web" -> {
                 val query = functionCall.args?.get("query") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: search_web -> $query")
-                com.example.data.ops.WebSearchEngine.search(query, context)
+                updateProgress(ProgressStage.SCRAPING, "Executing web search for '$query'...")
+                val res = com.example.data.ops.WebSearchEngine.search(query, context)
+                val ok = !res.contains("\"error\"") && !res.contains("Exception")
+                Triple(res, ok, if (ok) 200 else 500)
             }
             "b2b_xray_search" -> {
                 val query = functionCall.args?.get("query") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: b2b_xray_search -> $query")
-                processB2BXRaySearchExecution(query, context)
+                val res = processB2BXRaySearchExecution(query, context)
+                val ok = !res.startsWith("ERROR") && !res.contains("FAILED")
+                Triple(res, ok, if (ok) 200 else 500)
             }
             "read_web_page" -> {
                 val url = functionCall.args?.get("url") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: read_web_page -> $url")
-                com.example.data.ops.WebSearchEngine.scrapeWebPage(url)
+                updateProgress(ProgressStage.SCRAPING, "Scraping web page ($url)...")
+                val res = com.example.data.ops.WebSearchEngine.scrapeWebPage(url)
+                val ok = !res.startsWith("Failed to fetch")
+                Triple(res, ok, if (ok) 200 else 400)
             }
             else -> {
                 Log.w("WastiCore", "Unknown FunctionCall: ${functionCall.name}")
-                "Function '${functionCall.name}' is not recognized by Wasti OS."
+                Triple("Function '${functionCall.name}' is not recognized by Wasti OS.", false, 404)
             }
         }
+
+        updateProgress(ProgressStage.VERIFYING, "Validating tool execution with TaskValidator...")
+        val validation = TaskValidator.validateExecution(
+            actionName = functionCall.name,
+            isSuccess = isSuccess,
+            responseCode = code,
+            message = rawResult,
+            context = context
+        )
+
+        if (!validation.isVerified) {
+            updateProgress(ProgressStage.FAILED, "Tool execution failed: ${validation.errorExplanation}")
+            return "ERROR: Tool '${functionCall.name}' execution failed validation (Code ${validation.responseCode}): ${validation.errorExplanation ?: validation.detailMessage}"
+        }
+
+        updateProgress(ProgressStage.COMPLETED, "Tool '${functionCall.name}' executed and verified.")
+        return rawResult
     }
 }
 

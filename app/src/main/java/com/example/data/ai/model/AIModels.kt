@@ -17,12 +17,19 @@ enum class HealthStatus {
     UNHEALTHY
 }
 
+data class AttachedMediaData(
+    val base64Data: String,
+    val mimeType: String = "image/jpeg",
+    val uri: String? = null
+)
+
 data class ProviderRequest(
     val prompt: String,
     val systemInstruction: String = "You are Wasti OS, an advanced AI Operating System.",
     val history: List<GeminiContent> = emptyList(),
     val imageInlineData: String? = null,
     val mimeType: String = "image/jpeg",
+    val mediaList: List<AttachedMediaData> = emptyList(),
     val modelName: String? = null,
     val temperature: Float = 0.7f,
     val requiredCapabilities: Set<ProviderCapability> = setOf(ProviderCapability.TEXT_GENERATION)

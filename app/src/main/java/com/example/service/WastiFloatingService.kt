@@ -22,13 +22,17 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.data.core.WastiCore
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.device.WastiDeviceController
@@ -43,10 +47,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
- * Task 27A: Wasti Floating Action Bubble (System Alert Window Service)
- * Provides an overlay floating bubble accessible over any application (Chrome, WhatsApp, etc.).
- * Draggable via WindowManager & TYPE_APPLICATION_OVERLAY.
- * Tapping triggers background SpeechRecognizer (AndroidSpeechToTextProvider) to execute voice commands.
+ * Task 39C: Text & Voice Floating Bubble UI (System Alert Window Service)
+ * Overlay floating action bubble accessible over any application.
+ * When tapped, expands to reveal both Voice (Microphone Button) and Text (EditText + Send Button)
+ * input capabilities to execute commands via WastiCore and WastiDeviceController in the background.
  */
 class WastiFloatingService : Service() {
 
@@ -97,14 +101,19 @@ class WastiFloatingService : Service() {
     private lateinit var windowManager: WindowManager
 
     private var floatingContainer: FrameLayout? = null
-    private var bubbleCard: LinearLayout? = null
+    private var collapsedView: LinearLayout? = null
+    private var expandedView: LinearLayout? = null
+
     private var micIconView: ImageView? = null
     private var statusTextView: TextView? = null
+    private var expandedStatusTextView: TextView? = null
+    private var commandEditText: EditText? = null
 
     private lateinit var windowParams: WindowManager.LayoutParams
     private val sttProvider = AndroidSpeechToTextProvider()
 
     private var isListeningState = false
+    private var isExpanded = false
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -137,6 +146,7 @@ class WastiFloatingService : Service() {
 
         setupFloatingView()
         observeSTTState()
+        observeToolProgress()
 
         logSystemEvent("INFO", "Wasti Floating Action Service initialized and overlay attached.")
     }
@@ -202,7 +212,7 @@ class WastiFloatingService : Service() {
 
         return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setContentTitle("Wasti Floating AI Bubble Active")
-            .setContentText("Tap overlay bubble anytime to command Wasti OS")
+            .setContentText("Tap overlay bubble anytime to command Wasti OS (Voice or Text)")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
@@ -215,17 +225,17 @@ class WastiFloatingService : Service() {
             TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics).toInt()
         }
 
-        // 1. Root FrameLayout container
+        // Root FrameLayout container
         floatingContainer = FrameLayout(this)
 
-        // 2. Bubble Card (pill shape: Icon + Status Text)
-        bubbleCard = LinearLayout(this).apply {
+        // -------------------------------------------------------------
+        // 1. Collapsed Bubble View (Compact Pill Shape)
+        // -------------------------------------------------------------
+        collapsedView = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dpToPx(12), dpToPx(8), dpToPx(14), dpToPx(8))
-
-            // Default Background Drawable: Deep Indigo/Navy Slate Pill
-            background = createPillBackground(
+            background = createCardBackground(
                 fillColor = Color.parseColor("#1E1E2E"),
                 strokeColor = Color.parseColor("#6366F1"),
                 strokeWidthPx = dpToPx(2),
@@ -233,7 +243,6 @@ class WastiFloatingService : Service() {
             )
         }
 
-        // 3. Mic Icon
         micIconView = ImageView(this).apply {
             setImageResource(android.R.drawable.ic_btn_speak_now)
             layoutParams = LinearLayout.LayoutParams(dpToPx(24), dpToPx(24)).apply {
@@ -241,7 +250,6 @@ class WastiFloatingService : Service() {
             }
         }
 
-        // 4. Status Text
         statusTextView = TextView(this).apply {
             text = "Wasti AI"
             setTextColor(Color.WHITE)
@@ -249,9 +257,156 @@ class WastiFloatingService : Service() {
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
 
-        bubbleCard?.addView(micIconView)
-        bubbleCard?.addView(statusTextView)
-        floatingContainer?.addView(bubbleCard)
+        collapsedView?.addView(micIconView)
+        collapsedView?.addView(statusTextView)
+
+        // -------------------------------------------------------------
+        // 2. Expanded Control Panel View (Voice + Text Command Interface)
+        // -------------------------------------------------------------
+        expandedView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(14), dpToPx(12), dpToPx(14), dpToPx(12))
+            visibility = View.GONE
+            background = createCardBackground(
+                fillColor = Color.parseColor("#181825"),
+                strokeColor = Color.parseColor("#818CF8"),
+                strokeWidthPx = dpToPx(2),
+                radiusPx = dpToPx(18)
+            )
+        }
+
+        // Header Bar inside Expanded View
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dpToPx(10)
+            }
+        }
+
+        val voiceMicBtn = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_btn_speak_now)
+            setBackgroundColor(Color.TRANSPARENT)
+            setColorFilter(Color.parseColor("#818CF8"))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28)).apply {
+                marginEnd = dpToPx(8)
+            }
+            setOnClickListener {
+                toggleVoiceListening()
+            }
+        }
+
+        expandedStatusTextView = TextView(this).apply {
+            text = "Wasti AI Assistant"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            setTextColor(Color.parseColor("#94A3B8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            setOnClickListener {
+                collapseOverlay()
+            }
+        }
+
+        headerRow.addView(voiceMicBtn)
+        headerRow.addView(expandedStatusTextView)
+        headerRow.addView(closeBtn)
+
+        // Input Row (EditText + Send Button)
+        val inputRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        commandEditText = EditText(this).apply {
+            hint = "Type command..."
+            setHintTextColor(Color.parseColor("#64748B"))
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#313244"),
+                strokeColor = Color.parseColor("#45475A"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(10)
+            )
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dpToPx(8)
+            }
+        }
+
+        val sendButton = TextView(this).apply {
+            text = "Send"
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(12), dpToPx(8), dpToPx(12), dpToPx(8))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#6366F1"),
+                strokeColor = Color.TRANSPARENT,
+                strokeWidthPx = 0,
+                radiusPx = dpToPx(10)
+            )
+            setOnClickListener {
+                val typedText = commandEditText?.text?.toString() ?: ""
+                sendTypedCommand(typedText)
+            }
+        }
+
+        inputRow.addView(commandEditText)
+        inputRow.addView(sendButton)
+
+        val suggestionBtn = TextView(this).apply {
+            text = "✨ AI Screen Suggestions"
+            setTextColor(Color.parseColor("#818CF8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#313244"),
+                strokeColor = Color.parseColor("#818CF8"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(8)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(8)
+            }
+            setOnClickListener {
+                expandedStatusTextView?.text = "Scraping screen suggestions..."
+                serviceScope.launch {
+                    val suggestions = WastiSuggestionOverlay.analyzeScreenAndGenerateSuggestions(applicationContext)
+                    val text = if (suggestions.isNotEmpty()) suggestions.first() else "No screen text detected"
+                    commandEditText?.setText(text)
+                    expandedStatusTextView?.text = "Suggestion ready"
+                }
+            }
+        }
+
+        expandedView?.addView(headerRow)
+        expandedView?.addView(inputRow)
+        expandedView?.addView(suggestionBtn)
+
+        floatingContainer?.addView(collapsedView)
+        floatingContainer?.addView(expandedView)
 
         // Window Layout Parameters
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -265,8 +420,7 @@ class WastiFloatingService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutType,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -274,7 +428,6 @@ class WastiFloatingService : Service() {
             y = dpToPx(200)
         }
 
-        // Drag and Tap Gesture Handling
         setupDragAndTapListener()
 
         try {
@@ -322,7 +475,9 @@ class WastiFloatingService : Service() {
                     val dx = (event.rawX - initialTouchX).toInt()
                     val dy = (event.rawY - initialTouchY).toInt()
                     if (!isDragging && Math.abs(dx) < 15 && Math.abs(dy) < 15) {
-                        onFloatingBubbleTapped()
+                        if (!isExpanded) {
+                            expandOverlay()
+                        }
                     }
                     true
                 }
@@ -331,13 +486,63 @@ class WastiFloatingService : Service() {
         }
     }
 
-    private fun onFloatingBubbleTapped() {
+    private fun expandOverlay() {
+        val dpToPx = { dp: Int ->
+            TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics).toInt()
+        }
+
+        isExpanded = true
+        collapsedView?.visibility = View.GONE
+        expandedView?.visibility = View.VISIBLE
+
+        // Remove FLAG_NOT_FOCUSABLE so the soft keyboard and EditText can obtain touch focus
+        windowParams.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        windowParams.width = dpToPx(290)
+
+        try {
+            windowManager.updateViewLayout(floatingContainer, windowParams)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error expanding floating overlay", e)
+        }
+    }
+
+    private fun collapseOverlay() {
+        isExpanded = false
+        expandedView?.visibility = View.GONE
+        collapsedView?.visibility = View.VISIBLE
+
+        // Hide soft keyboard if active
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        commandEditText?.let { imm?.hideSoftInputFromWindow(it.windowToken, 0) }
+
+        // Restore FLAG_NOT_FOCUSABLE so touch passes through outside the bubble
+        windowParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT
+
+        try {
+            windowManager.updateViewLayout(floatingContainer, windowParams)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error collapsing floating overlay", e)
+        }
+    }
+
+    private fun observeToolProgress() {
+        serviceScope.launch {
+            WastiCore.toolProgressState.collectLatest { progress ->
+                if (progress.stage != com.example.data.core.ProgressStage.IDLE) {
+                    val label = "[${progress.stage.name}] ${progress.statusMessage}"
+                    statusTextView?.text = label
+                    expandedStatusTextView?.text = label
+                }
+            }
+        }
+    }
+
+    private fun toggleVoiceListening() {
         if (isListeningState) {
-            // Stop listening
             sttProvider.stopListening()
-            updateBubbleUi(isListening = false, labelText = "Wasti AI")
+            updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant")
         } else {
-            // Start speech recognition
             if (!sttProvider.isHardwareAvailable(this)) {
                 Toast.makeText(this, "Speech recognizer unavailable on this device", Toast.LENGTH_SHORT).show()
                 return
@@ -357,6 +562,26 @@ class WastiFloatingService : Service() {
         }
     }
 
+    private fun sendTypedCommand(text: String) {
+        val command = text.trim()
+        if (command.isBlank()) return
+
+        commandEditText?.setText("")
+        expandedStatusTextView?.text = "Sending command..."
+        Toast.makeText(this, "Wasti Command Sent: \"$command\"", Toast.LENGTH_SHORT).show()
+
+        logSystemEvent("INFO", "Floating Typed Command Sent: '$command'")
+
+        serviceScope.launch(Dispatchers.IO) {
+            executeCommand(command)
+        }
+
+        expandedView?.postDelayed({
+            expandedStatusTextView?.text = "Wasti AI Assistant"
+            collapseOverlay()
+        }, 2000)
+    }
+
     private fun handleSpeechResult(result: STTResult) {
         if (!result.isFinal) {
             if (result.transcript.isNotBlank()) {
@@ -368,32 +593,30 @@ class WastiFloatingService : Service() {
         val transcript = result.transcript.trim()
         if (transcript.isNotBlank()) {
             updateBubbleUi(isListening = false, labelText = "Command: '$transcript'")
-            Toast.makeText(this, "Wasti Command Received: \"$transcript\"", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Wasti Voice Command: \"$transcript\"", Toast.LENGTH_SHORT).show()
 
-            // 1. Log voice command to SystemLogEntity database
             logSystemEvent("INFO", "Floating Voice Command Received: '$transcript'")
 
-            // 2. Dispatch command to WastiDeviceController or intent engine
             serviceScope.launch(Dispatchers.IO) {
-                executeVoiceCommand(transcript)
+                executeCommand(transcript)
             }
 
-            // Reset bubble label back after 3.5 seconds
-            bubbleCard?.postDelayed({
-                updateBubbleUi(isListening = false, labelText = "Wasti AI")
-            }, 3500)
+            expandedView?.postDelayed({
+                updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant")
+                collapseOverlay()
+            }, 3000)
         } else {
             val errorMsg = result.errorMsg ?: "No speech recognized"
-            updateBubbleUi(isListening = false, labelText = "Retry Tap")
+            updateBubbleUi(isListening = false, labelText = "Retry Voice")
             logSystemEvent("WARN", "Floating Speech Recognizer: $errorMsg")
 
-            bubbleCard?.postDelayed({
-                updateBubbleUi(isListening = false, labelText = "Wasti AI")
-            }, 2500)
+            expandedView?.postDelayed({
+                updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant")
+            }, 2000)
         }
     }
 
-    private suspend fun executeVoiceCommand(command: String) {
+    private suspend fun executeCommand(command: String) {
         val lower = command.lowercase()
         when {
             lower.startsWith("open ") || lower.startsWith("launch ") -> {
@@ -407,7 +630,17 @@ class WastiFloatingService : Service() {
                 logSystemEvent("INFO", "Floating Command Execution [TAP]: ${result.userFeedback}")
             }
             else -> {
-                logSystemEvent("INFO", "Floating Voice Command Processed: '$command'")
+                try {
+                    val (response, _) = WastiCore.executeOrchestratedRequest(
+                        userPrompt = command,
+                        systemInstruction = "You are Wasti OS floating assistant. Provide concise actionable mobile execution response.",
+                        activeAgentId = "ceo_agent"
+                    )
+                    logSystemEvent("INFO", "Floating Command WastiCore Execution: ${response.take(100)}")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error executing floating command via WastiCore", e)
+                    logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
+                }
             }
         }
     }
@@ -421,27 +654,26 @@ class WastiFloatingService : Service() {
                     STTState.PROCESSING -> updateBubbleUi(isListening = true, labelText = "Processing...")
                     STTState.ERROR -> {
                         updateBubbleUi(isListening = false, labelText = "Error")
-                        bubbleCard?.postDelayed({ updateBubbleUi(isListening = false, labelText = "Wasti AI") }, 2000)
+                        expandedView?.postDelayed({ updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant") }, 2000)
                     }
-                    STTState.IDLE -> {
-                        // Handled in onResult
-                    }
+                    STTState.IDLE -> {}
                 }
             }
         }
     }
 
     private fun updateBubbleUi(isListening: Boolean, labelText: String) {
+        statusTextView?.text = labelText
+        expandedStatusTextView?.text = labelText
+
         val dpToPx = { dp: Int ->
             TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), resources.displayMetrics).toInt()
         }
 
-        statusTextView?.text = labelText
-
         val fillColor = if (isListening) Color.parseColor("#065F46") else Color.parseColor("#1E1E2E")
         val strokeColor = if (isListening) Color.parseColor("#10B981") else Color.parseColor("#6366F1")
 
-        bubbleCard?.background = createPillBackground(
+        collapsedView?.background = createCardBackground(
             fillColor = fillColor,
             strokeColor = strokeColor,
             strokeWidthPx = dpToPx(2),
@@ -449,7 +681,7 @@ class WastiFloatingService : Service() {
         )
     }
 
-    private fun createPillBackground(
+    private fun createCardBackground(
         fillColor: Int,
         strokeColor: Int,
         strokeWidthPx: Int,
@@ -459,7 +691,9 @@ class WastiFloatingService : Service() {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = radiusPx.toFloat()
             setColor(fillColor)
-            setStroke(strokeWidthPx, strokeColor)
+            if (strokeWidthPx > 0) {
+                setStroke(strokeWidthPx, strokeColor)
+            }
         }
     }
 
@@ -472,7 +706,7 @@ class WastiFloatingService : Service() {
                         level = level,
                         source = "WastiFloatingService",
                         message = message,
-                        details = "Floating Action Bubble System Alert Window Event",
+                        details = "Floating Action Bubble System Overlay Event",
                         timestamp = System.currentTimeMillis()
                     )
                 )

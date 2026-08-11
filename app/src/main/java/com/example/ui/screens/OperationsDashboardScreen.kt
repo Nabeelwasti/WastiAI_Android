@@ -662,7 +662,7 @@ fun OperationsDashboardScreen() {
                                 label = { Text("All CRM (${prospects.size})", fontSize = 11.sp) }
                             )
                         }
-                        listOf("Contacted", "Replied", "Closed").forEach { stage ->
+                        listOf("NEW", "CONTACTED", "PITCHED", "REPLIED", "CLOSED").forEach { stage ->
                             item {
                                 FilterChip(
                                     selected = selectedCrmStageFilter.equals(stage, ignoreCase = true),
@@ -768,6 +768,16 @@ fun OperationsDashboardScreen() {
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true
                             )
+                            val currentCurrencySymbol = remember(selectedCurrency) {
+                                when (selectedCurrency) {
+                                    "USD" -> "$"
+                                    "EUR" -> "€"
+                                    "GBP" -> "£"
+                                    "PKR" -> "₨"
+                                    "AUD" -> "A$"
+                                    else -> selectedCurrency
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -776,7 +786,8 @@ fun OperationsDashboardScreen() {
                                 OutlinedTextField(
                                     value = newAmount,
                                     onValueChange = { newAmount = it },
-                                    label = { Text("Amount", fontSize = 11.sp) },
+                                    label = { Text("Amount ($currentCurrencySymbol)", fontSize = 11.sp) },
+                                    prefix = { Text("$currentCurrencySymbol ", fontWeight = FontWeight.Bold, fontSize = 12.sp) },
                                     modifier = Modifier.weight(1.2f),
                                     singleLine = true
                                 )
@@ -787,7 +798,7 @@ fun OperationsDashboardScreen() {
                                         shape = RoundedCornerShape(4.dp),
                                         contentPadding = PaddingValues(horizontal = 8.dp)
                                     ) {
-                                        Text(text = selectedCurrency, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(text = "$selectedCurrency ($currentCurrencySymbol)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         Icon(
                                             imageVector = Icons.Default.ArrowDropDown,
                                             contentDescription = "Select Currency",
@@ -799,8 +810,16 @@ fun OperationsDashboardScreen() {
                                         onDismissRequest = { currencyDropdownExpanded = false }
                                     ) {
                                         currencyOptions.forEach { curr ->
+                                            val symbol = when (curr) {
+                                                "USD" -> "$"
+                                                "EUR" -> "€"
+                                                "GBP" -> "£"
+                                                "PKR" -> "₨"
+                                                "AUD" -> "A$"
+                                                else -> curr
+                                            }
                                             DropdownMenuItem(
-                                                text = { Text(curr, fontWeight = if (curr == selectedCurrency) FontWeight.Bold else FontWeight.Normal) },
+                                                text = { Text("$curr ($symbol)", fontWeight = if (curr == selectedCurrency) FontWeight.Bold else FontWeight.Normal) },
                                                 onClick = {
                                                     selectedCurrency = curr
                                                     currencyDropdownExpanded = false
@@ -1611,6 +1630,12 @@ fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Conte
 
 @Composable
 fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.content.Context) {
+    val displayTitle = prospect.clientName.ifBlank { prospect.title.ifBlank { "Prospect #${prospect.id.take(6)}" } }
+    val displayPitch = prospect.aiDraftedMessage.ifBlank { prospect.draftedPitch }
+    val displayEmail = prospect.email.ifBlank { prospect.clientEmail }
+    val displayWhatsapp = prospect.whatsappNumber.ifBlank { prospect.phone }
+    val displayWebsite = prospect.websiteUrl.ifBlank { prospect.link }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
@@ -1622,19 +1647,30 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = prospect.title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = displayTitle,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (prospect.companyName.isNotBlank() && prospect.companyName != "Pending Discovery") {
+                        Text(
+                            text = "Company: ${prospect.companyName}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = when (prospect.status.lowercase()) {
-                        "contacted" -> Color(0xFF3B82F6)
-                        "replied" -> Color(0xFFF59E0B)
-                        "closed" -> Color(0xFF10B981)
+                    color = when (prospect.status.uppercase()) {
+                        "NEW" -> Color(0xFF6366F1)
+                        "CONTACTED" -> Color(0xFF3B82F6)
+                        "PITCHED" -> Color(0xFF8B5CF6)
+                        "REPLIED" -> Color(0xFFF59E0B)
+                        "CLOSED" -> Color(0xFF10B981)
                         else -> MaterialTheme.colorScheme.primary
                     }
                 ) {
@@ -1648,22 +1684,153 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                 }
             }
 
-            if (prospect.category.isNotBlank()) {
-                Text("Category: ${prospect.category} | Match: ${prospect.matchScore}%", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Lead Source & Opportunity Nature badges
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        text = "Source: ${prospect.leadSource}",
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.tertiaryContainer
+                ) {
+                    Text(
+                        text = "Nature: ${prospect.opportunityNature}",
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
             }
 
-            Text("Status Pipeline Track:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Contact Info Details
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Email: ${if (displayEmail.isNotBlank()) displayEmail else "Pending Discovery"}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Phone/WhatsApp: ${if (displayWhatsapp.isNotBlank()) displayWhatsapp else "Pending Discovery"}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (displayWebsite.isNotBlank() && displayWebsite != "Pending Discovery") {
+                    Text("Website: $displayWebsite", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            if (displayPitch.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Pitch Preview: ${displayPitch.take(120)}...",
+                        fontSize = 11.sp,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        modifier = Modifier.padding(8.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // One-Tap Action Hub
+            Text("⚡ One-Tap Action Hub:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                listOf("Contacted", "Replied", "Closed").forEach { status ->
-                    FilterChip(
-                        selected = prospect.status.equals(status, ignoreCase = true),
-                        onClick = { LeadRadarRepository.updateProspectStatus(context, prospect.id, status) },
-                        label = { Text(status, fontSize = 10.sp) },
-                        modifier = Modifier.height(28.dp)
-                    )
+                // WhatsApp Button
+                Button(
+                    onClick = {
+                        com.example.data.core.LeadRadarRepository.dispatchWhatsAppDirect(
+                            context = context,
+                            whatsappNumber = displayWhatsapp,
+                            message = displayPitch
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                // Email Button
+                Button(
+                    onClick = {
+                        com.example.data.core.LeadRadarRepository.dispatchEmailDirect(
+                            context = context,
+                            recipientEmail = displayEmail,
+                            subject = "Proposal: ${prospect.opportunityNature}",
+                            body = displayPitch
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                // Call Button
+                OutlinedButton(
+                    onClick = {
+                        com.example.data.core.LeadRadarRepository.dispatchCallDirect(
+                            context = context,
+                            phone = prospect.phone
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Call", fontSize = 10.sp)
+                }
+
+                // Website Button
+                OutlinedButton(
+                    onClick = {
+                        com.example.data.core.LeadRadarRepository.dispatchWebsiteDirect(
+                            context = context,
+                            websiteUrl = displayWebsite
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Web", fontSize = 10.sp)
+                }
+            }
+
+            // Pipeline Status Transitions
+            Text("Pipeline Status Transition:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf("NEW", "CONTACTED", "PITCHED", "REPLIED", "CLOSED").forEach { status ->
+                    item {
+                        FilterChip(
+                            selected = prospect.status.equals(status, ignoreCase = true),
+                            onClick = {
+                                com.example.data.core.LeadRadarRepository.updateProspectStatus(context, prospect.id, status)
+                            },
+                            label = { Text(status, fontSize = 10.sp) },
+                            modifier = Modifier.height(28.dp)
+                        )
+                    }
                 }
             }
         }

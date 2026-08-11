@@ -54,6 +54,7 @@ object GeminiClient {
         history: List<GeminiContent> = emptyList(),
         imageInlineData: String? = null,
         mimeType: String = "image/jpeg",
+        mediaList: List<com.example.data.ai.model.AttachedMediaData> = emptyList(),
         customApiKey: String? = null
     ): String = withContext(Dispatchers.IO) {
         val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey
@@ -76,6 +77,18 @@ object GeminiClient {
         }
         if (!imageInlineData.isNullOrBlank()) {
             userParts.add(GeminiPart(inlineData = GeminiInlineData(mimeType = mimeType, data = imageInlineData)))
+        }
+        mediaList.forEach { media ->
+            if (media.base64Data.isNotBlank()) {
+                userParts.add(
+                    GeminiPart(
+                        inlineData = GeminiInlineData(
+                            mimeType = media.mimeType.ifBlank { "image/jpeg" },
+                            data = media.base64Data
+                        )
+                    )
+                )
+            }
         }
         if (userParts.isEmpty()) {
             userParts.add(GeminiPart(text = "Please analyze the attached media."))

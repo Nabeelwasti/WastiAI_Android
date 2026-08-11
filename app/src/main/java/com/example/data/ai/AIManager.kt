@@ -78,6 +78,7 @@ object AIManager {
         history: List<GeminiContent> = emptyList(),
         imageInlineData: String? = null,
         mimeType: String = "image/jpeg",
+        mediaList: List<com.example.data.ai.model.AttachedMediaData> = emptyList(),
         fileContext: String? = null,
         preferredProviderId: String? = null,
         requiredCapabilities: Set<ProviderCapability> = setOf(ProviderCapability.TEXT_GENERATION)
@@ -97,6 +98,7 @@ object AIManager {
             history = history,
             imageInlineData = imageInlineData,
             mimeType = mimeType,
+            mediaList = mediaList,
             requiredCapabilities = requiredCapabilities
         )
 

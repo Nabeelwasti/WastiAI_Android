@@ -212,8 +212,14 @@ class MainActivity : ComponentActivity() {
                                 onSelectAgent = { viewModel.selectAgent(it) },
                                 onSelectModel = { viewModel.setSelectedModel(it) },
                                 onClearChatHistory = { viewModel.clearChatHistory() },
-                                onSendMessage = { prompt, imageInlineData, mimeType ->
-                                    viewModel.sendMessage(prompt = prompt, imageInlineData = imageInlineData, mimeType = mimeType)
+                                onSendMessage = { prompt, imageInlineData, mimeType, attachedMediaUris, mediaList ->
+                                    viewModel.sendMessage(
+                                        prompt = prompt,
+                                        imageInlineData = imageInlineData,
+                                        mimeType = mimeType,
+                                        attachedMediaUris = attachedMediaUris,
+                                        mediaList = mediaList
+                                    )
                                 },
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) },

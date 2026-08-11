@@ -161,7 +161,7 @@ class WakeWordVoskService : Service() {
 
                 try {
                     voskModel = Model(modelDir.absolutePath)
-                    voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), "[\"hey wasti\", \"wasti\", \"hey\", \"[unk]\"]")
+                    voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), "[\"hey wasti\", \"[unk]\"]")
                     WakeWordVoskState.setModelLoaded(true)
                     WakeWordVoskState.updateStatus("Model Loaded • Listening for 'Hey Wasti'")
                 } catch (e: Throwable) {
@@ -234,7 +234,8 @@ class WakeWordVoskService : Service() {
     private suspend fun checkWakeWordInJson(jsonText: String) {
         if (jsonText.isBlank()) return
         val lower = jsonText.lowercase()
-        if (lower.contains("hey wasti") || lower.contains("wasti")) {
+        // Task 39B: Enforce strict check for exact full phrase "hey wasti" to prevent false triggers
+        if (lower.contains("hey wasti")) {
             Log.i(TAG, ">>> Wake word 'Hey Wasti' detected in microphone buffer! Executing callback...")
             voskRecognizer?.reset()
             WakeWordVoskState.recordWakeWord("Hey Wasti")

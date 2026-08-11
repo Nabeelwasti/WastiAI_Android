@@ -6,6 +6,7 @@ import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -44,6 +45,7 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 data class ActiveAttachment(
+    val uri: String? = null,
     val name: String,
     val mimeType: String,
     val base64Data: String?,
@@ -104,7 +106,13 @@ fun ChatWorkspaceScreen(
     onSelectAgent: (String) -> Unit,
     onSelectModel: (String) -> Unit = {},
     onClearChatHistory: () -> Unit = {},
-    onSendMessage: (prompt: String, imageInlineData: String?, mimeType: String) -> Unit,
+    onSendMessage: (
+        prompt: String,
+        imageInlineData: String?,
+        mimeType: String,
+        attachedMediaUris: String,
+        mediaList: List<com.example.data.ai.model.AttachedMediaData>
+    ) -> Unit = { _, _, _, _, _ -> },
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
     onCreateNewConversation: (String) -> Unit,
     onCancelGeneration: () -> Unit = {},
@@ -113,6 +121,7 @@ fun ChatWorkspaceScreen(
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     var promptInput by remember { mutableStateOf("") }
+    var editingMessageId by remember { mutableStateOf<String?>(null) }
 
     // Auto-restore draft prompt on initial composition
     LaunchedEffect(Unit) {
@@ -143,10 +152,11 @@ fun ChatWorkspaceScreen(
     var showWebScanDialog by remember { mutableStateOf(false) }
     var webUrlInput by remember { mutableStateOf("") }
 
-    var activeAttachment by remember { mutableStateOf<ActiveAttachment?>(null) }
+    var activeAttachments by remember { mutableStateOf<List<ActiveAttachment>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val pendingDraft by com.example.data.core.WastiCore.pendingEmailDraft.collectAsState()
     val pendingLinkedInDraft by com.example.data.core.WastiCore.pendingLinkedInDraft.collectAsState()
+    val toolProgressState by com.example.data.core.WastiCore.toolProgressState.collectAsState()
 
     // Real Camera Launcher
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -154,66 +164,69 @@ fun ChatWorkspaceScreen(
     ) { bitmap ->
         if (bitmap != null) {
             val base64 = bitmapToBase64(bitmap)
-            activeAttachment = ActiveAttachment(
-                name = "Camera_Capture_${System.currentTimeMillis() % 10000}.jpg",
+            val name = "Camera_Capture_${System.currentTimeMillis() % 10000}.jpg"
+            activeAttachments = (activeAttachments + ActiveAttachment(
+                uri = name,
+                name = name,
                 mimeType = "image/jpeg",
                 base64Data = base64,
                 bitmap = bitmap,
                 isImage = true
-            )
+            )).take(10)
         }
     }
 
-    // Real Gallery / Photos Picker Launcher
+    // Real Multi-Gallery / Photos Picker Launcher (PickMultipleVisualMedia max 10)
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            val name = getFileName(context, uri)
-            val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
-            val base64 = uriToBase64(context, uri)
-            activeAttachment = ActiveAttachment(
-                name = name,
-                mimeType = mime,
-                base64Data = base64,
-                isImage = true
-            )
-        }
-    }
-
-    // Real Device Storage / File Manager Launcher
-    val documentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            val name = getFileName(context, uri)
-            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-            val base64 = uriToBase64(context, uri)
-
-            if (mime.startsWith("image/")) {
-                activeAttachment = ActiveAttachment(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val newAttachments = uris.mapNotNull { uri ->
+                val name = getFileName(context, uri)
+                val mime = context.contentResolver.getType(uri) ?: "image/jpeg"
+                val base64 = uriToBase64(context, uri)
+                ActiveAttachment(
+                    uri = uri.toString(),
                     name = name,
                     mimeType = mime,
                     base64Data = base64,
                     isImage = true
                 )
-            } else {
-                // Read text / code file content directly into prompt if plain text
-                val textContent = try {
-                    context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-                } catch (_: Exception) { null }
-
-                if (!textContent.isNullOrBlank()) {
-                    promptInput += "\n\n[Attached File: $name]\n```\n${textContent.take(4000)}\n```\n"
-                } else {
-                    activeAttachment = ActiveAttachment(
-                        name = name,
-                        mimeType = mime,
-                        base64Data = base64,
-                        isImage = false
-                    )
-                }
             }
+            activeAttachments = (activeAttachments + newAttachments).take(10)
+        }
+    }
+
+    // Real Device Storage / File Manager Multi-Launcher
+    val documentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            val newAttachments = uris.mapNotNull { uri ->
+                val name = getFileName(context, uri)
+                val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+                val base64 = uriToBase64(context, uri)
+                val isImg = mime.startsWith("image/")
+
+                if (!isImg) {
+                    val textContent = try {
+                        context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
+                    } catch (_: Exception) { null }
+
+                    if (!textContent.isNullOrBlank()) {
+                        promptInput += "\n\n[Attached File: $name]\n```\n${textContent.take(4000)}\n```\n"
+                    }
+                }
+
+                ActiveAttachment(
+                    uri = uri.toString(),
+                    name = name,
+                    mimeType = mime,
+                    base64Data = base64,
+                    isImage = isImg
+                )
+            }
+            activeAttachments = (activeAttachments + newAttachments).take(10)
         }
     }
 
@@ -242,7 +255,7 @@ fun ChatWorkspaceScreen(
         WastiVoiceCallModal(
             onDismiss = { showVoiceModal = false },
             onSendMessage = { prompt ->
-                onSendMessage(prompt, null, "image/jpeg")
+                onSendMessage(prompt, null, "image/jpeg", "", emptyList())
             },
             lastAiResponse = messages.lastOrNull { it.role == "assistant" }?.content
         )
@@ -579,10 +592,12 @@ fun ChatWorkspaceScreen(
                         clipboard.setPrimaryClip(clip)
                         android.widget.Toast.makeText(context, "Copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
                     },
-                    onEditMessage = { text ->
+                    onEditMessage = { msgId, text ->
+                        editingMessageId = msgId
                         promptInput = text
                     },
                     onEditAndResendMessage = { messageId, newPrompt ->
+                        editingMessageId = null
                         onEditAndResendMessage(messageId, newPrompt)
                     }
                 )
@@ -674,41 +689,92 @@ fun ChatWorkspaceScreen(
             }
         }
 
-        // Active Attachment Preview Badge
-        activeAttachment?.let { att ->
+        // Task 43A: Active Editing Mode Banner
+        editingMessageId?.let { editId ->
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f)
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = if (att.isImage) Icons.Default.Image else Icons.AutoMirrored.Filled.InsertDriveFile,
+                            imageVector = Icons.Default.Edit,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Attached: ${att.name}",
+                            text = "Editing message...",
                             fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
                         )
                     }
-                    IconButton(
-                        onClick = { activeAttachment = null },
-                        modifier = Modifier.size(24.dp)
+                    TextButton(
+                        onClick = {
+                            editingMessageId = null
+                            promptInput = ""
+                        }
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Remove Attachment", tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                        Text("Cancel", fontSize = 11.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Task 43B: Active Multi-Attachment Preview Chips
+        if (activeAttachments.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(activeAttachments) { att ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                        tonalElevation = 2.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (att.isImage) Icons.Default.Image else Icons.AutoMirrored.Filled.InsertDriveFile,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = att.name,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { activeAttachments = activeAttachments.filter { it != att } },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove Attachment",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -732,7 +798,9 @@ fun ChatWorkspaceScreen(
                                 onSendMessage(
                                     "✅ [EMAIL APPROVED & SENT]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nEmail dispatched via Gmail OAuth 2.0 API.",
                                     null,
-                                    "image/jpeg"
+                                    "image/jpeg",
+                                    "",
+                                    emptyList()
                                 )
                             }
                             is com.example.data.gmail.SendEmailResult.Error -> {
@@ -740,7 +808,9 @@ fun ChatWorkspaceScreen(
                                 onSendMessage(
                                     "❌ [EMAIL FAILED]\n\nRecipient: ${draft.to}\nSubject: ${draft.subject}\n\nError: ${result.message}",
                                     null,
-                                    "image/jpeg"
+                                    "image/jpeg",
+                                    "",
+                                    emptyList()
                                 )
                             }
                         }
@@ -769,7 +839,9 @@ fun ChatWorkspaceScreen(
                                 onSendMessage(
                                     "✅ [LINKEDIN POST APPROVED & PUBLISHED]\n\nContent:\n${draft.content}\n\nPost ID: ${result.postId}\nPublished via LinkedIn OAuth 2.0 API.",
                                     null,
-                                    "image/jpeg"
+                                    "image/jpeg",
+                                    "",
+                                    emptyList()
                                 )
                             }
                             is com.example.data.linkedin.LinkedInPostResult.Error -> {
@@ -777,7 +849,9 @@ fun ChatWorkspaceScreen(
                                 onSendMessage(
                                     "❌ [LINKEDIN POST FAILED]\n\nContent:\n${draft.content}\n\nError: ${result.message}",
                                     null,
-                                    "image/jpeg"
+                                    "image/jpeg",
+                                    "",
+                                    emptyList()
                                 )
                             }
                         }
@@ -788,6 +862,67 @@ fun ChatWorkspaceScreen(
                     com.example.data.core.WastiCore.clearPendingLinkedInDraft()
                 }
             )
+        }
+
+        // Task 41B: Real-Time Tool Execution Progress Banner
+        AnimatedVisibility(
+            visible = toolProgressState.isActive || toolProgressState.stage == com.example.data.core.ProgressStage.CONNECTING || toolProgressState.stage == com.example.data.core.ProgressStage.SCRAPING || toolProgressState.stage == com.example.data.core.ProgressStage.ANALYZING || toolProgressState.stage == com.example.data.core.ProgressStage.DISPATCHING || toolProgressState.stage == com.example.data.core.ProgressStage.VERIFYING,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f),
+                tonalElevation = 4.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                text = "STAGE: ${toolProgressState.stage.name}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                        Text(
+                            text = "Wasti Execution Engine",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                    Text(
+                        text = toolProgressState.statusMessage,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
+            }
         }
 
         // Input Bar with Material OutlinedBox Alignment & Multimodal Attachment Options
@@ -832,7 +967,11 @@ fun ChatWorkspaceScreen(
                             onClick = {
                                 showAttachmentMenu = false
                                 try {
-                                    galleryLauncher.launch("image/*")
+                                    galleryLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(
+                                            ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                                        )
+                                    )
                                 } catch (_: Exception) {
                                     permissionLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE))
                                 }
@@ -948,15 +1087,42 @@ fun ChatWorkspaceScreen(
                     onClick = {
                         if (isGenerating) {
                             onCancelGeneration()
-                        } else if (promptInput.isNotBlank() || activeAttachment != null) {
+                        } else if (promptInput.isNotBlank() || activeAttachments.isNotEmpty()) {
                             val textToSend = promptInput
-                            val att = activeAttachment
+                            val attachmentsToSend = activeAttachments
+                            val targetEditId = editingMessageId
+
                             promptInput = ""
-                            activeAttachment = null
+                            activeAttachments = emptyList()
+                            editingMessageId = null
                             focusManager.clearFocus()
 
-                            WastiIntentParser.parseAndExecute(context, textToSend)
-                            onSendMessage(textToSend, att?.base64Data, att?.mimeType ?: "image/jpeg")
+                            if (targetEditId != null) {
+                                // Task 43A: Submitting edit invokes editMessageAndRegenerate without duplicate appending!
+                                onEditAndResendMessage(targetEditId, textToSend)
+                            } else {
+                                val mediaUrisStr = attachmentsToSend.joinToString(",") { it.uri ?: it.name }
+                                val mediaDataList = attachmentsToSend.mapNotNull { att ->
+                                    if (att.base64Data != null) {
+                                        com.example.data.ai.model.AttachedMediaData(
+                                            base64Data = att.base64Data,
+                                            mimeType = att.mimeType,
+                                            uri = att.uri ?: att.name
+                                        )
+                                    } else null
+                                }
+                                val firstBase64 = mediaDataList.firstOrNull()?.base64Data
+                                val firstMime = mediaDataList.firstOrNull()?.mimeType ?: "image/jpeg"
+
+                                WastiIntentParser.parseAndExecute(context, textToSend)
+                                onSendMessage(
+                                    textToSend,
+                                    firstBase64,
+                                    firstMime,
+                                    mediaUrisStr,
+                                    mediaDataList
+                                )
+                            }
                         }
                     },
                     modifier = Modifier
@@ -988,7 +1154,7 @@ private fun MessageItem(
     message: MessageEntity,
     ttsEngine: TextToSpeech?,
     onCopyText: (String) -> Unit,
-    onEditMessage: (String) -> Unit,
+    onEditMessage: (messageId: String, content: String) -> Unit,
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> }
 ) {
     val isUser = message.role == "user"
@@ -1035,7 +1201,7 @@ private fun MessageItem(
                 IconButton(
                     onClick = {
                         isEditingInline = !isEditingInline
-                        onEditMessage(message.content)
+                        onEditMessage(message.id, message.content)
                     },
                     modifier = Modifier.size(22.dp)
                 ) {
@@ -1076,6 +1242,67 @@ private fun MessageItem(
             tonalElevation = 1.dp
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
+                // Task 43C: Media Vault Visual Chat Rendering
+                if (message.attachedMediaUris.isNotBlank()) {
+                    val mediaUris = remember(message.attachedMediaUris) {
+                        message.attachedMediaUris.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    }
+                    if (mediaUris.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            items(mediaUris) { uriStr ->
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shadowElevation = 2.dp,
+                                    modifier = Modifier.size(width = 110.dp, height = 80.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        val isImage = uriStr.contains("content:") ||
+                                                uriStr.endsWith(".jpg", ignoreCase = true) ||
+                                                uriStr.endsWith(".png", ignoreCase = true) ||
+                                                uriStr.endsWith(".jpeg", ignoreCase = true) ||
+                                                uriStr.endsWith(".webp", ignoreCase = true) ||
+                                                uriStr.contains("Camera_Capture") ||
+                                                uriStr.contains("image")
+
+                                        if (isImage) {
+                                            coil.compose.AsyncImage(
+                                                model = uriStr,
+                                                contentDescription = "Attached Media",
+                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))
+                                            )
+                                        } else {
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center,
+                                                modifier = Modifier.padding(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.InsertDriveFile,
+                                                    contentDescription = "Attached File",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = uriStr.substringAfterLast('/'),
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 if (isEditingInline && isUser) {
                     // Inline editor for exact index editing
                     Column {
@@ -1139,50 +1366,62 @@ private fun MessageItem(
                             )
                         }
 
-                        if (!isUser && (content.contains("Respected Hiring Client") || content.contains("Drafted Pitch") || content.contains("Match Score") || content.contains("Lead Radar"))) {
+                        if (!isUser && (content.contains("Respected Hiring Client") || content.contains("Drafted Pitch") || content.contains("Match Score") || content.contains("Lead Radar") || content.contains("Opportunity") || content.contains("Prospect"))) {
                             val context = LocalContext.current
+                            val extractedEmail = com.example.data.core.LeadRadarRepository.extractEmail(content)
+                            val extractedPhone = com.example.data.core.LeadRadarRepository.extractPhone(content)
+
                             Spacer(modifier = Modifier.height(10.dp))
                             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "⚡ 1-Tap Client Outreach Dispatch",
+                                text = "⚡ One-Tap Action Hub",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Button(
-                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchViaWhatsApp(context, content) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp),
+                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchWhatsAppDirect(context, extractedPhone, content) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("WhatsApp", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                 }
                                 Button(
-                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchViaEmail(context, "Proposal / Outreach Pitch", content) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp),
+                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchEmailDirect(context, extractedEmail, "Proposal / Outreach Pitch", content) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                                 ) {
-                                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Email", fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { com.example.data.core.LeadRadarRepository.dispatchCallDirect(context, extractedPhone) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp)
+                                ) {
+                                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Call", fontSize = 10.sp)
                                 }
                                 OutlinedButton(
                                     onClick = { onCopyText(content) },
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(30.dp)
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Copy Pitch", fontSize = 11.sp)
+                                    Text("Copy", fontSize = 10.sp)
                                 }
                             }
                         }

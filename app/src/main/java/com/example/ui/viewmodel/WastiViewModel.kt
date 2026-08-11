@@ -124,10 +124,12 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         prompt: String,
         explicitFileContext: String? = null,
         imageInlineData: String? = null,
-        mimeType: String = "image/jpeg"
+        mimeType: String = "image/jpeg",
+        attachedMediaUris: String = "",
+        mediaList: List<com.example.data.ai.model.AttachedMediaData> = emptyList()
     ) {
         val convId = activeConversationId.value ?: return
-        if (prompt.isBlank() && imageInlineData.isNullOrBlank()) return
+        if (prompt.isBlank() && imageInlineData.isNullOrBlank() && mediaList.isEmpty()) return
 
         val fileContextToPass = explicitFileContext
             ?: if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
@@ -145,7 +147,9 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                     selectedModel = selectedModel.value,
                     fileContext = fileContextToPass,
                     imageInlineData = imageInlineData,
-                    mimeType = mimeType
+                    mimeType = mimeType,
+                    attachedMediaUris = attachedMediaUris,
+                    mediaList = mediaList
                 )
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) {

@@ -12,6 +12,8 @@ object DraftPersistenceManager {
     private const val PREFS_FILE = "wasti_chat_drafts_secure"
     private const val KEY_PROMPT_DRAFT = "active_prompt_bar_draft"
     private const val KEY_TIMESTAMP = "active_prompt_draft_timestamp"
+    private const val KEY_SCRAPED_SCREEN_JSON = "active_screen_scraped_json"
+    private const val KEY_SCRAPED_SCREEN_TIMESTAMP = "active_screen_scraped_timestamp"
 
     private fun getSecurePrefs(context: Context): SharedPreferences {
         return try {
@@ -71,6 +73,34 @@ object DraftPersistenceManager {
                 .apply()
         } catch (e: Exception) {
             Log.e(TAG, "Error clearing draft prompt", e)
+        }
+    }
+
+    /**
+     * Save active screen scraped UI nodes JSON output for Gemini screen reading.
+     */
+    fun saveScrapedScreenData(context: Context, jsonOutput: String) {
+        try {
+            val prefs = getSecurePrefs(context)
+            prefs.edit()
+                .putString(KEY_SCRAPED_SCREEN_JSON, jsonOutput)
+                .putLong(KEY_SCRAPED_SCREEN_TIMESTAMP, System.currentTimeMillis())
+                .apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving scraped screen data", e)
+        }
+    }
+
+    /**
+     * Get active screen scraped UI nodes JSON output.
+     */
+    fun getScrapedScreenData(context: Context): String {
+        return try {
+            val prefs = getSecurePrefs(context)
+            prefs.getString(KEY_SCRAPED_SCREEN_JSON, "") ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading scraped screen data", e)
+            ""
         }
     }
 }

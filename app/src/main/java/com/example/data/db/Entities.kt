@@ -27,7 +27,8 @@ data class MessageEntity(
     val modelUsed: String = "gemini-3.5-flash",
     val tokensUsed: Int = 0,
     val toolCallsJson: String? = null,
-    val thinkingContent: String? = null
+    val thinkingContent: String? = null,
+    val attachedMediaUris: String = ""
 )
 
 @Entity(tableName = "memories")
@@ -188,18 +189,30 @@ data class InvoiceEntity(
     indices = [Index(value = ["status"])]
 )
 data class ProspectEntity(
-    @PrimaryKey val id: String,
-    val title: String,
-    val link: String,
-    val description: String,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val clientName: String = "",
+    val companyName: String = "",
+    val country: String = "",
+    val region: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val whatsappNumber: String = "",
+    val websiteUrl: String = "",
+    val paymentInfo: String = "",
+    val leadSource: String = "Google X-Ray", // "Google X-Ray", "Upwork RSS", "Web Scraper"
+    val opportunityNature: String = "Video Editing", // "Video Editing", "Graphic Design", "AI Automation"
+    val status: String = "NEW", // "NEW", "CONTACTED", "PITCHED", "REPLIED", "CLOSED"
+    val aiDraftedMessage: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val title: String = "",
+    val link: String = "",
+    val description: String = "",
     val pubDate: String = "",
     val category: String = "",
     val matchScore: Int = 85,
     val matchedSkillsCsv: String = "",
     val draftedPitch: String = "",
-    val status: String = "Contacted", // Contacted, Replied, Closed
-    val clientEmail: String = "",
-    val timestamp: Long = System.currentTimeMillis()
+    val clientEmail: String = ""
 )
 
 

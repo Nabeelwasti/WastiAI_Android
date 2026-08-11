@@ -20,8 +20,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.evaluation.AIEvaluationEngine
+import com.example.service.VoskModelDownloader
 import com.example.service.WakeWordVoskService
 import com.example.service.WakeWordVoskState
+import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -33,6 +35,10 @@ fun WakeWordSettingsScreen(
     onNavigateBack: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val downloadState by VoskModelDownloader.downloadState.collectAsStateWithLifecycle()
+    val isModelInstalled = remember(downloadState) { VoskModelDownloader.isModelInstalled(context) }
 
     val statusText by WakeWordVoskState.statusText.collectAsStateWithLifecycle()
     val isModelLoaded by WakeWordVoskState.isModelLoaded.collectAsStateWithLifecycle()
@@ -208,21 +214,80 @@ fun WakeWordSettingsScreen(
                 ) {
                     Text("Vosk Engine Service Controls", fontWeight = FontWeight.Bold, fontSize = 14.sp)
 
+                    val isDownloading = downloadState is VoskModelDownloader.DownloadState.Downloading || downloadState is VoskModelDownloader.DownloadState.Extracting
+
                     Button(
                         onClick = {
-                            val modelDir = File(context.filesDir, "vosk-model-small-en-us-0.15")
-                            if (!modelDir.exists()) {
-                                modelDir.mkdirs()
+                            coroutineScope.launch {
+                                val success = VoskModelDownloader.downloadAndInstallModel(context)
+                                if (success) {
+                                    Toast.makeText(context, "Vosk Model installed successfully!", Toast.LENGTH_SHORT).show()
+                                    WakeWordVoskService.startService(context)
+                                } else {
+                                    Toast.makeText(context, "Failed to install Vosk Model", Toast.LENGTH_SHORT).show()
+                                }
                             }
-                            WakeWordVoskService.startService(context)
-                            Toast.makeText(context, "Vosk Model initialized & Service started", Toast.LENGTH_SHORT).show()
                         },
+                        enabled = !isDownloading,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isModelInstalled) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                        )
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = null)
+                        Icon(
+                            imageVector = if (isModelInstalled) Icons.Default.CheckCircle else Icons.Default.Download,
+                            contentDescription = null
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Initialize / Load Vosk Model")
+                        Text(
+                            text = when {
+                                isDownloading -> "Downloading / Extracting Model..."
+                                isModelInstalled -> "Re-install Wake Word Model (~40MB)"
+                                else -> "Install Wake Word Model (~40MB)"
+                            }
+                        )
+                    }
+
+                    when (val state = downloadState) {
+                        is VoskModelDownloader.DownloadState.Downloading -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                LinearProgressIndicator(
+                                    progress = { state.progress },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Text(
+                                    text = if (state.totalBytes > 0) {
+                                        val downloadedMb = state.bytesDownloaded / (1024f * 1024f)
+                                        val totalMb = state.totalBytes / (1024f * 1024f)
+                                        "Downloading: ${"%.1f".format(downloadedMb)} MB / ${"%.1f".format(totalMb)} MB (${(state.progress * 100).toInt()}%)"
+                                    } else {
+                                        "Downloading Vosk Model..."
+                                    },
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        is VoskModelDownloader.DownloadState.Extracting -> {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                                Text(
+                                    text = state.message,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        is VoskModelDownloader.DownloadState.Error -> {
+                            Text(
+                                text = state.message,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                        else -> {}
                     }
 
                     Row(

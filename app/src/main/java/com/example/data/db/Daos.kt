@@ -245,11 +245,32 @@ interface ProspectDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProspect(prospect: ProspectEntity)
 
+    @androidx.room.Update
+    suspend fun updateProspect(prospect: ProspectEntity)
+
     @Query("UPDATE prospects SET status = :status WHERE id = :id")
     suspend fun updateProspectStatus(id: String, status: String)
 
     @Query("DELETE FROM prospects WHERE id = :id")
     suspend fun deleteProspectById(id: String)
+}
+
+@Dao
+interface MediaVaultDao {
+    @Query("SELECT * FROM media_vault ORDER BY timestamp DESC")
+    fun getAllMedia(): Flow<List<MediaVaultEntity>>
+
+    @Query("SELECT * FROM media_vault WHERE conversationId = :conversationId ORDER BY timestamp DESC")
+    fun getMediaForConversation(conversationId: String): Flow<List<MediaVaultEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMedia(media: MediaVaultEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMediaList(mediaList: List<MediaVaultEntity>)
+
+    @Query("DELETE FROM media_vault WHERE id = :id")
+    suspend fun deleteMediaById(id: String)
 }
 
 

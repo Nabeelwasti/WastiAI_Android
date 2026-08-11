@@ -2,21 +2,31 @@ package com.example.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
+import com.example.data.persistence.DraftPersistenceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 
 class WastiAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "WastiAccessibilityService"
+        const val ACTION_EXECUTE_GESTURE = "com.wasti.os.ACTION_EXECUTE_GESTURE"
+        const val ACTION_SCREEN_SCRAPED = "com.wasti.os.ACTION_SCREEN_SCRAPED"
 
         var instance: WastiAccessibilityService? = null
             private set
@@ -25,10 +35,100 @@ class WastiAccessibilityService : AccessibilityService() {
             get() = instance != null
     }
 
+    private var commandReceiver: WastiCommandReceiver? = null
+
+    /**
+     * Task 38A: Dynamic BroadcastReceiver IPC Bridge for incoming gesture and scrape commands.
+     */
+    inner class WastiCommandReceiver : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent == null) return
+            val action = intent.action
+            if (action == ACTION_EXECUTE_GESTURE) {
+                val actionType = intent.getStringExtra("actionType") ?: "TAP"
+                Log.i(TAG, "WastiCommandReceiver received IPC gesture command: actionType=$actionType")
+
+                when (actionType.uppercase()) {
+                    "TAP", "CLICK_COORD" -> {
+                        val x = intent.getFloatExtra("x", -1f)
+                        val y = intent.getFloatExtra("y", -1f)
+                        if (x >= 0f && y >= 0f) {
+                            performTapAt(x, y)
+                        } else {
+                            val target = intent.getStringExtra("targetText") ?: intent.getStringExtra("targetElement") ?: ""
+                            if (target.isNotBlank()) {
+                                clickElement(target)
+                            }
+                        }
+                    }
+                    "CLICK_TEXT", "TAP_TEXT" -> {
+                        val target = intent.getStringExtra("targetText") ?: intent.getStringExtra("targetElement") ?: ""
+                        if (target.isNotBlank()) {
+                            clickElement(target)
+                        }
+                    }
+                    "SWIPE" -> {
+                        val startX = intent.getFloatExtra("startX", 0f)
+                        val startY = intent.getFloatExtra("startY", 0f)
+                        val endX = intent.getFloatExtra("endX", 0f)
+                        val endY = intent.getFloatExtra("endY", 0f)
+                        val duration = intent.getLongExtra("duration", 300L)
+                        performSwipe(startX, startY, endX, endY, duration)
+                    }
+                    "SCRAPE", "SCREEN_SCRAPE" -> {
+                        scrapeActiveScreen()
+                    }
+                    else -> {
+                        Log.w(TAG, "Unknown actionType '$actionType' received in WastiCommandReceiver")
+                    }
+                }
+            }
+        }
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        registerCommandReceiver()
         Log.i(TAG, "Wasti Accessibility Service connected successfully.")
+    }
+
+    private fun registerCommandReceiver() {
+        if (commandReceiver == null) {
+            commandReceiver = WastiCommandReceiver()
+            val filter = IntentFilter(ACTION_EXECUTE_GESTURE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(commandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                registerReceiver(commandReceiver, filter)
+            }
+            Log.i(TAG, "WastiCommandReceiver IPC bridge registered for $ACTION_EXECUTE_GESTURE")
+        }
+    }
+
+    private fun unregisterCommandReceiver() {
+        commandReceiver?.let {
+            try {
+                unregisterReceiver(it)
+                Log.i(TAG, "WastiCommandReceiver IPC bridge unregistered.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error unregistering WastiCommandReceiver", e)
+            }
+        }
+        commandReceiver = null
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        unregisterCommandReceiver()
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterCommandReceiver()
+        if (instance == this) {
+            instance = null
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -39,10 +139,73 @@ class WastiAccessibilityService : AccessibilityService() {
         // Interrupted
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        if (instance == this) {
-            instance = null
+    /**
+     * Task 38B: The UI Tree Scraper (The "Eyes")
+     * Recursively scans rootInActiveWindow accessibility nodes and formats all visible text,
+     * content descriptions, view IDs, and bounding coordinates into a structured JSON array.
+     * Persists output to DraftPersistenceManager and broadcasts ACTION_SCREEN_SCRAPED to WastiCore.
+     */
+    fun scrapeActiveScreen(): String {
+        val rootNode = rootInActiveWindow ?: run {
+            val emptyResult = "[]"
+            DraftPersistenceManager.saveScrapedScreenData(this, emptyResult)
+            return emptyResult
+        }
+
+        val nodesArray = JSONArray()
+        traverseAndScrapeNode(rootNode, nodesArray)
+        val jsonString = nodesArray.toString(2)
+
+        // Save output to DraftPersistenceManager
+        DraftPersistenceManager.saveScrapedScreenData(this, jsonString)
+
+        // Broadcast screen scraped event back to WastiCore / system listeners
+        val intent = Intent(ACTION_SCREEN_SCRAPED).apply {
+            putExtra("screen_json", jsonString)
+            putExtra("package_name", rootNode.packageName?.toString() ?: "")
+            setPackage(packageName)
+        }
+        sendBroadcast(intent)
+
+        return jsonString
+    }
+
+    private fun traverseAndScrapeNode(node: AccessibilityNodeInfo?, jsonArray: JSONArray) {
+        if (node == null) return
+
+        val text = node.text?.toString()?.trim()
+        val contentDescription = node.contentDescription?.toString()?.trim()
+        val viewId = node.viewIdResourceName
+        val isClickable = node.isClickable
+        val isEnabled = node.isEnabled
+        val isVisibleToUser = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) node.isVisibleToUser else true
+
+        if (isVisibleToUser && (!text.isNullOrBlank() || !contentDescription.isNullOrBlank() || !viewId.isNullOrBlank())) {
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+
+            val nodeObj = JSONObject().apply {
+                if (!text.isNullOrBlank()) put("text", text)
+                if (!contentDescription.isNullOrBlank()) put("contentDescription", contentDescription)
+                if (!viewId.isNullOrBlank()) put("viewId", viewId)
+                put("className", node.className?.toString() ?: "")
+                put("isClickable", isClickable)
+                put("isEnabled", isEnabled)
+                put("bounds", JSONObject().apply {
+                    put("left", rect.left)
+                    put("top", rect.top)
+                    put("right", rect.right)
+                    put("bottom", rect.bottom)
+                    put("centerX", rect.centerX())
+                    put("centerY", rect.centerY())
+                })
+            }
+            jsonArray.put(nodeObj)
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i)
+            traverseAndScrapeNode(child, jsonArray)
         }
     }
 
@@ -50,6 +213,11 @@ class WastiAccessibilityService : AccessibilityService() {
      * Captures active window's AccessibilityNodeInfo and recursively reads text on screen.
      */
     fun dumpScreenContent(): String {
+        val jsonScrape = scrapeActiveScreen()
+        if (jsonScrape.isNotBlank() && jsonScrape != "[]") {
+            return jsonScrape
+        }
+
         val rootNode = rootInActiveWindow ?: return "[Wasti Accessibility Service Active] • Active window node unavailable or screen locked."
 
         val textCollector = StringBuilder()
@@ -219,6 +387,42 @@ class WastiAccessibilityService : AccessibilityService() {
             val child = node.getChild(i)
             collectMatchingNodes(child, targetLower, outList)
         }
+    }
+
+    /**
+     * Dispatches swipe gesture from (startX, startY) to (endX, endY) over durationMs.
+     */
+    fun performSwipe(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long = 300L
+    ): Boolean {
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(50L))
+        val gesture = GestureDescription.Builder()
+            .addStroke(stroke)
+            .build()
+
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                Log.i(TAG, "Swipe gesture completed from ($startX, $startY) to ($endX, $endY)")
+                logGestureResultToDb(x = endX, y = endY, success = true, reason = "Swipe completed via Accessibility API")
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                Log.w(TAG, "Swipe gesture cancelled from ($startX, $startY) to ($endX, $endY)")
+                logGestureResultToDb(x = endX, y = endY, success = false, reason = "Swipe gesture cancelled by system")
+            }
+        }
+
+        return dispatchGesture(gesture, callback, null)
     }
 
     /**
