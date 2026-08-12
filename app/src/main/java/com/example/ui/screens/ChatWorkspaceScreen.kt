@@ -41,6 +41,9 @@ import com.example.data.device.WastiIntentParser
 import com.example.ui.components.CodeBlockView
 import com.example.ui.components.WastiVoiceCallModal
 import com.example.util.WastiSpeechSanitizer
+import com.example.security.BiometricSecurityManager
+import com.example.security.findFragmentActivity
+import android.widget.Toast
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -1478,6 +1481,7 @@ fun EmailDraftApprovalCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val cardContext = LocalContext.current
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1575,16 +1579,31 @@ fun EmailDraftApprovalCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Button(
-                    onClick = onApprove,
+                    onClick = {
+                        val activity = cardContext.findFragmentActivity()
+                        if (activity != null) {
+                            BiometricSecurityManager.authenticate(
+                                activity = activity,
+                                title = "Thumbprint Authorization Required",
+                                subtitle = "Scan thumbprint to execute Gmail OAuth send",
+                                onSuccess = onApprove,
+                                onError = { err ->
+                                    Toast.makeText(cardContext, "Biometric authorization failed: $err", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        } else {
+                            onApprove()
+                        }
+                    },
                     modifier = Modifier.testTag("approve_email_draft_button"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Approve & Send", fontSize = 12.sp)
+                    Text("Thumbprint Approve & Send", fontSize = 12.sp)
                 }
             }
         }
@@ -1598,6 +1617,7 @@ fun LinkedInDraftApprovalCard(
     onReject: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val cardContext = LocalContext.current
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1688,16 +1708,31 @@ fun LinkedInDraftApprovalCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Button(
-                    onClick = onApprove,
+                    onClick = {
+                        val activity = cardContext.findFragmentActivity()
+                        if (activity != null) {
+                            BiometricSecurityManager.authenticate(
+                                activity = activity,
+                                title = "Thumbprint Authorization Required",
+                                subtitle = "Scan thumbprint to execute LinkedIn OAuth post",
+                                onSuccess = onApprove,
+                                onError = { err ->
+                                    Toast.makeText(cardContext, "Biometric authorization failed: $err", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        } else {
+                            onApprove()
+                        }
+                    },
                     modifier = Modifier.testTag("approve_linkedin_draft_button"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Fingerprint, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Approve & Post", fontSize = 12.sp)
+                    Text("Thumbprint Approve & Post", fontSize = 12.sp)
                 }
             }
         }

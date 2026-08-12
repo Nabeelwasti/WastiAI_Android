@@ -41,7 +41,7 @@ data class WastiNavDestination(
     val icon: ImageVector
 )
 
-class MainActivity : ComponentActivity() {
+class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private val viewModel: WastiViewModel by viewModels()
 

@@ -6,6 +6,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -32,6 +33,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.auth.GoogleAuthClient
 import com.example.data.auth.GoogleAuthResult
 import com.example.data.sync.CloudSyncManager
+import com.example.security.BiometricSecurityManager
+import com.example.security.findFragmentActivity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.sin
@@ -48,6 +51,12 @@ fun WelcomeAuthScreen(
     var startAnimation by remember { mutableStateOf(false) }
     var isAuthenticating by remember { mutableStateOf(false) }
     var authErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Task 45B: One-Tap Biometric states
+    var isBiometricEnabled by remember { mutableStateOf(BiometricSecurityManager.isBiometricLoginEnabled(context)) }
+    var showPostSignInBiometricCard by remember { mutableStateOf(false) }
+    var enableBiometricCheckbox by remember { mutableStateOf(true) }
+    var userDisplayName by remember { mutableStateOf("Leader") }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
@@ -73,6 +82,25 @@ fun WelcomeAuthScreen(
     LaunchedEffect(Unit) {
         delay(150)
         startAnimation = true
+
+        // Task 45B: On subsequent app launches, if biometric login is enabled, trigger BiometricPrompt immediately
+        if (isBiometricEnabled) {
+            val activity = context.findFragmentActivity()
+            if (activity != null) {
+                BiometricSecurityManager.authenticate(
+                    activity = activity,
+                    title = "Wasti OS One-Tap Login",
+                    subtitle = "Scan thumbprint to access Operations Dashboard",
+                    onSuccess = {
+                        Toast.makeText(context, "Fingerprint authorized! Welcome back.", Toast.LENGTH_SHORT).show()
+                        onLaunchWorkspace()
+                    },
+                    onError = { err ->
+                        Log.w("WelcomeAuthScreen", "Biometric launch error: $err")
+                    }
+                )
+            }
+        }
     }
 
     Box(
@@ -81,7 +109,6 @@ fun WelcomeAuthScreen(
             .testTag("welcome_auth_screen"),
         contentAlignment = Alignment.Center
     ) {
-        // Task 44B: Relaxing Continuous Ambient Background Animation
         RelaxingBackgroundCanvas(phase = backgroundPhase)
 
         Column(
@@ -96,7 +123,6 @@ fun WelcomeAuthScreen(
                 visible = startAnimation,
                 enter = fadeIn(animationSpec = tween(800)) + slideInVertically(initialOffsetY = { -60 })
             ) {
-                // Thrivebridge Growth Solutions Branding Badge
                 Surface(
                     shape = RoundedCornerShape(24.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
@@ -136,7 +162,6 @@ fun WelcomeAuthScreen(
                 visible = startAnimation,
                 enter = fadeIn(animationSpec = tween(1000)) + scaleIn(initialScale = 0.8f)
             ) {
-                // Central Animated Wasti AI Logo Shield
                 Box(
                     modifier = Modifier
                         .size(110.dp)
@@ -178,7 +203,7 @@ fun WelcomeAuthScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Autonomous Intelligence • Credential Manager Google Auth • Firestore Cloud Sync",
+                        text = "Autonomous Intelligence • Biometric One-Tap • Firestore Cloud Sync",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -212,15 +237,15 @@ fun WelcomeAuthScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         FeatureRow(
-                            icon = Icons.Default.CloudSync,
-                            title = "Firestore Cloud Backup & Sync",
-                            subtitle = "Automatic restore of CRM prospects, invoices, and AI memories"
+                            icon = Icons.Default.Fingerprint,
+                            title = "One-Tap Biometric Security",
+                            subtitle = "Instant thumbprint access to operations & draft approvals"
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         FeatureRow(
-                            icon = Icons.Default.RecordVoiceOver,
-                            title = "Vosk Wake-Word Engine",
-                            subtitle = "Continuous offline 'Hey Wasti' KWS recognition running on background thread"
+                            icon = Icons.Default.CloudSync,
+                            title = "Firestore Cloud Backup & Sync",
+                            subtitle = "Automatic restore of CRM prospects, invoices, and AI memories"
                         )
                         Spacer(modifier = Modifier.height(10.dp))
                         FeatureRow(
@@ -232,7 +257,7 @@ fun WelcomeAuthScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             if (authErrorMessage != null) {
                 Surface(
@@ -261,14 +286,132 @@ fun WelcomeAuthScreen(
                 }
             }
 
+            // Task 45B: Post Sign-In Card offering One-Tap Biometric Login preference
+            if (showPostSignInBiometricCard) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 20.dp)
+                        .testTag("post_signin_biometric_preference_card"),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.95f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Fingerprint,
+                                contentDescription = "Biometric Setup",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Welcome $userDisplayName!",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Would you like to enable One-Tap Biometric Login for instant access on future sessions?",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                        )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { enableBiometricCheckbox = !enableBiometricCheckbox }
+                        ) {
+                            Checkbox(
+                                checked = enableBiometricCheckbox,
+                                onCheckedChange = { enableBiometricCheckbox = it },
+                                modifier = Modifier.testTag("enable_biometric_login_checkbox")
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Enable One-Tap Biometric Login for future sessions.",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                BiometricSecurityManager.setBiometricLoginEnabled(context, enableBiometricCheckbox)
+                                isBiometricEnabled = enableBiometricCheckbox
+                                showPostSignInBiometricCard = false
+                                Toast.makeText(context, "Preferences saved! Entering Wasti OS...", Toast.LENGTH_SHORT).show()
+                                onLaunchWorkspace()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("confirm_biometric_pref_button"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Continue to Operations Dashboard", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             AnimatedVisibility(
-                visible = startAnimation,
+                visible = startAnimation && !showPostSignInBiometricCard,
                 enter = fadeIn(animationSpec = tween(1600)) + slideInVertically(initialOffsetY = { 50 })
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    // Task 45B: One-Tap Biometric Login Button if enabled
+                    if (isBiometricEnabled) {
+                        Button(
+                            onClick = {
+                                val activity = context.findFragmentActivity()
+                                if (activity != null) {
+                                    BiometricSecurityManager.authenticate(
+                                        activity = activity,
+                                        title = "Wasti OS One-Tap Login",
+                                        subtitle = "Scan thumbprint to enter Operations Dashboard",
+                                        onSuccess = {
+                                            Toast.makeText(context, "Fingerprint authorized!", Toast.LENGTH_SHORT).show()
+                                            onLaunchWorkspace()
+                                        },
+                                        onError = { err ->
+                                            Toast.makeText(context, "Biometric failed: $err", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                } else {
+                                    onLaunchWorkspace()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .testTag("one_tap_biometric_login_button"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.tertiary
+                            )
+                        ) {
+                            Icon(Icons.Default.Fingerprint, contentDescription = "One-Tap Fingerprint", modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("One-Tap Biometric Login", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
                     // Task 44B: Prominent "Sign in with Google" Button
                     Button(
                         onClick = {
@@ -285,12 +428,8 @@ fun WelcomeAuthScreen(
                                                 Log.w("WelcomeAuthScreen", "Post-sign-in sync error: ${e.message}")
                                             }
                                             isAuthenticating = false
-                                            Toast.makeText(
-                                                context,
-                                                "Welcome ${result.user.displayName ?: "Leader"}! Cloud synced.",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                            onLaunchWorkspace()
+                                            userDisplayName = result.user.displayName ?: "Leader"
+                                            showPostSignInBiometricCard = true
                                         }
                                         is GoogleAuthResult.Error -> {
                                             isAuthenticating = false
@@ -357,9 +496,6 @@ fun WelcomeAuthScreen(
     }
 }
 
-/**
- * Task 44B: Continuous relaxing particle & pulsing gradient background canvas
- */
 @Composable
 private fun RelaxingBackgroundCanvas(phase: Float) {
     val primaryColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
@@ -372,7 +508,6 @@ private fun RelaxingBackgroundCanvas(phase: Float) {
 
         drawRect(color = surfaceColor)
 
-        // Pulsing ambient gradient 1
         val offsetX1 = width * (0.3f + 0.15f * sin(phase))
         val offsetY1 = height * (0.3f + 0.15f * sin(phase + 1f))
         drawCircle(
@@ -381,7 +516,6 @@ private fun RelaxingBackgroundCanvas(phase: Float) {
             center = Offset(offsetX1, offsetY1)
         )
 
-        // Pulsing ambient gradient 2
         val offsetX2 = width * (0.7f - 0.20f * sin(phase * 0.8f))
         val offsetY2 = height * (0.7f + 0.10f * sin(phase * 0.8f + 2f))
         drawCircle(
@@ -390,7 +524,6 @@ private fun RelaxingBackgroundCanvas(phase: Float) {
             center = Offset(offsetX2, offsetY2)
         )
 
-        // Floating relaxing particles
         val numParticles = 12
         for (i in 0 until numParticles) {
             val pOffset = i * (2f * Math.PI.toFloat() / numParticles)

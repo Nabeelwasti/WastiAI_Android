@@ -43,6 +43,8 @@ import com.example.data.core.LeadItemEntity
 import com.example.data.core.LeadRadarRepository
 import com.example.data.core.LeadStatus
 import com.example.data.core.WastiRootController
+import com.example.security.BiometricSecurityManager
+import com.example.security.findFragmentActivity
 import com.example.data.worker.SelfEnhancementWorker
 import com.example.data.evaluation.AIEvaluationEngine
 import com.example.data.evaluation.ProviderQualityScore
@@ -295,15 +297,30 @@ fun OperationsDashboardScreen() {
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Button(
-                                onClick = { WastiRootController.approveProposal() },
+                                onClick = {
+                                    val activity = context.findFragmentActivity()
+                                    if (activity != null) {
+                                        BiometricSecurityManager.authenticate(
+                                            activity = activity,
+                                            title = "Thumbprint Authorization Required",
+                                            subtitle = "Scan thumbprint to approve autonomous Skill Matrix update",
+                                            onSuccess = { WastiRootController.approveProposal() },
+                                            onError = { err ->
+                                                Toast.makeText(context, "Biometric authorization failed: $err", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
+                                    } else {
+                                        WastiRootController.approveProposal()
+                                    }
+                                },
                                 modifier = Modifier.testTag("approve_proposal_btn")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Approve"
+                                    imageVector = Icons.Default.Fingerprint,
+                                    contentDescription = "Approve with Biometric"
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Approve")
+                                Text("Thumbprint Approve")
                             }
                         }
                     }
@@ -832,7 +849,23 @@ fun OperationsDashboardScreen() {
                                     onClick = {
                                         val amt = newAmount.toDoubleOrNull() ?: 250.0
                                         if (newClientName.isNotBlank() && newMilestone.isNotBlank()) {
-                                            ClientInvoiceManager.createInvoice(context, newClientName, newMilestone, amt, selectedCurrency)
+                                            val activity = context.findFragmentActivity()
+                                            val doCreate: () -> Unit = {
+                                                ClientInvoiceManager.createInvoice(context, newClientName, newMilestone, amt, selectedCurrency)
+                                            }
+                                            if (activity != null) {
+                                                BiometricSecurityManager.authenticate(
+                                                    activity = activity,
+                                                    title = "Thumbprint Authorization Required",
+                                                    subtitle = "Scan thumbprint to log financial invoice entry",
+                                                    onSuccess = doCreate,
+                                                    onError = { err ->
+                                                        Toast.makeText(context, "Biometric failed: $err", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
+                                            } else {
+                                                doCreate()
+                                            }
                                             newClientName = ""
                                             newMilestone = ""
                                             newAmount = ""
@@ -1615,7 +1648,22 @@ fun InvoiceLedgerCard(invoice: ClientInvoiceItem, context: android.content.Conte
 
                 if (invoice.status != InvoiceStatus.PAID) {
                     Button(
-                        onClick = { ClientInvoiceManager.updateStatus(context, invoice.id, InvoiceStatus.PAID) },
+                        onClick = {
+                            val activity = context.findFragmentActivity()
+                            if (activity != null) {
+                                BiometricSecurityManager.authenticate(
+                                    activity = activity,
+                                    title = "Thumbprint Authorization Required",
+                                    subtitle = "Scan thumbprint to finalize invoice payment status",
+                                    onSuccess = { ClientInvoiceManager.updateStatus(context, invoice.id, InvoiceStatus.PAID) },
+                                    onError = { err ->
+                                        Toast.makeText(context, "Biometric failed: $err", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            } else {
+                                ClientInvoiceManager.updateStatus(context, invoice.id, InvoiceStatus.PAID)
+                            }
+                        },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.height(30.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))

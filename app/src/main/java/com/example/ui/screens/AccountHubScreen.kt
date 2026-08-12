@@ -1,7 +1,9 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,12 +18,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.credential.*
+import com.example.security.BiometricSecurityManager
+import com.example.security.findFragmentActivity
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +43,12 @@ fun AccountHubScreen(
     var newCustomKeyValue by remember { mutableStateOf("") }
 
     var selectedCategoryFilter by remember { mutableStateOf<CredentialCategory?>(null) }
+
+    // Task 45A: Ghost Trigger & 2-Step Dev Mode state
+    var ghostTapCount by remember { mutableIntStateOf(0) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var enteredPin by remember { mutableStateOf("") }
+    var isDevModeUnlocked by remember { mutableStateOf(BiometricSecurityManager.isDevModeUnlocked(context)) }
 
     LaunchedEffect(Unit) {
         CredentialRegistry.refreshAll(context)
@@ -61,10 +72,39 @@ fun AccountHubScreen(
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        // Task 45A: Ghost Trigger on version text banner (7 taps)
                         Text(
-                            text = "Thrivebridge Growth Solutions • AES-256 Encrypted at Rest",
+                            text = "Thrivebridge OS v2.4 • Build 2026.08 (Tap 7x for Dev Mode)",
                             fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .clickable {
+                                    ghostTapCount++
+                                    val remaining = 7 - ghostTapCount
+                                    if (remaining in 1..3) {
+                                        Toast.makeText(context, "$remaining taps to reveal Developer Mode", Toast.LENGTH_SHORT).show()
+                                    }
+                                    if (ghostTapCount >= 7) {
+                                        ghostTapCount = 0
+                                        val activity = context.findFragmentActivity()
+                                        if (activity != null) {
+                                            BiometricSecurityManager.authenticate(
+                                                activity = activity,
+                                                title = "Developer Mode Step 1/2",
+                                                subtitle = "Scan thumbprint to initiate Dev Mode unlock",
+                                                onSuccess = {
+                                                    showPinDialog = true
+                                                },
+                                                onError = { err ->
+                                                    Toast.makeText(context, "Biometric failed: $err", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
+                                        } else {
+                                            showPinDialog = true
+                                        }
+                                    }
+                                }
+                                .testTag("ghost_trigger_version_text")
                         )
                     }
                 },
@@ -146,6 +186,67 @@ fun AccountHubScreen(
                 }
             }
 
+            // Task 45A: Unlocked Developer Mode Panel
+            if (isDevModeUnlocked) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                        .testTag("developer_mode_unlocked_panel"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.9f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.DeveloperMode,
+                                    contentDescription = "Dev Mode",
+                                    tint = MaterialTheme.colorScheme.tertiary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "🛠️ Developer Mode Unlocked (Raw OAuth & GitHub Keys)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    isDevModeUnlocked = false
+                                    BiometricSecurityManager.setDevModeUnlocked(context, false)
+                                    Toast.makeText(context, "Developer Mode locked", Toast.LENGTH_SHORT).show()
+                                }
+                            ) {
+                                Icon(Icons.Default.Lock, contentDescription = "Lock Dev Mode", tint = MaterialTheme.colorScheme.tertiary)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Raw OAuth Client IDs:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer
+                        )
+                        Text(
+                            text = "Web Client ID: 206322177649-fs2048huimberjvb4etaih1scn7ldh30.apps.googleusercontent.com\nAndroid Client ID: 206322177649-dmntaoaft0r4fj8qaurnpoapqmav4lrj.apps.googleusercontent.com\nKeystore Alias: upload | SHA-1 Enrolled",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+                        )
+                    }
+                }
+            }
+
             // Category Filter Row
             ScrollableTabRow(
                 selectedTabIndex = if (selectedCategoryFilter == null) 0 else CredentialCategory.values().indexOf(selectedCategoryFilter) + 1,
@@ -195,6 +296,71 @@ fun AccountHubScreen(
                 }
             }
         }
+    }
+
+    // Task 45A: Step 2 Custom Seed PIN Dialog
+    if (showPinDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showPinDialog = false
+                enteredPin = ""
+            },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Pin, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Developer Mode Step 2/2: Custom Seed PIN")
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Biometric thumbprint verified! Enter your 10-digit Seed PIN to reveal Developer Mode:",
+                        fontSize = 12.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = enteredPin,
+                        onValueChange = { enteredPin = it },
+                        label = { Text("Seed PIN") },
+                        placeholder = { Text("Default: 1014254789") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dev_mode_pin_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (BiometricSecurityManager.verifyPin(context, enteredPin)) {
+                            isDevModeUnlocked = true
+                            BiometricSecurityManager.setDevModeUnlocked(context, true)
+                            showPinDialog = false
+                            enteredPin = ""
+                            Toast.makeText(context, "🔓 Developer Mode Unlocked!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "❌ Invalid Seed PIN. Access Denied.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.testTag("verify_dev_pin_button")
+                ) {
+                    Text("Verify & Unlock")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPinDialog = false
+                        enteredPin = ""
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showAddCustomDialog) {
