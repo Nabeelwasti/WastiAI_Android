@@ -558,15 +558,25 @@ object WastiCore {
             "read_active_screen" -> {
                 Log.d("WastiCore", "FunctionCall dispatched: read_active_screen")
                 updateProgress(ProgressStage.SCRAPING, "Scraping active screen content...")
-                val res = com.example.data.device.WastiDeviceController.readScreenContent()
-                Triple(res, res.isNotBlank() && res != "[]", 200)
+                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                    capabilityId = "device_control",
+                    parameters = mapOf("action" to "read_screen")
+                )
+                val execRes = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req, context)
+                val ok = execRes.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || execRes.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED
+                Triple(execRes.output, ok, if (ok) 200 else 400)
             }
             "tap_element" -> {
                 val elementId = functionCall.args?.get("elementIdentifier") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: tap_element -> $elementId")
                 updateProgress(ProgressStage.DISPATCHING, "Simulating tap on '$elementId'...")
-                val tapResult = com.example.data.device.WastiDeviceController.simulateTap(targetElement = elementId)
-                Triple(tapResult.userFeedback, tapResult.success, if (tapResult.success) 200 else 400)
+                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                    capabilityId = "device_control",
+                    parameters = mapOf("action" to "simulate_tap", "targetElement" to elementId)
+                )
+                val execRes = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req, context)
+                val ok = execRes.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || execRes.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED
+                Triple(execRes.output, ok, if (ok) 200 else 400)
             }
             "evaluate_lead_match" -> {
                 val jobText = functionCall.args?.get("jobPostText") ?: ""

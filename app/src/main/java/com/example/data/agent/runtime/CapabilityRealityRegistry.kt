@@ -101,6 +101,54 @@ class CapabilityRealityRegistry {
             )
         )
 
+        // Device Control Automation
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "device_control",
+                category = "AUTOMATION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiDeviceController",
+                supportedOperations = listOf("open_app", "send_whatsapp", "send_email", "send_sms", "read_screen", "simulate_tap"),
+                limitations = listOf("Requires accessibility service for node clicking"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Memory Search
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "memory_search",
+                category = "MEMORY",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "MemoryManager",
+                supportedOperations = listOf("hybridSearch"),
+                limitations = emptyList(),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Web Search
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "search_web",
+                category = "INTELLIGENCE",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WebSearchEngine",
+                supportedOperations = listOf("search", "read_web_page", "b2b_xray_search"),
+                limitations = listOf("Network dependent"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
         // Gemini AI Provider
         updateCapabilityReality(
             CapabilityReality(
@@ -146,6 +194,22 @@ class CapabilityRealityRegistry {
                 supportedOperations = listOf("read_repo", "create_issue", "create_pull_request"),
                 limitations = listOf("Contract defined; live repo mutation disabled in security policy"),
                 realityState = CapabilityRealityState.CONTRACT_ONLY
+            )
+        )
+
+        // Python Runtime Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "PYTHON_RUNTIME",
+                category = "EXECUTION",
+                implementationStatus = ImplementationStatus.NOT_IMPLEMENTED,
+                liveConnectionStatus = LiveConnectionStatus.DISCONNECTED,
+                executionStatus = CapabilityExecutionStatus.UNAVAILABLE,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiNativeExecutionProvider",
+                supportedOperations = listOf("run_python_script"),
+                limitations = listOf("Python runtime binary not present on stock Android system image"),
+                realityState = CapabilityRealityState.UNAVAILABLE
             )
         )
     }

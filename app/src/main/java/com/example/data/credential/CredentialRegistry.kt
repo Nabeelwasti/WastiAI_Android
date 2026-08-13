@@ -792,7 +792,7 @@ object CredentialRegistry {
             val customEntries = customKeyNames.map { customName ->
                 CredentialEntry(
                     keyName = customName,
-                    displayName = customName.replace("_", " ").lowercase().capitalize(),
+                    displayName = customName.replace("_", " ").lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
                     category = CredentialCategory.MODEL_PROVIDERS,
                     isDefaultActive = true,
                     description = "Custom User API Secret / Integration Token",

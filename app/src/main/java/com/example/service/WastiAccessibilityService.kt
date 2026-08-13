@@ -12,12 +12,18 @@ import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.example.data.agent.runtime.StructuredUiObservation
+import com.example.data.agent.runtime.TargetMatchRank
+import com.example.data.agent.runtime.TargetSelectionResult
+import com.example.data.agent.runtime.TargetSelectionStatus
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.persistence.DraftPersistenceManager
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -36,6 +42,17 @@ class WastiAccessibilityService : AccessibilityService() {
     }
 
     private var commandReceiver: WastiCommandReceiver? = null
+
+    // Observation & Correlation Pipeline State
+    var latestUiObservation: StructuredUiObservation? = null
+        private set
+
+    private var lastEventTimestamp: Long = 0L
+    private var activeCorrelationId: String? = null
+
+    fun setCorrelationId(id: String?) {
+        activeCorrelationId = id
+    }
 
     /**
      * Task 38A: Dynamic BroadcastReceiver IPC Bridge for incoming gesture and scrape commands.
@@ -132,7 +149,45 @@ class WastiAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Event processing for active UI monitoring
+        if (event == null) return
+        val now = System.currentTimeMillis()
+
+        // Throttling/debouncing: ignore non-window-state events within 50ms window
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && (now - lastEventTimestamp < 50L)) {
+            return
+        }
+        lastEventTimestamp = now
+
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                val pkgName = event.packageName?.toString()
+                val clsName = event.className?.toString()
+                val textList = event.text.mapNotNull { it?.toString() }.filter { it.isNotBlank() }
+                val eventText = if (textList.isNotEmpty()) textList.joinToString(" ") else null
+                val contentDesc = event.contentDescription?.toString()
+                val record = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) event.source else null
+
+                val obs = StructuredUiObservation(
+                    packageName = pkgName,
+                    className = clsName,
+                    text = eventText,
+                    contentDescription = contentDesc,
+                    resourceId = record?.viewIdResourceName,
+                    clickable = record?.isClickable ?: false,
+                    enabled = record?.isEnabled ?: true,
+                    editable = record?.isEditable ?: false,
+                    scrollable = record?.isScrollable ?: false,
+                    eventType = event.eventType,
+                    timestamp = now,
+                    correlationId = activeCorrelationId
+                )
+                latestUiObservation = obs
+            }
+        }
     }
 
     override fun onInterrupt() {
@@ -170,8 +225,17 @@ class WastiAccessibilityService : AccessibilityService() {
         return jsonString
     }
 
-    private fun traverseAndScrapeNode(node: AccessibilityNodeInfo?, jsonArray: JSONArray) {
-        if (node == null) return
+    private fun traverseAndScrapeNode(
+        node: AccessibilityNodeInfo?,
+        jsonArray: JSONArray,
+        depth: Int = 0,
+        nodeCounter: IntArray = intArrayOf(0),
+        visitedHashes: MutableSet<Int> = mutableSetOf()
+    ) {
+        if (node == null || depth > 25 || nodeCounter[0] >= 500) return
+        val nodeHash = System.identityHashCode(node)
+        if (!visitedHashes.add(nodeHash)) return
+        nodeCounter[0]++
 
         val text = node.text?.toString()?.trim()
         val contentDescription = node.contentDescription?.toString()?.trim()
@@ -205,7 +269,7 @@ class WastiAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
-            traverseAndScrapeNode(child, jsonArray)
+            traverseAndScrapeNode(child, jsonArray, depth + 1, nodeCounter, visitedHashes)
         }
     }
 
@@ -221,7 +285,7 @@ class WastiAccessibilityService : AccessibilityService() {
         val rootNode = rootInActiveWindow ?: return "[Wasti Accessibility Service Active] • Active window node unavailable or screen locked."
 
         val textCollector = StringBuilder()
-        val nodeCount = traverseNode(rootNode, textCollector, depth = 0)
+        val nodeCount = traverseNode(rootNode, textCollector, depth = 0, nodeCounter = intArrayOf(0), visitedHashes = mutableSetOf())
 
         return if (textCollector.isNotBlank()) {
             """
@@ -236,8 +300,18 @@ class WastiAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun traverseNode(node: AccessibilityNodeInfo?, sb: StringBuilder, depth: Int): Int {
-        if (node == null) return 0
+    private fun traverseNode(
+        node: AccessibilityNodeInfo?,
+        sb: StringBuilder,
+        depth: Int,
+        nodeCounter: IntArray,
+        visitedHashes: MutableSet<Int>
+    ): Int {
+        if (node == null || depth > 25 || nodeCounter[0] >= 500) return 0
+        val nodeHash = System.identityHashCode(node)
+        if (!visitedHashes.add(nodeHash)) return 0
+        nodeCounter[0]++
+
         var count = 1
 
         val text = node.text?.toString()?.trim()
@@ -253,7 +327,7 @@ class WastiAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
-            count += traverseNode(child, sb, depth + 1)
+            count += traverseNode(child, sb, depth + 1, nodeCounter, visitedHashes)
         }
 
         return count
@@ -265,78 +339,161 @@ class WastiAccessibilityService : AccessibilityService() {
     fun tapElement(targetTextOrId: String): Boolean = clickElement(targetTextOrId)
 
     /**
+     * Phase 8 — Ranked Target Selection & Ambiguity Protection
+     */
+    data class NodeWithRank(
+        val node: AccessibilityNodeInfo,
+        val rank: TargetMatchRank
+    )
+
+    fun findTargetNodeRanked(
+        target: String,
+        root: AccessibilityNodeInfo? = rootInActiveWindow
+    ): TargetSelectionResult {
+        val rootNode = root ?: return TargetSelectionResult(
+            status = TargetSelectionStatus.NOT_FOUND,
+            details = "rootInActiveWindow is null"
+        )
+        val cleanTarget = target.trim()
+        if (cleanTarget.isBlank()) return TargetSelectionResult(
+            status = TargetSelectionStatus.NOT_FOUND,
+            details = "Target is blank"
+        )
+
+        val targetLower = cleanTarget.lowercase()
+        val matches = mutableListOf<NodeWithRank>()
+        val visitedHashes = mutableSetOf<Int>()
+
+        fun collectRanked(node: AccessibilityNodeInfo?, depth: Int, nodeCount: IntArray) {
+            if (node == null || depth > 25 || nodeCount[0] >= 500) return
+            val hash = System.identityHashCode(node)
+            if (!visitedHashes.add(hash)) return
+            nodeCount[0]++
+
+            val text = node.text?.toString()?.trim() ?: ""
+            val desc = node.contentDescription?.toString()?.trim() ?: ""
+            val id = node.viewIdResourceName?.trim() ?: ""
+
+            val textLower = text.lowercase()
+            val descLower = desc.lowercase()
+            val idLower = id.lowercase()
+
+            val rank = when {
+                id.equals(cleanTarget, ignoreCase = true) || id.endsWith("/$cleanTarget", ignoreCase = true) ->
+                    TargetMatchRank.EXACT_RESOURCE_ID
+                text.equals(cleanTarget, ignoreCase = true) ->
+                    TargetMatchRank.EXACT_NORMALIZED_TEXT
+                desc.equals(cleanTarget, ignoreCase = true) ->
+                    TargetMatchRank.EXACT_CONTENT_DESCRIPTION
+                textLower.replace("\\s+".toRegex(), "") == targetLower.replace("\\s+".toRegex(), "") ->
+                    TargetMatchRank.NORMALIZED_EXACT_MATCH
+                textLower.contains(targetLower) || descLower.contains(targetLower) || idLower.contains(targetLower) ->
+                    TargetMatchRank.PARTIAL_MATCH
+                else -> TargetMatchRank.NO_MATCH
+            }
+
+            if (rank != TargetMatchRank.NO_MATCH) {
+                matches.add(NodeWithRank(node, rank))
+            }
+
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i)
+                collectRanked(child, depth + 1, nodeCount)
+            }
+        }
+
+        collectRanked(rootNode, 0, intArrayOf(0))
+
+        if (matches.isEmpty()) {
+            return TargetSelectionResult(
+                status = TargetSelectionStatus.NOT_FOUND,
+                details = "No nodes matched target '$cleanTarget'"
+            )
+        }
+
+        val bestRank = matches.minByOrNull { it.rank.ordinal }!!.rank
+        val bestMatches = matches.filter { it.rank == bestRank }
+
+        if (bestMatches.size > 1 && bestRank != TargetMatchRank.EXACT_RESOURCE_ID) {
+            return TargetSelectionResult(
+                status = TargetSelectionStatus.AMBIGUOUS,
+                matchedRank = bestRank,
+                candidateCount = bestMatches.size,
+                details = "Ambiguous target selection: ${bestMatches.size} candidates matched '$cleanTarget' with rank $bestRank"
+            )
+        }
+
+        return TargetSelectionResult(
+            status = TargetSelectionStatus.MATCHED,
+            matchedRank = bestRank,
+            candidateCount = 1,
+            details = "Matched node with rank $bestRank"
+        )
+    }
+
+    /**
      * Performs tap on elements matching target text, view ID, or direct coordinates.
-     * Strategy:
-     * 1. Check if target specifies raw numeric coordinates "X,Y".
-     * 2. Try standard ACTION_CLICK on clickable nodes.
-     * 3. Fallback to findAccessibilityNodeInfosByText / node bounds matching -> Coordinate-based Gesture Dispatch.
      */
     fun clickElement(targetTextOrId: String): Boolean {
         val cleanTarget = targetTextOrId.trim()
         if (cleanTarget.isBlank()) return false
 
-        // 1. Direct Coordinate Tap Check (e.g. "500,1000" or "x=300, y=400")
+        // Check if direct coordinate tap
         val coordPattern = Regex("""^(?:x\s*=\s*)?(\d+(?:\.\d+)?)\s*,\s*(?:y\s*=\s*)?(\d+(?:\.\d+)?)$""", RegexOption.IGNORE_CASE)
         val match = coordPattern.find(cleanTarget)
         if (match != null) {
             val x = match.groupValues[1].toFloatOrNull()
             val y = match.groupValues[2].toFloatOrNull()
             if (x != null && y != null) {
-                Log.i(TAG, "Executing direct coordinate tap at ($x, $y)")
                 return performTapAt(x, y)
             }
         }
 
-        val rootNode = rootInActiveWindow ?: run {
-            Log.w(TAG, "Cannot click element '$cleanTarget': rootInActiveWindow is null.")
+        val rootNode = rootInActiveWindow ?: return false
+
+        // Phase 8: Ranked Target Check & Ambiguity Protection
+        val rankingResult = findTargetNodeRanked(cleanTarget, rootNode)
+        if (rankingResult.status == TargetSelectionStatus.AMBIGUOUS) {
+            Log.w(TAG, "Click element rejected due to target ambiguity: ${rankingResult.details}")
             return false
         }
 
         val targetLower = cleanTarget.lowercase()
 
-        // 2. First attempt: Standard AccessibilityNodeInfo.ACTION_CLICK
         if (searchAndClick(rootNode, targetLower)) {
-            Log.i(TAG, "Standard ACTION_CLICK succeeded for target '$cleanTarget'")
             return true
         }
 
-        Log.i(TAG, "Standard ACTION_CLICK failed/ignored for '$cleanTarget'. Initiating Coordinate-Based Gesture Dispatch fallback...")
-
-        // 3. Fallback: Find nodes by text / content description / view ID -> extract screen bounds -> dispatch raw gesture
         val matchingNodes = mutableListOf<AccessibilityNodeInfo>()
-
-        // Use native Android findAccessibilityNodeInfosByText
         val textMatches = rootNode.findAccessibilityNodeInfosByText(cleanTarget)
         if (!textMatches.isNullOrEmpty()) {
             matchingNodes.addAll(textMatches)
         }
-
-        // Also do recursive search to cover content descriptions, view IDs, or partial case-insensitive matches
         collectMatchingNodes(rootNode, targetLower, matchingNodes)
 
-        // Iterate through matching nodes and dispatch gesture to center coordinates of bounding box
         for (node in matchingNodes.distinct()) {
             val rect = Rect()
             node.getBoundsInScreen(rect)
-
             if (rect.width() > 0 && rect.height() > 0) {
-                val centerX = rect.exactCenterX()
-                val centerY = rect.exactCenterY()
-
-                Log.i(TAG, "Target node found! Bounding box: $rect. Dispatching raw tap gesture at center ($centerX, $centerY)")
-                val tapped = performTapAt(centerX, centerY)
-                if (tapped) {
-                    return true
-                }
+                val tapped = performTapAt(rect.exactCenterX(), rect.exactCenterY())
+                if (tapped) return true
             }
         }
 
-        Log.w(TAG, "Coordinate-Based Gesture Dispatch failed: No valid screen bounds found for '$cleanTarget'")
         return false
     }
 
-    private fun searchAndClick(node: AccessibilityNodeInfo?, targetLower: String): Boolean {
-        if (node == null) return false
+    private fun searchAndClick(
+        node: AccessibilityNodeInfo?,
+        targetLower: String,
+        depth: Int = 0,
+        nodeCount: IntArray = intArrayOf(0),
+        visitedHashes: MutableSet<Int> = mutableSetOf()
+    ): Boolean {
+        if (node == null || depth > 25 || nodeCount[0] >= 500) return false
+        val hash = System.identityHashCode(node)
+        if (!visitedHashes.add(hash)) return false
+        nodeCount[0]++
 
         val text = node.text?.toString()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.lowercase() ?: ""
@@ -360,7 +517,7 @@ class WastiAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
-            if (searchAndClick(child, targetLower)) {
+            if (searchAndClick(child, targetLower, depth + 1, nodeCount, visitedHashes)) {
                 return true
             }
         }
@@ -371,9 +528,15 @@ class WastiAccessibilityService : AccessibilityService() {
     private fun collectMatchingNodes(
         node: AccessibilityNodeInfo?,
         targetLower: String,
-        outList: MutableList<AccessibilityNodeInfo>
+        outList: MutableList<AccessibilityNodeInfo>,
+        depth: Int = 0,
+        nodeCount: IntArray = intArrayOf(0),
+        visitedHashes: MutableSet<Int> = mutableSetOf()
     ) {
-        if (node == null) return
+        if (node == null || depth > 25 || nodeCount[0] >= 500) return
+        val hash = System.identityHashCode(node)
+        if (!visitedHashes.add(hash)) return
+        nodeCount[0]++
 
         val text = node.text?.toString()?.lowercase() ?: ""
         val desc = node.contentDescription?.toString()?.lowercase() ?: ""
@@ -385,8 +548,86 @@ class WastiAccessibilityService : AccessibilityService() {
 
         for (i in 0 until node.childCount) {
             val child = node.getChild(i)
-            collectMatchingNodes(child, targetLower, outList)
+            collectMatchingNodes(child, targetLower, outList, depth + 1, nodeCount, visitedHashes)
         }
+    }
+
+    /**
+     * Phase 4 — Async Tap Execution with Callback Correlation & Timeout Protection
+     */
+    suspend fun performTapAtAsync(
+        x: Float,
+        y: Float,
+        timeoutMs: Long = 3000L
+    ): Boolean {
+        val path = Path().apply { moveTo(x, y) }
+        val stroke = GestureDescription.StrokeDescription(path, 0, 100)
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val deferred = CompletableDeferred<Boolean>()
+
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                Log.i(TAG, "Async tap gesture completed at ($x, $y)")
+                deferred.complete(true)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                Log.w(TAG, "Async tap gesture cancelled at ($x, $y)")
+                deferred.complete(false)
+            }
+        }
+
+        val dispatched = dispatchGesture(gesture, callback, null)
+        if (!dispatched) return false
+
+        return withTimeoutOrNull(timeoutMs) {
+            deferred.await()
+        } ?: false
+    }
+
+    /**
+     * Phase 4 — Async Swipe Execution with Callback Correlation & Timeout Protection
+     */
+    suspend fun performSwipeAsync(
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        durationMs: Long = 300L,
+        timeoutMs: Long = 3000L
+    ): Boolean {
+        val path = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val stroke = GestureDescription.StrokeDescription(path, 0, durationMs.coerceAtLeast(50L))
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+
+        val deferred = CompletableDeferred<Boolean>()
+
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                super.onCompleted(gestureDescription)
+                Log.i(TAG, "Async swipe gesture completed from ($startX, $startY) to ($endX, $endY)")
+                deferred.complete(true)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                Log.w(TAG, "Async swipe gesture cancelled from ($startX, $startY) to ($endX, $endY)")
+                deferred.complete(false)
+            }
+        }
+
+        val dispatched = dispatchGesture(gesture, callback, null)
+        if (!dispatched) return false
+
+        return withTimeoutOrNull(timeoutMs) {
+            deferred.await()
+        } ?: false
     }
 
     /**

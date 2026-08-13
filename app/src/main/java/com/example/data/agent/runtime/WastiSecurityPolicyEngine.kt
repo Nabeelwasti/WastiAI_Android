@@ -11,6 +11,10 @@ class WastiSecurityPolicyEngine(
     private val emergencyStopController: EmergencyStopController
 ) : SecurityPolicy {
 
+    fun isProtectedPath(path: String?): Boolean {
+        return WastiRiskModel.isProtectedPath(path)
+    }
+
     override suspend fun evaluateAuthorization(
         request: AuthorizationRequest
     ): AuthorizationDecision {

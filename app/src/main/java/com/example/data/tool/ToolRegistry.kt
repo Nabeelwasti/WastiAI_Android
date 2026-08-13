@@ -27,9 +27,16 @@ class MemorySearchTool : WastiTool {
     override suspend fun execute(parameters: Map<String, Any>): String {
         val query = parameters["query"]?.toString() ?: ""
         if (query.isBlank()) return "Error: Query parameters empty."
-        val results = MemoryManager.hybridSearch(MemorySearchQuery(queryText = query, topK = 5))
-        if (results.isEmpty()) return "No matching long-term memories found."
-        return results.joinToString("\n") { "- [${it.memory.category}] ${it.memory.key}: ${it.memory.value}" }
+        val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+            capabilityId = "memory_search",
+            parameters = parameters
+        )
+        val res = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req)
+        return if (res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED) {
+            res.output
+        } else {
+            "Memory Search Execution Error [${res.status}]: ${res.error ?: res.output}"
+        }
     }
 }
 
@@ -42,8 +49,38 @@ class DeviceControlTool : WastiTool {
     )
 
     override suspend fun execute(parameters: Map<String, Any>): String {
-        val action = parameters["action"]?.toString() ?: "status"
-        return "Device Action [$action] executed successfully via WastiDeviceController."
+        val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+            capabilityId = "device_control",
+            parameters = parameters
+        )
+        val res = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req)
+        return if (res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED) {
+            res.output
+        } else {
+            "Device Action Execution Error [${res.status}]: ${res.error ?: res.output}"
+        }
+    }
+}
+
+class TerminalTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "terminal",
+        name = "Terminal & Process Executor",
+        category = "Execution",
+        description = "Executes process commands within the sandboxed Wasti workspace environment."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+            capabilityId = "terminal",
+            parameters = parameters
+        )
+        val res = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req)
+        return if (res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED) {
+            res.output
+        } else {
+            "Terminal Execution Error [${res.status}]: ${res.error ?: res.output}"
+        }
     }
 }
 
@@ -57,7 +94,16 @@ class LeadRadarTool : WastiTool {
 
     override suspend fun execute(parameters: Map<String, Any>): String {
         val query = parameters["query"]?.toString() ?: "Video Editing"
-        return com.example.data.core.WastiCore.processLeadRadarExecution("lead radar for $query")
+        val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+            capabilityId = "search_web",
+            parameters = mapOf("query" to query)
+        )
+        val res = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req)
+        return if (res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED) {
+            res.output
+        } else {
+            com.example.data.core.WastiCore.processLeadRadarExecution("lead radar for $query")
+        }
     }
 }
 
@@ -67,6 +113,7 @@ object ToolRegistry {
     init {
         registerTool(MemorySearchTool())
         registerTool(DeviceControlTool())
+        registerTool(TerminalTool())
         registerTool(LeadRadarTool())
     }
 

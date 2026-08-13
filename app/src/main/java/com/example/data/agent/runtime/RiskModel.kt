@@ -17,14 +17,18 @@ object WastiRiskModel {
         "build.gradle", "build.gradle.kts", "androidmanifest.xml", "settings.gradle", "settings.gradle.kts", ".env"
     )
 
+    fun isProtectedPath(targetPath: String?): Boolean {
+        val lowerPath = targetPath?.lowercase().orEmpty()
+        return SENSITIVE_KEYWORDS.any { lowerPath.contains(it) } ||
+                SENSITIVE_CONFIG_FILES.any { lowerPath.endsWith(it) }
+    }
+
     fun evaluateRisk(
         tool: AgentTool,
         input: Map<String, Any?>,
         targetPath: String?
     ): RiskLevel {
-        val lowerPath = targetPath?.lowercase().orEmpty()
-        val isSensitivePath = SENSITIVE_KEYWORDS.any { lowerPath.contains(it) } ||
-                SENSITIVE_CONFIG_FILES.any { lowerPath.endsWith(it) }
+        val isSensitivePath = isProtectedPath(targetPath)
 
         return when (tool.permissionLevel) {
             PermissionLevel.SAFE -> {
