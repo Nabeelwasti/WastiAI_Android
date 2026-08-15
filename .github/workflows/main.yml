@@ -4,6 +4,11 @@ on:
   push:
     paths:
       - '*.zip'
+  workflow_dispatch: # Provides a manual trigger button in your Actions tab
+
+# Forces GitHub's internal token to allow writing updates back to main
+permissions:
+  contents: write
 
 jobs:
   unpack-and-merge:
@@ -17,21 +22,23 @@ jobs:
           git config --global user.name "Nabeelwasti"
           git config --global user.email "wastinabeel99@gmail.com"
           
-          # Unzip whatever zip file is found
+          # Authorizes the connection securely using GitHub's native environment variable
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com"
+          
+          # Unpack the file archive safely
           unzip *.zip
           
-          # Dynamic merge: Find whatever inner folder was created and copy its contents cleanly
-          # This completely avoids hardcoded folder name mismatches!
+          # Locate whatever directory container folder was generated and copy contents cleanly
           INNER_FOLDER=$(find . -maxdepth 1 -type d ! -name "." ! -name ".github" ! -name "target-repo" | head -n 1)
           if [ ! -z "$INNER_FOLDER" ]; then
             cp -r "$INNER_FOLDER"/. .
             rm -rf "$INNER_FOLDER"
           fi
           
-          # Clean up any residual loose zip archives
+          # Wipe the temporary ZIP
           rm -f *.zip
           
-          # Force save the newly merged code structure back into your main branch
+          # Save changes back to the main branch
           git add .
-          git commit -m "Automated mobile sync: Extracted and safely merged all files" || exit 0
+          git commit -m "Automated mobile sync: Unpacked and safely merged all files" || exit 0
           git push origin main
