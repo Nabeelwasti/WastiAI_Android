@@ -3,7 +3,7 @@ name: Unpack and Merge Mobile Zip
 on:
   push:
     paths:
-      - 'No1-main.zip' # Runs instantly when the ZIP is uploaded or updated
+      - '*.zip' # Triggers on ANY zip file upload, no matter the name!
 
 jobs:
   unpack-and-merge:
@@ -17,16 +17,16 @@ jobs:
           git config --global user.name "Nabeelwasti"
           git config --global user.email "wastinabeel99@gmail.com"
           
-          # Unpack the uploaded ZIP archive safely
-          unzip No1-main.zip
+          # Automatically find and unzip whatever your zip archive is named
+          unzip *.zip
           
-          # Copy and merge everything (all folders and root configuration files)
+          # Cleanly copy and merge every file and folder into the root directory
           cp -r No1-main/. .
           
-          # Clean up the temporary ZIP and folders to keep the repository tidy
-          rm -rf No1-main.zip No1-main
+          # Safely remove the zip and the extra folder to keep the repository tidy
+          rm -rf *.zip No1-main
           
-          # Push the clean, unzipped folders back to the main branch
+          # Push the clean, extracted code structure back to your main branch
           git add .
-          git commit -m "Automated mobile sync: Successfully merged 400+ files" || exit 0
+          git commit -m "Automated mobile sync: Extracted and safely merged all files" || exit 0
           git push origin main
