@@ -4,9 +4,8 @@ on:
   push:
     paths:
       - '*.zip'
-  workflow_dispatch: # Provides a manual trigger button in your Actions tab
+  workflow_dispatch:
 
-# Forces GitHub's internal token to allow writing updates back to main
 permissions:
   contents: write
 
@@ -22,23 +21,29 @@ jobs:
           git config --global user.name "Nabeelwasti"
           git config --global user.email "wastinabeel99@gmail.com"
           
-          # Authorizes the connection securely using GitHub's native environment variable
+          # Authorize the connection via internal token
           git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com"
           
-          # Unpack the file archive safely
-          unzip *.zip
+          # 1. Create a temporary folder out of the root path to avoid loop crashes
+          mkdir temp_unpack
           
-          # Locate whatever directory container folder was generated and copy contents cleanly
-          INNER_FOLDER=$(find . -maxdepth 1 -type d ! -name "." ! -name ".github" ! -name "target-repo" | head -n 1)
-          if [ ! -z "$INNER_FOLDER" ]; then
-            cp -r "$INNER_FOLDER"/. .
-            rm -rf "$INNER_FOLDER"
-          fi
+          # 2. Extract your zip file cleanly inside that temporary space
+          unzip *.zip -d temp_unpack/
           
-          # Wipe the temporary ZIP
+          # 3. Completely delete the raw zip archive from the root path first
           rm -f *.zip
           
-          # Save changes back to the main branch
+          # 4. Find the inner directory containing your files and merge them safely
+          INNER_FOLDER=$(find temp_unpack -maxdepth 2 -type d ! -name "temp_unpack" | head -n 1)
+          if [ ! -z "$INNER_FOLDER" ]; then
+            cp -r "$INNER_FOLDER"/. .
+          fi
+          
+          # 5. Clear out the temporary workspace directory completely
+          rm -rf temp_unpack
+          
+          # 6. Save the newly merged clean code structure back into your main branch
           git add .
           git commit -m "Automated mobile sync: Unpacked and safely merged all files" || exit 0
           git push origin main
+          
