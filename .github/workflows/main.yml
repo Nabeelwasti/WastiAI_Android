@@ -1,0 +1,32 @@
+name: Unpack and Merge Mobile Zip
+
+on:
+  push:
+    paths:
+      - 'No1-main.zip' # Runs instantly when the ZIP is uploaded or updated
+
+jobs:
+  unpack-and-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Extract All Files and Safe Overwrite
+        run: |
+          git config --global user.name "Nabeelwasti"
+          git config --global user.email "wastinabeel99@gmail.com"
+          
+          # Unpack the uploaded ZIP archive safely
+          unzip No1-main.zip
+          
+          # Copy and merge everything (all folders and root configuration files)
+          cp -r No1-main/. .
+          
+          # Clean up the temporary ZIP and folders to keep the repository tidy
+          rm -rf No1-main.zip No1-main
+          
+          # Push the clean, unzipped folders back to the main branch
+          git add .
+          git commit -m "Automated mobile sync: Successfully merged 400+ files" || exit 0
+          git push origin main
