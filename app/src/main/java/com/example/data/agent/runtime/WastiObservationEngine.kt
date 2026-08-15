@@ -68,6 +68,15 @@ class WastiObservationEngine {
                 evidence = "Web search result observed.",
                 confidence = 1.0
             )
+            "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Native command execution result observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
             else -> {
                 if (executorResult.status == UnifiedExecutionStatus.COMPLETED) {
                     ObservationResult(

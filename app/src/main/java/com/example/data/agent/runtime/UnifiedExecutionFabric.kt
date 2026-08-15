@@ -315,24 +315,25 @@ class UnifiedExecutionFabric(
         context: Context?
     ): UnifiedExecutionResult {
         val startedAt = System.currentTimeMillis()
+        val ctx = context ?: appContext ?: WastiApplication.instance
         val capId = request.capabilityId.lowercase().trim()
         val action = request.parameters["action"]?.toString()?.lowercase()?.trim() ?: capId
 
         return when {
             capId == "device_control" || capId.startsWith("device_") || capId in listOf("open_app", "send_whatsapp", "whatsapp", "send_email", "email", "send_sms", "sms", "read_screen", "simulate_tap") -> {
-                executeDeviceControl(request, action, context, startedAt)
+                executeDeviceControl(request, action, ctx, startedAt)
             }
             capId == "memory_search" || capId == "memory" -> {
                 executeMemorySearch(request, startedAt)
             }
             capId == "search_web" || capId == "read_web_page" || capId == "b2b_xray_search" -> {
-                executeWebOperations(request, capId, context, startedAt)
+                executeWebOperations(request, capId, ctx, startedAt)
             }
             capId == "files" || capId == "read_file" || capId == "write_file" || capId == "list_files" -> {
                 executeFileOperations(request, capId, startedAt)
             }
             capId == "terminal" || capId == "execute_code" || capId == "execute_command" || capId == "run_script" || capId == "sh" || capId == "cmd" || capId == "python" -> {
-                executeTerminalOperations(request, capId, context, startedAt)
+                executeTerminalOperations(request, capId, ctx, startedAt)
             }
             else -> {
                 createResult(
@@ -667,7 +668,7 @@ class UnifiedExecutionFabric(
         context: Context?,
         startedAt: Long
     ): UnifiedExecutionResult {
-        val ctx = context ?: com.example.WastiApplication.instance
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
         if (ctx == null) {
             return createResult(
                 request = request,
@@ -686,14 +687,18 @@ class UnifiedExecutionFabric(
         val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 10000L
 
         val res = nativeProvider.executeCommand(cmd, args, workDir, timeout)
+        val isNotInstalled = res.stderr.contains("NOT_INSTALLED") ||
+                res.stderr.contains("UNSUPPORTED_EXECUTABLE") ||
+                res.verificationState.contains("NOT_INSTALLED") ||
+                res.verificationState.contains("UNAVAILABLE")
         val status = when {
             res.isSuccess -> UnifiedExecutionStatus.VERIFIED
-            res.stderr.contains("NOT_INSTALLED") || res.stderr.contains("UNSUPPORTED_EXECUTABLE") -> UnifiedExecutionStatus.UNAVAILABLE
+            isNotInstalled -> UnifiedExecutionStatus.UNAVAILABLE
             else -> UnifiedExecutionStatus.FAILED
         }
         val verStatus = when {
             res.isSuccess -> UnifiedVerificationStatus.VERIFIED
-            res.stderr.contains("NOT_INSTALLED") || res.stderr.contains("UNSUPPORTED_EXECUTABLE") -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
+            isNotInstalled -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
             else -> UnifiedVerificationStatus.FAILED
         }
 

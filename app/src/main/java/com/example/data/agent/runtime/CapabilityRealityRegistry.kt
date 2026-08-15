@@ -202,20 +202,35 @@ class CapabilityRealityRegistry {
             CapabilityReality(
                 capabilityId = "PYTHON_RUNTIME",
                 category = "EXECUTION",
-                implementationStatus = ImplementationStatus.NOT_IMPLEMENTED,
-                liveConnectionStatus = LiveConnectionStatus.DISCONNECTED,
-                executionStatus = CapabilityExecutionStatus.UNAVAILABLE,
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiNativeExecutionProvider",
-                supportedOperations = listOf("run_python_script"),
-                limitations = listOf("Python runtime binary not present on stock Android system image"),
-                realityState = CapabilityRealityState.UNAVAILABLE
+                supportedOperations = listOf("run_python_script", "python3"),
+                limitations = listOf("Python runtime binary dynamically detected via WastiNativeExecutionProvider"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
-        return capabilityMap[capabilityId] ?: CapabilityReality(
+        val norm = capabilityId.trim()
+        val direct = capabilityMap[norm] ?: capabilityMap[norm.uppercase()] ?: capabilityMap[norm.lowercase()]
+        if (direct != null) return direct
+
+        // Check alias mapping
+        if (norm.equals("python", ignoreCase = true) || norm.equals("python3", ignoreCase = true)) {
+            capabilityMap["PYTHON_RUNTIME"]?.let { return it }
+        }
+        if (norm.equals("terminal", ignoreCase = true) || norm.equals("cmd", ignoreCase = true) || norm.equals("sh", ignoreCase = true) || norm.equals("bash", ignoreCase = true) || norm.equals("execute_code", ignoreCase = true) || norm.equals("execute_command", ignoreCase = true)) {
+            capabilityMap["TERMINAL"]?.let { return it }
+        }
+        if (norm.equals("files", ignoreCase = true) || norm.equals("read_file", ignoreCase = true) || norm.equals("write_file", ignoreCase = true) || norm.equals("list_files", ignoreCase = true)) {
+            capabilityMap["FILES"]?.let { return it }
+        }
+
+        return CapabilityReality(
             capabilityId = capabilityId,
             category = "UNKNOWN",
             implementationStatus = ImplementationStatus.NOT_IMPLEMENTED,
