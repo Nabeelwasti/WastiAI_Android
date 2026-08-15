@@ -3,7 +3,7 @@ name: Unpack and Merge Mobile Zip
 on:
   push:
     paths:
-      - '*.zip' # Triggers on ANY zip file upload, no matter the name!
+      - '*.zip'
 
 jobs:
   unpack-and-merge:
@@ -17,16 +17,21 @@ jobs:
           git config --global user.name "Nabeelwasti"
           git config --global user.email "wastinabeel99@gmail.com"
           
-          # Automatically find and unzip whatever your zip archive is named
+          # Unzip whatever zip file is found
           unzip *.zip
           
-          # Cleanly copy and merge every file and folder into the root directory
-          cp -r No1-main/. .
+          # Dynamic merge: Find whatever inner folder was created and copy its contents cleanly
+          # This completely avoids hardcoded folder name mismatches!
+          INNER_FOLDER=$(find . -maxdepth 1 -type d ! -name "." ! -name ".github" ! -name "target-repo" | head -n 1)
+          if [ ! -z "$INNER_FOLDER" ]; then
+            cp -r "$INNER_FOLDER"/. .
+            rm -rf "$INNER_FOLDER"
+          fi
           
-          # Safely remove the zip and the extra folder to keep the repository tidy
-          rm -rf *.zip No1-main
+          # Clean up any residual loose zip archives
+          rm -f *.zip
           
-          # Push the clean, extracted code structure back to your main branch
+          # Force save the newly merged code structure back into your main branch
           git add .
           git commit -m "Automated mobile sync: Extracted and safely merged all files" || exit 0
           git push origin main
