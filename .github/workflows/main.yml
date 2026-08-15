@@ -14,36 +14,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Codebase
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Extract All Files and Safe Overwrite
         run: |
+          set -e
           git config --global user.name "Nabeelwasti"
           git config --global user.email "wastinabeel99@gmail.com"
-          
-          # Authorize the connection via internal token
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@://github.com"
-          
-          # 1. Create a temporary folder out of the root path to avoid loop crashes
-          mkdir temp_unpack
-          
-          # 2. Extract your zip file cleanly inside that temporary space
-          unzip *.zip -d temp_unpack/
-          
-          # 3. Completely delete the raw zip archive from the root path first
-          rm -f *.zip
-          
-          # 4. Find the inner directory containing your files and merge them safely
-          INNER_FOLDER=$(find temp_unpack -maxdepth 2 -type d ! -name "temp_unpack" | head -n 1)
-          if [ ! -z "$INNER_FOLDER" ]; then
-            cp -r "$INNER_FOLDER"/. .
+
+          # Fixed: correct authenticated remote URL
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+
+          shopt -s nullglob
+          zips=(*.zip)
+          if [ ${#zips[@]} -eq 0 ]; then
+            echo "No zip found, nothing to do."
+            exit 0
           fi
-          
-          # 5. Clear out the temporary workspace directory completely
+
+          mkdir -p temp_unpack
+          for z in "${zips[@]}"; do
+            unzip -o "$z" -d temp_unpack/
+            rm -f "$z"
+          done
+
+          # Merge EVERYTHING extracted, not just the first inner folder
+          if [ "$(ls -A temp_unpack)" ]; then
+            cp -r temp_unpack/. .
+          fi
           rm -rf temp_unpack
-          
-          # 6. Save the newly merged clean code structure back into your main branch
-          git add .
+
+          git add -A
           git commit -m "Automated mobile sync: Unpacked and safely merged all files" || exit 0
           git push origin main
-          
