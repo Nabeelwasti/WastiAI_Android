@@ -11,7 +11,7 @@ plugins {
 
 android {
   namespace = "com.example"
-  compileSdk = 36 }
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "com.aistudio.wastios.k9v2pz"
