@@ -82,11 +82,16 @@ jobs:
     - name: Build Debug APK
       run: gradle clean assembleDebug --stacktrace
 
-    - name: Verify WastiApplication exists in APK
+    - name: Verify WastiApplication in APK
       run: |
         APK="app/build/outputs/apk/debug/app-debug.apk"
-        unzip -l "$APK" | grep -E "classes[0-9]*\.dex"
-        echo "APK created successfully: $APK"
+        echo "APK: $APK"
+        unzip -l "$APK" | grep "classes.*\.dex"
+        unzip -p "$APK" classes.dex | strings | grep "WastiApplication" || {
+          echo "ERROR: WastiApplication NOT FOUND in classes.dex"
+          exit 1
+        }
+        echo "SUCCESS: WastiApplication found in APK"
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
