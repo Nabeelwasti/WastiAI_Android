@@ -68,12 +68,36 @@ class CapabilityDiscoveryEngine(
             }
         }
 
-        // 2. Check for File / Code / Workspace Storage Intent
+        // 2. Check for Project Creation / Development Manager Intent
+        if (reqLower.contains("create project") || reqLower.contains("new project") ||
+            reqLower.contains("create a python project") || reqLower.contains("create a node project") ||
+            reqLower.contains("create kotlin project") || reqLower.contains("scaffold project")
+        ) {
+            action = "create_development_project"
+            category = "DEVELOPMENT"
+            required.add("PROJECT_DEV_MANAGER")
+
+            val reality = realityRegistry.getCapabilityReality("PROJECT_DEV_MANAGER")
+            executors.add(reality.provider)
+            limitationsList.addAll(reality.limitations)
+
+            if (reality.realityState == CapabilityRealityState.NATIVE) {
+                available.add("PROJECT_DEV_MANAGER")
+                strategies.add(ExecutionStrategy.NATIVE)
+            } else {
+                unavailable.add("PROJECT_DEV_MANAGER")
+                primaryRealityState = reality.realityState
+            }
+        }
+
+        // 3. Check for File / Code / Workspace Storage Intent
         if (reqLower.contains("file") || reqLower.contains("code") || reqLower.contains("read file") ||
             reqLower.contains("write file") || reqLower.contains("workspace") || reqLower.contains("project")
         ) {
-            action = "workspace_file_operation"
-            category = "STORAGE"
+            if (!required.contains("PROJECT_DEV_MANAGER")) {
+                action = "workspace_file_operation"
+                category = "STORAGE"
+            }
             required.add("FILES")
 
             val reality = realityRegistry.getCapabilityReality("FILES")
@@ -89,9 +113,10 @@ class CapabilityDiscoveryEngine(
             }
         }
 
-        // 3. Check for Terminal / Command / Runtime Execution Intent
-        if (reqLower.contains("run") || reqLower.contains("terminal") || reqLower.contains("execute") ||
-            reqLower.contains("script") || reqLower.contains("python") || reqLower.contains("bash") || reqLower.contains("cmd")
+        // 4. Check for Terminal / Command / Runtime Execution Intent
+        if ((reqLower.contains("run") || reqLower.contains("terminal") || reqLower.contains("execute") ||
+            reqLower.contains("script") || reqLower.contains("python") || reqLower.contains("node") ||
+            reqLower.contains("bash") || reqLower.contains("cmd")) && !required.contains("PROJECT_DEV_MANAGER")
         ) {
             action = "command_execution"
             category = "EXECUTION"
@@ -117,6 +142,17 @@ class CapabilityDiscoveryEngine(
                     unavailable.add("PYTHON_RUNTIME")
                     missingDeps.add("Python3 binary on Android system path")
                     unavailableReason = "Python runtime is not currently available in the native Wasti environment."
+                    confidence = 0.5
+                }
+            }
+
+            if (reqLower.contains("node") || reqLower.contains("npm")) {
+                required.add("NODE_RUNTIME")
+                val nodeReality = realityRegistry.getCapabilityReality("NODE_RUNTIME")
+                if (nodeReality.realityState == CapabilityRealityState.UNAVAILABLE || nodeReality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED) {
+                    unavailable.add("NODE_RUNTIME")
+                    missingDeps.add("Node.js binary on Android system path")
+                    unavailableReason = "Node.js runtime is not currently available in the native Wasti environment."
                     confidence = 0.5
                 }
             }

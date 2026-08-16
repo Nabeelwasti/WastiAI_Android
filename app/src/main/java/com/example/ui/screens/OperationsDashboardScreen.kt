@@ -875,7 +875,7 @@ fun OperationsDashboardScreen() {
                                     modifier = Modifier.height(56.dp).padding(top = 8.dp),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
-                                    Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Log Invoice", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }

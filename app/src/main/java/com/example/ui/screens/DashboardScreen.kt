@@ -163,7 +163,7 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         QuickLaunchItem("Telemetry & Ops", Icons.Default.Analytics) { onNavigateTab("operations") }
-                        QuickLaunchItem("AI Chat Workspace", Icons.Default.Chat) { onNavigateTab("chat") }
+                        QuickLaunchItem("AI Chat Workspace", Icons.AutoMirrored.Filled.Chat) { onNavigateTab("chat") }
                         QuickLaunchItem("Memory Graph", Icons.Default.Memory) { onNavigateTab("memory") }
                         QuickLaunchItem("Code Studio", Icons.Default.Code) { onNavigateTab("code") }
                     }

@@ -88,13 +88,55 @@ data class TaskCancellationState(
     val cancelledAt: Long? = null
 )
 
+enum class AgentRole {
+    RESEARCH,
+    CODING,
+    TESTING,
+    DEBUGGING,
+    SECURITY,
+    DESIGN,
+    DATA,
+    BROWSER_INTERNET,
+    EXECUTIVE,
+    PLANNING,
+    QUALITY_REVIEW,
+    WORKFLOW
+}
+
+enum class AgentTaskState {
+    PENDING,
+    SCHEDULED,
+    RUNNING,
+    COMPLETED,
+    FAILED,
+    CANCELLED,
+    BLOCKED
+}
+
+enum class AgentTaskPriority {
+    LOW,
+    MEDIUM,
+    HIGH,
+    CRITICAL
+}
+
 data class AgentTask(
-    val taskId: TaskId,
-    val prompt: String,
-    val status: AgenticState,
+    val taskId: TaskId = TaskId(),
+    val prompt: String = "",
+    val title: String = prompt,
+    val description: String = prompt,
+    val status: AgenticState = AgenticState.Idle(),
+    val state: AgentTaskState = AgentTaskState.PENDING,
+    val assignedRole: AgentRole? = null,
+    val assignedAgentId: String? = null,
+    val priority: AgentTaskPriority = AgentTaskPriority.MEDIUM,
+    val dependencies: List<String> = emptyList(),
+    val inputData: Map<String, Any?> = emptyMap(),
+    val requiredCapabilities: List<String> = emptyList(),
     val executionMode: ExecutionMode = ExecutionMode.SAFE,
     val cancellationState: TaskCancellationState = TaskCancellationState(),
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 /**

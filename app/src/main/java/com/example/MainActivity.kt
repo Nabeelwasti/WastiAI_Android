@@ -13,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -94,7 +95,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
             val navItems = listOf(
                 WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
-                WastiNavDestination("chat", "AI Chat", Icons.Default.Chat),
+                WastiNavDestination("chat", "AI Chat", Icons.AutoMirrored.Filled.Chat),
                 WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),

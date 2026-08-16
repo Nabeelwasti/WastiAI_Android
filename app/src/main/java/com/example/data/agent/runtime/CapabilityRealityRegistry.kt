@@ -212,6 +212,118 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
+
+        // Node.js Runtime Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "NODE_RUNTIME",
+                category = "EXECUTION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiNativeExecutionProvider",
+                supportedOperations = listOf("run_node_script", "node", "npm"),
+                limitations = listOf("Node.js runtime binary dynamically detected via WastiNativeExecutionProvider"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
+
+        // Multi-Language Project Manager Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "PROJECT_DEV_MANAGER",
+                category = "DEVELOPMENT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiProjectManager",
+                supportedOperations = listOf("create_project", "create_managed_project", "inspect_project", "list_projects", "delete_project", "scan_languages", "get_language_profile"),
+                limitations = listOf("Projects created inside sandboxed wasti_workspace"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Build Manager Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "BUILD_MANAGER",
+                category = "DEVELOPMENT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiBuildAndTestManager",
+                supportedOperations = listOf("build_project", "compile_project"),
+                limitations = listOf("Builds validated within workspace; compiled languages check toolchain availability"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Test Runner Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "TEST_RUNNER",
+                category = "DEVELOPMENT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiBuildAndTestManager",
+                supportedOperations = listOf("test_project", "run_tests"),
+                limitations = listOf("Discovers and executes workspace tests"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Debugging & Diagnostics Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "DEBUG_DIAGNOSTICS",
+                category = "DEVELOPMENT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiBuildAndTestManager",
+                supportedOperations = listOf("debug_project", "analyze_diagnostics"),
+                limitations = listOf("Analyzes compiler errors and stack traces without fabricating debug protocols"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Package Manager Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "PACKAGE_MANAGER",
+                category = "DEVELOPMENT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiRuntimeManager",
+                supportedOperations = listOf("resolve_package", "install_package", "list_packages"),
+                limitations = listOf("Resolves packages for discovered language runtimes"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Wasti Sandbox Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "WASTI_SANDBOX",
+                category = "SECURITY",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiSandbox",
+                supportedOperations = listOf("execute_in_sandbox", "enforce_resource_limits", "enforce_network_policy"),
+                limitations = listOf("Confines execution to workspace with emergency stop, timeout and resource limit controls"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
@@ -222,6 +334,27 @@ class CapabilityRealityRegistry {
         // Check alias mapping
         if (norm.equals("python", ignoreCase = true) || norm.equals("python3", ignoreCase = true)) {
             capabilityMap["PYTHON_RUNTIME"]?.let { return it }
+        }
+        if (norm.equals("node", ignoreCase = true) || norm.equals("nodejs", ignoreCase = true) || norm.equals("javascript", ignoreCase = true) || norm.equals("npm", ignoreCase = true)) {
+            capabilityMap["NODE_RUNTIME"]?.let { return it }
+        }
+        if (norm.equals("project", ignoreCase = true) || norm.equals("create_project", ignoreCase = true) || norm.equals("project_manager", ignoreCase = true) || norm.equals("project_dev_manager", ignoreCase = true) || norm.equals("dev_environment", ignoreCase = true)) {
+            capabilityMap["PROJECT_DEV_MANAGER"]?.let { return it }
+        }
+        if (norm.equals("build_project", ignoreCase = true) || norm.equals("compile_project", ignoreCase = true) || norm.equals("build", ignoreCase = true) || norm.equals("compile", ignoreCase = true) || norm.equals("build_manager", ignoreCase = true)) {
+            capabilityMap["BUILD_MANAGER"]?.let { return it }
+        }
+        if (norm.equals("test_project", ignoreCase = true) || norm.equals("run_tests", ignoreCase = true) || norm.equals("test", ignoreCase = true) || norm.equals("test_runner", ignoreCase = true)) {
+            capabilityMap["TEST_RUNNER"]?.let { return it }
+        }
+        if (norm.equals("debug_project", ignoreCase = true) || norm.equals("analyze_diagnostics", ignoreCase = true) || norm.equals("debug", ignoreCase = true) || norm.equals("debug_diagnostics", ignoreCase = true)) {
+            capabilityMap["DEBUG_DIAGNOSTICS"]?.let { return it }
+        }
+        if (norm.equals("package_manager", ignoreCase = true) || norm.equals("resolve_package", ignoreCase = true) || norm.equals("install_package", ignoreCase = true)) {
+            capabilityMap["PACKAGE_MANAGER"]?.let { return it }
+        }
+        if (norm.equals("wasti_sandbox", ignoreCase = true) || norm.equals("sandbox", ignoreCase = true)) {
+            capabilityMap["WASTI_SANDBOX"]?.let { return it }
         }
         if (norm.equals("terminal", ignoreCase = true) || norm.equals("cmd", ignoreCase = true) || norm.equals("sh", ignoreCase = true) || norm.equals("bash", ignoreCase = true) || norm.equals("execute_code", ignoreCase = true) || norm.equals("execute_command", ignoreCase = true)) {
             capabilityMap["TERMINAL"]?.let { return it }

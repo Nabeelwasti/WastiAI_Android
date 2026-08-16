@@ -621,13 +621,21 @@ class WastiFloatingService : Service() {
         when {
             lower.startsWith("open ") || lower.startsWith("launch ") -> {
                 val appTarget = command.substringAfter(" ").trim()
-                val result = WastiDeviceController.openApp(applicationContext, appTarget)
-                logSystemEvent("INFO", "Floating Command Execution [OPEN_APP]: ${result.userFeedback}")
+                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                    capabilityId = "open_app",
+                    parameters = mapOf("target" to appTarget, "action" to "open_app")
+                )
+                val result = com.example.data.agent.runtime.UnifiedExecutionFabric.getInstance(applicationContext).execute(req, applicationContext)
+                logSystemEvent("INFO", "Floating Command Execution [OPEN_APP via UnifiedFabric]: ${result.output}")
             }
             lower.contains("click ") || lower.contains("tap ") -> {
                 val targetText = command.replace("click", "").replace("tap", "").trim()
-                val result = WastiDeviceController.simulateTap(applicationContext, targetText)
-                logSystemEvent("INFO", "Floating Command Execution [TAP]: ${result.userFeedback}")
+                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                    capabilityId = "simulate_tap",
+                    parameters = mapOf("target" to targetText, "action" to "simulate_tap")
+                )
+                val result = com.example.data.agent.runtime.UnifiedExecutionFabric.getInstance(applicationContext).execute(req, applicationContext)
+                logSystemEvent("INFO", "Floating Command Execution [TAP via UnifiedFabric]: ${result.output}")
             }
             else -> {
                 try {

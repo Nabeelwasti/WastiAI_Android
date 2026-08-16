@@ -219,7 +219,7 @@ class Stage6ObservationVerificationTest {
     @Test
     fun testAccessibilityEventProcessing() {
         val service = WastiAccessibilityService()
-        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        val event = AccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
         event.packageName = "com.example.testapp"
         event.className = "com.example.testapp.MainActivity"
 
@@ -235,10 +235,10 @@ class Stage6ObservationVerificationTest {
     @Test
     fun testAccessibilityEventThrottling() {
         val service = WastiAccessibilityService()
-        val event1 = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED)
+        val event1 = AccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
         event1.packageName = "com.app.one"
 
-        val event2 = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_VIEW_CLICKED)
+        val event2 = AccessibilityEvent(AccessibilityEvent.TYPE_VIEW_CLICKED)
         event2.packageName = "com.app.two"
 
         service.onAccessibilityEvent(event1)
@@ -258,7 +258,7 @@ class Stage6ObservationVerificationTest {
         val correlationId = "test-correlation-123"
         service.setCorrelationId(correlationId)
 
-        val event = AccessibilityEvent.obtain(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+        val event = AccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
         event.packageName = "com.example.correlated"
 
         service.onAccessibilityEvent(event)

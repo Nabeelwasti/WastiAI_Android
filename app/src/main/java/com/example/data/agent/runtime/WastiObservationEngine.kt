@@ -39,9 +39,10 @@ class WastiObservationEngine {
             )
         }
 
-        return when (request.capabilityId) {
+        val capId = request.capabilityId.lowercase().trim()
+        return when (capId) {
             "device_control" -> observeDeviceControl(request, executorResult)
-            "memory_search" -> ObservationResult(
+            "memory_search", "memory" -> ObservationResult(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
@@ -50,7 +51,7 @@ class WastiObservationEngine {
                 evidence = "Memory query returned query results directly from store.",
                 confidence = 1.0
             )
-            "files" -> ObservationResult(
+            "files", "read_file", "write_file", "list_files" -> ObservationResult(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
@@ -59,7 +60,61 @@ class WastiObservationEngine {
                 evidence = "File operation result observed.",
                 confidence = 1.0
             )
-            "search_web" -> ObservationResult(
+            "project_dev_manager", "create_project", "create_managed_project", "inspect_project", "list_projects", "delete_project", "project", "dev_environment" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED || executorResult.status == UnifiedExecutionStatus.COMPLETED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Development project operation observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "build_project", "compile_project", "build", "compile", "build_manager" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Build operation observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "test_project", "run_tests", "test", "test_runner" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Test execution observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Diagnostic analysis observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "package_manager", "resolve_package", "install_package" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Package operation observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "wasti_sandbox", "sandbox" -> ObservationResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = if (executorResult.status == UnifiedExecutionStatus.VERIFIED) ObservationStatus.OBSERVED else ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Sandbox execution observed: ${executorResult.output.take(120)}",
+                confidence = 1.0
+            )
+            "search_web", "read_web_page", "b2b_xray_search" -> ObservationResult(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
@@ -68,7 +123,7 @@ class WastiObservationEngine {
                 evidence = "Web search result observed.",
                 confidence = 1.0
             )
-            "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python" -> ObservationResult(
+            "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python", "node", "npm" -> ObservationResult(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,

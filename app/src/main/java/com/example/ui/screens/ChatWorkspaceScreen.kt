@@ -1285,7 +1285,7 @@ private fun MessageItem(
                                                 modifier = Modifier.padding(6.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.InsertDriveFile,
+                                                    imageVector = Icons.AutoMirrored.Filled.InsertDriveFile,
                                                     contentDescription = "Attached File",
                                                     tint = MaterialTheme.colorScheme.primary,
                                                     modifier = Modifier.size(24.dp)
@@ -1445,15 +1445,16 @@ private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
     val convertedPureUrdu = com.example.util.WastiUrduLanguageEngine.romanUrduToPureUrduScript(cleanText)
     val isRomanUrduConverted = !isUrduScript && convertedPureUrdu != cleanText
 
+    val urduLocale = Locale.forLanguageTag("ur-PK")
     val (ttsTextToSpeak, targetLocale) = when {
-        isUrduScript -> Pair(cleanText, Locale("ur", "PK"))
-        isRomanUrduConverted -> Pair(convertedPureUrdu, Locale("ur", "PK"))
+        isUrduScript -> Pair(cleanText, urduLocale)
+        isRomanUrduConverted -> Pair(convertedPureUrdu, urduLocale)
         else -> {
             val lower = cleanText.lowercase()
             val romanUrduKeywords = setOf("hai", "hain", "kya", "kaise", "ap", "aap", "mein", "main", "ho", "nahi", "nahin", "bohot", "bht", "ji", "ha", "shukriya", "salam", "shukria", "kaam", "karo", "karein", "jee", "ye", "yeh", "wo", "woh")
             val words = lower.split("\\s+".toRegex())
             if (words.any { it in romanUrduKeywords }) {
-                Pair(convertedPureUrdu, Locale("ur", "PK"))
+                Pair(convertedPureUrdu, urduLocale)
             } else {
                 Pair(cleanText, Locale.getDefault())
             }
