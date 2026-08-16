@@ -21,7 +21,10 @@ class WastiApplication : Application() {
         var instance: WastiApplication? = null
             private set
     }
-
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        instance = this
+    }
     override fun onCreate() {
         super.onCreate()
         instance = this
