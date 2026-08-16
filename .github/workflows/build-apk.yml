@@ -86,12 +86,24 @@ jobs:
       run: |
         APK="app/build/outputs/apk/debug/app-debug.apk"
         echo "APK: $APK"
-        unzip -l "$APK" | grep "classes.*\.dex"
-        unzip -p "$APK" classes.dex | strings | grep "WastiApplication" || {
-          echo "ERROR: WastiApplication NOT FOUND in classes.dex"
+        echo "Checking all DEX files..."
+
+        FOUND=0
+
+        for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
+          echo "Checking $DEX..."
+          if unzip -p "$APK" "$DEX" | strings | grep -q "WastiApplication"; then
+            echo "SUCCESS: WastiApplication found in $DEX"
+            FOUND=1
+          fi
+        done
+
+        if [ "$FOUND" -eq 0 ]; then
+          echo "ERROR: WastiApplication NOT FOUND in any DEX file"
           exit 1
-        }
-        echo "SUCCESS: WastiApplication found in APK"
+        fi
+
+        echo "SUCCESS: WastiApplication exists in APK"
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
