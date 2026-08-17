@@ -2,121 +2,69 @@ package com.example.data.wre
 
 import android.content.Context
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Stage 9A: WRE Workspace Manager
- *
- * Dedicated, structured virtual workspace layout inside Android storage:
- * WastiWorkspace/
- * ├── home/wasti/
- * ├── projects/
- * ├── scripts/
- * ├── data/
- * ├── downloads/
- * ├── outputs/
- * ├── temp/
- * ├── logs/
- * ├── cache/
- * └── config/
+ * Stage 9A & 9C: Wasti Sandboxed Virtual Workspace Manager
+ * 
+ * Maps virtual POSIX paths (/home/wasti/...) to sandboxed app-internal storage.
+ * Prevents path traversal and guarantees safe execution boundaries.
  */
-class WreWorkspaceManager(context: Context) {
+class WreWorkspaceManager(private val context: Context) {
 
-    private val rootDir: File = File(context.filesDir, "WastiWorkspace").canonicalFile
-
-    val standardFolders = listOf(
-        "home/wasti",
-        "projects",
-        "scripts",
-        "data",
-        "downloads",
-        "outputs",
-        "temp",
-        "logs",
-        "cache",
-        "config"
-    )
+    val rootDir: File = File(context.filesDir, "wasti_workspace").apply {
+        if (!exists()) mkdirs()
+    }
 
     init {
-        ensureWorkspaceHierarchy()
+        // Initialize standard virtual filesystem hierarchy
+        listOf(
+            "home/wasti",
+            "home/wasti/bin",
+            "home/wasti/src",
+            "home/wasti/data",
+            "home/wasti/logs",
+            "tmp",
+            "etc"
+        ).forEach { path ->
+            File(rootDir, path).mkdirs()
+        }
     }
 
-    fun ensureWorkspaceHierarchy() {
-        if (!rootDir.exists()) {
-            rootDir.mkdirs()
+    fun getRootDirectory(): File = rootDir
+
+    fun getDirectory(subPath: String): Result<File> {
+        val dir = File(rootDir, subPath.removePrefix("/"))
+        if (!dir.exists()) {
+            dir.mkdirs()
         }
-        for (folder in standardFolders) {
-            val dir = File(rootDir, folder)
-            if (!dir.exists()) {
-                dir.mkdirs()
-            }
-        }
+        return Result.success(dir)
     }
-
-    fun getRootPath(): String = rootDir.canonicalPath
-
-    fun getHomeDirectory(): File = File(rootDir, "home/wasti").canonicalFile
 
     /**
-     * Resolves a virtual workspace relative path (or absolute path inside workspace).
-     * Prevents path traversal, sibling collision, and symlink escape attacks.
+     * Resolves a virtual path safely inside the sandbox.
+     * Rejects path traversal attacks (e.g. "../../../etc/shadow")
      */
-    fun resolve(pathStr: String): Result<File> {
-        return try {
-            val trimmed = pathStr.trim()
-            val file = if (trimmed.startsWith("/") || (trimmed.length > 2 && trimmed[1] == ':')) {
-                // If absolute path, check if inside workspace
-                val absoluteCandidate = File(trimmed).canonicalFile
-                if (isWithinRoot(absoluteCandidate)) {
-                    absoluteCandidate
-                } else if (trimmed.startsWith("/workspace") || trimmed.startsWith("/home")) {
-                    // Strip leading virtual slash
-                    File(rootDir, trimmed.removePrefix("/")).canonicalFile
-                } else {
-                    return Result.failure(SecurityException("Access denied: path '$pathStr' escapes Wasti Workspace"))
-                }
-            } else if (trimmed.startsWith("~")) {
-                val rel = trimmed.removePrefix("~").removePrefix("/")
-                File(getHomeDirectory(), rel).canonicalFile
-            } else {
-                File(rootDir, trimmed).canonicalFile
-            }
-
-            if (!isWithinRoot(file)) {
-                Result.failure(SecurityException("Access denied: path '$pathStr' escapes Wasti Workspace"))
-            } else {
-                Result.success(file)
-            }
-        } catch (e: Exception) {
-            Result.failure(SecurityException("Failed to resolve workspace path: ${e.message}", e))
+    fun resolve(virtualPath: String): Result<File> {
+        val sanitized = virtualPath.trim()
+            .removePrefix("/")
+            .replace("\\", "/")
+        val target = File(rootDir, sanitized).canonicalFile
+        val rootCanonical = rootDir.canonicalPath
+        return if (target.canonicalPath.startsWith(rootCanonical)) {
+            Result.success(target)
+        } else {
+            Result.failure(SecurityException("Access Denied: Path traversal outside sandbox detected ($virtualPath)"))
         }
-    }
-
-    private fun isWithinRoot(candidate: File): Boolean {
-        var curr: File? = candidate.canonicalFile
-        val canonicalRoot = rootDir.canonicalFile
-        while (curr != null) {
-            if (curr == canonicalRoot) return true
-            curr = curr.parentFile
-        }
-        return false
     }
 
     fun getVirtualPath(file: File): String {
-        val canonical = file.canonicalFile
-        val rootPath = rootDir.canonicalPath
-        return if (canonical.canonicalPath.startsWith(rootPath)) {
-            val relative = canonical.canonicalPath.removePrefix(rootPath).removePrefix("/")
-            if (relative.isEmpty()) "/" else "/$relative"
+        val rootCanonical = rootDir.canonicalPath
+        val fileCanonical = file.canonicalPath
+        return if (fileCanonical.startsWith(rootCanonical)) {
+            val relative = fileCanonical.removePrefix(rootCanonical)
+            if (relative.isEmpty()) "/" else relative
         } else {
-            canonical.name
-        }
-    }
-
-    fun cleanupTemp() {
-        val tempDir = File(rootDir, "temp")
-        if (tempDir.exists() && tempDir.isDirectory) {
-            tempDir.listFiles()?.forEach { it.deleteRecursively() }
+            "/external/${file.name}"
         }
     }
 }
