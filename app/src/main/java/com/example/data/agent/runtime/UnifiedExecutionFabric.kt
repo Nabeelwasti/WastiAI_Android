@@ -1246,48 +1246,69 @@ class UnifiedExecutionFabric(
                 status = UnifiedExecutionStatus.UNAVAILABLE,
                 output = "Context unavailable for terminal execution.",
                 error = "Null Context in executeTerminalOperations",
-                executor = "WastiNativeExecutionProvider",
+                executor = "WreManager",
                 startedAt = startedAt,
                 verificationStatus = UnifiedVerificationStatus.FAILED
             )
         }
-        val nativeProvider = WastiNativeExecutionProvider(ctx)
-        val cmd = request.parameters["command"]?.toString()
+
+        // Stage 9B: Route terminal and code execution through WreManager
+        val wreManager = com.example.data.wre.WreManager.getInstance(ctx)
+        val rawCmd = request.parameters["command"]?.toString()
             ?: request.parameters["executable"]?.toString()
             ?: when (capId) {
                 "python_runtime" -> "python3"
                 "node_runtime", "nodejs", "javascript" -> "node"
                 else -> capId
             }
-        val args = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-        val workDir = request.parameters["workingDirectory"]?.toString() ?: ""
-        val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 10000L
+        val rawArgs = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+        val fullCmd = if (rawArgs.isNotEmpty()) "$rawCmd ${rawArgs.joinToString(" ")}" else rawCmd
+        val workDir = request.parameters["workingDirectory"]?.toString() ?: "home/wasti"
+        val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 30000L
 
-        val res = nativeProvider.executeCommand(cmd, args, workDir, timeout)
-        val isNotInstalled = res.stderr.contains("NOT_INSTALLED") ||
-                res.stderr.contains("UNSUPPORTED_EXECUTABLE") ||
-                res.verificationState.contains("NOT_INSTALLED") ||
-                res.verificationState.contains("UNAVAILABLE")
-        val status = when {
-            res.isSuccess -> UnifiedExecutionStatus.VERIFIED
-            isNotInstalled -> UnifiedExecutionStatus.UNAVAILABLE
+        val wreReq = com.example.data.wre.ExecutionRequest(
+            command = fullCmd,
+            arguments = rawArgs,
+            workingDirectory = workDir,
+            timeoutMs = timeout,
+            initiatedBy = "UnifiedExecutionFabric"
+        )
+
+        val wreResult = wreManager.execute(wreReq)
+        val isPythonOrNode = capId in listOf("python", "python3", "python_runtime", "node", "nodejs", "node_runtime", "javascript", "npm")
+        val isUnavailableOutput = wreResult.stderr.contains("not found") || wreResult.stderr.contains("unavailable") || wreResult.exitCode == 127
+        
+        val finalStatus = when {
+            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.VERIFIED
+            wreResult.status == com.example.data.wre.ExecutionStatus.UNAVAILABLE || (isPythonOrNode && isUnavailableOutput) -> UnifiedExecutionStatus.UNAVAILABLE
+            wreResult.status == com.example.data.wre.ExecutionStatus.DENIED -> UnifiedExecutionStatus.FAILED
             else -> UnifiedExecutionStatus.FAILED
         }
-        val verStatus = when {
-            res.isSuccess -> UnifiedVerificationStatus.VERIFIED
-            isNotInstalled -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
+        val finalVerStatus = when {
+            finalStatus == UnifiedExecutionStatus.VERIFIED -> UnifiedVerificationStatus.VERIFIED
+            finalStatus == UnifiedExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
+            else -> UnifiedVerificationStatus.FAILED
+        }
+        val finalOutput = when {
+            isPythonOrNode && isUnavailableOutput -> "Python runtime is not currently available on this device."
+            wreResult.stdout.isNotBlank() -> wreResult.stdout
+            else -> wreResult.stderr
+        }
+        val finalVerStatus = when (wreResult.status) {
+            com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedVerificationStatus.VERIFIED
+            com.example.data.wre.ExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
             else -> UnifiedVerificationStatus.FAILED
         }
 
         return createResult(
             request = request,
-            status = status,
-            output = if (res.stdout.isNotBlank()) res.stdout else res.stderr,
-            error = if (res.isSuccess) null else res.stderr,
+            status = finalStatus,
+            output = finalOutput,
+            error = if (wreResult.exitCode != 0) wreResult.stderr else null,
             executor = "WastiNativeExecutionProvider",
             startedAt = startedAt,
-            verificationStatus = verStatus,
-            verificationEvidence = res.verificationState
+            verificationStatus = finalVerStatus,
+            verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: "VERIFIED" else "UNVERIFIED"
         )
     }
 
