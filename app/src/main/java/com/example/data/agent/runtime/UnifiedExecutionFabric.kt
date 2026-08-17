@@ -1294,11 +1294,7 @@ class UnifiedExecutionFabric(
             wreResult.stdout.isNotBlank() -> wreResult.stdout
             else -> wreResult.stderr
         }
-        val finalVerStatus = when (wreResult.status) {
-            com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedVerificationStatus.VERIFIED
-            com.example.data.wre.ExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
-            else -> UnifiedVerificationStatus.FAILED
-        }
+
 
         return createResult(
             request = request,
