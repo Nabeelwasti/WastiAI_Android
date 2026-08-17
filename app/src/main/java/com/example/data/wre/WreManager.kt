@@ -6,9 +6,10 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
- * Stage 9A: Central Wasti Runtime Environment (WRE) Manager
- *
- * Coordinates execution providers, security gates, process/job lifecycle, and log tracking.
+ * Stage 9C: Central Wasti Runtime Environment (WRE) Manager
+ * 
+ * Coordinates execution providers, package manager, security gates,
+ * autocompletion, process/job lifecycle, and log tracking.
  * Unifies AI Brain, UI, Terminal, and background automation requests.
  */
 class WreManager(val context: Context) {
@@ -17,12 +18,14 @@ class WreManager(val context: Context) {
     val environmentManager = WreEnvironmentManager()
     val processManager = WreProcessManager()
     val executionLogger = WreExecutionLogger()
+    val packageManager = WrePackageManager(context, workspaceManager)
+    val autocompleteEngine = WreAutocompleteEngine(workspaceManager, packageManager)
 
     private val providers = CopyOnWriteArrayList<ExecutionProvider>()
 
     init {
-        // Register Native Commands Provider
-        registerProvider(NativeCommandProvider(workspaceManager, environmentManager, processManager))
+        // Register Native Commands Provider with Package Manager integration
+        registerProvider(NativeCommandProvider(workspaceManager, environmentManager, processManager, packageManager))
     }
 
     fun registerProvider(provider: ExecutionProvider) {

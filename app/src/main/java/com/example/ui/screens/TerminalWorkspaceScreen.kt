@@ -13,8 +13,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,146 +59,112 @@ fun TerminalWorkspaceScreen(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
-
     var currentInput by remember { mutableStateOf("") }
     val lines = remember {
         mutableStateListOf<TerminalLine>().apply {
             add(
                 TerminalLine(
-                    text = "WASTI RUNTIME ENVIRONMENT (WRE) v1.0.0 [Android Native]",
+                    text = "WASTI RUNTIME ENVIRONMENT (WRE) v1.1.0 [Android Native]",
                     type = TerminalLineType.SYSTEM
                 )
             )
             add(
                 TerminalLine(
-                    text = "Workspace: /home/wasti (Type 'help' for commands, 'status' for runtime capabilities)",
+                    text = "Workspace: /home/wasti (Type 'help', 'wre pkg list', 'status' for commands)",
                     type = TerminalLineType.SYSTEM
                 )
             )
         }
     }
-
     val history = remember { mutableStateListOf<String>() }
     var historyIndex by remember { mutableIntStateOf(-1) }
     var isExecuting by remember { mutableStateOf(false) }
-    var activePid by remember { mutableStateOf<String?>(null) }
-    var currentWorkingDir by remember { mutableStateOf("/home/wasti") }
+    var currentWorkingDir by remember { mutableStateOf("home/wasti") }
 
-    fun executeTerminalCommand(rawCommand: String) {
-        val trimmed = rawCommand.trim()
+    // Stage 9C: Dynamic Autocompletions
+    val suggestions = remember(currentInput, currentWorkingDir) {
+        wreManager.autocompleteEngine.getSuggestions(currentInput, currentWorkingDir)
+    }
+
+    fun submitCommand(cmd: String) {
+        val trimmed = cmd.trim()
         if (trimmed.isEmpty()) return
+
+        if (trimmed.equals("clear", ignoreCase = true)) {
+            lines.clear()
+            lines.add(
+                TerminalLine(
+                    text = "WASTI RUNTIME ENVIRONMENT (WRE) v1.1.0 [Android Native]",
+                    type = TerminalLineType.SYSTEM
+                )
+            )
+            currentInput = ""
+            return
+        }
 
         history.add(trimmed)
         historyIndex = -1
 
         lines.add(
             TerminalLine(
-                text = "wasti@local:$currentWorkingDir$ $trimmed",
+                text = "wasti@local:/$currentWorkingDir$ $trimmed",
                 type = TerminalLineType.INPUT
             )
         )
 
-        val parts = trimmed.split("\\s+".toRegex())
-        val cmd = parts.firstOrNull()?.lowercase() ?: ""
-
-        if (cmd == "clear") {
-            lines.clear()
-            currentInput = ""
-            return
-        }
-
-        if (cmd == "cd") {
-            val target = if (parts.size > 1) parts[1] else "/home/wasti"
-            val resolved = wreManager.workspaceManager.resolve(target)
-            resolved.fold(
-                onSuccess = { dir ->
-                    if (dir.exists() && dir.isDirectory) {
-                        currentWorkingDir = wreManager.workspaceManager.getVirtualPath(dir)
-                        lines.add(
-                            TerminalLine(
-                                text = "Directory changed to $currentWorkingDir",
-                                type = TerminalLineType.SYSTEM,
-                                exitCode = 0,
-                                verified = true
-                            )
-                        )
-                    } else {
-                        lines.add(
-                            TerminalLine(
-                                text = "cd: ${target}: No such directory",
-                                type = TerminalLineType.ERROR,
-                                exitCode = 1
-                            )
-                        )
-                    }
-                },
-                onFailure = {
-                    lines.add(
-                        TerminalLine(
-                            text = "cd: Access denied: ${it.message}",
-                            type = TerminalLineType.ERROR,
-                            exitCode = 1
-                        )
-                    )
-                }
-            )
-            currentInput = ""
-            return
-        }
-
+        currentInput = ""
         isExecuting = true
+
         coroutineScope.launch {
-            try {
-                val req = ExecutionRequest(
-                    command = trimmed,
-                    workingDirectory = currentWorkingDir,
-                    initiatedBy = "terminal_ui"
-                )
-                val res = wreManager.execute(req)
+            val req = ExecutionRequest(
+                command = trimmed,
+                workingDirectory = currentWorkingDir,
+                initiatedBy = "TerminalWorkspaceUI"
+            )
+            val result = wreManager.execute(req)
 
-                if (res.stdout.isNotBlank()) {
-                    lines.add(
-                        TerminalLine(
-                            text = res.stdout,
-                            type = TerminalLineType.OUTPUT,
-                            exitCode = res.exitCode,
-                            verified = res.verified,
-                            verificationEvidence = res.verificationEvidence
-                        )
-                    )
-                }
+            // Update currentWorkingDir if it was a cd command
+            if (trimmed.startsWith("cd") && result.exitCode == 0 && result.stdout.contains("Working directory: ")) {
+                val newDir = result.stdout.substringAfter("Working directory: ").trim().removePrefix("/")
+                currentWorkingDir = newDir
+            }
 
-                if (res.stderr.isNotBlank()) {
-                    lines.add(
-                        TerminalLine(
-                            text = res.stderr,
-                            type = TerminalLineType.ERROR,
-                            exitCode = res.exitCode
-                        )
-                    )
-                }
-
+            if (result.stdout.isNotBlank()) {
                 lines.add(
                     TerminalLine(
-                        text = "[Process ${res.executionId} completed with exit code ${res.exitCode} in ${res.durationMs}ms - Status: ${res.status}]",
-                        type = if (res.exitCode == 0) TerminalLineType.SUCCESS else TerminalLineType.ERROR,
-                        exitCode = res.exitCode,
-                        verified = res.verified,
-                        verificationEvidence = res.verificationEvidence
+                        text = result.stdout,
+                        type = if (result.exitCode == 0) TerminalLineType.OUTPUT else TerminalLineType.ERROR,
+                        exitCode = result.exitCode,
+                        verified = result.verified,
+                        verificationEvidence = result.verificationEvidence
                     )
                 )
-            } catch (e: Exception) {
+            }
+
+            if (result.stderr.isNotBlank()) {
                 lines.add(
                     TerminalLine(
-                        text = "Execution error: ${e.localizedMessage}",
+                        text = result.stderr,
                         type = TerminalLineType.ERROR,
-                        exitCode = 1
+                        exitCode = result.exitCode
                     )
                 )
-            } finally {
-                isExecuting = false
-                currentInput = ""
-                listState.animateScrollToItem((lines.size - 1).coerceAtLeast(0))
+            }
+
+            if (result.verified && result.verificationEvidence != null) {
+                lines.add(
+                    TerminalLine(
+                        text = "✓ Verified: ${result.verificationEvidence} (${result.durationMs}ms)",
+                        type = TerminalLineType.SUCCESS,
+                        verified = true,
+                        verificationEvidence = result.verificationEvidence
+                    )
+                )
+            }
+
+            isExecuting = false
+            if (lines.isNotEmpty()) {
+                listState.animateScrollToItem(lines.size - 1)
             }
         }
     }
@@ -206,234 +173,249 @@ fun TerminalWorkspaceScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(10.dp)
-                                .clip(CircleShape)
-                                .background(if (isExecuting) Color(0xFFF59E0B) else Color(0xFF10B981))
+                    Column {
+                        Text(
+                            "WRE Terminal Workspace",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                        Column {
-                            Text(
-                                text = "Wasti Terminal",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            )
-                            Text(
-                                text = "WRE Engine • $currentWorkingDir",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 11.sp
-                                )
-                            )
-                        }
+                        Text(
+                            "wasti@local:/$currentWorkingDir",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = {
-                            val allText = lines.joinToString("\n") { it.text }
-                            clipboardManager.setText(AnnotatedString(allText))
-                        },
-                        modifier = Modifier.testTag("terminal_copy_all_btn")
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy Terminal Output")
+                    IconButton(onClick = {
+                        val allText = lines.joinToString("\n") { it.text }
+                        clipboardManager.setText(AnnotatedString(allText))
+                    }) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy Log",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    IconButton(
-                        onClick = { lines.clear() },
-                        modifier = Modifier.testTag("terminal_clear_btn")
-                    ) {
-                        Icon(Icons.Default.DeleteSweep, contentDescription = "Clear Terminal")
+                    IconButton(onClick = {
+                        lines.clear()
+                        lines.add(
+                            TerminalLine(
+                                text = "Terminal cleared.",
+                                type = TerminalLineType.SYSTEM
+                            )
+                        )
+                    }) {
+                        Icon(
+                            Icons.Default.DeleteOutline,
+                            contentDescription = "Clear",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF0F172A),
-                    titleContentColor = Color(0xFFF8FAFC),
-                    actionIconContentColor = Color(0xFF94A3B8)
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         },
-        bottomBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0B1120))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .navigationBarsPadding()
-                    .imePadding()
-            ) {
-                // Quick Action Bar
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    val quickCmds = listOf("help", "pwd", "ls", "status", "env", "ps", "jobs", "clear")
-                    quickCmds.forEach { qCmd ->
-                        SuggestionChip(
-                            onClick = {
-                                currentInput = qCmd
-                                executeTerminalCommand(qCmd)
-                            },
-                            label = {
-                                Text(
-                                    text = qCmd,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF38BDF8)
-                                )
-                            },
-                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = Color(0xFF1E293B)
-                            ),
-                            border = null,
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.height(28.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Input Command Field
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "$",
-                        color = Color(0xFF10B981),
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-
-                    OutlinedTextField(
-                        value = currentInput,
-                        onValueChange = { currentInput = it },
-                        placeholder = {
-                            Text(
-                                text = "Enter WRE command (e.g. ls, mkdir, echo, status)...",
-                                color = Color(0xFF64748B),
-                                fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("terminal_input_field"),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = Color(0xFFF8FAFC),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp
-                        ),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions.Default.copy(
-                            imeAction = ImeAction.Send
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (currentInput.isNotBlank() && !isExecuting) {
-                                    executeTerminalCommand(currentInput)
-                                }
-                            }
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color(0xFF1E293B),
-                            unfocusedContainerColor = Color(0xFF0F172A),
-                            focusedBorderColor = Color(0xFF38BDF8),
-                            unfocusedBorderColor = Color(0xFF334155),
-                            cursorColor = Color(0xFF38BDF8)
-                        )
-                    )
-
-                    if (isExecuting) {
-                        IconButton(
-                            onClick = {
-                                activePid?.let { wreManager.processManager.killProcess(it) }
-                                isExecuting = false
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFFEF4444))
-                                .testTag("terminal_cancel_btn")
-                        ) {
-                            Icon(
-                                Icons.Default.Stop,
-                                contentDescription = "Cancel Execution",
-                                tint = Color.White
-                            )
-                        }
-                    } else {
-                        IconButton(
-                            onClick = {
-                                if (currentInput.isNotBlank()) {
-                                    executeTerminalCommand(currentInput)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF2563EB))
-                                .testTag("terminal_send_btn")
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Execute Command",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        containerColor = Color(0xFF0F141C)
     ) { paddingValues ->
-        LazyColumn(
-            state = listState,
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .background(Color(0xFF050811))
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .background(Color(0xFF0F141C))
         ) {
-            items(lines, key = { it.id }) { line ->
-                val textColor = when (line.type) {
-                    TerminalLineType.INPUT -> Color(0xFF38BDF8)
-                    TerminalLineType.OUTPUT -> Color(0xFFE2E8F0)
-                    TerminalLineType.ERROR -> Color(0xFFF87171)
-                    TerminalLineType.SYSTEM -> Color(0xFF94A3B8)
-                    TerminalLineType.SUCCESS -> Color(0xFF34D399)
-                }
-
-                Column(modifier = Modifier.padding(vertical = 2.dp)) {
-                    Text(
-                        text = line.text,
-                        color = textColor,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.5.sp,
-                        lineHeight = 18.sp
+            // Quick Command Chips
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "help", "wre pkg list", "sysinfo", "status",
+                    "ls -la", "pwd", "jobs", "ps", "env", "clear"
+                ).forEach { chipCmd ->
+                    SuggestionChip(
+                        onClick = { submitCommand(chipCmd) },
+                        label = {
+                            Text(
+                                chipCmd,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF90CAF9)
+                            )
+                        },
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = Color(0xFF1E293B)
+                        ),
+                        border = SuggestionChipDefaults.suggestionChipBorder(
+                            enabled = true,
+                            borderColor = Color(0xFF334155)
+                        )
                     )
+                }
+            }
 
-                    if (line.verified && line.verificationEvidence != null) {
+            HorizontalDivider(color = Color(0xFF1E293B))
+
+            // Terminal Output Buffer
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                items(lines, key = { it.id }) { line ->
+                    TerminalLineItem(line)
+                }
+            }
+
+            // Autocomplete Suggestions Row (Stage 9C)
+            if (suggestions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF161F2E))
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    suggestions.take(8).forEach { suggestion ->
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF253347),
+                            modifier = Modifier.clickable {
+                                val tokens = WreCommandParser.tokenize(currentInput)
+                                if (tokens.size <= 1 && !currentInput.endsWith(" ")) {
+                                    currentInput = "${suggestion.text} "
+                                } else {
+                                    val lastToken = tokens.lastOrNull() ?: ""
+                                    currentInput = currentInput.removeSuffix(lastToken) + suggestion.text
+                                }
+                            }
+                        ) {
+                            Text(
+                                text = suggestion.displayText,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (suggestion.isCommand) Color(0xFF4ADE80) else Color(0xFF60A5FA),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            HorizontalDivider(color = Color(0xFF1E293B))
+
+            // Command Prompt & Input Bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF161F2E))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = ">",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF38BDF8),
+                    fontSize = 16.sp,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+
+                TextField(
+                    value = currentInput,
+                    onValueChange = { currentInput = it },
+                    placeholder = {
                         Text(
-                            text = "✓ Verified: ${line.verificationEvidence}",
-                            color = Color(0xFF10B981).copy(alpha = 0.8f),
+                            "Type command or script (e.g. sysinfo, ls | grep txt)",
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 10.5.sp,
-                            modifier = Modifier.padding(start = 8.dp, top = 1.dp)
+                            fontSize = 13.sp,
+                            color = Color(0xFF64748B)
+                        )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("terminal_input_field"),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Monospace,
+                        color = Color(0xFFF1F5F9),
+                        fontSize = 13.sp
+                    ),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { submitCommand(currentInput) }),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = Color(0xFF38BDF8)
+                    )
+                )
+
+                if (isExecuting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = Color(0xFF38BDF8)
+                    )
+                } else {
+                    IconButton(
+                        onClick = { submitCommand(currentInput) },
+                        modifier = Modifier.testTag("terminal_send_button")
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Run Command",
+                            tint = if (currentInput.isNotBlank()) Color(0xFF38BDF8) else Color(0xFF475569)
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun TerminalLineItem(line: TerminalLine) {
+    val textColor = when (line.type) {
+        TerminalLineType.INPUT -> Color(0xFF38BDF8)
+        TerminalLineType.OUTPUT -> Color(0xFFE2E8F0)
+        TerminalLineType.ERROR -> Color(0xFFF87171)
+        TerminalLineType.SYSTEM -> Color(0xFF94A3B8)
+        TerminalLineType.SUCCESS -> Color(0xFF4ADE80)
+    }
+
+    val prefix = when (line.type) {
+        TerminalLineType.SYSTEM -> "[SYSTEM] "
+        TerminalLineType.ERROR -> "[ERROR] "
+        else -> ""
+    }
+
+    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+        Text(
+            text = "$prefix${line.text}",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 12.sp,
+            color = textColor,
+            lineHeight = 16.sp
+        )
     }
 }

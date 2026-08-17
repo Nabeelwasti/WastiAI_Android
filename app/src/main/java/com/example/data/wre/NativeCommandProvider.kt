@@ -6,138 +6,237 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Stage 9A: Native File & System Commands Provider
- * Implements real, secure filesystem & terminal operations within WastiWorkspace without external Termux.
+ * Stage 9C: Enhanced Native Command Provider with Piping, File Redirection, and Package Management
  */
 class NativeCommandProvider(
     private val workspaceManager: WreWorkspaceManager,
     private val environmentManager: WreEnvironmentManager,
-    private val processManager: WreProcessManager
+    private val processManager: WreProcessManager,
+    private val packageManager: WrePackageManager? = null
 ) : ExecutionProvider {
 
-    override val name: String = "NativeCommandProvider"
+    override val name: String = "WastiNativeExecutionProvider"
 
     override val supportedCommands: Set<String> = setOf(
-        "pwd", "ls", "cd", "mkdir", "touch", "cat", "echo", "rm", "cp", "mv",
-        "find", "grep", "clear", "env", "which", "ps", "jobs", "kill", "status",
-        "history", "help", "whoami", "uname", "date", "df"
+        "pwd", "cd", "ls", "mkdir", "touch", "cat", "echo", "rm", "cp", "mv",
+        "grep", "find", "env", "which", "date", "whoami", "uname", "status",
+        "ps", "jobs", "kill", "help", "clear", "wre", "python", "node"
     )
 
     override suspend fun canExecute(request: ExecutionRequest): Boolean {
-        val baseCmd = request.command.trim().split("\\s+".toRegex()).firstOrNull()?.lowercase() ?: return false
-        return supportedCommands.contains(baseCmd)
+        val trimmed = request.command.trim()
+        if (trimmed.isEmpty()) return false
+        // Support piped lines or package commands
+        if (trimmed.contains("|")) return true
+        val cmd = trimmed.split("\\s+".toRegex())[0]
+        return supportedCommands.contains(cmd) || 
+               packageManager?.getPackage(cmd) != null ||
+               isExecutableScriptInBin(cmd)
+    }
+
+    private fun isExecutableScriptInBin(cmd: String): Boolean {
+        val binDir = workspaceManager.getDirectory("bin").getOrNull() ?: return false
+        val script = File(binDir, cmd)
+        return script.exists() && script.isFile
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult {
         val startTime = System.currentTimeMillis()
-        val parts = request.command.trim().split("\\s+".toRegex())
-        val cmd = parts.firstOrNull()?.lowercase() ?: ""
-        val args = if (parts.size > 1) parts.subList(1, parts.size) else request.arguments
+        val rawCommand = request.command.trim()
 
-        val workingDirResult = workspaceManager.resolve(request.workingDirectory)
-        val workingDir = workingDirResult.getOrElse {
+        // Handle UNIX-style Piping if pipe operator is present
+        if (rawCommand.contains("|")) {
+            return executePipeline(rawCommand, request, startTime)
+        }
+
+        val tokens = WreCommandParser.tokenize(rawCommand)
+        if (tokens.isEmpty()) {
             return ExecutionResult(
                 executionId = request.executionId,
                 command = request.command,
-                exitCode = 1,
+                exitCode = 0,
                 stdout = "",
-                stderr = "Invalid working directory: ${it.message}",
-                durationMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus.FAILED
+                stderr = "",
+                durationMs = 0L,
+                status = ExecutionStatus.SUCCESS,
+                verified = true
             )
         }
 
+        val cmd = tokens[0]
+        val args = if (tokens.size > 1) tokens.subList(1, tokens.size) else request.arguments
+
+        return executeSingleCommand(cmd, args, request, startTime, stdin = null)
+    }
+
+    private fun executePipeline(pipelineCmd: String, request: ExecutionRequest, startTime: Long): ExecutionResult {
+        val stages = WreCommandParser.parsePipeline(pipelineCmd)
+        var currentInput: String? = null
+        var lastResult: ExecutionResult? = null
+
+        for (stage in stages) {
+            val res = executeSingleCommand(
+                cmd = stage.executable,
+                args = stage.args,
+                request = request.copy(command = stage.raw),
+                startTime = System.currentTimeMillis(),
+                stdin = currentInput
+            )
+            lastResult = res
+            if (res.exitCode != 0) {
+                // Pipeline broken by failure
+                return res.copy(
+                    command = pipelineCmd,
+                    durationMs = System.currentTimeMillis() - startTime
+                )
+            }
+            currentInput = res.stdout
+        }
+
+        return lastResult?.copy(
+            command = pipelineCmd,
+            durationMs = System.currentTimeMillis() - startTime
+        ) ?: ExecutionResult(
+            executionId = request.executionId,
+            command = pipelineCmd,
+            exitCode = 0,
+            stdout = currentInput ?: "",
+            stderr = "",
+            durationMs = System.currentTimeMillis() - startTime,
+            status = ExecutionStatus.SUCCESS,
+            verified = true
+        )
+    }
+
+    private fun executeSingleCommand(
+        cmd: String,
+        args: List<String>,
+        request: ExecutionRequest,
+        startTime: Long,
+        stdin: String?
+    ): ExecutionResult {
         val stdout = StringBuilder()
         val stderr = StringBuilder()
         var exitCode = 0
         var verified = false
         var verificationEvidence: String? = null
 
+        val workingDirResult = workspaceManager.resolve(request.workingDirectory)
+        val workingDir = workingDirResult.getOrNull() ?: workspaceManager.getRootDirectory()
+
+        // Check if command is a dynamic package or bin script
+        val installedPkg = packageManager?.getPackage(cmd)
+        if (installedPkg != null) {
+            val scriptFile = workspaceManager.resolve(installedPkg.entryPoint).getOrNull()
+            if (scriptFile != null && scriptFile.exists()) {
+                val scriptContent = scriptFile.readText()
+                return executeScriptContent(scriptContent, installedPkg.runtime, args, request, startTime, stdin)
+            }
+        } else if (isExecutableScriptInBin(cmd)) {
+            val binDir = workspaceManager.getDirectory("bin").getOrNull()
+            val scriptFile = if (binDir != null) File(binDir, cmd) else null
+            if (scriptFile != null && scriptFile.exists()) {
+                return executeScriptContent(scriptFile.readText(), "sh", args, request, startTime, stdin)
+            }
+        }
+
         when (cmd) {
             "pwd" -> {
-                stdout.append(workspaceManager.getVirtualPath(workingDir))
+                val vpath = workspaceManager.getVirtualPath(workingDir)
+                stdout.append(vpath)
                 exitCode = 0
                 verified = true
-                verificationEvidence = "Resolved path: ${workingDir.canonicalPath}"
+                verificationEvidence = "Resolved path: $vpath"
             }
-            "whoami" -> {
-                stdout.append(environmentManager.getVariable("USER") ?: "wasti")
-                exitCode = 0
-                verified = true
-            }
-            "date" -> {
-                val sdf = SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy", Locale.US)
-                stdout.append(sdf.format(Date()))
-                exitCode = 0
-                verified = true
-            }
-            "uname" -> {
-                stdout.append("WastiOS 1.0.0-STAGE9 Android-Arm64 WRE")
-                exitCode = 0
-                verified = true
-            }
-            "env" -> {
-                val envs = environmentManager.getAllVariables()
-                envs.forEach { (k, v) ->
-                    stdout.append("$k=$v\n")
+
+            "cd" -> {
+                val targetPath = if (args.isEmpty()) "home/wasti" else args[0]
+                val newTarget = if (targetPath == "~" || targetPath.isEmpty()) {
+                    "home/wasti"
+                } else if (targetPath.startsWith("/")) {
+                    targetPath.removePrefix("/")
+                } else if (targetPath == "..") {
+                    val parent = workingDir.parentFile
+                    if (parent != null && parent.canonicalPath.startsWith(workspaceManager.getRootDirectory().canonicalPath)) {
+                        workspaceManager.getVirtualPath(parent).removePrefix("/")
+                    } else {
+                        workspaceManager.getVirtualPath(workingDir).removePrefix("/")
+                    }
+                } else {
+                    "${workspaceManager.getVirtualPath(workingDir).removePrefix("/")}/$targetPath"
                 }
-                exitCode = 0
-                verified = true
+
+                val resolveRes = workspaceManager.resolve(newTarget)
+                resolveRes.fold(
+                    onSuccess = { dir ->
+                        if (dir.exists() && dir.isDirectory) {
+                            val vpath = workspaceManager.getVirtualPath(dir)
+                            stdout.append("Working directory: $vpath")
+                            exitCode = 0
+                            verified = true
+                            verificationEvidence = "Directory verified: $vpath"
+                        } else {
+                            stderr.append("cd: ${args.firstOrNull() ?: targetPath}: No such directory")
+                            exitCode = 1
+                        }
+                    },
+                    onFailure = {
+                        stderr.append("cd: access denied '${it.message}'")
+                        exitCode = 1
+                    }
+                )
             }
-            "status" -> {
-                val report = environmentManager.getCapabilityReport()
-                stdout.append("=== WASTI RUNTIME ENVIRONMENT (WRE) ===\n")
-                report.forEach { (k, v) ->
-                    stdout.append(String.format("%-20s: %s\n", k, v))
-                }
-                exitCode = 0
-                verified = true
-            }
+
             "ls" -> {
-                val target = if (args.isNotEmpty() && !args[0].startsWith("-")) {
-                    workspaceManager.resolve(args[0]).getOrElse { workingDir }
+                val showHidden = args.contains("-a") || args.contains("-la")
+                val longListing = args.contains("-l") || args.contains("-la")
+                val pathArg = args.lastOrNull { !it.startsWith("-") }
+                val targetDir = if (pathArg != null) {
+                    workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$pathArg").getOrNull()
                 } else {
                     workingDir
                 }
-                if (target.exists() && target.isDirectory) {
-                    val files = target.listFiles()?.sortedBy { it.name } ?: emptyList()
-                    if (files.isEmpty()) {
-                        stdout.append("(empty directory)")
-                    } else {
-                        files.forEach { f ->
-                            val prefix = if (f.isDirectory) "[DIR]  " else "[FILE] "
-                            val size = if (f.isFile) " (${f.length()} bytes)" else ""
-                            stdout.append("$prefix${f.name}$size\n")
+
+                if (targetDir == null || !targetDir.exists() || !targetDir.isDirectory) {
+                    stderr.append("ls: cannot access '${pathArg ?: "."}': No such file or directory")
+                    exitCode = 1
+                } else {
+                    val files = targetDir.listFiles() ?: emptyArray()
+                    val filtered = files.filter { showHidden || !it.name.startsWith(".") }.sortedBy { it.name }
+
+                    if (longListing) {
+                        filtered.forEach { f ->
+                            val type = if (f.isDirectory) "d" else "-"
+                            val size = f.length()
+                            val date = SimpleDateFormat("MMM dd HH:mm", Locale.US).format(Date(f.lastModified()))
+                            stdout.append(String.format("%s %8d %s %s\n", type, size, date, f.name))
                         }
+                    } else {
+                        stdout.append(filtered.joinToString("  ") { if (it.isDirectory) "${it.name}/" else it.name })
                     }
                     exitCode = 0
                     verified = true
-                    verificationEvidence = "Listed ${files.size} items in ${target.name}"
-                } else {
-                    stderr.append("ls: cannot access '${target.name}': No such directory")
-                    exitCode = 1
+                    verificationEvidence = "Listed ${filtered.size} items from disk"
                 }
             }
+
             "mkdir" -> {
                 if (args.isEmpty()) {
                     stderr.append("mkdir: missing operand")
                     exitCode = 1
                 } else {
-                    val dirName = args[0]
-                    val target = if (File(dirName).isAbsolute) {
-                        workspaceManager.resolve(dirName)
-                    } else {
-                        workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$dirName")
-                    }
+                    val path = args[0]
+                    val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$path")
                     target.fold(
                         onSuccess = { dir ->
-                            if (dir.mkdirs() || dir.exists()) {
-                                stdout.append("Created directory: ${workspaceManager.getVirtualPath(dir)}")
+                            val created = dir.mkdirs()
+                            if (created || dir.exists()) {
+                                stdout.append("Created: ${workspaceManager.getVirtualPath(dir)}")
                                 exitCode = 0
                                 verified = dir.exists() && dir.isDirectory
-                                verificationEvidence = "Directory verified on disk: ${dir.canonicalPath}"
+                                verificationEvidence = "Directory confirmed on disk: ${dir.canonicalPath}"
                             } else {
-                                stderr.append("mkdir: cannot create directory '${dirName}'")
+                                stderr.append("mkdir: cannot create directory '$path'")
                                 exitCode = 1
                             }
                         },
@@ -148,17 +247,18 @@ class NativeCommandProvider(
                     )
                 }
             }
+
             "touch" -> {
                 if (args.isEmpty()) {
                     stderr.append("touch: missing file operand")
                     exitCode = 1
                 } else {
-                    val fileName = args[0]
-                    val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileName")
+                    val path = args[0]
+                    val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$path")
                     target.fold(
                         onSuccess = { file ->
+                            file.parentFile?.mkdirs()
                             if (!file.exists()) {
-                                file.parentFile?.mkdirs()
                                 file.createNewFile()
                             } else {
                                 file.setLastModified(System.currentTimeMillis())
@@ -175,6 +275,7 @@ class NativeCommandProvider(
                     )
                 }
             }
+
             "echo" -> {
                 val fullText = args.joinToString(" ")
                 if (fullText.contains(">")) {
@@ -208,10 +309,17 @@ class NativeCommandProvider(
                     verified = true
                 }
             }
+
             "cat" -> {
                 if (args.isEmpty()) {
-                    stderr.append("cat: missing file operand")
-                    exitCode = 1
+                    if (stdin != null) {
+                        stdout.append(stdin)
+                        exitCode = 0
+                        verified = true
+                    } else {
+                        stderr.append("cat: missing file operand")
+                        exitCode = 1
+                    }
                 } else {
                     val fileName = args[0]
                     val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileName")
@@ -234,6 +342,35 @@ class NativeCommandProvider(
                     )
                 }
             }
+
+            "grep" -> {
+                if (args.isEmpty()) {
+                    stderr.append("grep: search pattern required")
+                    exitCode = 1
+                } else {
+                    val pattern = args[0]
+                    val fileArg = if (args.size > 1) args[1] else null
+                    val inputLines = when {
+                        fileArg != null -> {
+                            val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileArg").getOrNull()
+                            if (target != null && target.exists() && target.isFile) target.readLines() else null
+                        }
+                        stdin != null -> stdin.lines()
+                        else -> null
+                    }
+
+                    if (inputLines == null) {
+                        stderr.append("grep: no input source or file not found")
+                        exitCode = 1
+                    } else {
+                        val matched = inputLines.filter { it.contains(pattern, ignoreCase = true) }
+                        stdout.append(matched.joinToString("\n"))
+                        exitCode = 0
+                        verified = true
+                    }
+                }
+            }
+
             "rm" -> {
                 if (args.isEmpty()) {
                     stderr.append("rm: missing operand")
@@ -267,6 +404,150 @@ class NativeCommandProvider(
                     )
                 }
             }
+
+            "wre" -> {
+                if (args.isEmpty()) {
+                    stdout.append("WRE Package & Runtime Manager. Usage: wre pkg <list|install|remove> | wre status | wre env")
+                    exitCode = 0
+                    verified = true
+                } else when (args[0]) {
+                    "pkg" -> {
+                        val subAction = if (args.size > 1) args[1] else "list"
+                        when (subAction) {
+                            "list" -> {
+                                val pkgs = packageManager?.listPackages() ?: emptyList()
+                                stdout.append(String.format("%-16s %-8s %-8s %s\n", "NAME", "VERSION", "RUNTIME", "DESCRIPTION"))
+                                stdout.append("----------------------------------------------------------------------\n")
+                                pkgs.forEach { p ->
+                                    stdout.append(String.format("%-16s %-8s %-8s %s\n", p.name, p.version, p.runtime, p.description))
+                                }
+                                exitCode = 0
+                                verified = true
+                            }
+                            "install" -> {
+                                if (args.size < 3) {
+                                    stderr.append("wre pkg install: usage: wre pkg install <pkg_name> [script_path]")
+                                    exitCode = 1
+                                } else {
+                                    val pkgName = args[2]
+                                    val entryPath = if (args.size > 3) args[3] else "bin/$pkgName"
+                                    val success = packageManager?.installLocalPackage(
+                                        WrePackage(
+                                            name = pkgName,
+                                            version = "1.0.0",
+                                            description = "Installed via WRE Package Manager",
+                                            runtime = "sh",
+                                            entryPoint = entryPath
+                                        )
+                                    ) ?: false
+                                    if (success) {
+                                        stdout.append("Package '$pkgName' installed successfully and registered in ToolRegistry.")
+                                        exitCode = 0
+                                        verified = true
+                                        verificationEvidence = "WrePackage metadata written & ToolRegistry synced"
+                                    } else {
+                                        stderr.append("Failed to install package '$pkgName'")
+                                        exitCode = 1
+                                    }
+                                }
+                            }
+                            "remove" -> {
+                                if (args.size < 3) {
+                                    stderr.append("wre pkg remove: usage: wre pkg remove <pkg_name>")
+                                    exitCode = 1
+                                } else {
+                                    val pkgName = args[2]
+                                    val removed = packageManager?.removePackage(pkgName) ?: false
+                                    if (removed) {
+                                        stdout.append("Package '$pkgName' removed.")
+                                        exitCode = 0
+                                        verified = true
+                                    } else {
+                                        stderr.append("Package '$pkgName' not found")
+                                        exitCode = 1
+                                    }
+                                }
+                            }
+                            else -> {
+                                stderr.append("Unknown pkg action: $subAction")
+                                exitCode = 1
+                            }
+                        }
+                    }
+                    "status" -> {
+                        stdout.append(
+                            """
+                            === WRE RUNTIME STATUS ===
+                            Architecture: Native Multi-Provider
+                            Workspace: /home/wasti
+                            Active Processes: ${processManager.listActiveProcesses().size}
+                            Jobs in Queue: ${processManager.listJobs().size}
+                            Installed Packages: ${packageManager?.listPackages()?.size ?: 0}
+                            ToolRegistry Integration: Synchronized
+                            """.trimIndent()
+                        )
+                        exitCode = 0
+                        verified = true
+                    }
+                    "env" -> {
+                        val envVars = environmentManager.getAll()
+                        stdout.append(envVars.entries.joinToString("\n") { "${it.key}=${it.value}" })
+                        exitCode = 0
+                        verified = true
+                    }
+                    else -> {
+                        stderr.append("Unknown wre option: ${args[0]}")
+                        exitCode = 1
+                    }
+                }
+            }
+
+            "env" -> {
+                val envVars = environmentManager.getAll()
+                stdout.append(envVars.entries.joinToString("\n") { "${it.key}=${it.value}" })
+                exitCode = 0
+                verified = true
+            }
+
+            "date" -> {
+                stdout.append(SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy", Locale.US).format(Date()))
+                exitCode = 0
+                verified = true
+            }
+
+            "whoami" -> {
+                stdout.append("wasti")
+                exitCode = 0
+                verified = true
+            }
+
+            "uname" -> {
+                if (args.contains("-a")) {
+                    stdout.append("Linux wasti-ai-os 5.10.0-android-native aarch64 Android")
+                } else {
+                    stdout.append("Linux")
+                }
+                exitCode = 0
+                verified = true
+            }
+
+            "status" -> {
+                val activeProcs = processManager.listActiveProcesses().size
+                val activeJobs = processManager.listJobs().size
+                val pkgs = packageManager?.listPackages()?.size ?: 0
+                stdout.append(
+                    """
+                    WRE Native Runtime: OPERATIONAL
+                    Virtual Workspace: /home/wasti
+                    Active Processes: $activeProcs
+                    Background Jobs: $activeJobs
+                    Installed Packages: $pkgs
+                    """.trimIndent()
+                )
+                exitCode = 0
+                verified = true
+            }
+
             "ps" -> {
                 val processes = processManager.listActiveProcesses()
                 stdout.append(String.format("%-12s %-10s %-12s %s\n", "PID", "STATUS", "PROVIDER", "COMMAND"))
@@ -277,6 +558,7 @@ class NativeCommandProvider(
                 exitCode = 0
                 verified = true
             }
+
             "jobs" -> {
                 val jobs = processManager.listJobs()
                 stdout.append(String.format("%-12s %-10s %-20s %s\n", "JOB ID", "STATUS", "NAME", "BG"))
@@ -287,6 +569,7 @@ class NativeCommandProvider(
                 exitCode = 0
                 verified = true
             }
+
             "kill" -> {
                 if (args.isEmpty()) {
                     stderr.append("kill: usage: kill <PID>")
@@ -304,21 +587,26 @@ class NativeCommandProvider(
                     }
                 }
             }
+
             "help" -> {
                 stdout.append(
                     """
-                    WASTI RUNTIME ENVIRONMENT (WRE) SHELL v1.0.0
+                    WASTI RUNTIME ENVIRONMENT (WRE) SHELL v1.1.0
                     Built-in native commands:
                       pwd, cd, ls, mkdir, touch, cat, echo, rm, cp, mv, grep, find
                       env, which, date, whoami, uname, status, ps, jobs, kill, help, clear
-                    Language Providers:
-                      python <script.py | -c 'code'>
-                      node <script.js | -e 'code'>
+                    Package & Dynamic Tool Manager:
+                      wre pkg list                     - List installed dynamic tools
+                      wre pkg install <name> <script>  - Register executable into ToolRegistry
+                      wre pkg remove <name>           - Remove dynamic package
+                    Features:
+                      Piping (|), Redirection (>, >>), Dynamic Tool Discovery
                     """.trimIndent()
                 )
                 exitCode = 0
                 verified = true
             }
+
             else -> {
                 stderr.append("wsh: command not found: $cmd")
                 exitCode = 127
@@ -327,7 +615,6 @@ class NativeCommandProvider(
 
         val duration = System.currentTimeMillis() - startTime
         val status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED
-
         return ExecutionResult(
             executionId = request.executionId,
             command = request.command,
@@ -338,6 +625,58 @@ class NativeCommandProvider(
             status = status,
             verified = verified,
             verificationEvidence = verificationEvidence
+        )
+    }
+
+    private fun executeScriptContent(
+        content: String,
+        runtime: String,
+        args: List<String>,
+        request: ExecutionRequest,
+        startTime: Long,
+        stdin: String?
+    ): ExecutionResult {
+        val stdout = StringBuilder()
+        val stderr = StringBuilder()
+        var exitCode = 0
+
+        // Parse script line-by-line executing sandboxed shell commands
+        val lines = content.lines()
+        for (line in lines) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue
+
+            // Evaluate simple echo/cat/status inside script
+            val tokens = WreCommandParser.tokenize(trimmed)
+            if (tokens.isNotEmpty()) {
+                val res = executeSingleCommand(
+                    cmd = tokens[0],
+                    args = if (tokens.size > 1) tokens.subList(1, tokens.size) else emptyList(),
+                    request = request.copy(command = trimmed),
+                    startTime = System.currentTimeMillis(),
+                    stdin = stdin
+                )
+                if (res.stdout.isNotBlank()) stdout.append(res.stdout).append("\n")
+                if (res.stderr.isNotBlank()) stderr.append(res.stderr).append("\n")
+                if (res.exitCode != 0) {
+                    exitCode = res.exitCode
+                    break
+                }
+            }
+        }
+
+        val duration = System.currentTimeMillis() - startTime
+        val status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED
+        return ExecutionResult(
+            executionId = request.executionId,
+            command = request.command,
+            exitCode = exitCode,
+            stdout = stdout.toString().trimEnd(),
+            stderr = stderr.toString().trimEnd(),
+            durationMs = duration,
+            status = status,
+            verified = exitCode == 0,
+            verificationEvidence = "Script executed via WRE $runtime runtime"
         )
     }
 }
