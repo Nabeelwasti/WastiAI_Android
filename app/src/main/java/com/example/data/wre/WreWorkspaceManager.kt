@@ -9,28 +9,40 @@ import java.io.File
  * Maps virtual POSIX paths (/home/wasti/...) to sandboxed app-internal storage.
  * Prevents path traversal and guarantees safe execution boundaries.
  */
-class WreWorkspaceManager(private val context: Context) {
+class WreWorkspaceManager(context: Context) {
 
-    val rootDir: File = File(context.filesDir, "wasti_workspace").apply {
+    val rootDir: File = File(context.filesDir, "WastiWorkspace").apply {
         if (!exists()) mkdirs()
     }
 
+    val standardFolders = listOf(
+        "home/wasti",
+        "home/wasti/bin",
+        "home/wasti/src",
+        "home/wasti/data",
+        "home/wasti/logs",
+        "tmp",
+        "etc",
+        "projects",
+        "scripts",
+        "downloads",
+        "outputs",
+        "cache",
+        "config"
+    )
+
     init {
         // Initialize standard virtual filesystem hierarchy
-        listOf(
-            "home/wasti",
-            "home/wasti/bin",
-            "home/wasti/src",
-            "home/wasti/data",
-            "home/wasti/logs",
-            "tmp",
-            "etc"
-        ).forEach { path ->
-            File(rootDir, path).mkdirs()
+        for (folder in standardFolders) {
+            File(rootDir, folder).mkdirs()
         }
     }
 
+    fun getRootPath(): String = rootDir.canonicalPath
+
     fun getRootDirectory(): File = rootDir
+
+    fun getHomeDirectory(): File = File(rootDir, "home/wasti").canonicalFile
 
     fun getDirectory(subPath: String): Result<File> {
         val dir = File(rootDir, subPath.removePrefix("/"))
@@ -45,15 +57,19 @@ class WreWorkspaceManager(private val context: Context) {
      * Rejects path traversal attacks (e.g. "../../../etc/shadow")
      */
     fun resolve(virtualPath: String): Result<File> {
-        val sanitized = virtualPath.trim()
-            .removePrefix("/")
-            .replace("\\", "/")
-        val target = File(rootDir, sanitized).canonicalFile
-        val rootCanonical = rootDir.canonicalPath
-        return if (target.canonicalPath.startsWith(rootCanonical)) {
-            Result.success(target)
-        } else {
-            Result.failure(SecurityException("Access Denied: Path traversal outside sandbox detected ($virtualPath)"))
+        return try {
+            val sanitized = virtualPath.trim()
+                .removePrefix("/")
+                .replace("\\", "/")
+            val target = File(rootDir, sanitized).canonicalFile
+            val rootCanonical = rootDir.canonicalPath
+            if (target.canonicalPath.startsWith(rootCanonical)) {
+                Result.success(target)
+            } else {
+                Result.failure(SecurityException("Access Denied: Path traversal outside sandbox detected ($virtualPath)"))
+            }
+        } catch (e: Exception) {
+            Result.failure(SecurityException("Failed to resolve workspace path: ${e.message}", e))
         }
     }
 
@@ -61,10 +77,10 @@ class WreWorkspaceManager(private val context: Context) {
         val rootCanonical = rootDir.canonicalPath
         val fileCanonical = file.canonicalPath
         return if (fileCanonical.startsWith(rootCanonical)) {
-            val relative = fileCanonical.removePrefix(rootCanonical)
-            if (relative.isEmpty()) "/" else relative
+            val relative = fileCanonical.removePrefix(rootCanonical).removePrefix("/")
+            if (relative.isEmpty()) "/" else "/$relative"
         } else {
-            "/external/${file.name}"
+            fileCanonical.name
         }
     }
 }
