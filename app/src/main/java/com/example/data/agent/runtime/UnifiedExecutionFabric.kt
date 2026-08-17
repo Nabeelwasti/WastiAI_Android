@@ -7,6 +7,7 @@ import com.example.data.memory.MemoryManager
 import com.example.data.memory.model.MemorySearchQuery
 import com.example.data.ops.WebSearchEngine
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -90,25 +91,30 @@ class UnifiedExecutionFabric(
     private val customExecutors = ConcurrentHashMap<String, UnifiedExecutor>()
     private val activeExecutionHashes = ConcurrentHashMap.newKeySet<String>()
 
+    private fun normalizedCapabilityId(capabilityId: String): String =
+        capabilityId.trim().lowercase(Locale.ROOT)
+
     companion object {
         @Volatile
         private var defaultInstance: UnifiedExecutionFabric? = null
 
         val instance: UnifiedExecutionFabric
-            get() = defaultInstance ?: synchronized(this) {
-                defaultInstance ?: UnifiedExecutionFabric().also { defaultInstance = it }
-            }
+            get() = getInstance()
 
-        fun getInstance(context: Context? = null): UnifiedExecutionFabric {
-            return defaultInstance ?: synchronized(this) {
-                defaultInstance ?: UnifiedExecutionFabric(appContext = context).also { defaultInstance = it }
+        /**
+         * The first supplied application context becomes the process-wide default.
+         * Callers may still pass an explicit context to execute() for a specific action.
+         */
+        fun getInstance(context: Context? = null): UnifiedExecutionFabric =
+            defaultInstance ?: synchronized(this) {
+                defaultInstance ?: UnifiedExecutionFabric(appContext = context)
+                    .also { defaultInstance = it }
             }
-        }
     }
 
     fun registerExecutor(executor: UnifiedExecutor) {
-        for (cap in executor.supportedCapabilities) {
-            customExecutors[cap.lowercase()] = executor
+        for (capability in executor.supportedCapabilities) {
+            customExecutors[normalizedCapabilityId(capability)] = executor
         }
     }
 
@@ -120,47 +126,57 @@ class UnifiedExecutionFabric(
         val taskId = TaskId(request.taskId)
         val ctx = context ?: appContext ?: WastiApplication.instance
 
-        val reqHash = "${request.taskId}:${request.actionId}"
-        if (!activeExecutionHashes.add(reqHash)) {
+        if (request.timeoutMs <= 0L) {
             return createResult(
                 request = request,
                 status = UnifiedExecutionStatus.FAILED,
-                output = "Duplicate execution rejected for action ${request.actionId}",
-                error = "DUPLICATE_EXECUTION_BLOCKED",
+                output = "Execution timeout must be greater than zero.",
+                error = "Invalid timeoutMs: ${request.timeoutMs}",
                 executor = "UnifiedExecutionFabric",
                 startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
+            )
+        }
+
+        // This protects only the same in-flight task/action/capability identity.
+        // Separate actions and tasks can run concurrently.
+        val reqHash = "${request.taskId}:${request.actionId}:${normalizedCapabilityId(request.capabilityId)}"
+        if (!activeExecutionHashes.add(reqHash)) {
+            val completedAt = System.currentTimeMillis()
+            eventBus?.emit(AgentEvent.TaskFailed(taskId, "Duplicate execution request rejected"))
+            return UnifiedExecutionResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = UnifiedExecutionStatus.FAILED,
+                output = "Error: Duplicate execution request detected.",
+                error = "Duplicate execution request for hash $reqHash",
+                executor = "UnifiedExecutionFabric",
+                startedAt = startedAt,
+                completedAt = completedAt,
                 verificationStatus = UnifiedVerificationStatus.FAILED,
-                verificationEvidence = "Blocked by duplicate execution guard"
+                verificationEvidence = "Duplicate request blocked"
             )
         }
 
         try {
-            // 1. Reality Registry Pre-Execution Check
+            // 2. Capability Reality Check
             val reality = realityRegistry.getCapabilityReality(request.capabilityId)
-            eventBus?.emit(
-                AgentEvent.CapabilityChecked(
-                    taskId = taskId,
-                    capability = request.capabilityId,
-                    isAvailable = reality.executionStatus == CapabilityExecutionStatus.OPERATIONAL
-                )
-            )
-
-            // 2. Truthful Reality State Routing
             when (reality.realityState) {
                 CapabilityRealityState.UNAVAILABLE -> {
-                    eventBus?.emit(AgentEvent.CapabilityUnavailable(taskId, request.capabilityId, "Capability not present in current runtime"))
+                    eventBus?.emit(AgentEvent.CapabilityUnavailable(taskId, request.capabilityId, "Capability reality state is UNAVAILABLE"))
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.UNAVAILABLE,
-                        output = "Capability '${request.capabilityId}' is UNAVAILABLE in current runtime.",
-                        error = "Capability '${request.capabilityId}' state: UNAVAILABLE (${reality.limitations.joinToString()})",
+                        output = "Capability '${request.capabilityId}' is currently unavailable on this device/environment.",
+                        error = "Capability '${request.capabilityId}' state: UNAVAILABLE",
                         executor = "CapabilityRealityRegistry",
                         startedAt = startedAt,
                         verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
                     )
                 }
                 CapabilityRealityState.AUTHENTICATION_REQUIRED -> {
-                    eventBus?.emit(AgentEvent.WaitingForUser(taskId, "Authentication required for ${request.capabilityId}"))
+                    eventBus?.emit(AgentEvent.Authenticating(taskId, request.capabilityId))
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.AUTHENTICATION_REQUIRED,
@@ -182,7 +198,58 @@ class UnifiedExecutionFabric(
                         verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
                     )
                 }
+                CapabilityRealityState.FAILED -> {
+                    return createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "Capability '${request.capabilityId}' is currently in a failed state.",
+                        error = "Capability reality state: FAILED",
+                        executor = "CapabilityRealityRegistry",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+                    )
+                }
+                CapabilityRealityState.QUOTA_EXHAUSTED -> {
+                    return createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.WAITING,
+                        output = "Capability '${request.capabilityId}' is temporarily unavailable because its quota is exhausted.",
+                        error = "Capability reality state: QUOTA_EXHAUSTED",
+                        executor = "CapabilityRealityRegistry",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+                    )
+                }
                 else -> { /* proceed */ }
+            }
+
+            if (
+                reality.authenticationStatus == CapabilityAuthStatus.REQUIRED_NOT_PROVIDED ||
+                reality.authenticationStatus == CapabilityAuthStatus.EXPIRED
+            ) {
+                eventBus?.emit(AgentEvent.Authenticating(taskId, request.capabilityId))
+                return createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.AUTHENTICATION_REQUIRED,
+                    output = "Authentication is required to execute '${request.capabilityId}'.",
+                    error = "Capability authentication state: ${reality.authenticationStatus}",
+                    executor = "CapabilityRealityRegistry",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
+                )
+            }
+
+            if (reality.executionStatus == CapabilityExecutionStatus.UNAVAILABLE) {
+                eventBus?.emit(AgentEvent.CapabilityUnavailable(taskId, request.capabilityId, "Capability execution is unavailable"))
+                return createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.UNAVAILABLE,
+                    output = "Capability '${request.capabilityId}' cannot execute in the current environment.",
+                    error = "Capability execution status: UNAVAILABLE",
+                    executor = "CapabilityRealityRegistry",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
+                )
             }
 
             if (reality.executionStatus == CapabilityExecutionStatus.BLOCKED_BY_POLICY) {
@@ -244,7 +311,7 @@ class UnifiedExecutionFabric(
             eventBus?.emit(AgentEvent.ToolStarted(taskId, request.capabilityId))
 
             val rawExecResult = withTimeoutOrNull(request.timeoutMs) {
-                val customExec = customExecutors[request.capabilityId.lowercase()]
+                val customExec = customExecutors[normalizedCapabilityId(request.capabilityId)]
                 if (customExec != null) {
                     customExec.execute(request, ctx)
                 } else {
@@ -263,37 +330,52 @@ class UnifiedExecutionFabric(
                 verificationEvidence = "Timeout exceeded"
             )
 
-            // 6. Post-Execution Observation & Verification Pipeline
+            // 6. Observation Phase
             val obsRequest = ObservationRequest(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
-                expectedOutcome = request.parameters["expectedOutcome"]?.toString() ?: ""
+                expectedOutcome = request.parameters["expectedOutcome"]?.toString() ?: "",
+                observationStrategy = ObservationStrategy.SCREEN_SCRAPE,
+                timeoutMs = request.timeoutMs
             )
             val obsResult = observationEngine.observe(obsRequest, ctx, execResult)
+            eventBus?.emit(AgentEvent.ObservationReceived(taskId, obsResult.evidence))
 
+            // 7. Verification Phase
             val verRequest = VerificationRequest(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
-                expectedOutcome = request.parameters["expectedOutcome"]?.toString() ?: "",
+                expectedOutcome = obsRequest.expectedOutcome,
                 executionResult = execResult,
                 observationResult = obsResult
             )
             val verResult = verificationEngine.verify(verRequest)
 
-            val (finalStatus, finalVerStatus) = when (verResult.status) {
-                ActionVerificationStatus.VERIFIED -> Pair(UnifiedExecutionStatus.VERIFIED, UnifiedVerificationStatus.VERIFIED)
-                ActionVerificationStatus.FAILED -> Pair(UnifiedExecutionStatus.FAILED, UnifiedVerificationStatus.FAILED)
-                ActionVerificationStatus.VERIFICATION_UNAVAILABLE -> {
-                    val fallbackStatus = if (execResult.status == UnifiedExecutionStatus.VERIFIED || execResult.status == UnifiedExecutionStatus.COMPLETED) {
-                        UnifiedExecutionStatus.COMPLETED
+            // 8. Final Result Assembly with Truthful Status Mapping
+            val finalStatus = when (verResult.status) {
+                ActionVerificationStatus.VERIFIED -> {
+                    if (execResult.status == UnifiedExecutionStatus.COMPLETED) UnifiedExecutionStatus.VERIFIED else execResult.status
+                }
+                ActionVerificationStatus.FAILED -> {
+                    if (execResult.status == UnifiedExecutionStatus.COMPLETED || execResult.status == UnifiedExecutionStatus.VERIFIED) {
+                        UnifiedExecutionStatus.VERIFICATION_FAILED
                     } else {
                         execResult.status
                     }
-                    Pair(fallbackStatus, UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE)
                 }
-                else -> Pair(execResult.status, execResult.verificationStatus)
+                ActionVerificationStatus.VERIFICATION_UNAVAILABLE, ActionVerificationStatus.NOT_VERIFIABLE -> {
+                    execResult.status
+                }
+                ActionVerificationStatus.UNKNOWN -> execResult.status
+            }
+
+            val finalVerStatus = when (verResult.status) {
+                ActionVerificationStatus.VERIFIED -> UnifiedVerificationStatus.VERIFIED
+                ActionVerificationStatus.FAILED -> UnifiedVerificationStatus.FAILED
+                ActionVerificationStatus.VERIFICATION_UNAVAILABLE, ActionVerificationStatus.NOT_VERIFIABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
+                ActionVerificationStatus.UNKNOWN -> UnifiedVerificationStatus.UNVERIFIED
             }
 
             val finalResult = execResult.copy(
@@ -316,43 +398,58 @@ class UnifiedExecutionFabric(
     ): UnifiedExecutionResult {
         val startedAt = System.currentTimeMillis()
         val ctx = context ?: appContext ?: WastiApplication.instance
-        val capId = request.capabilityId.lowercase().trim()
-        val action = request.parameters["action"]?.toString()?.lowercase()?.trim() ?: capId
+        val capId = normalizedCapabilityId(request.capabilityId)
+        val action = request.parameters["action"]?.toString()
+            ?.lowercase(Locale.ROOT)
+            ?.trim()
+            ?: capId
 
         return when {
-            capId == "device_control" || capId.startsWith("device_") || capId in listOf("open_app", "send_whatsapp", "whatsapp", "send_email", "email", "send_sms", "sms", "read_screen", "simulate_tap") -> {
-                executeDeviceControl(request, action, ctx, startedAt)
-            }
-            capId == "memory_search" || capId == "memory" -> {
+            capId == "device_control" || capId.startsWith("device_") ||
+                capId in listOf(
+                    "open_app", "send_whatsapp", "whatsapp", "send_email", "email",
+                    "send_sms", "sms", "read_screen", "readscreen", "simulate_tap",
+                    "tap", "click_element"
+                ) -> executeDeviceControl(request, action, ctx, startedAt)
+
+            capId == "memory_search" || capId == "memory" ->
                 executeMemorySearch(request, startedAt)
-            }
-            capId == "search_web" || capId == "read_web_page" || capId == "b2b_xray_search" -> {
-                executeWebOperations(request, capId, ctx, startedAt)
-            }
-            capId == "files" || capId == "read_file" || capId == "write_file" || capId == "list_files" -> {
+
+            capId in listOf("system_info", "system", "inspect_environment", "environment", "status") ->
+                executeSystemInfo(request, ctx, startedAt)
+
+            capId in listOf("search_web", "read_web_page", "b2b_xray_search") ->
+                executeWebOperations(request, if (action in setOf("search_web", "read_web_page", "b2b_xray_search")) action else capId, ctx, startedAt)
+
+            capId in listOf("files", "read_file", "write_file", "list_files", "delete_file") ->
                 executeFileOperations(request, capId, ctx, startedAt)
-            }
-            capId == "terminal" || capId == "execute_code" || capId == "execute_command" || capId == "run_script" || capId == "sh" || capId == "cmd" || capId == "python" || capId == "node" || capId == "npm" -> {
-                executeTerminalOperations(request, capId, ctx, startedAt)
-            }
-            capId == "project_dev_manager" || capId == "create_project" || capId == "create_managed_project" || capId == "inspect_project" || capId == "list_projects" || capId == "delete_project" || capId == "scan_languages" || capId == "get_language_profile" || capId == "project" || capId == "dev_environment" -> {
-                executeProjectDevManager(request, action, ctx, startedAt)
-            }
-            capId == "build_project" || capId == "compile_project" || capId == "build" || capId == "compile" || capId == "build_manager" -> {
-                executeBuildManager(request, ctx, startedAt)
-            }
-            capId == "test_project" || capId == "run_tests" || capId == "test" || capId == "test_runner" -> {
-                executeTestRunner(request, ctx, startedAt)
-            }
-            capId == "debug_project" || capId == "analyze_diagnostics" || capId == "debug" || capId == "debug_diagnostics" -> {
-                executeDiagnostics(request, ctx, startedAt)
-            }
-            capId == "package_manager" || capId == "resolve_package" || capId == "install_package" -> {
-                executePackageManager(request, ctx, startedAt)
-            }
-            capId == "wasti_sandbox" || capId == "sandbox" -> {
-                executeSandbox(request, ctx, startedAt)
-            }
+
+            capId in listOf(
+                "project_dev_manager", "create_project", "create_managed_project",
+                "inspect_project", "list_projects", "delete_project", "scan_languages",
+                "get_language_profile", "dev_environment", "project"
+            ) -> executeProjectOperations(request, ctx, startedAt)
+
+            capId in listOf("build_project", "build", "compile_project", "compile", "build_manager") ->
+                executeBuildOperations(request, ctx, startedAt)
+
+            capId in listOf("test_project", "test", "run_tests", "test_runner") ->
+                executeTestOperations(request, ctx, startedAt)
+
+            capId in listOf("debug_project", "debug", "analyze_diagnostics", "debug_diagnostics") ->
+                executeDiagnosticOperations(request, ctx, startedAt)
+
+            capId in listOf("package_manager", "resolve_package", "install_package") ->
+                executePackageOperations(request, ctx, startedAt)
+
+            capId in listOf("wasti_sandbox", "sandbox") ->
+                executeSandboxOperations(request, ctx, startedAt)
+
+            capId in listOf(
+                "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",
+                "bash", "python", "python3", "python_runtime", "node", "nodejs",
+                "node_runtime", "javascript", "npm"
+            ) -> executeTerminalOperations(request, capId, ctx, startedAt)
             else -> {
                 createResult(
                     request = request,
@@ -469,7 +566,7 @@ class UnifiedExecutionFabric(
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.UNAVAILABLE,
-                        output = "Context unavailable for email dispatch.",
+                        output = "Context unavailable for Email execution.",
                         error = "Null Context in sendEmail",
                         executor = "WastiDeviceController",
                         startedAt = startedAt,
@@ -477,7 +574,7 @@ class UnifiedExecutionFabric(
                     )
                 }
                 val res = WastiDeviceController.sendEmail(ctx, target, subject, content)
-                val emStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                val emailStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
                 return createResult(
                     request = request,
                     status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
@@ -485,7 +582,7 @@ class UnifiedExecutionFabric(
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = emStatus,
+                    verificationStatus = emailStatus,
                     verificationEvidence = "Email intent dispatched"
                 )
             }
@@ -494,7 +591,7 @@ class UnifiedExecutionFabric(
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.FAILED,
-                        output = "Error: SMS recipient phone number required.",
+                        output = "Error: SMS recipient required.",
                         error = "Missing recipient for send_sms",
                         executor = "WastiDeviceController",
                         startedAt = startedAt,
@@ -505,7 +602,7 @@ class UnifiedExecutionFabric(
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.UNAVAILABLE,
-                        output = "Context unavailable for SMS dispatch.",
+                        output = "Context unavailable for SMS execution.",
                         error = "Null Context in sendSMS",
                         executor = "WastiDeviceController",
                         startedAt = startedAt,
@@ -525,43 +622,43 @@ class UnifiedExecutionFabric(
                     verificationEvidence = "SMS intent dispatched"
                 )
             }
-            "read_screen" -> {
-                val screenSummary = WastiDeviceController.readScreenContent(ctx)
-                val isServiceActive = !screenSummary.contains("Accessibility Service Inactive")
+            "read_screen", "readscreen" -> {
+                val resText = WastiDeviceController.readScreenContent(ctx)
+                val isInactive = resText.contains("Accessibility Service Inactive") || resText.isBlank()
                 return createResult(
                     request = request,
-                    status = if (isServiceActive) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.UNAVAILABLE,
-                    output = screenSummary,
-                    error = if (isServiceActive) null else "Accessibility Service Inactive",
+                    status = if (isInactive) UnifiedExecutionStatus.UNAVAILABLE else UnifiedExecutionStatus.VERIFIED,
+                    output = resText,
+                    error = if (isInactive) "Wasti Accessibility Service is inactive" else null,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (isServiceActive) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE,
-                    verificationEvidence = "Screen scraped text nodes"
+                    verificationStatus = if (isInactive) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.VERIFIED,
+                    verificationEvidence = if (isInactive) "Accessibility Service inactive" else "Screen node layout scraped"
                 )
             }
-            "simulate_tap", "click_element" -> {
-                val targetElem = params["targetElement"]?.toString() ?: target
-                if (targetElem.isBlank()) {
+            "simulate_tap", "tap", "click_element" -> {
+                val elementId = params["targetElement"]?.toString() ?: target
+                if (elementId.isBlank()) {
                     return createResult(
                         request = request,
                         status = UnifiedExecutionStatus.FAILED,
-                        output = "Error: Target element label or ID required.",
-                        error = "Missing targetElement for simulate_tap",
+                        output = "Error: Target element required for simulate_tap.",
+                        error = "Missing targetElement parameter",
                         executor = "WastiDeviceController",
                         startedAt = startedAt,
                         verificationStatus = UnifiedVerificationStatus.FAILED
                     )
                 }
-                val tapRes = WastiDeviceController.simulateTap(ctx, targetElem)
+                val res = WastiDeviceController.simulateTap(ctx, elementId)
                 return createResult(
                     request = request,
-                    status = if (tapRes.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
-                    output = tapRes.userFeedback,
-                    error = if (tapRes.success) null else tapRes.userFeedback,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (tapRes.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-                    verificationEvidence = tapRes.actionType
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
                 )
             }
             else -> {
@@ -610,6 +707,27 @@ class UnifiedExecutionFabric(
             startedAt = startedAt,
             verificationStatus = UnifiedVerificationStatus.VERIFIED,
             verificationEvidence = "Found ${results.size} memory items"
+        )
+    }
+
+    private fun executeSystemInfo(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val osInfo = "Android OS ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}), Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        val memoryInfo = "Runtime max memory: ${Runtime.getRuntime().maxMemory() / (1024 * 1024)} MB, free: ${Runtime.getRuntime().freeMemory() / (1024 * 1024)} MB"
+        val totalCaps = realityRegistry.getSystemRealityReport().size
+        val output = "Wasti OS Environment Reality:\n- $osInfo\n- $memoryInfo\n- Registered capabilities: $totalCaps\n- UnifiedExecutionFabric active."
+
+        return createResult(
+            request = request,
+            status = UnifiedExecutionStatus.VERIFIED,
+            output = output,
+            executor = "WastiEnvironmentInspector",
+            startedAt = startedAt,
+            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationEvidence = "Environment reality verified via UnifiedExecutionFabric"
         )
     }
 
@@ -670,58 +788,449 @@ class UnifiedExecutionFabric(
         context: Context?,
         startedAt: Long
     ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request = request,
-            status = UnifiedExecutionStatus.UNAVAILABLE,
-            output = "Context unavailable for file operations",
-            error = "Null context",
-            executor = "WorkspaceManager",
-            startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.FAILED
-        )
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for workspace file operation.",
+                error = "Null Context in executeFileOperations",
+                executor = "WorkspaceManager",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
         val wm = WorkspaceManager(ctx)
-        val action = request.parameters["action"]?.toString() ?: op
-        val path = request.parameters["path"]?.toString() ?: ""
+        val path = request.parameters["path"]?.toString() ?: request.parameters["filePath"]?.toString() ?: ""
         val content = request.parameters["content"]?.toString() ?: ""
 
+        val action = request.parameters["action"]?.toString()
+            ?.lowercase(Locale.ROOT)
+            ?.trim()
+            ?: op
+
+        val resultStr: String
+        val isSuccess: Boolean
+        val errorMsg: String?
+
+        when (action) {
+            "read_file", "read" -> {
+                val readRes = wm.readFile(path)
+                isSuccess = readRes.isSuccess
+                resultStr = readRes.getOrNull() ?: ""
+                errorMsg = readRes.exceptionOrNull()?.message
+            }
+            "write_file", "write", "modify_file" -> {
+                val writeRes = wm.writeFile(path, content)
+                isSuccess = writeRes.isSuccess
+                resultStr = if (isSuccess) "Successfully wrote ${content.length} characters to $path" else ""
+                errorMsg = writeRes.exceptionOrNull()?.message
+            }
+            "list_files", "list" -> {
+                val listRes = wm.listDirectory(path)
+                isSuccess = listRes.isSuccess
+                resultStr = listRes.getOrNull()?.joinToString("\n") ?: ""
+                errorMsg = listRes.exceptionOrNull()?.message
+            }
+            else -> {
+                return createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.NOT_IMPLEMENTED,
+                    output = "No WorkspaceManager executor is registered for file action '$action'.",
+                    error = "Unsupported file action: $action",
+                    executor = "WorkspaceManager",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
+                )
+            }
+        }
+
+        return createResult(
+            request = request,
+            status = if (isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+            output = if (isSuccess) resultStr else (errorMsg ?: "File operation failed"),
+            error = errorMsg,
+            executor = "WorkspaceManager",
+            startedAt = startedAt,
+            verificationStatus = if (isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = if (isSuccess) "Workspace operation verified" else (errorMsg ?: "Failed")
+        )
+    }
+
+    private fun executeProjectOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for project operation.",
+                error = "Null Context in executeProjectOperations",
+                executor = "WastiLanguagePlatform",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val platform = WastiLanguagePlatform(ctx)
+        val action = request.parameters["action"]?.toString()
+            ?.lowercase(Locale.ROOT)
+            ?.trim()
+            ?: when (normalizedCapabilityId(request.capabilityId)) {
+                "project_dev_manager", "project", "dev_environment" -> "create_project"
+                else -> normalizedCapabilityId(request.capabilityId)
+            }
+        val projName = request.parameters["projectName"]?.toString() ?: "wasti_project"
+        val language = request.parameters["language"]?.toString() ?: "PYTHON"
+        val template = request.parameters["template"]?.toString() ?: "default"
+
         return when (action) {
-            "read_file" -> {
-                val res = wm.readFile(path)
-                if (res.isSuccess) {
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, res.getOrThrow(), null, "WorkspaceManager", startedAt, UnifiedVerificationStatus.VERIFIED, "Read ${path}")
+            "create_project", "scaffold" -> {
+                val createRes = platform.createProject(
+                    ProjectCreationRequest(
+                        projectName = projName,
+                        language = language,
+                        template = template
+                    )
+                )
+                createResult(
+                    request = request,
+                    status = if (createRes.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = createRes.message,
+                    error = if (createRes.isSuccess) null else createRes.message,
+                    executor = "WastiLanguagePlatform",
+                    startedAt = startedAt,
+                    verificationStatus = if (createRes.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Project files created: ${createRes.createdFiles.size}"
+                )
+            }
+            "create_managed_project" -> {
+                val pm = WastiProjectManager(ctx)
+                val createRes = pm.createManagedProject(
+                    name = projName,
+                    language = language,
+                    template = template
+                )
+                if (createRes.isSuccess) {
+                    val meta = createRes.getOrThrow()
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.VERIFIED,
+                        output = "Managed project '${meta.name}' created at ${meta.relativePath}",
+                        executor = "WastiProjectManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationEvidence = "Project created: ${meta.projectId}"
+                    )
                 } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.exceptionOrNull()?.message ?: "Read error", res.exceptionOrNull()?.message, "WorkspaceManager", startedAt, UnifiedVerificationStatus.FAILED)
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = createRes.exceptionOrNull()?.message ?: "Project creation failed",
+                        error = createRes.exceptionOrNull()?.message,
+                        executor = "WastiProjectManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
                 }
             }
-            "write_file" -> {
-                val res = wm.writeFile(path, content)
-                if (res.isSuccess) {
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, "Wrote ${content.length} chars to $path", null, "WorkspaceManager", startedAt, UnifiedVerificationStatus.VERIFIED, "File write verified")
+            "inspect_project" -> {
+                val pm = WastiProjectManager(ctx)
+                val inspRes = pm.inspectProject(projName)
+                if (inspRes.isSuccess) {
+                    val insp = inspRes.getOrThrow()
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.VERIFIED,
+                        output = "Project '${projName}': Language=${insp.detectedLanguage}, Files=${insp.totalFiles}, BuildTool=${insp.detectedBuildTool}",
+                        executor = "WastiProjectManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationEvidence = "Files inspected: ${insp.totalFiles}"
+                    )
                 } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.exceptionOrNull()?.message ?: "Write error", res.exceptionOrNull()?.message, "WorkspaceManager", startedAt, UnifiedVerificationStatus.FAILED)
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = inspRes.exceptionOrNull()?.message ?: "Inspection failed",
+                        error = inspRes.exceptionOrNull()?.message,
+                        executor = "WastiProjectManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
                 }
             }
-            "list_files" -> {
-                val res = wm.listDirectory(path)
-                if (res.isSuccess) {
-                    val listStr = res.getOrThrow().joinToString("\n")
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, listStr, null, "WorkspaceManager", startedAt, UnifiedVerificationStatus.VERIFIED, "Listed files")
+            "list_projects" -> {
+                val pm = WastiProjectManager(ctx)
+                val projects = pm.listProjects()
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.VERIFIED,
+                    output = if (projects.isEmpty()) "No projects found in workspace." else "Projects (${projects.size}): ${projects.joinToString(", ")}",
+                    executor = "WastiProjectManager",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                    verificationEvidence = "Projects listed: ${projects.size}"
+                )
+            }
+            "delete_project" -> {
+                val pm = WastiProjectManager(ctx)
+                val deleted = pm.deleteProject(projName)
+                createResult(
+                    request = request,
+                    status = if (deleted) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = if (deleted) "Project '$projName' deleted from workspace." else "Project '$projName' not found or could not be deleted.",
+                    executor = "WastiProjectManager",
+                    startedAt = startedAt,
+                    verificationStatus = if (deleted) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                )
+            }
+            "get_language_profile", "scan_languages" -> {
+                val profile = platform.getProfile(language)
+                if (profile != null) {
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.VERIFIED,
+                        output = "Language Profile [${profile.displayName}]: Runtime=${profile.runtimeState}, Compiler=${profile.compilerState}, Execution=${profile.executionState}, Reality=${profile.realityState}",
+                        executor = "WastiLanguagePlatform",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationEvidence = "Language profile retrieved"
+                    )
                 } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.exceptionOrNull()?.message ?: "List error", res.exceptionOrNull()?.message, "WorkspaceManager", startedAt, UnifiedVerificationStatus.FAILED)
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "Language '$language' not recognized",
+                        error = "Unknown language",
+                        executor = "WastiLanguagePlatform",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
                 }
             }
             else -> {
                 createResult(
                     request = request,
-                    status = UnifiedExecutionStatus.VERIFIED,
-                    output = "Workspace file operation '$action' executed.",
-                    executor = "WorkspaceManager",
+                    status = UnifiedExecutionStatus.FAILED,
+                    output = "Unsupported project action '$action'",
+                    error = "Unsupported project action",
+                    executor = "WastiLanguagePlatform",
                     startedAt = startedAt,
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
-                    verificationEvidence = "File operation verified"
+                    verificationStatus = UnifiedVerificationStatus.FAILED
                 )
             }
         }
+    }
+
+    private suspend fun executeBuildOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for build operation.",
+                error = "Null Context in executeBuildOperations",
+                executor = "WastiBuildAndTestManager",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val btm = WastiBuildAndTestManager(ctx)
+        val projId = request.parameters["projectId"]?.toString() ?: "wasti_project"
+        val projPath = request.parameters["projectPath"]?.toString() ?: "projects/$projId"
+        val language = request.parameters["language"]?.toString() ?: "PYTHON"
+
+        val buildRes = btm.buildProject(
+            BuildRequest(
+                projectId = projId,
+                projectPath = projPath,
+                language = language
+            )
+        )
+
+        val status = when (buildRes.status) {
+            BuildStatus.SUCCESS -> UnifiedExecutionStatus.VERIFIED
+            BuildStatus.TOOLCHAIN_MISSING, BuildStatus.DEPENDENCY_MISSING -> UnifiedExecutionStatus.UNAVAILABLE
+            else -> UnifiedExecutionStatus.FAILED
+        }
+
+        return createResult(
+            request = request,
+            status = status,
+            output = if (buildRes.stdout.isNotBlank()) buildRes.stdout else buildRes.stderr,
+            error = if (buildRes.status == BuildStatus.SUCCESS) null else buildRes.stderr,
+            executor = "WastiBuildAndTestManager",
+            startedAt = startedAt,
+            verificationStatus = if (buildRes.status == BuildStatus.SUCCESS) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = buildRes.verificationState
+        )
+    }
+
+    private suspend fun executeTestOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for test operation.",
+                error = "Null Context in executeTestOperations",
+                executor = "WastiBuildAndTestManager",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val btm = WastiBuildAndTestManager(ctx)
+        val projId = request.parameters["projectId"]?.toString() ?: "wasti_project"
+        val projPath = request.parameters["projectPath"]?.toString() ?: "projects/$projId"
+        val language = request.parameters["language"]?.toString() ?: "PYTHON"
+
+        val report = btm.runTests(projId, projPath, language)
+        val isPass = report.status == TestExecutionStatus.PASSED
+
+        return createResult(
+            request = request,
+            status = if (isPass) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+            output = "Tests Run: ${report.totalTests}, Passed: ${report.passedTests}, Failed: ${report.failedTests}. ${report.stdout}",
+            error = if (isPass) null else report.stderr,
+            executor = "WastiBuildAndTestManager",
+            startedAt = startedAt,
+            verificationStatus = if (isPass) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = "PassedTests: ${report.passedTests}/${report.totalTests}"
+        )
+    }
+
+    private fun executeDiagnosticOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for diagnostic operation.",
+                error = "Null Context in executeDiagnosticOperations",
+                executor = "WastiBuildAndTestManager",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val btm = WastiBuildAndTestManager(ctx)
+        val projId = request.parameters["projectId"]?.toString() ?: "wasti_project"
+        val rawLogs = request.parameters["logs"]?.toString() ?: request.parameters["output"]?.toString() ?: ""
+
+        val diag = btm.analyzeDiagnostics(projId, rawLogs)
+        return createResult(
+            request = request,
+            status = UnifiedExecutionStatus.VERIFIED,
+            output = "Diagnostics for '$projId': Errors=${diag.totalErrors}, Warnings=${diag.totalWarnings}. ${diag.rootCauseSummary}",
+            executor = "WastiBuildAndTestManager",
+            startedAt = startedAt,
+            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationEvidence = "Findings: ${diag.findings.size}"
+        )
+    }
+
+    private fun executePackageOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for package operation.",
+                error = "Null Context in executePackageOperations",
+                executor = "WastiRuntimeManager",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val rm = WastiRuntimeManager(ctx)
+        val language = request.parameters["language"]?.toString() ?: "PYTHON"
+        val pkgName = request.parameters["packageName"]?.toString() ?: request.parameters["package"]?.toString() ?: ""
+
+        val res = rm.resolvePackage(language, pkgName)
+        val status = when (res.status) {
+            RuntimeRealityStatus.AVAILABLE -> UnifiedExecutionStatus.VERIFIED
+            RuntimeRealityStatus.NOT_INSTALLED, RuntimeRealityStatus.TOOLCHAIN_MISSING, RuntimeRealityStatus.UNAVAILABLE -> UnifiedExecutionStatus.UNAVAILABLE
+            else -> UnifiedExecutionStatus.FAILED
+        }
+
+        return createResult(
+            request = request,
+            status = status,
+            output = res.message,
+            error = if (res.isSuccess) null else res.message,
+            executor = "WastiRuntimeManager",
+            startedAt = startedAt,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = "Package ${res.packageName} state: ${res.status}"
+        )
+    }
+
+    private suspend fun executeSandboxOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Context unavailable for sandbox execution.",
+                error = "Null Context in executeSandboxOperations",
+                executor = "WastiSandbox",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+        val sandbox = WastiSandbox(ctx)
+        val cmd = request.parameters["command"]?.toString() ?: "sh"
+        val args = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+        val workDir = request.parameters["workingDirectory"]?.toString() ?: ""
+
+        val res = sandbox.executeInSandbox(
+            SandboxExecutionRequest(
+                command = cmd,
+                arguments = args,
+                workingDirectory = workDir
+            )
+        )
+
+        val isNotInstalled = res.stderr.contains("NOT_INSTALLED") || res.verificationState.contains("NOT_INSTALLED")
+        val status = when {
+            res.isSuccess -> UnifiedExecutionStatus.VERIFIED
+            res.isPolicyBlocked -> UnifiedExecutionStatus.FAILED
+            isNotInstalled -> UnifiedExecutionStatus.UNAVAILABLE
+            else -> UnifiedExecutionStatus.FAILED
+        }
+
+        return createResult(
+            request = request,
+            status = status,
+            output = if (res.stdout.isNotBlank()) res.stdout else res.stderr,
+            error = if (res.isSuccess) null else res.stderr,
+            executor = "WastiSandbox",
+            startedAt = startedAt,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = res.verificationState
+        )
     }
 
     private suspend fun executeTerminalOperations(
@@ -743,7 +1252,13 @@ class UnifiedExecutionFabric(
             )
         }
         val nativeProvider = WastiNativeExecutionProvider(ctx)
-        val cmd = request.parameters["command"]?.toString() ?: request.parameters["executable"]?.toString() ?: capId
+        val cmd = request.parameters["command"]?.toString()
+            ?: request.parameters["executable"]?.toString()
+            ?: when (capId) {
+                "python_runtime" -> "python3"
+                "node_runtime", "nodejs", "javascript" -> "node"
+                else -> capId
+            }
         val args = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
         val workDir = request.parameters["workingDirectory"]?.toString() ?: ""
         val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 10000L
@@ -770,214 +1285,6 @@ class UnifiedExecutionFabric(
             output = if (res.stdout.isNotBlank()) res.stdout else res.stderr,
             error = if (res.isSuccess) null else res.stderr,
             executor = "WastiNativeExecutionProvider",
-            startedAt = startedAt,
-            verificationStatus = verStatus,
-            verificationEvidence = res.verificationState
-        )
-    }
-
-    private fun executeProjectDevManager(
-        request: UnifiedExecutionRequest,
-        action: String,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiProjectManager", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val pm = WastiProjectManager(ctx)
-        val lp = WastiLanguagePlatform(ctx)
-        val name = request.parameters["projectName"]?.toString() ?: "NewProject"
-        val lang = request.parameters["language"]?.toString() ?: "PYTHON"
-        val template = request.parameters["template"]?.toString() ?: "default"
-        val desc = request.parameters["description"]?.toString() ?: ""
-        val deps = (request.parameters["dependencies"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-
-        return when (action) {
-            "create_project" -> {
-                val res = lp.createProject(ProjectCreationRequest(name, lang, template, desc, deps))
-                if (res.isSuccess) {
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, res.message, null, "WastiLanguagePlatform", startedAt, UnifiedVerificationStatus.VERIFIED, "Created ${res.createdFiles.size} files")
-                } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.message, res.message, "WastiLanguagePlatform", startedAt, UnifiedVerificationStatus.FAILED)
-                }
-            }
-            "create_managed_project" -> {
-                val res = pm.createManagedProject(name, lang, template, desc, deps)
-                if (res.isSuccess) {
-                    val meta = res.getOrThrow()
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, "Managed project '${meta.name}' created at ${meta.relativePath}", null, "WastiProjectManager", startedAt, UnifiedVerificationStatus.VERIFIED, "wasti_project.json initialized")
-                } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.exceptionOrNull()?.message ?: "Project creation error", res.exceptionOrNull()?.message, "WastiProjectManager", startedAt, UnifiedVerificationStatus.FAILED)
-                }
-            }
-            "inspect_project" -> {
-                val res = pm.inspectProject(name)
-                if (res.isSuccess) {
-                    val insp = res.getOrThrow()
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, "Project ${insp.metadata.name}: ${insp.detectedLanguage} (${insp.totalFiles} files, build: ${insp.detectedBuildTool})", null, "WastiProjectManager", startedAt, UnifiedVerificationStatus.VERIFIED, "Inspected project")
-                } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, res.exceptionOrNull()?.message ?: "Inspect error", res.exceptionOrNull()?.message, "WastiProjectManager", startedAt, UnifiedVerificationStatus.FAILED)
-                }
-            }
-            "list_projects" -> {
-                val list = pm.listProjects().joinToString("\n")
-                createResult(request, UnifiedExecutionStatus.VERIFIED, list.ifBlank { "No projects" }, null, "WastiProjectManager", startedAt, UnifiedVerificationStatus.VERIFIED, "Projects listed")
-            }
-            "delete_project" -> {
-                val ok = pm.deleteProject(name)
-                createResult(request, if (ok) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED, "Project '$name' deleted: $ok", null, "WastiProjectManager", startedAt, if (ok) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED)
-            }
-            "get_language_profile" -> {
-                val profile = lp.getProfile(lang)
-                if (profile != null) {
-                    createResult(request, UnifiedExecutionStatus.VERIFIED, "Language: ${profile.displayName}, Runtime=${profile.runtimeState}, Compiler=${profile.compilerState}", null, "WastiLanguagePlatform", startedAt, UnifiedVerificationStatus.VERIFIED)
-                } else {
-                    createResult(request, UnifiedExecutionStatus.FAILED, "Language '$lang' unknown", "Unknown language", "WastiLanguagePlatform", startedAt, UnifiedVerificationStatus.FAILED)
-                }
-            }
-            else -> {
-                val list = lp.getAllProfiles().map { "${it.displayName}: ${it.runtimeState}" }.joinToString("\n")
-                createResult(request, UnifiedExecutionStatus.VERIFIED, list, null, "WastiLanguagePlatform", startedAt, UnifiedVerificationStatus.VERIFIED)
-            }
-        }
-    }
-
-    private suspend fun executeBuildManager(
-        request: UnifiedExecutionRequest,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiBuildAndTestManager", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val bm = WastiBuildAndTestManager(ctx)
-        val pId = request.parameters["projectId"]?.toString() ?: "default"
-        val pPath = request.parameters["projectPath"]?.toString() ?: "projects/$pId"
-        val lang = request.parameters["language"]?.toString() ?: "PYTHON"
-
-        val res = bm.buildProject(BuildRequest(projectId = pId, projectPath = pPath, language = lang))
-        val status = if (res.status == BuildStatus.SUCCESS) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED
-        val verStatus = if (res.status == BuildStatus.SUCCESS) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
-
-        return createResult(
-            request = request,
-            status = status,
-            output = res.stdout.ifBlank { res.stderr },
-            error = if (res.status == BuildStatus.SUCCESS) null else res.stderr,
-            executor = "WastiBuildAndTestManager",
-            startedAt = startedAt,
-            verificationStatus = verStatus,
-            verificationEvidence = res.verificationState
-        )
-    }
-
-    private suspend fun executeTestRunner(
-        request: UnifiedExecutionRequest,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiBuildAndTestManager", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val bm = WastiBuildAndTestManager(ctx)
-        val pId = request.parameters["projectId"]?.toString() ?: "default"
-        val pPath = request.parameters["projectPath"]?.toString() ?: "projects/$pId"
-        val lang = request.parameters["language"]?.toString() ?: "PYTHON"
-
-        val res = bm.runTests(pId, pPath, lang)
-        val status = if (res.status == TestExecutionStatus.PASSED) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED
-        val verStatus = if (res.status == TestExecutionStatus.PASSED) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
-
-        return createResult(
-            request = request,
-            status = status,
-            output = res.stdout.ifBlank { res.stderr },
-            error = if (res.status == TestExecutionStatus.PASSED) null else res.stderr,
-            executor = "WastiBuildAndTestManager",
-            startedAt = startedAt,
-            verificationStatus = verStatus,
-            verificationEvidence = "Executed ${res.totalTests} tests (${res.passedTests} passed)"
-        )
-    }
-
-    private fun executeDiagnostics(
-        request: UnifiedExecutionRequest,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiBuildAndTestManager", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val bm = WastiBuildAndTestManager(ctx)
-        val pId = request.parameters["projectId"]?.toString() ?: "default"
-        val rawLogs = request.parameters["logs"]?.toString() ?: request.parameters["errorOutput"]?.toString() ?: ""
-
-        val res = bm.analyzeDiagnostics(pId, rawLogs)
-        val output = "${res.rootCauseSummary}\n" + res.findings.joinToString("\n") { "[${it.severity}] ${it.errorType}: ${it.message} (${it.suggestedFix})" }
-
-        return createResult(
-            request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
-            output = output,
-            executor = "WastiBuildAndTestManager",
-            startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Found ${res.totalErrors} error(s), ${res.totalWarnings} warning(s)"
-        )
-    }
-
-    private fun executePackageManager(
-        request: UnifiedExecutionRequest,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiRuntimeManager", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val rm = WastiRuntimeManager(ctx)
-        val lang = request.parameters["language"]?.toString() ?: "KOTLIN"
-        val pkg = request.parameters["packageName"]?.toString() ?: "core"
-
-        val res = rm.resolvePackage(lang, pkg)
-        val status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.UNAVAILABLE
-        val verStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
-
-        return createResult(
-            request = request,
-            status = status,
-            output = res.message,
-            error = if (res.isSuccess) null else res.message,
-            executor = "WastiRuntimeManager",
-            startedAt = startedAt,
-            verificationStatus = verStatus,
-            verificationEvidence = "Package ${pkg} resolved via ${res.packageManager}"
-        )
-    }
-
-    private suspend fun executeSandbox(
-        request: UnifiedExecutionRequest,
-        context: Context?,
-        startedAt: Long
-    ): UnifiedExecutionResult {
-        val ctx = context ?: appContext ?: WastiApplication.instance ?: return createResult(
-            request, UnifiedExecutionStatus.UNAVAILABLE, "Context unavailable", "Null context", "WastiSandbox", startedAt, UnifiedVerificationStatus.FAILED
-        )
-        val sandbox = WastiSandbox(ctx)
-        val cmd = request.parameters["command"]?.toString() ?: "sh"
-        val args = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-        val workDir = request.parameters["workingDirectory"]?.toString() ?: ""
-
-        val res = sandbox.executeInSandbox(SandboxExecutionRequest(command = cmd, arguments = args, workingDirectory = workDir))
-        val status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED
-        val verStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
-
-        return createResult(
-            request = request,
-            status = status,
-            output = res.stdout.ifBlank { res.stderr },
-            error = if (res.isSuccess) null else res.stderr,
-            executor = "WastiSandbox",
             startedAt = startedAt,
             verificationStatus = verStatus,
             verificationEvidence = res.verificationState

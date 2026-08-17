@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Core Network & Audio Permissions -->
+    <!-- Network, audio, and assistant interaction. Runtime permission handling is required where applicable. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-    <!-- Foreground Service Permissions -->
+    <!-- Foreground services for the visible wake-word and overlay experiences. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
-    <!-- Calendar & Alarms -->
+    <!-- Calendar and reminder features. Exact alarms require user-granted special access on supported Android versions. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -67,6 +66,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -75,16 +75,15 @@
             android:theme="@style/Theme.MyApplication">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Wasti Autonomous Accessibility Engine -->
+        <!-- System-owned binding only; the accessibility service is not app-callable. -->
         <service
             android:name="com.example.service.WastiAccessibilityService"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
@@ -93,7 +92,7 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Wasti Floating Action Bubble Service -->
+        <!-- Visible user-controlled overlay; specialUse subtype is required for Android 14+ review. -->
         <service
             android:name="com.example.service.WastiFloatingService"
             android:enabled="true"
@@ -101,10 +100,10 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Wasti AI System Alert Overlay and Floating Bubble Service" />
+                android:value="User-initiated Wasti assistant overlay and floating action bubble." />
         </service>
 
-        <!-- Wasti Vosk Offline Wake-Word Service -->
+        <!-- Microphone foreground service for the opt-in offline wake-word experience. -->
         <service
             android:name="com.example.service.WakeWordVoskService"
             android:enabled="true"

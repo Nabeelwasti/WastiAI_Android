@@ -16,15 +16,21 @@ private val DarkColorScheme = darkColorScheme(
     onPrimary = Color(0xFF0F172A),
     primaryContainer = Color(0xFF0369A1),
     onPrimaryContainer = Color(0xFFE0F2FE),
+
     secondary = SecondaryIndigo,
     onSecondary = Color(0xFF0F172A),
+
     tertiary = EmeraldGreen,
+
     background = DarkBackground,
     onBackground = Color(0xFFF1F5F9),
+
     surface = DarkSurface,
     onSurface = Color(0xFFF8FAFC),
+
     surfaceVariant = DarkSurfaceVariant,
     onSurfaceVariant = Color(0xFFCBD5E1),
+
     outline = DarkOutline
 )
 
@@ -33,29 +39,46 @@ private val LightColorScheme = lightColorScheme(
     onPrimary = Color.White,
     primaryContainer = Color(0xFFE0F2FE),
     onPrimaryContainer = Color(0xFF0369A1),
+
     secondary = SecondaryIndigoDark,
     onSecondary = Color.White,
+
     tertiary = EmeraldGreen,
+
     background = LightBackground,
     onBackground = Color(0xFF0F172A),
+
     surface = LightSurface,
     onSurface = Color(0xFF0F172A),
+
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = Color(0xFF475569),
+
     outline = LightOutline
 )
 
+/**
+ * Main application theme.
+ *
+ * Dynamic Android colors are disabled by default to preserve the application's
+ * own brand identity. They can be enabled explicitly on Android 12 and above.
+ */
 @Composable
 fun WastiTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false, // Preserve brand palette consistency
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            if (darkTheme) {
+                dynamicDarkColorScheme(context)
+            } else {
+                dynamicLightColorScheme(context)
+            }
         }
+
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
@@ -67,12 +90,18 @@ fun WastiTheme(
     )
 }
 
+/**
+ * Compatibility entry point for screens still using the original app theme name.
+ */
 @Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    WastiTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, content = content)
+    WastiTheme(
+        darkTheme = darkTheme,
+        dynamicColor = dynamicColor,
+        content = content
+    )
 }
-

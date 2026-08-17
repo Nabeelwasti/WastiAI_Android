@@ -24,6 +24,7 @@ data class ObservationRequest(
     val taskId: String = UUID.randomUUID().toString(),
     val actionId: String = UUID.randomUUID().toString(),
     val capabilityId: String,
+    val parameters: Map<String, Any?> = emptyMap(),
     val expectedOutcome: String = "",
     val observationStrategy: ObservationStrategy = ObservationStrategy.SCREEN_SCRAPE,
     val timeoutMs: Long = 5000L,

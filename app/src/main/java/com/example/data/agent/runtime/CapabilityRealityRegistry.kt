@@ -1,5 +1,6 @@
 package com.example.data.agent.runtime
 
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 enum class CapabilityRealityState {
@@ -63,6 +64,13 @@ data class CapabilityReality(
 class CapabilityRealityRegistry {
 
     private val capabilityMap = ConcurrentHashMap<String, CapabilityReality>()
+
+    /**
+     * Capability IDs are case-insensitive at the registry boundary. Locale.ROOT
+     * prevents a device's language settings from changing identifier resolution.
+     */
+    private fun normalizedKey(capabilityId: String): String =
+        capabilityId.trim().uppercase(Locale.ROOT)
 
     init {
         registerDefaults()
@@ -128,6 +136,22 @@ class CapabilityRealityRegistry {
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "MemoryManager",
                 supportedOperations = listOf("hybridSearch"),
+                limitations = emptyList(),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // System Info & Environment Inspection
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "SYSTEM_INFO",
+                category = "INSPECTION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiEnvironmentInspector",
+                supportedOperations = listOf("get_system_info", "inspect_environment", "get_status"),
                 limitations = emptyList(),
                 realityState = CapabilityRealityState.NATIVE
             )
@@ -328,7 +352,7 @@ class CapabilityRealityRegistry {
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
         val norm = capabilityId.trim()
-        val direct = capabilityMap[norm] ?: capabilityMap[norm.uppercase()] ?: capabilityMap[norm.lowercase()]
+        val direct = capabilityMap[normalizedKey(norm)]
         if (direct != null) return direct
 
         // Check alias mapping
@@ -362,6 +386,9 @@ class CapabilityRealityRegistry {
         if (norm.equals("files", ignoreCase = true) || norm.equals("read_file", ignoreCase = true) || norm.equals("write_file", ignoreCase = true) || norm.equals("list_files", ignoreCase = true)) {
             capabilityMap["FILES"]?.let { return it }
         }
+        if (norm.equals("system_info", ignoreCase = true) || norm.equals("system", ignoreCase = true) || norm.equals("inspect_environment", ignoreCase = true) || norm.equals("environment", ignoreCase = true) || norm.equals("status", ignoreCase = true)) {
+            capabilityMap["SYSTEM_INFO"]?.let { return it }
+        }
 
         return CapabilityReality(
             capabilityId = capabilityId,
@@ -377,11 +404,24 @@ class CapabilityRealityRegistry {
         )
     }
 
+    fun get(capabilityId: String): CapabilityReality? = getCapabilityReality(capabilityId)
+
+    /**
+     * Registers or atomically replaces the current reality record for one capability.
+     * Concurrent readers always see either the previous complete record or the next one.
+     */
     fun updateCapabilityReality(capability: CapabilityReality) {
-        capabilityMap[capability.capabilityId] = capability
+        require(capability.capabilityId.isNotBlank()) {
+            "Capability ID must not be blank."
+        }
+        capabilityMap[normalizedKey(capability.capabilityId)] = capability
     }
 
-    fun getSystemRealityReport(): List<CapabilityReality> {
-        return capabilityMap.values.toList()
-    }
+    /**
+     * Returns a stable snapshot suitable for a dashboard, audit, or planner.
+     */
+    fun getSystemRealityReport(): List<CapabilityReality> =
+        capabilityMap.values.sortedBy { normalizedKey(it.capabilityId) }
 }
+
+

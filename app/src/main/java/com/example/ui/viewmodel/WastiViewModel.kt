@@ -5,9 +5,16 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.*
 import com.example.data.repository.WastiRepository
+import java.util.Locale
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -21,11 +28,19 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     val activeAgentId = MutableStateFlow("ceo_agent")
     val isCommandPaletteOpen = MutableStateFlow(false)
     val isGenerating = MutableStateFlow(false)
-    val darkThemeEnabled = MutableStateFlow(true)
-    val selectedModel = MutableStateFlow(prefs.getString("selected_model", "groq-llama-3.3-70b") ?: "groq-llama-3.3-70b")
+    val darkThemeEnabled = MutableStateFlow(prefs.getBoolean("dark_theme_enabled", true))
+    val selectedModel = MutableStateFlow(
+        prefs.getString("selected_model", "groq-llama-3.3-70b") ?: "groq-llama-3.3-70b"
+    )
 
     val activeCodeContext = MutableStateFlow("fun main() {\n    println(\"Wasti OS Code Engine\")\n}")
     val activeFileName = MutableStateFlow("WorkspaceCode.kt")
+
+    private val _activeGenerationCount = MutableStateFlow(0)
+    val activeGenerationCount: StateFlow<Int> = _activeGenerationCount.asStateFlow()
+
+    private val _lastOperationError = MutableStateFlow<String?>(null)
+    val lastOperationError: StateFlow<String?> = _lastOperationError.asStateFlow()
 
     fun setActiveCodeContext(code: String, fileName: String = "WorkspaceCode.kt") {
         activeCodeContext.value = code
@@ -33,8 +48,15 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSelectedModel(modelKey: String) {
-        selectedModel.value = modelKey
-        prefs.edit().putString("selected_model", modelKey).apply()
+        val normalizedModelKey = modelKey.trim()
+        if (normalizedModelKey.isBlank()) return
+
+        selectedModel.value = normalizedModelKey
+        prefs.edit().putString("selected_model", normalizedModelKey).apply()
+    }
+
+    fun clearOperationError() {
+        _lastOperationError.value = null
     }
 
     val conversations: StateFlow<List<ConversationEntity>> = repository.conversations
@@ -83,14 +105,16 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                     activeConversationId.value = firstConv.id
                     activeAgentId.value = firstConv.activeAgentId
                 }
-            } catch (e: Throwable) {
-                android.util.Log.e("WastiViewModel", "Error initializing repository default data", e)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                recordOperationError("initialize Wasti", error)
             }
         }
     }
 
     fun selectTab(tab: String) {
-        activeTab.value = tab
+        tab.trim().takeIf { it.isNotEmpty() }?.let { activeTab.value = it }
     }
 
     fun selectConversation(id: String) {
@@ -106,19 +130,24 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleTheme() {
-        darkThemeEnabled.value = !darkThemeEnabled.value
+        val enabled = !darkThemeEnabled.value
+        darkThemeEnabled.value = enabled
+        prefs.edit().putBoolean("dark_theme_enabled", enabled).apply()
     }
 
     fun createNewConversation(title: String, agentId: String = activeAgentId.value) {
-        viewModelScope.launch {
-            val id = repository.createNewConversation(title, agentId)
+        val normalizedTitle = title.trim().ifBlank { "New conversation" }
+        launchRepositoryAction("create conversation") {
+            val id = repository.createNewConversation(normalizedTitle, agentId)
             activeConversationId.value = id
             activeAgentId.value = agentId
             activeTab.value = "chat"
         }
     }
 
-    private var activeGenerationJob: kotlinx.coroutines.Job? = null
+    private val activeGenerationJobs = LinkedHashMap<String, Job>()
+    private val conversationCreationMutex = Mutex()
+    private var latestExternalGenerationId: String? = null
 
     fun sendMessage(
         prompt: String,
@@ -128,168 +157,226 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         attachedMediaUris: String = "",
         mediaList: List<com.example.data.ai.model.AttachedMediaData> = emptyList()
     ) {
-        val convId = activeConversationId.value ?: return
         if (prompt.isBlank() && imageInlineData.isNullOrBlank() && mediaList.isEmpty()) return
 
-        val fileContextToPass = explicitFileContext
-            ?: if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
-                activeCodeContext.value.ifBlank { null }
-            } else null
+        val agentId = activeAgentId.value
+        val model = selectedModel.value
+        val fileContext = explicitFileContext?.takeIf { it.isNotBlank() }
+            ?: activeFileContextForCurrentSelection()
 
-        activeGenerationJob?.cancel()
-        val job = viewModelScope.launch {
-            isGenerating.value = true
-            try {
-                repository.sendMessage(
-                    conversationId = convId,
-                    userPrompt = prompt,
-                    activeAgentId = activeAgentId.value,
-                    selectedModel = selectedModel.value,
-                    fileContext = fileContextToPass,
-                    imageInlineData = imageInlineData,
-                    mimeType = mimeType,
-                    attachedMediaUris = attachedMediaUris,
-                    mediaList = mediaList
-                )
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    android.util.Log.i("WastiViewModel", "AI Generation cancelled by user")
-                } else {
-                    android.util.Log.e("WastiViewModel", "Error sending message", e)
-                }
-            } finally {
-                isGenerating.value = false
-                activeGenerationJob = null
-                com.example.data.ai.AIManager.setActiveJob(null)
-                com.example.data.core.WastiCore.setActiveJob(null)
-            }
+        launchGeneration("send message") {
+            val conversationId = ensureActiveConversation(
+                title = prompt.trim().take(60).ifBlank { "New conversation" },
+                agentId = agentId
+            )
+
+            repository.sendMessage(
+                conversationId = conversationId,
+                userPrompt = prompt,
+                activeAgentId = agentId,
+                selectedModel = model,
+                fileContext = fileContext,
+                imageInlineData = imageInlineData,
+                mimeType = mimeType,
+                attachedMediaUris = attachedMediaUris,
+                mediaList = mediaList
+            )
         }
-        activeGenerationJob = job
-        com.example.data.ai.AIManager.setActiveJob(job)
-        com.example.data.core.WastiCore.setActiveJob(job)
     }
 
     fun editMessageAndResend(messageId: String, newPrompt: String) {
-        val convId = activeConversationId.value ?: return
-        if (newPrompt.isBlank()) return
+        val conversationId = activeConversationId.value ?: return
+        val normalizedPrompt = newPrompt.trim()
+        if (normalizedPrompt.isBlank()) return
 
-        val fileContextToPass = if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
-            activeCodeContext.value.ifBlank { null }
-        } else null
+        val agentId = activeAgentId.value
+        val model = selectedModel.value
+        val fileContext = activeFileContextForCurrentSelection()
 
-        activeGenerationJob?.cancel()
-        val job = viewModelScope.launch {
-            isGenerating.value = true
-            try {
-                repository.editMessageAndRegenerate(convId, messageId, newPrompt, activeAgentId.value, selectedModel.value, fileContextToPass)
-            } catch (e: Exception) {
-                if (e is kotlinx.coroutines.CancellationException) {
-                    android.util.Log.i("WastiViewModel", "AI Generation cancelled by user")
-                } else {
-                    android.util.Log.e("WastiViewModel", "Error in editMessageAndResend", e)
-                }
-            } finally {
-                isGenerating.value = false
-                activeGenerationJob = null
-                com.example.data.ai.AIManager.setActiveJob(null)
-                com.example.data.core.WastiCore.setActiveJob(null)
-            }
+        launchGeneration("regenerate edited message") {
+            repository.editMessageAndRegenerate(
+                conversationId,
+                messageId,
+                normalizedPrompt,
+                agentId,
+                model,
+                fileContext
+            )
         }
-        activeGenerationJob = job
-        com.example.data.ai.AIManager.setActiveJob(job)
-        com.example.data.core.WastiCore.setActiveJob(job)
     }
 
+    /**
+     * Cancels one generation without interrupting independent work.
+     */
+    fun cancelGeneration(generationId: String) {
+        activeGenerationJobs[generationId]?.cancel()
+    }
+
+    /**
+     * Backwards-compatible global cancellation for explicit user stop/emergency use.
+     */
     fun cancelActiveGeneration() {
-        activeGenerationJob?.cancel()
-        activeGenerationJob = null
-        isGenerating.value = false
+        val jobsToCancel = activeGenerationJobs.values.toList()
+        activeGenerationJobs.clear()
+        latestExternalGenerationId = null
+        updateGenerationState()
+        jobsToCancel.forEach { it.cancel() }
         com.example.data.ai.AIManager.cancelActiveGeneration()
         com.example.data.core.WastiCore.cancelActiveGeneration()
+        com.example.data.ai.AIManager.setActiveJob(null)
+        com.example.data.core.WastiCore.setActiveJob(null)
     }
 
-    fun addMemory(key: String, category: String, value: String) {
+    private suspend fun ensureActiveConversation(title: String, agentId: String): String {
+        activeConversationId.value?.let { return it }
+
+        return conversationCreationMutex.withLock {
+            activeConversationId.value ?: repository.createNewConversation(title, agentId).also {
+                activeConversationId.value = it
+                activeAgentId.value = agentId
+                activeTab.value = "chat"
+            }
+        }
+    }
+
+    private fun activeFileContextForCurrentSelection(): String? =
+        if (activeAgentId.value == "coding_agent" || activeTab.value == "code") {
+            activeCodeContext.value.ifBlank { null }
+        } else {
+            null
+        }
+
+    private fun launchGeneration(
+        operation: String,
+        work: suspend () -> Unit
+    ): String {
+        val generationId = UUID.randomUUID().toString()
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                work()
+            } catch (cancelled: CancellationException) {
+                android.util.Log.i("WastiViewModel", "$operation cancelled: $generationId")
+                throw cancelled
+            } catch (error: Exception) {
+                recordOperationError(operation, error)
+            } finally {
+                activeGenerationJobs.remove(generationId)
+                updateGenerationState()
+
+                if (latestExternalGenerationId == generationId) {
+                    val replacement = activeGenerationJobs.entries.lastOrNull()
+                    latestExternalGenerationId = replacement?.key
+                    com.example.data.ai.AIManager.setActiveJob(replacement?.value)
+                    com.example.data.core.WastiCore.setActiveJob(replacement?.value)
+                }
+            }
+        }
+
+        activeGenerationJobs[generationId] = job
+        latestExternalGenerationId = generationId
+        updateGenerationState()
+        com.example.data.ai.AIManager.setActiveJob(job)
+        com.example.data.core.WastiCore.setActiveJob(job)
+        job.start()
+        return generationId
+    }
+
+    private fun updateGenerationState() {
+        val count = activeGenerationJobs.size
+        _activeGenerationCount.value = count
+        isGenerating.value = count > 0
+    }
+
+    private fun launchRepositoryAction(
+        operation: String,
+        action: suspend () -> Unit
+    ) {
         viewModelScope.launch {
+            try {
+                action()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                recordOperationError(operation, error)
+            }
+        }
+    }
+
+    private fun recordOperationError(operation: String, error: Exception) {
+        val message = error.message?.takeIf { it.isNotBlank() } ?: error::class.java.simpleName
+        _lastOperationError.value = "$operation failed: $message"
+        android.util.Log.e("WastiViewModel", "$operation failed", error)
+    }
+
+    fun addMemory(key: String, category: String, value: String) =
+        launchRepositoryAction("add memory") {
             repository.addMemory(key, category, value)
         }
-    }
 
-    fun updateMemory(id: String, key: String, category: String, value: String) {
-        viewModelScope.launch {
+    fun updateMemory(id: String, key: String, category: String, value: String) =
+        launchRepositoryAction("update memory") {
             repository.updateMemory(id, key, category, value)
         }
-    }
 
-    fun deleteMemory(id: String) {
-        viewModelScope.launch {
+    fun deleteMemory(id: String) =
+        launchRepositoryAction("delete memory") {
             repository.deleteMemory(id)
         }
-    }
 
-    fun addKnowledge(title: String, category: String, content: String, tags: String) {
-        viewModelScope.launch {
+    fun addKnowledge(title: String, category: String, content: String, tags: String) =
+        launchRepositoryAction("add knowledge") {
             repository.addKnowledge(title, category, content, tags)
         }
-    }
 
-    fun updateKnowledge(id: String, title: String, category: String, content: String, tags: String) {
-        viewModelScope.launch {
+    fun updateKnowledge(id: String, title: String, category: String, content: String, tags: String) =
+        launchRepositoryAction("update knowledge") {
             repository.updateKnowledge(id, title, category, content, tags)
         }
-    }
 
-    fun deleteKnowledge(id: String) {
-        viewModelScope.launch {
+    fun deleteKnowledge(id: String) =
+        launchRepositoryAction("delete knowledge") {
             repository.deleteKnowledge(id)
         }
-    }
 
-    fun deleteConversation(id: String) {
-        viewModelScope.launch {
+    fun deleteConversation(id: String) =
+        launchRepositoryAction("delete conversation") {
             repository.deleteConversation(id)
         }
-    }
 
-    fun addProject(name: String, description: String, priority: String) {
-        viewModelScope.launch {
+    fun addProject(name: String, description: String, priority: String) =
+        launchRepositoryAction("add project") {
             repository.addProject(name, description, priority)
         }
-    }
 
-    fun addTask(projectId: String, title: String, description: String, assignedAgentId: String, priority: String) {
-        viewModelScope.launch {
+    fun addTask(projectId: String, title: String, description: String, assignedAgentId: String, priority: String) =
+        launchRepositoryAction("add task") {
             repository.addTask(projectId, title, description, assignedAgentId, priority)
         }
-    }
 
-    fun toggleTaskStatus(taskId: String, currentStatus: Boolean) {
-        viewModelScope.launch {
+    fun toggleTaskStatus(taskId: String, currentStatus: Boolean) =
+        launchRepositoryAction("update task status") {
             repository.toggleTaskStatus(taskId, currentStatus)
         }
-    }
 
-    fun addAgent(name: String, roleTitle: String, agentType: String, systemInstruction: String, capabilities: String) {
-        viewModelScope.launch {
+    fun addAgent(name: String, roleTitle: String, agentType: String, systemInstruction: String, capabilities: String) =
+        launchRepositoryAction("add agent") {
             repository.addAgent(name, roleTitle, agentType, systemInstruction, capabilities)
         }
-    }
 
-    fun clearLogs() {
-        viewModelScope.launch {
+    fun clearLogs() =
+        launchRepositoryAction("clear logs") {
             repository.clearLogs()
         }
-    }
 
-    fun saveXaiApiKey(apiKey: String, modelName: String = "grok-2-latest") {
-        viewModelScope.launch {
+    fun saveXaiApiKey(apiKey: String, modelName: String = "grok-2-latest") =
+        launchRepositoryAction("save xAI settings") {
             repository.saveAppSetting("xai_api_key", apiKey.trim())
             repository.saveAppSetting("xai_model_name", modelName.trim())
         }
-    }
 
     fun clearChatHistory() {
         val convId = activeConversationId.value ?: return
-        viewModelScope.launch {
+        launchRepositoryAction("clear chat history") {
             repository.clearChatHistory(convId)
         }
     }
@@ -297,33 +384,29 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     fun executeQuickCommand(command: String) {
         isCommandPaletteOpen.value = false
         val trimmed = command.trim()
+        if (trimmed.isEmpty()) return
+
+        val normalized = trimmed.lowercase(Locale.ROOT)
         when {
-            trimmed.lowercase().startsWith("open chat") || trimmed.lowercase().startsWith("chat") -> {
+            normalized.startsWith("open chat") || normalized.startsWith("chat") ->
                 activeTab.value = "chat"
-            }
-            trimmed.lowercase().startsWith("open memory") || trimmed.lowercase().startsWith("memory") -> {
+            normalized.startsWith("open memory") || normalized.startsWith("memory") ->
                 activeTab.value = "memory"
-            }
-            trimmed.lowercase().startsWith("open agents") || trimmed.lowercase().startsWith("agents") -> {
+            normalized.startsWith("open agents") || normalized.startsWith("agents") ->
                 activeTab.value = "agents"
-            }
-            trimmed.lowercase().startsWith("open projects") || trimmed.lowercase().startsWith("projects") -> {
+            normalized.startsWith("open projects") || normalized.startsWith("projects") ->
                 activeTab.value = "projects"
-            }
-            trimmed.lowercase().startsWith("open code") || trimmed.lowercase().startsWith("code") -> {
+            normalized.startsWith("open code") || normalized.startsWith("code") ->
                 activeTab.value = "code"
-            }
-            trimmed.lowercase().startsWith("open integrations") || trimmed.lowercase().startsWith("integrations") -> {
+            normalized.startsWith("open integrations") || normalized.startsWith("integrations") ->
                 activeTab.value = "integrations"
-            }
-            trimmed.lowercase().startsWith("open settings") || trimmed.lowercase().startsWith("settings") -> {
+            normalized.startsWith("open settings") || normalized.startsWith("settings") ->
                 activeTab.value = "settings"
-            }
             else -> {
-                // Treat as prompt
                 activeTab.value = "chat"
                 sendMessage(trimmed)
             }
         }
     }
 }
+

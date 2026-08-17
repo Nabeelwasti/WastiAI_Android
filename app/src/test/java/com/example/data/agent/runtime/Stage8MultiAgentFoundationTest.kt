@@ -2,9 +2,11 @@ package com.example.data.agent.runtime
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -12,6 +14,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+/**
+ * Behavioural tests for the Stage 8 "one brain, many capabilities" coordinator.
+ *
+ * These tests use the real UnifiedExecutionFabric fixture for the public
+ * execution contract. Graph, delegation, and failure-state tests stay fully
+ * deterministic by exercising the coordinator's public result API directly.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class Stage8MultiAgentFoundationTest {
@@ -35,339 +44,351 @@ class Stage8MultiAgentFoundationTest {
     }
 
     @Test
-    fun testSubAgentCatalogDefaults() {
-        val agents = WastiSubAgentCatalog.defaultSubAgents
+    fun defaultCatalog_hasOneProfileForEachCoreRole() {
+        val agents = coordinator.getSubAgents()
+
         assertTrue(agents.isNotEmpty())
-
-        val codingAgent = coordinator.selectAgentForRole(AgentRole.CODING)
-        assertNotNull(codingAgent)
-        assertEquals("Coding Architect", codingAgent!!.name)
-
-        val testingAgent = coordinator.selectAgentForRole(AgentRole.TESTING)
-        assertNotNull(testingAgent)
-        assertEquals("Testing & Verification Specialist", testingAgent!!.name)
-
-        val securityAgent = coordinator.selectAgentForRole(AgentRole.SECURITY)
-        assertNotNull(securityAgent)
-        assertEquals(0.0f, securityAgent!!.temperature, 0.01f)
+        assertEquals("Coding Architect", coordinator.selectAgentForRole(AgentRole.CODING)?.name)
+        assertEquals("Testing & Verification Specialist", coordinator.selectAgentForRole(AgentRole.TESTING)?.name)
+        assertEquals(0.0f, coordinator.selectAgentForRole(AgentRole.SECURITY)?.temperature ?: -1f, 0.01f)
+        assertEquals("wasti_executive_agent", coordinator.selectAgentForRole(AgentRole.EXECUTIVE)?.id)
     }
 
     @Test
-    fun testTaskCreationAndAgentSelection() {
-        val task = coordinator.createTask(
-            title = "Analyze Compiler Error",
-            description = "Diagnose syntax error in workspace script",
+    fun capabilitySelection_requiresAnActualMatch_andCanBeExtendedSafely() {
+        assertEquals(
+            "wasti_debugging_agent",
+            coordinator.selectAgentForCapabilities(listOf("debug_project"))?.id
+        )
+        assertNull(coordinator.selectAgentForCapabilities(listOf("capability_that_does_not_exist")))
+
+        val forensicsAgent = SubAgentDefinition(
+            id = "wasti_forensics_agent",
+            name = "Forensics Specialist",
+            role = AgentRole.DEBUGGING,
+            description = "Memory and artifact analysis.",
+            capabilities = listOf("memory_forensics"),
+            systemPrompt = "Return only evidenced forensic findings.",
+            temperature = 0.1f
+        )
+        coordinator.registerSubAgent(forensicsAgent)
+
+        assertEquals(forensicsAgent.id, coordinator.selectAgentForCapabilities(listOf("memory_forensics"))?.id)
+        assertTrue(coordinator.getSubAgents().any { it.id == forensicsAgent.id })
+    }
+
+    @Test
+    fun createTask_assignsMatchingAgent_andRejectsUnknownCapabilities() {
+        val debuggingTask = coordinator.createTask(
+            title = "Analyse compiler error",
+            description = "Diagnose the reported Kotlin compiler error.",
             requiredCapabilities = listOf("debug_project")
         )
+        assertEquals(AgentTaskState.SCHEDULED, debuggingTask.state)
+        assertEquals(AgentRole.DEBUGGING, debuggingTask.assignedRole)
+        assertEquals("wasti_debugging_agent", debuggingTask.assignedAgentId)
 
-        assertNotNull(task)
-        assertEquals(AgentRole.DEBUGGING, task.assignedRole)
-        assertEquals("wasti_debugging_agent", task.assignedAgentId)
-        assertEquals(AgentTaskState.SCHEDULED, task.state)
+        val unsupportedTask = coordinator.createTask(
+            title = "Unsupported capability",
+            description = "This must not silently route to an unrelated agent.",
+            requiredCapabilities = listOf("capability_that_does_not_exist")
+        )
+        assertEquals(AgentTaskState.FAILED, unsupportedTask.state)
+        assertTrue(coordinator.getResult(unsupportedTask.taskId.value)?.error?.contains("No registered agent matches") == true)
     }
 
     @Test
-    fun testTaskDependencyResolutionAndScheduling() {
-        val task1 = coordinator.createTask(
-            title = "Build Project",
-            description = "Build the workspace project",
+    fun createTask_rejectsDependenciesThatAreNotAlreadyInTheGraph() {
+        val task = coordinator.createTask(
+            title = "Invalid dependency",
+            description = "Dependencies must be registered before use.",
+            dependencies = listOf("missing-task-id")
+        )
+
+        assertEquals(AgentTaskState.FAILED, task.state)
+        assertTrue(coordinator.getResult(task.taskId.value)?.error?.contains("dependency must already exist") == true)
+    }
+
+    @Test
+    fun readyTasks_followPriority_andWaitForEveryDependency() {
+        val lowPriority = coordinator.createTask(
+            title = "Low priority task",
+            description = "Lower priority independent work.",
+            priority = AgentTaskPriority.LOW
+        )
+        val firstDependency = coordinator.createTask(
+            title = "Build",
+            description = "Build the application.",
             assignedRole = AgentRole.CODING,
             priority = AgentTaskPriority.HIGH
         )
-
-        val task2 = coordinator.createTask(
-            title = "Run Unit Tests",
-            description = "Run tests on built artifact",
+        val secondDependency = coordinator.createTask(
+            title = "Review policy",
+            description = "Review execution policy.",
+            assignedRole = AgentRole.SECURITY,
+            priority = AgentTaskPriority.HIGH
+        )
+        val dependent = coordinator.createTask(
+            title = "Run integration tests",
+            description = "Tests require both build and policy review.",
             assignedRole = AgentRole.TESTING,
-            dependencies = listOf(task1.taskId.value),
-            priority = AgentTaskPriority.MEDIUM
+            dependencies = listOf(firstDependency.taskId.value, secondDependency.taskId.value)
         )
 
-        assertEquals(AgentTaskState.SCHEDULED, coordinator.getTask(task1.taskId.value)?.state)
-        assertEquals(AgentTaskState.PENDING, coordinator.getTask(task2.taskId.value)?.state)
+        assertEquals(AgentTaskState.PENDING, dependent.state)
+        assertTrue(coordinator.getReadyTasks().indexOfFirst { it.taskId == firstDependency.taskId } <
+            coordinator.getReadyTasks().indexOfFirst { it.taskId == lowPriority.taskId })
 
-        // Ready tasks should only contain task1
-        val readyBefore = coordinator.getReadyTasks()
-        assertTrue(readyBefore.any { it.taskId == task1.taskId })
-        assertFalse(readyBefore.any { it.taskId == task2.taskId })
+        coordinator.recordResult(completedResult(firstDependency))
+        assertEquals(AgentTaskState.PENDING, coordinator.getTask(dependent.taskId.value)?.state)
 
-        // Record completion for task 1
+        coordinator.recordResult(completedResult(secondDependency))
+        assertEquals(AgentTaskState.SCHEDULED, coordinator.getTask(dependent.taskId.value)?.state)
+        assertTrue(coordinator.getReadyTasks().any { it.taskId == dependent.taskId })
+    }
+
+    @Test
+    fun completionBeforeDependencies_isRejectedInsteadOfCorruptingTheGraph() {
+        val prerequisite = coordinator.createTask(title = "Prerequisite", description = "Must finish first.")
+        val dependent = coordinator.createTask(
+            title = "Dependent",
+            description = "Cannot complete first.",
+            dependencies = listOf(prerequisite.taskId.value)
+        )
+
+        coordinator.recordResult(completedResult(dependent))
+
+        assertEquals(AgentTaskState.FAILED, coordinator.getTask(dependent.taskId.value)?.state)
+        assertEquals("Dependency invariant violated", coordinator.getResult(dependent.taskId.value)?.error)
+    }
+
+    @Test
+    fun failedDependency_blocksEveryDescendant_andFutureDependents() {
+        val root = coordinator.createTask(title = "Root", description = "Root task.")
+        val child = coordinator.createTask(
+            title = "Child",
+            description = "Depends on root.",
+            dependencies = listOf(root.taskId.value)
+        )
+        val grandchild = coordinator.createTask(
+            title = "Grandchild",
+            description = "Depends on child.",
+            dependencies = listOf(child.taskId.value)
+        )
+
         coordinator.recordResult(
             AgentResult(
-                taskId = task1.taskId.value,
-                agentId = "wasti_coding_agent",
-                role = AgentRole.CODING,
-                state = AgentTaskState.COMPLETED,
-                output = "Build verified successfully",
-                executionTimeMs = 120L
+                taskId = root.taskId.value,
+                agentId = "wasti_executive_agent",
+                role = AgentRole.EXECUTIVE,
+                state = AgentTaskState.FAILED,
+                output = "Root failure",
+                error = "Deliberate failure for propagation test"
             )
         )
 
-        // Now task2 should be scheduled and ready
-        assertEquals(AgentTaskState.SCHEDULED, coordinator.getTask(task2.taskId.value)?.state)
-        val readyAfter = coordinator.getReadyTasks()
-        assertTrue(readyAfter.any { it.taskId == task2.taskId })
+        assertEquals(AgentTaskState.FAILED, coordinator.getTask(root.taskId.value)?.state)
+        assertEquals(AgentTaskState.BLOCKED, coordinator.getTask(child.taskId.value)?.state)
+        assertEquals(AgentTaskState.BLOCKED, coordinator.getTask(grandchild.taskId.value)?.state)
+        assertEquals(AgentTaskState.BLOCKED, coordinator.getResult(grandchild.taskId.value)?.state)
+
+        val lateDependent = coordinator.createTask(
+            title = "Late dependent",
+            description = "Created after root failed.",
+            dependencies = listOf(root.taskId.value)
+        )
+        assertEquals(AgentTaskState.BLOCKED, lateDependent.state)
     }
 
     @Test
-    fun testDelegationAndSharedContext() {
-        val parentTask = coordinator.createTask(
-            title = "Implement Feature",
-            description = "Full feature lifecycle",
+    fun cancellation_blocksDescendants_andLateCompletionCannotReviveTask() {
+        val root = coordinator.createTask(title = "Root", description = "Root task.")
+        val child = coordinator.createTask(
+            title = "Child",
+            description = "Depends on root.",
+            dependencies = listOf(root.taskId.value)
+        )
+
+        coordinator.cancelTask(root.taskId.value, "User aborted the operation")
+        coordinator.recordResult(completedResult(root))
+
+        assertEquals(AgentTaskState.CANCELLED, coordinator.getTask(root.taskId.value)?.state)
+        assertEquals(AgentTaskState.CANCELLED, coordinator.getResult(root.taskId.value)?.state)
+        assertEquals(AgentTaskState.BLOCKED, coordinator.getTask(child.taskId.value)?.state)
+    }
+
+    @Test
+    fun detectCycle_returnsTheFullCyclePath() {
+        val taskA = coordinator.createTask(title = "A", description = "First task.")
+        val taskB = coordinator.createTask(
+            title = "B",
+            description = "Second task.",
+            dependencies = listOf(taskA.taskId.value)
+        )
+
+        assertEquals(
+            listOf(taskA.taskId.value, taskB.taskId.value, taskA.taskId.value),
+            coordinator.detectCycle(taskA.taskId.value, listOf(taskB.taskId.value))
+        )
+        assertEquals(
+            listOf("self", "self"),
+            coordinator.detectCycle("self", listOf("self"))
+        )
+    }
+
+    @Test
+    fun acceptedDelegation_updatesRouting_andContextIsExplicitlyScoped() {
+        val parent = coordinator.createTask(
+            title = "Plan secure change",
+            description = "Executive planning task.",
             assignedRole = AgentRole.EXECUTIVE
         )
-
         val subTask = coordinator.createTask(
-            title = "Security Audit",
-            description = "Verify boundary constraints",
+            title = "Audit change",
+            description = "Security review task.",
             assignedRole = AgentRole.CODING
         )
+        coordinator.sharedContext.set("policy_level", "STRICT")
+        coordinator.sharedContext.set("unrelated_secret", "must not be included")
 
         val delegation = coordinator.delegateTask(
-            parentTaskId = parentTask.taskId.value,
+            parentTaskId = parent.taskId.value,
             subTask = subTask,
             sourceAgentId = "wasti_executive_agent",
             targetRole = AgentRole.SECURITY,
-            reason = "Privileged operation requires security review",
-            sharedContextKeys = listOf("policy_level")
+            reason = "Privileged operation requires an audit.",
+            sharedContextKeys = listOf("policy_level", "policy_level", " ")
         )
 
-        assertEquals("wasti_executive_agent", delegation.sourceAgentId)
-        assertEquals(AgentRole.SECURITY, delegation.targetRole)
+        assertFalse(delegation.reason.startsWith("REJECTED"))
+        assertEquals(1, delegation.depth)
+        assertEquals(listOf("policy_level"), delegation.sharedContextKeys)
         assertEquals(AgentRole.SECURITY, coordinator.getTask(subTask.taskId.value)?.assignedRole)
-
-        // Shared context verification
-        coordinator.sharedContext.set("policy_level", "STRICT")
-        assertEquals("STRICT", coordinator.sharedContext.get("policy_level"))
-        assertTrue(coordinator.sharedContext.getLogs().isNotEmpty())
+        assertEquals(mapOf("policy_level" to "STRICT"), coordinator.sharedContext.snapshot(delegation.sharedContextKeys))
+        assertFalse(coordinator.sharedContext.snapshot(delegation.sharedContextKeys).containsKey("unrelated_secret"))
     }
 
     @Test
-    fun testTaskCancellationAndDependencyBlocking() {
-        val taskA = coordinator.createTask(
-            title = "Task A",
-            description = "Root task"
-        )
-        val taskB = coordinator.createTask(
-            title = "Task B",
-            description = "Dependent on A",
-            dependencies = listOf(taskA.taskId.value)
-        )
-
-        coordinator.cancelTask(taskA.taskId.value, "User aborted operation")
-
-        assertEquals(AgentTaskState.CANCELLED, coordinator.getTask(taskA.taskId.value)?.state)
-        assertEquals(AgentTaskState.BLOCKED, coordinator.getTask(taskB.taskId.value)?.state)
-    }
-
-    @Test
-    fun testSelfCycleDetection() {
-        val taskId = "task_self_cycle_test"
-        val cycle = coordinator.detectCycle(taskId, listOf(taskId))
-        assertNotNull(cycle)
-        assertEquals(listOf(taskId, taskId), cycle)
-
-        // When creating a task with self in dependencies
-        val selfCycleTask = coordinator.createTask(
-            title = "Self Cycle Task",
-            description = "Depends on itself",
-            dependencies = listOf("will_depend_on_self")
-        )
-        // Check cycle detection directly on coordinator
-        val detected = coordinator.detectCycle(selfCycleTask.taskId.value, listOf(selfCycleTask.taskId.value))
-        assertNotNull(detected)
-        assertEquals(listOf(selfCycleTask.taskId.value, selfCycleTask.taskId.value), detected)
-    }
-
-    @Test
-    fun testABACycleDetection() {
-        val taskA = coordinator.createTask(
-            title = "Task A",
-            description = "First task"
-        )
-        val taskB = coordinator.createTask(
-            title = "Task B",
-            description = "Second task depending on A",
-            dependencies = listOf(taskA.taskId.value)
-        )
-
-        // Now attempt to make taskA depend on taskB -> A -> B -> A cycle
-        val cycle = coordinator.detectCycle(taskA.taskId.value, listOf(taskB.taskId.value))
-        assertNotNull(cycle)
-        assertTrue(cycle!!.contains(taskA.taskId.value))
-        assertTrue(cycle.contains(taskB.taskId.value))
-        assertEquals(taskA.taskId.value, cycle.first())
-        assertEquals(taskA.taskId.value, cycle.last())
-
-        // Creating a new task that introduces A -> B -> A cycle
-        val cyclicTask = coordinator.createTask(
-            title = "Task A Cyclic",
-            description = "Cyclic update",
-            dependencies = listOf(taskB.taskId.value)
-        )
-        // If taskB depends on taskA, creating task with taskId = taskA.taskId.value and dep = taskB creates cycle
-        val cyclePath = coordinator.detectCycle(taskA.taskId.value, listOf(taskB.taskId.value))
-        assertNotNull(cyclePath)
-    }
-
-    @Test
-    fun testABCACycleDetection() {
-        val taskA = coordinator.createTask(title = "Task A", description = "Root")
-        val taskB = coordinator.createTask(title = "Task B", description = "Dep A", dependencies = listOf(taskA.taskId.value))
-        val taskC = coordinator.createTask(title = "Task C", description = "Dep B", dependencies = listOf(taskB.taskId.value))
-
-        // A depends on C -> A -> B -> C -> A
-        val cycle = coordinator.detectCycle(taskA.taskId.value, listOf(taskC.taskId.value))
-        assertNotNull(cycle)
-        assertEquals(listOf(taskA.taskId.value, taskC.taskId.value, taskB.taskId.value, taskA.taskId.value), cycle)
-    }
-
-    @Test
-    fun testSelfDelegationPrevention() {
-        val task = coordinator.createTask(
-            title = "Coding Task",
-            description = "Write some code",
-            assignedRole = AgentRole.CODING
-        )
-
-        // wasti_coding_agent attempts to delegate to CODING role (which resolves to wasti_coding_agent)
-        val delegation = coordinator.delegateTask(
-            parentTaskId = null,
-            subTask = task,
-            sourceAgentId = "wasti_coding_agent",
-            targetRole = AgentRole.CODING,
-            reason = "Delegate to self"
-        )
-
-        assertTrue(delegation.reason.startsWith("REJECTED"))
-        val subTaskState = coordinator.getTask(task.taskId.value)?.state
-        assertEquals(AgentTaskState.FAILED, subTaskState)
-
-        val result = coordinator.getResult(task.taskId.value)
-        assertNotNull(result)
-        assertEquals(AgentTaskState.FAILED, result?.state)
-        assertTrue(result?.error?.contains("Self-delegation forbidden") == true)
-    }
-
-    @Test
-    fun testRecursiveDelegationLoopPrevention() {
-        // Lineage: Executive -> Coding -> Testing -> Coding (Loop: Coding -> Testing -> Coding)
-        val parentTask1 = coordinator.createTask(
-            title = "Root Task",
-            description = "Root",
+    fun delegation_rejectsUnknownSourceAndParentImpersonation() {
+        val parent = coordinator.createTask(
+            title = "Executive parent",
+            description = "Owned by executive.",
             assignedRole = AgentRole.EXECUTIVE
         )
+        val unknownSourceTask = coordinator.createTask(title = "Unknown source", description = "Reject unknown source.")
+        val unknownSource = coordinator.delegateTask(
+            parentTaskId = parent.taskId.value,
+            subTask = unknownSourceTask,
+            sourceAgentId = "unknown-agent",
+            targetRole = AgentRole.RESEARCH,
+            reason = "This source is not registered."
+        )
+        assertTrue(unknownSource.reason.startsWith("REJECTED"))
+        assertTrue(coordinator.getResult(unknownSourceTask.taskId.value)?.error?.contains("Unknown source") == true)
 
-        val subTask1 = coordinator.createTask(
-            title = "SubTask 1",
-            description = "Coding step",
-            assignedRole = AgentRole.CODING
-        )
-        val del1 = coordinator.delegateTask(
-            parentTaskId = parentTask1.taskId.value,
-            subTask = subTask1,
-            sourceAgentId = "wasti_executive_agent",
-            targetRole = AgentRole.CODING,
-            reason = "First delegation"
-        )
-        assertFalse(del1.reason.startsWith("REJECTED"))
-
-        val subTask2 = coordinator.createTask(
-            title = "SubTask 2",
-            description = "Testing step",
-            assignedRole = AgentRole.TESTING
-        )
-        val del2 = coordinator.delegateTask(
-            parentTaskId = subTask1.taskId.value,
-            subTask = subTask2,
+        val impersonationTask = coordinator.createTask(title = "Impersonation", description = "Reject parent impersonation.")
+        val impersonation = coordinator.delegateTask(
+            parentTaskId = parent.taskId.value,
+            subTask = impersonationTask,
             sourceAgentId = "wasti_coding_agent",
             targetRole = AgentRole.TESTING,
-            reason = "Second delegation"
+            reason = "Coding agent must not impersonate executive."
         )
-        assertFalse(del2.reason.startsWith("REJECTED"))
+        assertTrue(impersonation.reason.startsWith("REJECTED"))
+        assertTrue(coordinator.getResult(impersonationTask.taskId.value)?.error?.contains("not assigned to the parent") == true)
+    }
 
-        // Now Testing attempts to delegate back to Coding (or Executive) -> Recursive loop
-        val subTask3 = coordinator.createTask(
-            title = "SubTask 3",
-            description = "Loop back to coding",
+    @Test
+    fun delegation_rejectsSelfLoopsRecursiveLoopsAndExcessiveDepth() {
+        val selfTask = coordinator.createTask(
+            title = "Self delegation",
+            description = "Coding task.",
             assignedRole = AgentRole.CODING
         )
-        val del3 = coordinator.delegateTask(
-            parentTaskId = subTask2.taskId.value,
-            subTask = subTask3,
-            sourceAgentId = "wasti_testing_agent",
-            targetRole = AgentRole.CODING,
-            reason = "Loop back delegation"
-        )
-
-        assertTrue(del3.reason.startsWith("REJECTED"))
-        assertEquals(AgentTaskState.FAILED, coordinator.getTask(subTask3.taskId.value)?.state)
-        val result = coordinator.getResult(subTask3.taskId.value)
-        assertNotNull(result)
-        assertTrue(result?.error?.contains("Recursive delegation loop") == true)
-    }
-
-    @Test
-    fun testMaxDelegationDepthExceeded() {
-        val shortDepthCoordinator = AgentTaskCoordinator(fabric, maxDelegationDepth = 2)
-
-        val root = shortDepthCoordinator.createTask(title = "Root", description = "Root", assignedRole = AgentRole.EXECUTIVE)
-
-        // Depth 1: Executive -> Research
-        val task1 = shortDepthCoordinator.createTask(title = "Step 1", description = "Research")
-        val del1 = shortDepthCoordinator.delegateTask(
-            parentTaskId = root.taskId.value,
-            subTask = task1,
-            sourceAgentId = "wasti_executive_agent",
-            targetRole = AgentRole.RESEARCH,
-            reason = "Depth 1"
-        )
-        assertFalse(del1.reason.startsWith("REJECTED"))
-        assertEquals(1, del1.depth)
-
-        // Depth 2: Research -> Coding
-        val task2 = shortDepthCoordinator.createTask(title = "Step 2", description = "Coding")
-        val del2 = shortDepthCoordinator.delegateTask(
-            parentTaskId = task1.taskId.value,
-            subTask = task2,
-            sourceAgentId = "wasti_research_agent",
-            targetRole = AgentRole.CODING,
-            reason = "Depth 2"
-        )
-        assertFalse(del2.reason.startsWith("REJECTED"))
-        assertEquals(2, del2.depth)
-
-        // Depth 3: Coding -> Security (Should EXCEED limit of 2)
-        val task3 = shortDepthCoordinator.createTask(title = "Step 3", description = "Security")
-        val del3 = shortDepthCoordinator.delegateTask(
-            parentTaskId = task2.taskId.value,
-            subTask = task3,
+        val selfDelegation = coordinator.delegateTask(
+            parentTaskId = null,
+            subTask = selfTask,
             sourceAgentId = "wasti_coding_agent",
-            targetRole = AgentRole.SECURITY,
-            reason = "Depth 3"
+            targetRole = AgentRole.CODING,
+            reason = "Must be rejected."
         )
+        assertTrue(selfDelegation.reason.startsWith("REJECTED"))
+        assertTrue(coordinator.getResult(selfTask.taskId.value)?.error?.contains("Self-delegation") == true)
 
-        assertTrue(del3.reason.startsWith("REJECTED"))
-        assertEquals(AgentTaskState.FAILED, shortDepthCoordinator.getTask(task3.taskId.value)?.state)
-        val result = shortDepthCoordinator.getResult(task3.taskId.value)
-        assertNotNull(result)
-        assertTrue(result?.error?.contains("Maximum delegation depth") == true)
+        val root = coordinator.createTask(title = "Root", description = "Executive root.", assignedRole = AgentRole.EXECUTIVE)
+        val coding = coordinator.createTask(title = "Code", description = "Coding step.")
+        val testing = coordinator.createTask(title = "Test", description = "Testing step.")
+        assertFalse(
+            coordinator.delegateTask(root.taskId.value, coding, "wasti_executive_agent", AgentRole.CODING, "Implement.").reason
+                .startsWith("REJECTED")
+        )
+        assertFalse(
+            coordinator.delegateTask(coding.taskId.value, testing, "wasti_coding_agent", AgentRole.TESTING, "Verify.").reason
+                .startsWith("REJECTED")
+        )
+        val loopTask = coordinator.createTask(title = "Loop", description = "Must not route back to coding.")
+        val loop = coordinator.delegateTask(
+            testing.taskId.value,
+            loopTask,
+            "wasti_testing_agent",
+            AgentRole.CODING,
+            "This would recreate a lineage."
+        )
+        assertTrue(loop.reason.startsWith("REJECTED"))
+        assertTrue(coordinator.getResult(loopTask.taskId.value)?.error?.contains("Recursive delegation loop") == true)
+
+        val shallow = AgentTaskCoordinator(fabric, maxDelegationDepth = 1)
+        val shallowRoot = shallow.createTask(title = "Shallow root", description = "Root.", assignedRole = AgentRole.EXECUTIVE)
+        val first = shallow.createTask(title = "First", description = "First level.")
+        val second = shallow.createTask(title = "Second", description = "Second level.")
+        assertFalse(
+            shallow.delegateTask(shallowRoot.taskId.value, first, "wasti_executive_agent", AgentRole.RESEARCH, "Level one.").reason
+                .startsWith("REJECTED")
+        )
+        val tooDeep = shallow.delegateTask(first.taskId.value, second, "wasti_research_agent", AgentRole.CODING, "Level two.")
+        assertTrue(tooDeep.reason.startsWith("REJECTED"))
+        assertTrue(shallow.getResult(second.taskId.value)?.error?.contains("Maximum delegation depth") == true)
     }
 
     @Test
-    fun testUnifiedExecutionFabricRouting() = kotlinx.coroutines.runBlocking {
+    fun sharedContext_boundsItsAuditLog() {
+        val boundedContext = SharedAgentContext(maxLogEntries = 2)
+        boundedContext.appendLog("first")
+        boundedContext.appendLog("second")
+        boundedContext.appendLog("third")
+
+        val logs = boundedContext.getLogs()
+        assertEquals(2, logs.size)
+        assertFalse(logs.any { it.endsWith("first") })
+        assertTrue(logs.any { it.endsWith("second") })
+        assertTrue(logs.any { it.endsWith("third") })
+    }
+
+    @Test
+    fun execution_routesThroughUnifiedFabric_andRecordsTheTerminalResult() = runBlocking {
         val task = coordinator.createTask(
-            title = "Inspect Environment",
-            description = "Run reality inspection",
+            title = "Inspect environment",
+            description = "Inspect the runtime environment through the single fabric.",
             assignedRole = AgentRole.EXECUTIVE,
-            requiredCapabilities = listOf("system_info")
+            requiredCapabilities = listOf("system_info"),
+            inputData = mapOf("request_origin" to "Stage8MultiAgentFoundationTest")
         )
 
-        val result = coordinator.executeTask(task.taskId.value)
-        assertNotNull(result)
+        val result = coordinator.executeTask(task.taskId.value, context)
+
         assertEquals(task.taskId.value, result.taskId)
         assertEquals(AgentTaskState.COMPLETED, result.state)
-        assertTrue(result.evidence?.contains("UnifiedExecutionFabric") == true)
+        assertEquals("system_info", result.structuredData["capabilityId"])
+        assertTrue(result.output.isNotBlank())
         assertEquals(AgentTaskState.COMPLETED, coordinator.getTask(task.taskId.value)?.state)
+        assertEquals(result, coordinator.getResult(task.taskId.value))
     }
+
+    private fun completedResult(task: AgentTask): AgentResult = AgentResult(
+        taskId = task.taskId.value,
+        agentId = task.assignedAgentId ?: "wasti_executive_agent",
+        role = task.assignedRole ?: AgentRole.EXECUTIVE,
+        state = AgentTaskState.COMPLETED,
+        output = "Completed by test"
+    )
 }
