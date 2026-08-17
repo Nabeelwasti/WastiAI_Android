@@ -1262,7 +1262,11 @@ class UnifiedExecutionFabric(
                 else -> capId
             }
         val rawArgs = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
-        val fullCmd = if (rawArgs.isNotEmpty()) "$rawCmd ${rawArgs.joinToString(" ")}" else rawCmd
+        val fullCmd = when {
+            rawCmd == "sh" && rawArgs.size >= 2 && rawArgs[0] == "-c" -> rawArgs.subList(1, rawArgs.size).joinToString(" ")
+            rawArgs.isNotEmpty() -> "$rawCmd ${rawArgs.joinToString(" ")}"
+            else -> rawCmd
+        }
         val workDir = request.parameters["workingDirectory"]?.toString() ?: "home/wasti"
         val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 30000L
 
