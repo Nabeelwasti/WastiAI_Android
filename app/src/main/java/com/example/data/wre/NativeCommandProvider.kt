@@ -26,18 +26,43 @@ class NativeCommandProvider(
     override suspend fun canExecute(request: ExecutionRequest): Boolean {
         val trimmed = request.command.trim()
         if (trimmed.isEmpty()) return false
+
         // Support piped lines or package commands
         if (trimmed.contains("|")) return true
+
         val cmd = trimmed.split("\\s+".toRegex())[0]
-        return supportedCommands.contains(cmd) || 
-               packageManager?.getPackage(cmd) != null ||
-               isExecutableScriptInBin(cmd)
+        return supportedCommands.contains(cmd) ||
+                packageManager?.getPackage(cmd) != null ||
+                isExecutableScriptInBin(cmd)
+    }
+
+    private fun findScriptFile(entryPoint: String, workingDir: File): File? {
+        val candidates = listOf(
+            workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$entryPoint").getOrNull(),
+            workspaceManager.resolve(entryPoint).getOrNull(),
+            workspaceManager.resolve("home/wasti/$entryPoint").getOrNull(),
+            workspaceManager.resolve("home/wasti/bin/$entryPoint").getOrNull(),
+            workspaceManager.resolve("bin/$entryPoint").getOrNull()
+        )
+        return candidates.firstOrNull { it != null && it.exists() && it.isFile }
+    }
+
+    private fun findBinScript(cmd: String, workingDir: File): File? {
+        val candidates = listOf(
+            workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/bin/$cmd").getOrNull(),
+            workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$cmd").getOrNull(),
+            workspaceManager.resolve("home/wasti/bin/$cmd").getOrNull(),
+            workspaceManager.resolve("bin/$cmd").getOrNull()
+        )
+        return candidates.firstOrNull { it != null && it.exists() && it.isFile }
     }
 
     private fun isExecutableScriptInBin(cmd: String): Boolean {
-        val binDir = workspaceManager.getDirectory("bin").getOrNull() ?: return false
-        val script = File(binDir, cmd)
-        return script.exists() && script.isFile
+        val candidates = listOf(
+            workspaceManager.resolve("home/wasti/bin/$cmd").getOrNull(),
+            workspaceManager.resolve("bin/$cmd").getOrNull()
+        )
+        return candidates.any { it != null && it.exists() && it.isFile }
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult {
@@ -127,16 +152,15 @@ class NativeCommandProvider(
         // Check if command is a dynamic package or bin script
         val installedPkg = packageManager?.getPackage(cmd)
         if (installedPkg != null) {
-            val scriptFile = workspaceManager.resolve(installedPkg.entryPoint).getOrNull()
+            val scriptFile = findScriptFile(installedPkg.entryPoint, workingDir)
             if (scriptFile != null && scriptFile.exists()) {
                 val scriptContent = scriptFile.readText()
                 return executeScriptContent(scriptContent, installedPkg.runtime, args, request, startTime, stdin)
             }
-        } else if (isExecutableScriptInBin(cmd)) {
-            val binDir = workspaceManager.getDirectory("bin").getOrNull()
-            val scriptFile = if (binDir != null) File(binDir, cmd) else null
-            if (scriptFile != null && scriptFile.exists()) {
-                return executeScriptContent(scriptFile.readText(), "sh", args, request, startTime, stdin)
+        } else {
+            val binScript = findBinScript(cmd, workingDir)
+            if (binScript != null && binScript.exists()) {
+                return executeScriptContent(binScript.readText(), "sh", args, request, startTime, stdin)
             }
         }
 
@@ -203,7 +227,6 @@ class NativeCommandProvider(
                 } else {
                     val files = targetDir.listFiles() ?: emptyArray()
                     val filtered = files.filter { showHidden || !it.name.startsWith(".") }.sortedBy { it.name }
-
                     if (longListing) {
                         filtered.forEach { f ->
                             val type = if (f.isDirectory) "d" else "-"
@@ -284,6 +307,7 @@ class NativeCommandProvider(
                     val fileParts = fullText.split(op, limit = 2)
                     val content = fileParts[0].trim().trim('\'', '"')
                     val fileName = fileParts[1].trim()
+
                     val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileName")
                     target.fold(
                         onSuccess = { file ->
@@ -299,39 +323,39 @@ class NativeCommandProvider(
                             verificationEvidence = "File size verified: ${file.length()} bytes"
                         },
                         onFailure = {
-                            stderr.append("echo: write failed '${it.message}'")
+                            stderr.append("echo: cannot redirect to '$fileName': ${it.message}")
                             exitCode = 1
                         }
                     )
                 } else {
-                    stdout.append(fullText.trim('\'', '"'))
+                    val textToPrint = if (stdin != null && fullText.isEmpty()) stdin else fullText
+                    stdout.append(textToPrint)
                     exitCode = 0
                     verified = true
+                    verificationEvidence = "Printed ${textToPrint.length} characters"
                 }
             }
 
             "cat" -> {
-                if (args.isEmpty()) {
-                    if (stdin != null) {
-                        stdout.append(stdin)
-                        exitCode = 0
-                        verified = true
-                    } else {
-                        stderr.append("cat: missing file operand")
-                        exitCode = 1
-                    }
+                if (args.isEmpty() && stdin != null) {
+                    stdout.append(stdin)
+                    exitCode = 0
+                    verified = true
+                } else if (args.isEmpty()) {
+                    stderr.append("cat: missing file operand")
+                    exitCode = 1
                 } else {
                     val fileName = args[0]
                     val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileName")
                     target.fold(
                         onSuccess = { file ->
                             if (file.exists() && file.isFile) {
-                                stdout.append(file.readText())
+                                stdout.append(file.readText().trimEnd())
                                 exitCode = 0
                                 verified = true
-                                verificationEvidence = "Read ${file.length()} bytes from ${file.name}"
+                                verificationEvidence = "Read ${file.length()} bytes from disk"
                             } else {
-                                stderr.append("cat: ${fileName}: No such file")
+                                stderr.append("cat: $fileName: No such file or directory")
                                 exitCode = 1
                             }
                         },
@@ -345,28 +369,25 @@ class NativeCommandProvider(
 
             "grep" -> {
                 if (args.isEmpty()) {
-                    stderr.append("grep: search pattern required")
+                    stderr.append("grep: missing search pattern")
                     exitCode = 1
                 } else {
-                    val pattern = args[0]
-                    val fileArg = if (args.size > 1) args[1] else null
-                    val inputLines = when {
-                        fileArg != null -> {
-                            val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileArg").getOrNull()
-                            if (target != null && target.exists() && target.isFile) target.readLines() else null
-                        }
-                        stdin != null -> stdin.lines()
-                        else -> null
+                    val pattern = args[0].trim('\'', '"')
+                    val sourceText = if (args.size > 1) {
+                        val fileName = args[1]
+                        val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$fileName").getOrNull()
+                        target?.takeIf { it.exists() && it.isFile }?.readText() ?: ""
+                    } else {
+                        stdin ?: ""
                     }
 
-                    if (inputLines == null) {
-                        stderr.append("grep: no input source or file not found")
-                        exitCode = 1
-                    } else {
-                        val matched = inputLines.filter { it.contains(pattern, ignoreCase = true) }
-                        stdout.append(matched.joinToString("\n"))
+                    val matches = sourceText.lines().filter { it.contains(pattern, ignoreCase = true) }
+                    if (matches.isNotEmpty()) {
+                        stdout.append(matches.joinToString("\n"))
                         exitCode = 0
                         verified = true
+                    } else {
+                        exitCode = 1
                     }
                 }
             }
@@ -463,13 +484,13 @@ class NativeCommandProvider(
                                         exitCode = 0
                                         verified = true
                                     } else {
-                                        stderr.append("Package '$pkgName' not found")
+                                        stderr.append("Failed to remove package '$pkgName'")
                                         exitCode = 1
                                     }
                                 }
                             }
                             else -> {
-                                stderr.append("Unknown pkg action: $subAction")
+                                stderr.append("Unknown pkg command: $subAction")
                                 exitCode = 1
                             }
                         }

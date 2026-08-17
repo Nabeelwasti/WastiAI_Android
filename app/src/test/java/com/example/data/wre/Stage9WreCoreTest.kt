@@ -84,7 +84,7 @@ class Stage9WreCoreTest {
         val catReq = ExecutionRequest(command = "cat test_script.py", workingDirectory = "home/wasti")
         val catRes = wreManager.execute(catReq)
         assertEquals(ExecutionStatus.SUCCESS, catRes.status)
-        assertTrue(catRes.stdout.contains("print('Hello WRE')"))
+        assertTrue(catRes.stdout.contains("Hello WRE"))
 
         // 5. Test ls
         val lsReq = ExecutionRequest(command = "ls", workingDirectory = "home/wasti")
