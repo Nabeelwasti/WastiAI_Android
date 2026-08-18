@@ -269,9 +269,12 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             )
                             "terminal" -> TerminalWorkspaceScreen(
                                 wreManager = viewModel.wreManager,
+                                viewModel = viewModel,
                                 onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
-                            "code" -> CodePromptWorkspaceScreen(
+                            "code" -> CodeStudioScreen(
+                                viewModel = viewModel,
+                                wreManager = viewModel.wreManager,
                                 activeCodeContext = activeCodeContext,
                                 onCodeContextChange = { viewModel.setActiveCodeContext(it) },
                                 onSendMessageToChat = { prompt, codeCtx ->
