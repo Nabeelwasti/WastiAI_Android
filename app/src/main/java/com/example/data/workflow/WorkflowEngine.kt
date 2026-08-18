@@ -27,7 +27,8 @@ enum class ActionType {
     SCHEDULE_TASK,
     EMIT_ALERT,
     STORE_MEMORY,
-    NOTIFICATION
+    NOTIFICATION,
+    AUTONOMOUS_WORKFLOW
 }
 
 data class WorkflowTrigger(
@@ -205,6 +206,12 @@ object WorkflowEngine {
             }
             ActionType.NOTIFICATION -> {
                 WastiEventBus.emit(WastiEvent.SystemAlert("NOTIFICATION", action.targetId))
+            }
+            ActionType.AUTONOMOUS_WORKFLOW -> {
+                val task = WorkflowTask(
+                    originalRequest = action.targetId
+                )
+                UnifiedWorkflowEngine.getInstance().executeWorkflow(task)
             }
         }
     }

@@ -445,7 +445,7 @@ class UnifiedExecutionFabric(
             capId in listOf("wasti_sandbox", "sandbox") ->
                 executeSandboxOperations(request, ctx, startedAt)
 
-            capId in listOf(
+            capId.startsWith("wre_tool_") || com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null || capId in listOf(
                 "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",
                 "bash", "python", "python3", "python_runtime", "node", "nodejs",
                 "node_runtime", "javascript", "npm"
@@ -1256,9 +1256,10 @@ class UnifiedExecutionFabric(
         val wreManager = com.example.data.wre.WreManager.getInstance(ctx)
         val rawCmd = request.parameters["command"]?.toString()
             ?: request.parameters["executable"]?.toString()
-            ?: when (capId) {
-                "python_runtime" -> "python3"
-                "node_runtime", "nodejs", "javascript" -> "node"
+            ?: when {
+                capId.startsWith("wre_tool_") -> capId.removePrefix("wre_tool_")
+                capId == "python_runtime" -> "python3"
+                capId in listOf("node_runtime", "nodejs", "javascript") -> "node"
                 else -> capId
             }
         val rawArgs = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
