@@ -31,6 +31,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.wre.*
+import com.example.ui.viewmodel.WastiViewModel
 import kotlinx.coroutines.launch
 
 data class TerminalLine(
@@ -54,6 +55,7 @@ enum class TerminalLineType {
 @Composable
 fun TerminalWorkspaceScreen(
     wreManager: WreManager,
+    viewModel: WastiViewModel? = null,
     onNavigateBack: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -80,6 +82,19 @@ fun TerminalWorkspaceScreen(
     var historyIndex by remember { mutableIntStateOf(-1) }
     var isExecuting by remember { mutableStateOf(false) }
     var currentWorkingDir by remember { mutableStateOf("home/wasti") }
+
+    // Load persisted history if available
+    val persistedSessions by (viewModel?.terminalSessions?.collectAsState() ?: remember { mutableStateOf(emptyList()) })
+
+    LaunchedEffect(persistedSessions) {
+        if (persistedSessions.isNotEmpty() && history.isEmpty()) {
+            persistedSessions.forEach { session ->
+                if (!history.contains(session.command)) {
+                    history.add(session.command)
+                }
+            }
+        }
+    }
 
     // Stage 9C: Dynamic Autocompletions
     val suggestions = remember(currentInput, currentWorkingDir) {
@@ -162,12 +177,26 @@ fun TerminalWorkspaceScreen(
                 )
             }
 
+            // Persist session to database
+            viewModel?.recordTerminalSession(
+                command = trimmed,
+                output = result.stdout,
+                stderr = result.stderr,
+                workingDirectory = currentWorkingDir,
+                status = result.status.name,
+                exitCode = result.exitCode,
+                durationMs = result.durationMs,
+                verified = result.verified,
+                verificationEvidence = result.verificationEvidence
+            )
+
             isExecuting = false
             if (lines.isNotEmpty()) {
                 listState.animateScrollToItem(lines.size - 1)
             }
         }
     }
+
 
     Scaffold(
         topBar = {

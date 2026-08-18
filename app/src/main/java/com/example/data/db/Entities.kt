@@ -215,4 +215,24 @@ data class ProspectEntity(
     val clientEmail: String = ""
 )
 
+@Entity(
+    tableName = "terminal_sessions",
+    indices = [Index(value = ["sessionId"]), Index(value = ["timestamp"])]
+)
+data class TerminalSessionEntity(
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val sessionId: String = "default",
+    val command: String,
+    val output: String = "",
+    val stderr: String = "",
+    val workingDirectory: String = "home/wasti",
+    val status: String = "SUCCESS", // "SUCCESS", "FAILED", "RUNNING", "SYSTEM"
+    val exitCode: Int = 0,
+    val durationMs: Long = 0L,
+    val verified: Boolean = false,
+    val verificationEvidence: String? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+
 

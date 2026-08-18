@@ -33,6 +33,7 @@ import com.example.ui.components.CommandPaletteDialog
 import com.example.ui.components.ExecutiveBrainHeader
 import com.example.ui.components.WastiStartupSplashScreen
 import com.example.ui.screens.*
+import com.example.data.wre.WreManager
 import com.example.ui.theme.WastiTheme
 import com.example.ui.viewmodel.WastiViewModel
 
@@ -100,6 +101,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),
                 WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
+                WastiNavDestination("terminal", "Terminal", Icons.Default.Terminal),
                 WastiNavDestination("code", "Code", Icons.Default.Code),
                 WastiNavDestination("integrations", "Connectors", Icons.Default.Extension),
                 WastiNavDestination("account_hub", "Account Hub", Icons.Default.VpnKey),
@@ -264,6 +266,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onAddProject = { name, desc, priority -> viewModel.addProject(name, desc, priority) },
                                 onAddTask = { pId, title, desc, agentId, priority -> viewModel.addTask(pId, title, desc, agentId, priority) },
                                 onToggleTaskStatus = { taskId, currentStatus -> viewModel.toggleTaskStatus(taskId, currentStatus) }
+                            )
+                            "terminal" -> TerminalWorkspaceScreen(
+                                wreManager = viewModel.wreManager,
+                                onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
                             "code" -> CodePromptWorkspaceScreen(
                                 activeCodeContext = activeCodeContext,

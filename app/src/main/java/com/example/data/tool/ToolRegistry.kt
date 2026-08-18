@@ -121,9 +121,15 @@ object ToolRegistry {
         toolsMap[tool.definition.id] = tool
     }
 
+    fun unregisterTool(id: String) {
+        toolsMap.remove(id)
+    }
+
     fun getTool(id: String): WastiTool? = toolsMap[id]
 
     fun getAllTools(): List<ToolDefinition> = toolsMap.values.map { it.definition }
+
+    fun getAllWastiTools(): List<WastiTool> = toolsMap.values.toList()
 
     suspend fun executeTool(id: String, parameters: Map<String, Any>): String {
         val tool = toolsMap[id] ?: return "Error: Tool [$id] not found in ToolRegistry."

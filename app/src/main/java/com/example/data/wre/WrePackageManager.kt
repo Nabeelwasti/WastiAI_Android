@@ -156,6 +156,36 @@ class WrePackageManager(
         return true
     }
 
+    fun installOrUpdateScriptPackage(
+        name: String,
+        scriptContent: String,
+        description: String = "User dynamic script tool",
+        runtime: String = "sh",
+        entryPoint: String = "bin/$name",
+        permissions: List<String> = emptyList(),
+        version: String = "1.0.0"
+    ): Result<WrePackage> {
+        val entryFileResult = workspaceManager.resolve(entryPoint)
+        val entryFile = entryFileResult.getOrElse {
+            return Result.failure(it)
+        }
+        entryFile.parentFile?.mkdirs()
+        entryFile.writeText(scriptContent)
+
+        val pkg = WrePackage(
+            name = name,
+            version = version,
+            description = description,
+            runtime = runtime,
+            entryPoint = entryPoint,
+            permissions = permissions,
+            author = "wasti_studio",
+            installedAt = System.currentTimeMillis()
+        )
+        installLocalPackage(pkg)
+        return Result.success(pkg)
+    }
+
     fun removePackage(name: String): Boolean {
         val pkg = packages.remove(name) ?: return false
         savePackages()
@@ -164,8 +194,124 @@ class WrePackageManager(
         if (entry != null && entry.exists()) {
             entry.delete()
         }
+        ToolRegistry.unregisterTool("wre_tool_${pkg.name}")
         return true
     }
+
+    /**
+     * Stage 9D: Exports a package into a standard .wasti capability package bundle.
+     * Contains the complete manifest, runtime requirements, checksum metadata, and file contents.
+     */
+    fun exportPackage(name: String, targetVirtualPath: String? = null): Result<File> {
+        val pkg = packages[name] ?: return Result.failure(IllegalArgumentException("Package '$name' is not installed."))
+        val candidates = listOf(
+            workspaceManager.resolve(pkg.entryPoint).getOrNull(),
+            workspaceManager.resolve("home/wasti/${pkg.entryPoint}").getOrNull(),
+            workspaceManager.resolve("home/wasti/bin/${pkg.entryPoint}").getOrNull(),
+            workspaceManager.resolve("bin/${pkg.entryPoint}").getOrNull()
+        )
+        val entryFile = candidates.firstOrNull { it != null && it.exists() && it.isFile }
+            ?: return Result.failure(IllegalStateException("Entry point '${pkg.entryPoint}' does not exist on disk."))
+
+        val destinationPath = targetVirtualPath ?: "packages/${pkg.name}.wasti"
+        val destFileRes = workspaceManager.resolve(destinationPath)
+        val destFile = destFileRes.getOrElse { return Result.failure(it) }
+        destFile.parentFile?.mkdirs()
+
+        val filesMap = JSONObject().apply {
+            put(pkg.entryPoint, entryFile.readText())
+        }
+
+        val bundleObj = JSONObject().apply {
+            put("manifestVersion", "1.0")
+            put("name", pkg.name)
+            put("version", pkg.version)
+            put("description", pkg.description)
+            put("runtime", pkg.runtime)
+            put("entryPoint", pkg.entryPoint)
+            val permArray = org.json.JSONArray()
+            pkg.permissions.forEach { permArray.put(it) }
+            put("permissions", permArray)
+            put("author", pkg.author)
+            put("createdAt", System.currentTimeMillis())
+            put("files", filesMap)
+        }
+
+        destFile.writeText(bundleObj.toString(2))
+        return Result.success(destFile)
+    }
+
+    /**
+     * Stage 9D: Installs a .wasti capability bundle from file or workspace virtual path.
+     * Validates manifest, unpacks files inside the sandboxed workspace, and registers capability.
+     */
+    fun installWastiPackage(fileOrVirtualPath: String): Result<WrePackage> {
+        val file = if (File(fileOrVirtualPath).isAbsolute && File(fileOrVirtualPath).exists()) {
+            File(fileOrVirtualPath)
+        } else {
+            workspaceManager.resolve(fileOrVirtualPath).getOrElse { return Result.failure(it) }
+        }
+
+        if (!file.exists() || !file.isFile) {
+            return Result.failure(IllegalArgumentException("Package bundle '${file.name}' not found."))
+        }
+
+        return try {
+            val jsonStr = file.readText()
+            val jsonObj = JSONObject(jsonStr)
+
+            val name = jsonObj.getString("name").trim()
+            if (name.isBlank()) return Result.failure(IllegalArgumentException("Invalid package: missing 'name'"))
+
+            val version = jsonObj.optString("version", "1.0.0")
+            val description = jsonObj.optString("description", "Imported WRE capability")
+            val runtime = jsonObj.optString("runtime", "sh")
+            val entryPoint = jsonObj.optString("entryPoint", "bin/$name")
+
+            val perms = mutableListOf<String>()
+            val permsArray = jsonObj.optJSONArray("permissions")
+            if (permsArray != null) {
+                for (i in 0 until permsArray.length()) {
+                    perms.add(permsArray.getString(i))
+                }
+            }
+            val author = jsonObj.optString("author", "community")
+
+            // Extract packaged files
+            val filesObj = jsonObj.optJSONObject("files")
+            if (filesObj != null) {
+                val keys = filesObj.keys()
+                while (keys.hasNext()) {
+                    val relativeFilePath = keys.next()
+                    // Guard against directory traversal in packaged files
+                    if (relativeFilePath.contains("..") || relativeFilePath.startsWith("/")) {
+                        return Result.failure(SecurityException("Illegal file path in package bundle: $relativeFilePath"))
+                    }
+                    val targetRes = workspaceManager.resolve(relativeFilePath)
+                    val targetFile = targetRes.getOrElse { return Result.failure(it) }
+                    targetFile.parentFile?.mkdirs()
+                    targetFile.writeText(filesObj.getString(relativeFilePath))
+                }
+            }
+
+            val pkg = WrePackage(
+                name = name,
+                version = version,
+                description = description,
+                runtime = runtime,
+                entryPoint = entryPoint,
+                permissions = perms,
+                author = author,
+                installedAt = System.currentTimeMillis()
+            )
+
+            installLocalPackage(pkg)
+            Result.success(pkg)
+        } catch (e: Exception) {
+            Result.failure(IllegalArgumentException("Failed to install .wasti package: ${e.message}", e))
+        }
+    }
+
 
     /**
      * Dynamically registers installed package into ToolRegistry as a first-class WastiTool

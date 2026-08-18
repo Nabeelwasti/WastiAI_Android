@@ -5,6 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.db.*
 import com.example.data.repository.WastiRepository
+import com.example.data.wre.WreManager
+import com.example.data.wre.ExecutionRequest
+import com.example.data.wre.ExecutionResult
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -20,6 +23,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = WastiDatabase.getDatabase(application)
     val repository = WastiRepository(db)
+    val wreManager = WreManager.getInstance(application)
 
     private val prefs = application.getSharedPreferences("wasti_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -93,6 +97,10 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     val logs: StateFlow<List<SystemLogEntity>> = repository.logs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val terminalSessions: StateFlow<List<TerminalSessionEntity>> = repository.terminalSessions
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
 
     init {
         viewModelScope.launch {
@@ -381,7 +389,48 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun recordTerminalSession(
+        command: String,
+        output: String = "",
+        stderr: String = "",
+        workingDirectory: String = "home/wasti",
+        status: String = "SUCCESS",
+        exitCode: Int = 0,
+        durationMs: Long = 0L,
+        verified: Boolean = false,
+        verificationEvidence: String? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.recordTerminalSession(
+                    command = command,
+                    output = output,
+                    stderr = stderr,
+                    workingDirectory = workingDirectory,
+                    status = status,
+                    exitCode = exitCode,
+                    durationMs = durationMs,
+                    verified = verified,
+                    verificationEvidence = verificationEvidence
+                )
+            } catch (e: Exception) {
+                // Non-fatal logging
+            }
+        }
+    }
+
+    fun clearTerminalHistory() {
+        viewModelScope.launch {
+            try {
+                repository.clearTerminalHistory()
+            } catch (e: Exception) {
+                // Non-fatal
+            }
+        }
+    }
+
     fun executeQuickCommand(command: String) {
+
         isCommandPaletteOpen.value = false
         val trimmed = command.trim()
         if (trimmed.isEmpty()) return
@@ -398,6 +447,8 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 activeTab.value = "projects"
             normalized.startsWith("open code") || normalized.startsWith("code") ->
                 activeTab.value = "code"
+            normalized.startsWith("open terminal") || normalized.startsWith("terminal") || normalized.startsWith("shell") ->
+                activeTab.value = "terminal"
             normalized.startsWith("open integrations") || normalized.startsWith("integrations") ->
                 activeTab.value = "integrations"
             normalized.startsWith("open settings") || normalized.startsWith("settings") ->

@@ -53,6 +53,41 @@ class WastiRepository(private val db: WastiDatabase) {
     val integrations: Flow<List<IntegrationEntity>> = db.integrationDao().getAllIntegrations()
     val logs: Flow<List<SystemLogEntity>> = db.systemLogDao().getRecentLogs()
     val settings: Flow<List<SettingEntity>> = db.settingDao().getAllSettings()
+    val terminalSessions: Flow<List<TerminalSessionEntity>> = db.terminalSessionDao().getHistoryForSession("default")
+
+    suspend fun recordTerminalSession(
+        command: String,
+        output: String = "",
+        stderr: String = "",
+        workingDirectory: String = "home/wasti",
+        status: String = "SUCCESS",
+        exitCode: Int = 0,
+        durationMs: Long = 0L,
+        verified: Boolean = false,
+        verificationEvidence: String? = null,
+        sessionId: String = "default"
+    ) = withContext(Dispatchers.IO) {
+        db.terminalSessionDao().insertSessionEntry(
+            TerminalSessionEntity(
+                sessionId = sessionId,
+                command = command,
+                output = output,
+                stderr = stderr,
+                workingDirectory = workingDirectory,
+                status = status,
+                exitCode = exitCode,
+                durationMs = durationMs,
+                verified = verified,
+                verificationEvidence = verificationEvidence,
+                timestamp = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun clearTerminalHistory(sessionId: String = "default") = withContext(Dispatchers.IO) {
+        db.terminalSessionDao().deleteHistoryForSession(sessionId)
+    }
+
 
     companion object {
         private const val TAG = "WastiRepository"

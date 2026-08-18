@@ -182,6 +182,32 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
     }
 }
 
+val MIGRATION_10_11 = object : Migration(10, 11) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `terminal_sessions` (
+                `id` TEXT NOT NULL,
+                `sessionId` TEXT NOT NULL,
+                `command` TEXT NOT NULL,
+                `output` TEXT NOT NULL DEFAULT '',
+                `stderr` TEXT NOT NULL DEFAULT '',
+                `workingDirectory` TEXT NOT NULL DEFAULT 'home/wasti',
+                `status` TEXT NOT NULL DEFAULT 'SUCCESS',
+                `exitCode` INTEGER NOT NULL DEFAULT 0,
+                `durationMs` INTEGER NOT NULL DEFAULT 0,
+                `verified` INTEGER NOT NULL DEFAULT 0,
+                `verificationEvidence` TEXT DEFAULT NULL,
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_terminal_sessions_sessionId` ON `terminal_sessions` (`sessionId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_terminal_sessions_timestamp` ON `terminal_sessions` (`timestamp`)")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -201,9 +227,10 @@ val MIGRATION_9_10 = object : Migration(9, 10) {
         LeadEntity::class,
         InvoiceEntity::class,
         ProspectEntity::class,
-        MediaVaultEntity::class
+        MediaVaultEntity::class,
+        TerminalSessionEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -222,6 +249,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun invoiceDao(): InvoiceDao
     abstract fun prospectDao(): ProspectDao
     abstract fun mediaVaultDao(): MediaVaultDao
+    abstract fun terminalSessionDao(): TerminalSessionDao
 
     companion object {
         @Volatile
@@ -234,7 +262,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     .fallbackToDestructiveMigration(true)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
@@ -244,4 +272,5 @@ abstract class WastiDatabase : RoomDatabase() {
         }
     }
 }
+
 

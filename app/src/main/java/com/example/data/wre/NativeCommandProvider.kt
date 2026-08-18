@@ -444,31 +444,110 @@ class NativeCommandProvider(
                                 }
                                 exitCode = 0
                                 verified = true
+                                verificationEvidence = "Listed ${pkgs.size} packages"
                             }
-                            "install" -> {
+                            "info" -> {
                                 if (args.size < 3) {
-                                    stderr.append("wre pkg install: usage: wre pkg install <pkg_name> [script_path]")
+                                    stderr.append("wre pkg info: usage: wre pkg info <pkg_name>")
                                     exitCode = 1
                                 } else {
                                     val pkgName = args[2]
-                                    val entryPath = if (args.size > 3) args[3] else "bin/$pkgName"
-                                    val success = packageManager?.installLocalPackage(
-                                        WrePackage(
-                                            name = pkgName,
-                                            version = "1.0.0",
-                                            description = "Installed via WRE Package Manager",
-                                            runtime = "sh",
-                                            entryPoint = entryPath
+                                    val pkg = packageManager?.getPackage(pkgName)
+                                    if (pkg != null) {
+                                        stdout.append(
+                                            """
+                                            === Package: ${pkg.name} ===
+                                            Version: ${pkg.version}
+                                            Runtime: ${pkg.runtime}
+                                            EntryPoint: ${pkg.entryPoint}
+                                            Description: ${pkg.description}
+                                            Author: ${pkg.author}
+                                            Permissions: ${pkg.permissions.joinToString(", ").ifEmpty { "None" }}
+                                            """.trimIndent()
                                         )
-                                    ) ?: false
-                                    if (success) {
-                                        stdout.append("Package '$pkgName' installed successfully and registered in ToolRegistry.")
                                         exitCode = 0
                                         verified = true
-                                        verificationEvidence = "WrePackage metadata written & ToolRegistry synced"
+                                        verificationEvidence = "Package ${pkg.name} verified in registry"
                                     } else {
-                                        stderr.append("Failed to install package '$pkgName'")
+                                        stderr.append("Package '$pkgName' not found.")
                                         exitCode = 1
+                                    }
+                                }
+                            }
+                            "export" -> {
+                                if (args.size < 3) {
+                                    stderr.append("wre pkg export: usage: wre pkg export <pkg_name> [target_virtual_path]")
+                                    exitCode = 1
+                                } else {
+                                    val pkgName = args[2]
+                                    val targetPath = if (args.size > 3) args[3] else null
+                                    val exportRes = packageManager?.exportPackage(pkgName, targetPath)
+                                    if (exportRes != null && exportRes.isSuccess) {
+                                        val file = exportRes.getOrThrow()
+                                        val vpath = workspaceManager.getVirtualPath(file)
+                                        stdout.append("Exported package '$pkgName' to $vpath (${file.length()} bytes)")
+                                        exitCode = 0
+                                        verified = file.exists() && file.length() > 0
+                                        verificationEvidence = "Package bundle verified on disk at $vpath (${file.length()} bytes)"
+                                    } else {
+                                        val errorMsg = exportRes?.exceptionOrNull()?.message ?: "Unknown export failure"
+                                        stderr.append("Failed to export package '$pkgName': $errorMsg")
+                                        exitCode = 1
+                                    }
+                                }
+                            }
+                            "install" -> {
+                                if (args.size < 3) {
+                                    stderr.append("wre pkg install: usage: wre pkg install <pkg_name_or_bundle.wasti> [script_path]")
+                                    exitCode = 1
+                                } else {
+                                    val target = args[2]
+                                    if (target.endsWith(".wasti") || target.endsWith(".json")) {
+                                        val installRes = packageManager?.installWastiPackage(target)
+                                        if (installRes != null && installRes.isSuccess) {
+                                            val pkg = installRes.getOrThrow()
+                                            stdout.append("Installed .wasti package '${pkg.name}' v${pkg.version} (${pkg.runtime})")
+                                            exitCode = 0
+                                            verified = true
+                                            verificationEvidence = "Extracted and registered package '${pkg.name}' into ToolRegistry"
+                                        } else {
+                                            val err = installRes?.exceptionOrNull()?.message ?: "Package install failed"
+                                            stderr.append("Failed to install .wasti bundle: $err")
+                                            exitCode = 1
+                                        }
+                                    } else {
+                                        val pkgName = target
+                                        val rawEntryPath = if (args.size > 3) args[3] else "bin/$pkgName"
+                                        val entryCandidate = listOf(
+                                            workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$rawEntryPath").getOrNull(),
+                                            workspaceManager.resolve(rawEntryPath).getOrNull(),
+                                            workspaceManager.resolve("home/wasti/$rawEntryPath").getOrNull()
+                                        ).firstOrNull { it != null && it.exists() && it.isFile }
+
+                                        val entryPath = if (entryCandidate != null) {
+                                            workspaceManager.getVirtualPath(entryCandidate).removePrefix("/")
+                                        } else {
+                                            rawEntryPath
+                                        }
+
+                                        val success = packageManager?.installLocalPackage(
+                                            WrePackage(
+                                                name = pkgName,
+                                                version = "1.0.0",
+                                                description = "Installed via WRE Package Manager",
+                                                runtime = "sh",
+                                                entryPoint = entryPath
+                                            )
+                                        ) ?: false
+                                        if (success) {
+                                            stdout.append("Package '$pkgName' installed successfully and registered in ToolRegistry.")
+                                            exitCode = 0
+                                            verified = true
+                                            verificationEvidence = "WrePackage metadata written & ToolRegistry synced"
+                                        } else {
+                                            stderr.append("Failed to install package '$pkgName'")
+                                            exitCode = 1
+                                        }
                                     }
                                 }
                             }

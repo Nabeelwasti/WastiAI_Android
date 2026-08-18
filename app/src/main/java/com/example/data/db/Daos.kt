@@ -273,4 +273,26 @@ interface MediaVaultDao {
     suspend fun deleteMediaById(id: String)
 }
 
+@Dao
+interface TerminalSessionDao {
+    @Query("SELECT * FROM terminal_sessions WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    fun getHistoryForSession(sessionId: String): Flow<List<TerminalSessionEntity>>
+
+    @Query("SELECT * FROM terminal_sessions WHERE sessionId = :sessionId ORDER BY timestamp ASC")
+    suspend fun getHistoryListForSession(sessionId: String): List<TerminalSessionEntity>
+
+    @Query("SELECT * FROM terminal_sessions ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentSessions(limit: Int = 100): List<TerminalSessionEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSessionEntry(entry: TerminalSessionEntity)
+
+    @Query("DELETE FROM terminal_sessions WHERE sessionId = :sessionId")
+    suspend fun deleteHistoryForSession(sessionId: String)
+
+    @Query("DELETE FROM terminal_sessions")
+    suspend fun clearAllTerminalHistory()
+}
+
+
 

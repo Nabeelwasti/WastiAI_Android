@@ -63,20 +63,20 @@ class WreAutocompleteEngine(
                     .map { AutocompleteSuggestion(it, "wre $it") }
             }
             if (tokens.size == 2 && isTrailingSpace && tokens[1] == "pkg") {
-                return listOf("list", "install", "remove", "info")
+                return listOf("list", "install", "remove", "export", "info")
                     .map { AutocompleteSuggestion(it, "wre pkg $it") }
             }
             if (tokens.size == 3 && !isTrailingSpace && tokens[1] == "pkg") {
                 val actionPrefix = tokens[2].lowercase()
-                return listOf("list", "install", "remove", "info")
+                return listOf("list", "install", "remove", "export", "info")
                     .filter { it.startsWith(actionPrefix) }
                     .map { AutocompleteSuggestion(it, "wre pkg $it") }
             }
-            if (tokens.size >= 3 && tokens[1] == "pkg" && tokens[2] == "remove") {
-                val removePrefix = if (tokens.size == 4 && !isTrailingSpace) tokens[3].lowercase() else ""
+            if (tokens.size >= 3 && tokens[1] == "pkg" && tokens[2] in listOf("remove", "export", "info")) {
+                val filterPrefix = if (tokens.size == 4 && !isTrailingSpace) tokens[3].lowercase() else ""
                 return packageManager?.listPackages()
                     ?.map { it.name }
-                    ?.filter { it.startsWith(removePrefix) }
+                    ?.filter { it.startsWith(filterPrefix) }
                     ?.map { AutocompleteSuggestion(it, it) }
                     ?: emptyList()
             }

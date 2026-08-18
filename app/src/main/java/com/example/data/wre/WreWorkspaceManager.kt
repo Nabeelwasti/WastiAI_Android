@@ -80,7 +80,7 @@ class WreWorkspaceManager(context: Context) {
             val relative = fileCanonical.removePrefix(rootCanonical).removePrefix("/")
             if (relative.isEmpty()) "/" else "/$relative"
         } else {
-            fileCanonical.name
+            file.name
         }
     }
 }
