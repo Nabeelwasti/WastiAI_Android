@@ -241,6 +241,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 activeAgentId = activeAgentId,
                                 selectedModel = selectedModel,
                                 isGenerating = isGenerating,
+                                lastOperationError = lastOperationError,
+                                onErrorShown = { viewModel.clearOperationError() },
                                 onSelectConversation = { viewModel.selectConversation(it) },
                                 onSelectAgent = { viewModel.selectAgent(it) },
                                 onSelectModel = { viewModel.setSelectedModel(it) },
