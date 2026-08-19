@@ -1,6 +1,0 @@
-CI retrigger note 2
-
-This is a tiny no-op commit to retrigger CI and capture fresh logs for debugging.
-Timestamp: 2026-08-01T11:10:00Z
-
-No functional changes.
