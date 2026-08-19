@@ -86,20 +86,21 @@ object XAIClient {
             "grok-2-1212"
         ).distinct()
 
-        for (model in candidateModels) {
-            try {
-                val response = api.createChatCompletion(
-                    bearerToken = bearer,
-                    request = XAIChatRequest(model = model, messages = messages)
-                )
-                val output = response.choices?.firstOrNull()?.message?.content
-                if (!output.isNullOrBlank()) {
-                    return@withContext output
-                }
-            } catch (e: Exception) {
-                // Failover to next x.ai model
-            }
+        var lastError: String? = null
+for (model in candidateModels) {
+    try {
+        val response = api.createChatCompletion(
+            bearerToken = bearer,
+            request = XAIChatRequest(model = model, messages = messages)
+        )
+        val output = response.choices?.firstOrNull()?.message?.content
+        if (!output.isNullOrBlank()) {
+            return@withContext output
         }
-        "No response output received from x.ai Grok API."
+    } catch (e: Exception) {
+        lastError = e.message ?: e.toString()
+    }
+}
+throw IllegalStateException("x.ai Grok request failed for all candidate models. Last error: $lastError")
     }
 }
