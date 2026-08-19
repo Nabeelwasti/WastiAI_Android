@@ -105,6 +105,8 @@ fun ChatWorkspaceScreen(
     activeAgentId: String,
     selectedModel: String = "wasti-super-ensemble",
     isGenerating: Boolean,
+    lastOperationError: String? = null,
+    onErrorShown: () -> Unit = {},
     onSelectConversation: (String) -> Unit,
     onSelectAgent: (String) -> Unit,
     onSelectModel: (String) -> Unit = {},
@@ -122,6 +124,12 @@ fun ChatWorkspaceScreen(
     triggerVoiceCallSignal: Int = 0
 ) {
     val context = LocalContext.current
+    LaunchedEffect(lastOperationError) {
+    lastOperationError?.let { err ->
+        Toast.makeText(context, err, Toast.LENGTH_LONG).show()
+        onErrorShown()
+    }
+    }
     val focusManager = LocalFocusManager.current
     var promptInput by remember { mutableStateOf("") }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
