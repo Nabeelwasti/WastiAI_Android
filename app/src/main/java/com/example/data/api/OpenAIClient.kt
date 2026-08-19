@@ -85,20 +85,21 @@ object OpenAIClient {
             "gpt-5.6-luna"
         ).distinct()
 
-        for (model in candidateModels) {
-            try {
-                val response = api.createChatCompletion(
-                    bearerToken = bearer,
-                    request = OpenAIChatRequest(model = model, messages = messages)
-                )
-                val output = response.choices?.firstOrNull()?.message?.content
-                if (!output.isNullOrBlank()) {
-                    return@withContext output
-                }
-            } catch (e: Exception) {
-                // Failover to next OpenAI model
-            }
+        var lastError: String? = null
+for (model in candidateModels) {
+    try {
+        val response = api.createChatCompletion(
+            bearerToken = bearer,
+            request = OpenAIChatRequest(model = model, messages = messages)
+        )
+        val output = response.choices?.firstOrNull()?.message?.content
+        if (!output.isNullOrBlank()) {
+            return@withContext output
         }
-        "No output received from OpenAI API."
+    } catch (e: Exception) {
+        lastError = e.message ?: e.toString()
+    }
+}
+throw IllegalStateException("OpenAI request failed for all candidate models. Last error: $lastError")
     }
 }
