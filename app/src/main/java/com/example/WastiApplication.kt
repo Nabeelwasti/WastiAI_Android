@@ -31,6 +31,7 @@ class WastiApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.example.data.di.WastiServiceLocator.init(this)
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
         // Install Global Uncaught Exception Handler for Crash Telemetry & Debugging

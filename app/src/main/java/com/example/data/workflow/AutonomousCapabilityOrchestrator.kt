@@ -149,6 +149,20 @@ class AutonomousCapabilityOrchestrator(
             }
 
             ToolRegistry.registerTool(dynamicTool)
+            UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
+                com.example.data.agent.runtime.CapabilityReality(
+                    capabilityId = toolId,
+                    category = "DYNAMIC_WRE",
+                    implementationStatus = com.example.data.agent.runtime.ImplementationStatus.READY,
+                    liveConnectionStatus = com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED,
+                    executionStatus = com.example.data.agent.runtime.CapabilityExecutionStatus.OPERATIONAL,
+                    authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                    provider = "WreDynamicToolProvider",
+                    supportedOperations = listOf("execute"),
+                    limitations = emptyList(),
+                    realityState = com.example.data.agent.runtime.CapabilityRealityState.NATIVE
+                )
+            )
 
             return CapabilityResolutionResult.DynamicCreatedTool(
                 toolId = toolId,

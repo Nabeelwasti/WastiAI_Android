@@ -33,14 +33,52 @@ class AgentToolRegistry {
     }
 
     fun get(toolName: String): AgentTool? {
-        return tools[toolName]
+        val direct = tools[toolName]
+        if (direct != null) return direct
+
+        val wastiTool = com.example.data.tool.ToolRegistry.getTool(toolName)
+        if (wastiTool != null) {
+            return object : AgentTool {
+                override val name: String = wastiTool.definition.id
+                override val description: String = wastiTool.definition.description
+                override val permissionLevel: PermissionLevel = when {
+                    wastiTool.definition.category.contains("PRIVILEGED", ignoreCase = true) -> PermissionLevel.PRIVILEGED
+                    wastiTool.definition.category.contains("Dynamic", ignoreCase = true) -> PermissionLevel.CONTROLLED
+                    else -> PermissionLevel.SAFE
+                }
+
+                override suspend fun execute(input: Map<String, Any?>): Map<String, Any?> {
+                    val nonNullParams = input.filterValues { it != null }.mapValues { it.value!! }
+                    val res = wastiTool.execute(nonNullParams)
+                    return mapOf(
+                        "success" to (!res.startsWith("Error", ignoreCase = true) && !res.startsWith("Tool Execution Error", ignoreCase = true)),
+                        "output" to res
+                    )
+                }
+            }
+        }
+        return null
     }
 
     fun contains(toolName: String): Boolean {
-        return tools.containsKey(toolName)
+        return tools.containsKey(toolName) || com.example.data.tool.ToolRegistry.getTool(toolName) != null
     }
 
     fun list(): List<AgentTool> {
-        return tools.values.toList()
+        val list = tools.values.toMutableList()
+        com.example.data.tool.ToolRegistry.getAllWastiTools().forEach { wastiTool ->
+            if (list.none { it.name == wastiTool.definition.id }) {
+                list.add(object : AgentTool {
+                    override val name: String = wastiTool.definition.id
+                    override val description: String = wastiTool.definition.description
+                    override val permissionLevel: PermissionLevel = PermissionLevel.SAFE
+                    override suspend fun execute(input: Map<String, Any?>): Map<String, Any?> {
+                        val res = wastiTool.execute(input.filterValues { it != null }.mapValues { it.value!! })
+                        return mapOf("success" to true, "output" to res)
+                    }
+                })
+            }
+        }
+        return list
     }
 }

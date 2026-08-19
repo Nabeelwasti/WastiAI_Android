@@ -72,6 +72,35 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 }
             }
 
+            LaunchedEffect(Unit) {
+                com.example.data.action.WastiAppActionBus.actions.collect { action ->
+                    when (action) {
+                        is com.example.data.action.WastiAppAction.NavigateTo -> {
+                            viewModel.setActiveTab(action.destinationId)
+                        }
+                        is com.example.data.action.WastiAppAction.OpenProject -> {
+                            viewModel.setActiveTab("projects")
+                        }
+                        is com.example.data.action.WastiAppAction.SearchMemory -> {
+                            viewModel.setActiveTab("memory")
+                        }
+                        is com.example.data.action.WastiAppAction.ExecuteTerminalCommand -> {
+                            viewModel.setActiveTab("terminal")
+                        }
+                        is com.example.data.action.WastiAppAction.TriggerVoiceModal -> {
+                            triggerVoiceModalSignal++
+                        }
+                        is com.example.data.action.WastiAppAction.SwitchTheme -> {
+                            viewModel.setDarkTheme(action.darkTheme)
+                        }
+                        is com.example.data.action.WastiAppAction.OpenDevAssistant -> {
+                            viewModel.setActiveTab("code")
+                        }
+                        else -> { /* Handled by background runtime */ }
+                    }
+                }
+            }
+
             val startupState by AppStartupManager.startupState.collectAsStateWithLifecycle()
             val darkTheme by viewModel.darkThemeEnabled.collectAsStateWithLifecycle()
             val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()

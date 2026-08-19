@@ -229,6 +229,18 @@ object MemoryManager {
         )
     }
 
+    suspend fun deleteMemory(id: String) = withContext(Dispatchers.IO) {
+        activeMemoriesMap.remove(id)
+        vectorIndex.removeVector(id)
+        _memoriesFlow.value = activeMemoriesMap.values.toList()
+        try {
+            memoryDao?.deleteMemoryById(id)
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to delete memory entity from Room database", e)
+        }
+        WastiEventBus.emit(WastiEvent.MemoryUpdated(id, "DELETED"))
+    }
+
     private fun calculateKeywordMatchScore(query: String, text: String): Float {
         val queryWords = query.lowercase().split(Regex("\\s+")).filter { it.length > 2 }
         if (queryWords.isEmpty()) return 0.0f

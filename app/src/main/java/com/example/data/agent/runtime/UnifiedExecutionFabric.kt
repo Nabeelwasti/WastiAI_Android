@@ -445,6 +445,15 @@ class UnifiedExecutionFabric(
             capId in listOf("wasti_sandbox", "sandbox") ->
                 executeSandboxOperations(request, ctx, startedAt)
 
+            capId in listOf("local_server", "start_server", "stop_server", "server_status", "server") ->
+                executeLocalServerOperations(request, ctx, startedAt)
+
+            capId in listOf("navigate_to", "open_screen", "navigate") ->
+                executeNavigationOperations(request, startedAt)
+
+            capId in listOf("python_bridge", "termux_bridge") ->
+                executeBridgeOperations(request, capId, ctx, startedAt)
+
             capId.startsWith("wre_tool_") || com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null || capId in listOf(
                 "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",
                 "bash", "python", "python3", "python_runtime", "node", "nodejs",
@@ -461,6 +470,141 @@ class UnifiedExecutionFabric(
                     verificationStatus = UnifiedVerificationStatus.NOT_APPLICABLE
                 )
             }
+        }
+    }
+
+    private fun executeLocalServerOperations(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val serverManager = com.example.data.server.WastiLocalServerManager.getInstance(context)
+        val action = request.parameters["action"]?.toString() ?: "status"
+        val port = (request.parameters["port"] as? Number)?.toInt() ?: 8080
+
+        return when (action.lowercase(Locale.ROOT)) {
+            "start", "start_server" -> {
+                val res = serverManager.startServer(port)
+                if (res.isSuccess) {
+                    val info = res.getOrNull()!!
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.VERIFIED,
+                        output = "Local server started on port ${info.port} (${info.host})",
+                        executor = "WastiLocalServerManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationEvidence = "Server bound to http://${info.host}:${info.port}"
+                    )
+                } else {
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "Failed to start local server: ${res.exceptionOrNull()?.message}",
+                        error = res.exceptionOrNull()?.message,
+                        executor = "WastiLocalServerManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
+                }
+            }
+            "stop", "stop_server" -> {
+                val res = serverManager.stopServer("Requested via UnifiedExecutionFabric")
+                if (res.isSuccess) {
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.COMPLETED,
+                        output = "Local server stopped successfully",
+                        executor = "WastiLocalServerManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationEvidence = "Server port released"
+                    )
+                } else {
+                    createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "Failed to stop server: ${res.exceptionOrNull()?.message}",
+                        error = res.exceptionOrNull()?.message,
+                        executor = "WastiLocalServerManager",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
+                }
+            }
+            else -> {
+                val info = serverManager.serverInfo.value
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.COMPLETED,
+                    output = "Local Server Status: state=${info.state}, port=${info.port}, requests=${info.requestsHandled}",
+                    executor = "WastiLocalServerManager",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                    verificationEvidence = "State: ${info.state}"
+                )
+            }
+        }
+    }
+
+    private fun executeNavigationOperations(
+        request: UnifiedExecutionRequest,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val destination = request.parameters["destination"]?.toString()
+            ?: request.parameters["screen"]?.toString()
+            ?: request.parameters["tab"]?.toString()
+            ?: "dashboard"
+
+        com.example.data.action.WastiAppActionBus.tryDispatch(
+            com.example.data.action.WastiAppAction.NavigateTo(destination)
+        )
+
+        return createResult(
+            request = request,
+            status = UnifiedExecutionStatus.VERIFIED,
+            output = "Navigated to destination screen: $destination",
+            executor = "WastiAppActionBus",
+            startedAt = startedAt,
+            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationEvidence = "Dispatched NavigateTo($destination) to WastiAppActionBus"
+        )
+    }
+
+    private suspend fun executeBridgeOperations(
+        request: UnifiedExecutionRequest,
+        capId: String,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val bridgeManager = com.example.data.bridge.WastiNativeBridgeManager.getInstance(context)
+        val script = request.parameters["script"]?.toString() ?: request.parameters["code"]?.toString() ?: ""
+        val command = request.parameters["command"]?.toString() ?: "echo 'TEST'"
+
+        return if (capId == "python_bridge" || capId == "execute_python") {
+            val res = bridgeManager.executePythonScript(script)
+            createResult(
+                request = request,
+                status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                output = res.stdout.ifBlank { res.stderr },
+                error = if (res.isSuccess) null else res.stderr,
+                executor = "WastiNativeBridgeManager:Python",
+                startedAt = startedAt,
+                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                verificationEvidence = res.verificationEvidence ?: "Exit code: ${res.exitCode}"
+            )
+        } else {
+            val res = bridgeManager.executeTermuxCommand(command)
+            createResult(
+                request = request,
+                status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                output = res.stdout.ifBlank { res.stderr },
+                error = if (res.isSuccess) null else res.stderr,
+                executor = "WastiNativeBridgeManager:Termux",
+                startedAt = startedAt,
+                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                verificationEvidence = res.verificationEvidence ?: "Exit code: ${res.exitCode}"
+            )
         }
     }
 

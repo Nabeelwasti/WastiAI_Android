@@ -31,7 +31,13 @@ class WastiCapabilityRegistry : CapabilityRegistry {
     }
 
     override fun isCapabilityEnabled(capabilityName: String): Boolean {
-        return enabledCapabilities[capabilityName] ?: false
+        if (enabledCapabilities[capabilityName] == false) return false
+        if (enabledCapabilities[capabilityName] == true) return true
+
+        val reality = UnifiedExecutionFabric.instance.realityRegistry.getCapabilityReality(capabilityName)
+        return reality.executionStatus == CapabilityExecutionStatus.OPERATIONAL &&
+                (reality.realityState == CapabilityRealityState.NATIVE ||
+                 reality.realityState == CapabilityRealityState.LIVE_CONNECTED)
     }
 
     fun setCapabilityEnabled(capabilityName: String, enabled: Boolean) {

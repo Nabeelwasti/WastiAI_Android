@@ -251,8 +251,12 @@ class WastiAgentToolRouter(
     private fun mapToolToCapability(tool: AgentTool): String {
         return when (tool.name) {
             "read_file", "write_file", "list_files", "file_exists", "create_directory", "patch_file" -> "FILES"
-            "execute_code" -> "CODING"
-            else -> "FILES"
+            "execute_code", "run_script", "terminal" -> "CODING"
+            "device_control", "open_app", "send_whatsapp", "send_email", "send_sms", "read_screen", "simulate_tap" -> "AUTOMATION"
+            "memory_search", "memory" -> "FILES"
+            "system_info", "inspect_environment" -> "FILES"
+            "search_web", "read_web_page", "b2b_xray_search" -> "WEB"
+            else -> if (tool.name.startsWith("wre_tool_", ignoreCase = true)) tool.name else "FILES"
         }
     }
 }

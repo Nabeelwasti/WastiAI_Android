@@ -21,9 +21,10 @@ import kotlinx.coroutines.sync.withLock
 
 class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val db = WastiDatabase.getDatabase(application)
-    val repository = WastiRepository(db)
-    val wreManager = WreManager.getInstance(application)
+    val repository = com.example.data.di.WastiServiceLocator.repository
+    val wreManager = com.example.data.di.WastiServiceLocator.wreManager
+    val agentRuntime = com.example.data.di.WastiServiceLocator.agentRuntime
+    val agentEventBus = com.example.data.di.WastiServiceLocator.agentEventBus
 
     private val prefs = application.getSharedPreferences("wasti_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -45,6 +46,19 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _lastOperationError = MutableStateFlow<String?>(null)
     val lastOperationError: StateFlow<String?> = _lastOperationError.asStateFlow()
+
+    // Real-time Agent Event stream directly from the AgentEventBus
+    private val _liveAgentEvents = MutableStateFlow<List<com.example.data.agent.runtime.AgentEvent>>(emptyList())
+    val liveAgentEvents: StateFlow<List<com.example.data.agent.runtime.AgentEvent>> = _liveAgentEvents.asStateFlow()
+
+    fun setActiveTab(tab: String) {
+        activeTab.value = tab
+    }
+
+    fun setDarkTheme(enabled: Boolean) {
+        darkThemeEnabled.value = enabled
+        prefs.edit().putBoolean("dark_theme_enabled", enabled).apply()
+    }
 
     fun setActiveCodeContext(code: String, fileName: String = "WorkspaceCode.kt") {
         activeCodeContext.value = code
@@ -117,6 +131,29 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 throw cancelled
             } catch (error: Exception) {
                 recordOperationError("initialize Wasti", error)
+            }
+        }
+
+        viewModelScope.launch {
+            agentEventBus.events.collect { event ->
+                val current = _liveAgentEvents.value.toMutableList()
+                current.add(event)
+                if (current.size > 100) current.removeAt(0)
+                _liveAgentEvents.value = current
+            }
+        }
+    }
+
+    fun submitAgentTask(prompt: String, executionMode: com.example.data.agent.runtime.ExecutionMode = com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS) {
+        if (prompt.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val taskRes = agentRuntime.submitTaskResult(prompt, executionMode)
+                taskRes.onSuccess { task ->
+                    agentRuntime.executeTask(task.taskId)
+                }
+            } catch (e: Exception) {
+                recordOperationError("submit agent task", e)
             }
         }
     }

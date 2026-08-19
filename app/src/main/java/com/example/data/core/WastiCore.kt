@@ -86,7 +86,48 @@ object WastiCore {
     }
 
     fun classifyIntentTier(prompt: String): RoutingTier {
-        return RoutingTier.DEEP_LANE
+        val lower = prompt.trim().lowercase()
+        if (lower.isEmpty()) return RoutingTier.FAST_LANE
+
+        // Offline check / explicit offline command
+        if (lower.startsWith("offline") || lower.contains("without internet")) {
+            return RoutingTier.OFFLINE_LANE
+        }
+
+        // Deep research / Multi-angle synthesis intent
+        val isDeepIntent = lower.contains("deep search") ||
+                lower.contains("research") ||
+                lower.contains("comprehensive analysis") ||
+                lower.contains("compare") ||
+                lower.contains("market analysis") ||
+                lower.contains("full audit") ||
+                lower.contains("multi-agent") ||
+                lower.contains("multi-provider") ||
+                lower.contains("in-depth") ||
+                lower.contains("synthesize") ||
+                lower.contains("x-ray") ||
+                lower.contains("xray")
+
+        if (isDeepIntent) {
+            return RoutingTier.DEEP_LANE
+        }
+
+        // Fast lane: Short greetings, conversational queries, quick facts, simple commands
+        val isFast = lower.length < 35 ||
+                lower.startsWith("hi") ||
+                lower.startsWith("hello") ||
+                lower.startsWith("hey") ||
+                lower.startsWith("what is the time") ||
+                lower.startsWith("who are you") ||
+                lower.startsWith("how are you") ||
+                lower.startsWith("open ") ||
+                lower.startsWith("clear ")
+
+        if (isFast) {
+            return RoutingTier.FAST_LANE
+        }
+
+        return RoutingTier.STANDARD_LANE
     }
 
     suspend fun executeOrchestratedRequest(
@@ -125,8 +166,66 @@ object WastiCore {
 
         val enrichedSystemInstruction = "$baseInstruction\n\n$overrideDirective"
 
-        // Check for B2B X-Ray Search intent
+        // Stage 10: System Navigation & OS Actions
         val lowerPrompt = userPrompt.lowercase().trim()
+        if (lowerPrompt.startsWith("open ") || lowerPrompt.startsWith("go to ") || lowerPrompt.startsWith("show ")) {
+            val destination = when {
+                lowerPrompt.contains("dashboard") || lowerPrompt.contains("executive") -> "dashboard"
+                lowerPrompt.contains("chat") -> "chat"
+                lowerPrompt.contains("operations") || lowerPrompt.contains("telemetry") -> "operations"
+                lowerPrompt.contains("agent") || lowerPrompt.contains("wasti ai") -> "agents"
+                lowerPrompt.contains("memory") -> "memory"
+                lowerPrompt.contains("project") -> "projects"
+                lowerPrompt.contains("terminal") -> "terminal"
+                lowerPrompt.contains("code") || lowerPrompt.contains("developer") -> "code"
+                lowerPrompt.contains("integration") || lowerPrompt.contains("connector") -> "integrations"
+                lowerPrompt.contains("account") || lowerPrompt.contains("key") -> "account_hub"
+                lowerPrompt.contains("setting") -> "settings"
+                else -> null
+            }
+            if (destination != null) {
+                com.example.data.action.WastiAppActionBus.tryDispatch(
+                    com.example.data.action.WastiAppAction.NavigateTo(destination)
+                )
+                val resp = "Navigated to the ${destination.replace('_', ' ').replaceFirstChar { it.uppercase() }} workspace."
+                com.example.data.memory.ExecutionMemoryRecorder.recordExecutionOutcome(
+                    com.example.data.memory.ExecutionRecord(
+                        taskId = "nav_${System.currentTimeMillis()}",
+                        goal = userPrompt,
+                        interpretedIntent = "NAVIGATE_TO_$destination",
+                        selectedCapability = "NAVIGATE_TO",
+                        isSuccess = true,
+                        verificationEvidence = "Dispatched NavigateTo($destination)"
+                    )
+                )
+                return@withContext Pair(resp, "Wasti OS")
+            }
+        }
+
+        // Local Server Control
+        if (lowerPrompt.contains("server") && (lowerPrompt.contains("start") || lowerPrompt.contains("stop") || lowerPrompt.contains("status"))) {
+            val serverManager = com.example.data.server.WastiLocalServerManager.getInstance()
+            if (lowerPrompt.contains("start")) {
+                val res = serverManager.startServer()
+                val resp = if (res.isSuccess) {
+                    val info = res.getOrNull()!!
+                    "Wasti Local Embedded Server is running on port ${info.port} (${info.host}). Endpoints: /health, /api/status, /api/chat, /api/execute, /api/events"
+                } else {
+                    "Failed to start local server: ${res.exceptionOrNull()?.message}"
+                }
+                return@withContext Pair(resp, "Wasti Server Daemon")
+            } else if (lowerPrompt.contains("stop")) {
+                val res = serverManager.stopServer()
+                val resp = if (res.isSuccess) "Wasti Local Server has been stopped." else "Error stopping server: ${res.exceptionOrNull()?.message}"
+                return@withContext Pair(resp, "Wasti Server Daemon")
+            } else if (lowerPrompt.contains("status")) {
+                val info = serverManager.serverInfo.value
+                val resp = "Wasti Local Server Status: state=${info.state}, port=${info.port}, requestsHandled=${info.requestsHandled}"
+                return@withContext Pair(resp, "Wasti Server Daemon")
+            }
+        }
+
+        // Check for B2B X-Ray Search intent
         if (lowerPrompt.contains("x-ray") ||
             lowerPrompt.contains("xray") ||
             lowerPrompt.contains("b2b") ||
@@ -178,7 +277,28 @@ object WastiCore {
             }
         }
 
-        // 3. Deep-Lane Multi-Provider Async Dispatch
+        // 3. Intelligent Tier Dispatching
+        val routingTier = classifyIntentTier(userPrompt)
+        if (routingTier == RoutingTier.FAST_LANE || routingTier == RoutingTier.STANDARD_LANE) {
+            try {
+                val directResp = AIManager.execute(
+                    prompt = userPrompt,
+                    systemInstruction = enrichedSystemInstruction,
+                    history = history,
+                    imageInlineData = imageInlineData,
+                    mimeType = mimeType,
+                    mediaList = mediaList,
+                    fileContext = fileContext
+                )
+                if (!directResp.isError && directResp.content.isNotBlank()) {
+                    return@withContext Pair(directResp.content, "Wasti AI")
+                }
+            } catch (e: Exception) {
+                Log.w("WastiCore", "Direct provider tier execution failed, escalating to multi-provider ensemble", e)
+            }
+        }
+
+        // 4. Deep-Lane Multi-Provider Async Dispatch (for Deep Research or fallback)
         val providerIds = listOf("gemini", "groq", "openai", "deepseek", "xai")
 
         val tasks = providerIds.map { providerId ->

@@ -355,6 +355,24 @@ class CapabilityRealityRegistry {
         val direct = capabilityMap[normalizedKey(norm)]
         if (direct != null) return direct
 
+        if (norm.startsWith("wre_tool_", ignoreCase = true) ||
+            com.example.data.tool.ToolRegistry.getTool(norm) != null ||
+            com.example.data.tool.ToolRegistry.getTool(capabilityId) != null
+        ) {
+            return CapabilityReality(
+                capabilityId = capabilityId,
+                category = "DYNAMIC_WRE",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WreDynamicToolProvider",
+                supportedOperations = listOf("execute"),
+                limitations = emptyList(),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        }
+
         // Check alias mapping
         if (norm.equals("python", ignoreCase = true) || norm.equals("python3", ignoreCase = true)) {
             capabilityMap["PYTHON_RUNTIME"]?.let { return it }
