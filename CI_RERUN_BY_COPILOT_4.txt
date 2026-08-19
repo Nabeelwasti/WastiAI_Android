@@ -1,4 +1,0 @@
-CI retrigger by Copilot — automatic rerun
-
-This no-op change retriggers PR workflow so Copilot can fetch fresh logs and continue automated fixes.
-Timestamp: 2026-08-01T12:45:30Z
