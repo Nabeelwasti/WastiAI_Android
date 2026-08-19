@@ -108,6 +108,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val activeAgentId by viewModel.activeAgentId.collectAsStateWithLifecycle()
             val isCommandPaletteOpen by viewModel.isCommandPaletteOpen.collectAsStateWithLifecycle()
             val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+            val lastOperationError by viewModel.lastOperationError.collectAsStateWithLifecycle()
             val selectedModel by viewModel.selectedModel.collectAsStateWithLifecycle()
 
             val conversations by viewModel.conversations.collectAsStateWithLifecycle()
