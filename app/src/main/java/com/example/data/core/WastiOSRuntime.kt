@@ -26,6 +26,8 @@ enum class CommandOrigin(val displayName: String, val isLocal: Boolean) {
     VOICE("Voice Interface", true),
     LOCAL_SERVER("Embedded HTTP/WS Server", true),
     WEB_COMPANION("Web Companion Interface", false),
+    DESKTOP_COMPANION("Desktop Companion Interface", false),
+    REMOTE_DEVICE("Remote Paired Device", false),
     BACKGROUND_WORKER("Background Autonomous Daemon", true),
     DEV_ASSISTANT("Developer Assistant", true),
     PROJECTS("Projects & Tasks Workspace", true),

@@ -40,6 +40,7 @@ enum class LocalServerState {
 data class LocalServerInfo(
     val state: LocalServerState = LocalServerState.NOT_STARTED,
     val port: Int = 8080,
+    val wsPort: Int = 8081,
     val host: String = "127.0.0.1",
     val startedAt: Long = 0L,
     val requestsHandled: Long = 0L,
@@ -156,14 +157,39 @@ class WastiLocalServerManager(
             server.createContext("/api/terminal", TerminalHandler(serverScope))
 
             // 12. Node Registry Endpoint
-            server.createContext("/api/nodes", NodeHandler())
+            val nodeHandler = NodeHandler()
+            server.createContext("/nodes", nodeHandler)
+            server.createContext("/api/nodes", nodeHandler)
+
+            // 13. Stage 11: Multi-Device Pairing Endpoints
+            server.createContext("/api/pairing/request", PairingRequestHandler())
+            server.createContext("/api/pairing/verify", PairingVerifyHandler())
+            server.createContext("/api/pairing/devices", PairingDevicesHandler())
+            server.createContext("/api/pairing/revoke", PairingRevokeHandler())
+
+            // 14. Stage 11/12: Real-time Event Stream Snapshot
+            val streamHandler = StreamHandler()
+            server.createContext("/stream", streamHandler)
+            server.createContext("/api/stream", streamHandler)
+
+            // 15. Stage 12: Web Companion Lightweight Dashboard UI
+            val webCompanionHandler = WebCompanionDashboardHandler()
+            server.createContext("/", webCompanionHandler)
+            server.createContext("/web", webCompanionHandler)
+            server.createContext("/companion", webCompanionHandler)
 
             server.start()
             httpServer = server
 
+            // Stage 13: Canonical RFC 6455 WebSocket Server Startup
+            val wsPort = selectedPort + 1
+            val wsResult = WastiWebSocketServer.getInstance(context).start(wsPort)
+            val actualWsPort = wsResult.getOrDefault(wsPort)
+
             val updatedInfo = LocalServerInfo(
                 state = LocalServerState.RUNNING,
                 port = selectedPort,
+                wsPort = actualWsPort,
                 host = "127.0.0.1",
                 startedAt = System.currentTimeMillis(),
                 requestsHandled = 0L,
@@ -183,14 +209,21 @@ class WastiLocalServerManager(
                     provider = "WastiLocalServerManager",
                     supportedOperations = listOf(
                         "start_server", "stop_server", "get_status", "http_gateway",
-                        "transport_gateway", "terminal_gateway", "events_stream"
+                        "transport_gateway", "terminal_gateway", "events_stream", "websocket_fabric"
                     ),
-                    limitations = listOf("Bound to local interface 127.0.0.1:$selectedPort"),
+                    limitations = listOf("Bound to local interface 127.0.0.1:$selectedPort (HTTP) & $actualWsPort (WS)"),
                     realityState = CapabilityRealityState.NATIVE
                 )
             )
 
-            Log.i(TAG, "Wasti Embedded Server successfully started on port $selectedPort")
+            Log.i(TAG, "Wasti Embedded Server successfully started on port $selectedPort (WS: $actualWsPort)")
+
+            // Stage 12: Network Service Discovery (mDNS) registration
+            val ctx = context ?: com.example.WastiApplication.instance
+            if (ctx != null) {
+                com.example.data.node.WastiNodeDiscoveryManager.getInstance(ctx).registerService(selectedPort)
+            }
+
             Result.success(updatedInfo)
         } catch (e: Exception) {
             val errMsg = "Failed to start local server on port $selectedPort: ${e.message}"
@@ -214,6 +247,15 @@ class WastiLocalServerManager(
             httpServer?.stop(0)
             httpServer = null
             executor.shutdown()
+
+            // Stage 13: Stop WebSocket Server
+            WastiWebSocketServer.getInstance(context).stop()
+
+            // Stage 12: Network Service Discovery unregistration
+            val ctx = context ?: com.example.WastiApplication.instance
+            if (ctx != null) {
+                com.example.data.node.WastiNodeDiscoveryManager.getInstance(ctx).unregisterService()
+            }
 
             _serverInfo.value = _serverInfo.value.copy(
                 state = LocalServerState.STOPPED,
@@ -515,7 +557,10 @@ class WastiLocalServerManager(
             val command = json.optString("command", "")
             val originName = json.optString("origin", "LOCAL_SERVER")
             val targetAgent = json.optString("agentId", "ceo_agent")
-            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token")
+            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token") ?: json.optString("authToken").takeIf { it.isNotBlank() }
+            val deviceId = exchange.requestHeaders.getFirst("X-Wasti-Device-Id") ?: json.optString("deviceId").takeIf { it.isNotBlank() }
+            val requestId = exchange.requestHeaders.getFirst("X-Wasti-Request-Id") ?: json.optString("requestId").takeIf { it.isNotBlank() }
+            val correlationId = exchange.requestHeaders.getFirst("X-Wasti-Correlation-Id") ?: json.optString("correlationId").takeIf { it.isNotBlank() }
 
             val origin = try {
                 CommandOrigin.valueOf(originName.uppercase())
@@ -530,7 +575,10 @@ class WastiLocalServerManager(
                     executionMode = ExecutionMode.AUTONOMOUS,
                     targetAgentId = targetAgent,
                     clientHost = exchange.remoteAddress?.hostString ?: "127.0.0.1",
-                    authToken = authToken
+                    authToken = authToken,
+                    deviceId = deviceId,
+                    requestId = requestId,
+                    correlationId = correlationId
                 )
 
                 when (result) {
@@ -559,6 +607,416 @@ class WastiLocalServerManager(
                         sendJsonResponse(exchange, 400, res)
                     }
                 }
+            }
+        }
+    }
+
+    // ========================================================
+    // STAGE 11: MULTI-DEVICE PAIRING & EVENT STREAMING HANDLERS
+    // ========================================================
+
+    private inner class PairingRequestHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val deviceId = json.optString("deviceId", java.util.UUID.randomUUID().toString())
+            val deviceName = json.optString("deviceName", "Remote Companion")
+            val platformStr = json.optString("platform", "WEB")
+            val platform = try {
+                com.example.data.node.NodePlatform.valueOf(platformStr.uppercase())
+            } catch (_: Exception) {
+                com.example.data.node.NodePlatform.WEB
+            }
+
+            val challenge = WastiCommandTransport.getInstance(context).createPairingChallenge(
+                deviceId = deviceId,
+                deviceName = deviceName,
+                platform = platform
+            )
+
+            val res = JSONObject().apply {
+                put("success", true)
+                put("code", challenge.code)
+                put("deviceId", challenge.deviceId)
+                put("deviceName", challenge.deviceName)
+                put("platform", challenge.platform.name)
+                put("expiresAt", challenge.expiresAt)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, res)
+        }
+    }
+
+    private inner class PairingVerifyHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val code = json.optString("code", "").trim()
+            val deviceId = json.optString("deviceId", "").trim()
+            val endpointUrl = json.optString("endpointUrl").takeIf { it.isNotBlank() }
+
+            val paired = WastiCommandTransport.getInstance(context).verifyPairingChallenge(
+                code = code,
+                deviceId = deviceId,
+                endpointUrl = endpointUrl
+            )
+
+            if (paired != null) {
+                val res = JSONObject().apply {
+                    put("success", true)
+                    put("sessionToken", paired.sessionToken)
+                    put("deviceId", paired.deviceId)
+                    put("deviceName", paired.deviceName)
+                    put("platform", paired.platform.name)
+                    put("pairedAt", paired.pairedAt)
+                }.toString()
+                sendJsonResponse(exchange, 200, res)
+            } else {
+                val res = JSONObject().apply {
+                    put("success", false)
+                    put("error", "Invalid or expired pairing code.")
+                }.toString()
+                sendJsonResponse(exchange, 400, res)
+            }
+        }
+    }
+
+    private inner class PairingDevicesHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val devices = WastiCommandTransport.getInstance(context).getPairedDevices()
+            val arr = org.json.JSONArray()
+            for (dev in devices) {
+                arr.put(JSONObject().apply {
+                    put("deviceId", dev.deviceId)
+                    put("deviceName", dev.deviceName)
+                    put("platform", dev.platform.name)
+                    put("pairedAt", dev.pairedAt)
+                    put("lastSeenAt", dev.lastSeenAt)
+                })
+            }
+            val res = JSONObject().apply {
+                put("devices", arr)
+                put("count", devices.size)
+            }.toString()
+            sendJsonResponse(exchange, 200, res)
+        }
+    }
+
+    private inner class PairingRevokeHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val deviceId = json.optString("deviceId", "")
+
+            val revoked = WastiCommandTransport.getInstance(context).revokeDevice(deviceId)
+            val res = JSONObject().apply {
+                put("success", revoked)
+                put("deviceId", deviceId)
+            }.toString()
+            sendJsonResponse(exchange, if (revoked) 200 else 404, res)
+        }
+    }
+
+    private inner class StreamHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val currentContext = WastiOSRuntime.getInstance(context).activeContext.value
+            val recentExecutions = com.example.data.memory.ExecutionMemoryRecorder.getRecentExecutions(10)
+
+            val eventsArray = org.json.JSONArray()
+            for (exec in recentExecutions) {
+                eventsArray.put(JSONObject().apply {
+                    put("taskId", exec.taskId)
+                    put("intent", exec.interpretedIntent)
+                    put("capability", exec.selectedCapability)
+                    put("isSuccess", exec.isSuccess)
+                    put("timestamp", exec.timestamp)
+                })
+            }
+
+            val res = JSONObject().apply {
+                put("type", "sync_state")
+                put("activeTaskId", currentContext.activeTaskId)
+                put("activeCommand", currentContext.activeCommand)
+                put("isBusy", currentContext.isBusy)
+                put("progressMessage", currentContext.progressMessage)
+                put("recentEvents", eventsArray)
+                put("timestamp", System.currentTimeMillis())
+            }.toString()
+
+            sendJsonResponse(exchange, 200, res)
+        }
+    }
+
+    private inner class WebCompanionDashboardHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val html = """
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Wasti AI OS — Web Companion</title>
+                    <style>
+                        :root {
+                            --bg: #0D1117;
+                            --card: #161B22;
+                            --border: #30363D;
+                            --text: #C9D1D9;
+                            --accent: #58A6FF;
+                            --success: #238636;
+                            --danger: #DA3633;
+                            --subtext: #8B949E;
+                        }
+                        body {
+                            margin: 0;
+                            padding: 24px;
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                            background-color: var(--bg);
+                            color: var(--text);
+                        }
+                        .container {
+                            max-width: 800px;
+                            margin: 0 auto;
+                        }
+                        header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            border-bottom: 1px solid var(--border);
+                            padding-bottom: 16px;
+                            margin-bottom: 24px;
+                        }
+                        h1 { margin: 0; font-size: 24px; color: #FFF; }
+                        .badge {
+                            background: var(--success);
+                            color: #FFF;
+                            padding: 4px 10px;
+                            border-radius: 12px;
+                            font-size: 12px;
+                            font-weight: bold;
+                        }
+                        .card {
+                            background: var(--card);
+                            border: 1px solid var(--border);
+                            border-radius: 8px;
+                            padding: 20px;
+                            margin-bottom: 20px;
+                        }
+                        .input-group {
+                            display: flex;
+                            gap: 10px;
+                            margin-top: 12px;
+                        }
+                        input[type="text"] {
+                            flex: 1;
+                            background: #090D13;
+                            border: 1px solid var(--border);
+                            color: #FFF;
+                            padding: 10px 14px;
+                            border-radius: 6px;
+                            font-size: 14px;
+                        }
+                        button {
+                            background: var(--accent);
+                            color: #0D1117;
+                            border: none;
+                            border-radius: 6px;
+                            padding: 10px 18px;
+                            font-weight: 600;
+                            cursor: pointer;
+                        }
+                        button.danger {
+                            background: var(--danger);
+                            color: #FFF;
+                        }
+                        pre {
+                            background: #090D13;
+                            padding: 12px;
+                            border-radius: 6px;
+                            overflow-x: auto;
+                            font-size: 13px;
+                            color: #7EE787;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <header>
+                            <div>
+                                <h1>Wasti AI OS — Web Room</h1>
+                                <span style="font-size: 13px; color: var(--subtext);">One Brain &bull; Infinite Rooms &bull; Connected Node</span>
+                            </div>
+                            <span class="badge" id="connStatus">ONLINE</span>
+                        </header>
+
+                        <div class="card">
+                            <h3>Companion Authentication & Pairing</h3>
+                            <div class="input-group">
+                                <input type="text" id="pairingCode" placeholder="Enter 6-digit Code (e.g. PAIR-123456)">
+                                <button onclick="verifyPairing()">Pair Device</button>
+                            </div>
+                            <p id="authStatus" style="font-size: 13px; color: var(--subtext); margin-top: 8px;"></p>
+                        </div>
+
+                        <div class="card">
+                            <h3>Command Dispatch</h3>
+                            <div class="input-group">
+                                <input type="text" id="commandInput" placeholder="Submit autonomous command to Wasti...">
+                                <button onclick="sendCommand()">Send</button>
+                                <button class="danger" onclick="emergencyStop()">STOP</button>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <h3>Live Stream & Status</h3>
+                            <pre id="streamOutput">Connecting to Wasti stream...</pre>
+                        </div>
+                    </div>
+
+                    <script>
+                        let sessionToken = localStorage.getItem("wasti_token") || "wasti-local-secure-token";
+                        let deviceId = localStorage.getItem("wasti_dev_id") || "web_companion_" + Math.floor(Math.random()*10000);
+                        localStorage.setItem("wasti_dev_id", deviceId);
+
+                        async function verifyPairing() {
+                            const code = document.getElementById("pairingCode").value.trim();
+                            if (!code) return;
+                            try {
+                                const res = await fetch("/api/pairing/verify", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ code: code, deviceId: deviceId, deviceName: "Web Companion Browser" })
+                                });
+                                const data = await res.json();
+                                if (data.sessionToken) {
+                                    sessionToken = data.sessionToken;
+                                    localStorage.setItem("wasti_token", sessionToken);
+                                    document.getElementById("authStatus").innerText = "Paired successfully as " + data.deviceName;
+                                } else {
+                                    document.getElementById("authStatus").innerText = "Pairing failed: " + (data.error || "Invalid code");
+                                }
+                            } catch(e) {
+                                document.getElementById("authStatus").innerText = "Error: " + e.message;
+                            }
+                        }
+
+                        async function sendCommand() {
+                            const cmd = document.getElementById("commandInput").value.trim();
+                            if (!cmd) return;
+                            try {
+                                const res = await fetch("/api/command", {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json",
+                                        "X-Wasti-Auth-Token": sessionToken,
+                                        "X-Wasti-Device-Id": deviceId,
+                                        "X-Wasti-Request-Id": "req_" + Date.now()
+                                    },
+                                    body: JSON.stringify({ command: cmd, origin: "WEB_COMPANION" })
+                                });
+                                const data = await res.json();
+                                pollStream();
+                            } catch(e) {
+                                alert("Failed: " + e.message);
+                            }
+                        }
+
+                        async function emergencyStop() {
+                            await fetch("/api/emergency-stop", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ reason: "Triggered from Web Companion UI" })
+                            });
+                            pollStream();
+                        }
+
+                        async function pollStream() {
+                            try {
+                                const res = await fetch("/api/stream");
+                                const data = await res.json();
+                                document.getElementById("streamOutput").innerText = JSON.stringify(data, null, 2);
+                            } catch(e) {
+                                document.getElementById("streamOutput").innerText = "Stream offline: " + e.message;
+                            }
+                        }
+
+                        let ws = null;
+                        function connectWebSocket() {
+                            try {
+                                const wsPort = (parseInt(location.port) || 8080) + 1;
+                                const wsUrl = "ws://" + location.hostname + ":" + wsPort + "/";
+                                ws = new WebSocket(wsUrl);
+
+                                ws.onopen = () => {
+                                    document.getElementById("connStatus").innerText = "WS CONNECTED";
+                                    document.getElementById("connStatus").style.background = "#238636";
+                                    // Authenticate session
+                                    ws.send(JSON.stringify({
+                                        type: "AUTHENTICATE",
+                                        token: sessionToken,
+                                        deviceId: deviceId,
+                                        platform: "WEB"
+                                    }));
+                                };
+
+                                ws.onmessage = (event) => {
+                                    try {
+                                        const parsed = JSON.parse(event.data);
+                                        document.getElementById("streamOutput").innerText = JSON.stringify(parsed, null, 2);
+                                    } catch(e) {
+                                        document.getElementById("streamOutput").innerText = event.data;
+                                    }
+                                };
+
+                                ws.onclose = () => {
+                                    document.getElementById("connStatus").innerText = "WS RECONNECTING";
+                                    document.getElementById("connStatus").style.background = "#D29922";
+                                    setTimeout(connectWebSocket, 3000);
+                                };
+
+                                ws.onerror = (err) => {
+                                    document.getElementById("connStatus").innerText = "HTTP FALLBACK";
+                                    document.getElementById("connStatus").style.background = "#8B949E";
+                                };
+                            } catch(e) {
+                                console.warn("WebSocket init error:", e);
+                            }
+                        }
+
+                        connectWebSocket();
+                        setInterval(pollStream, 4000);
+                    </script>
+                </body>
+                </html>
+            """.trimIndent()
+
+            val bytes = html.toByteArray(Charsets.UTF_8)
+            exchange.responseHeaders.set("Content-Type", "text/html; charset=utf-8")
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { os ->
+                os.write(bytes)
+                os.flush()
             }
         }
     }

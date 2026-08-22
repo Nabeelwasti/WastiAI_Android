@@ -192,8 +192,13 @@ sealed class AgentEvent(
     data class TaskFailed(override val taskId: TaskId, val error: String) : AgentEvent(taskId = taskId)
     data class TaskCancelled(override val taskId: TaskId, val reason: String) : AgentEvent(taskId = taskId)
     data class EmergencyStopped(override val taskId: TaskId, val reason: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class EmergencyStopTriggered(override val taskId: TaskId, val reason: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class TaskRolledBack(override val taskId: TaskId, val snapshotId: String) : AgentEvent(taskId = taskId)
+
+    // Stage 13: Distributed Node, WebSocket and Cross-Device Event Types
+    data class NodeConnected(override val taskId: TaskId = TaskId("node_lifecycle"), val nodeId: String, val nodeName: String, val platform: String) : AgentEvent(taskId = taskId)
+    data class NodeDisconnected(override val taskId: TaskId = TaskId("node_lifecycle"), val nodeId: String, val reason: String) : AgentEvent(taskId = taskId)
+    data class NodeTrustChanged(override val taskId: TaskId = TaskId("node_lifecycle"), val nodeId: String, val newTrustState: String) : AgentEvent(taskId = taskId)
+    data class CapabilityChanged(override val taskId: TaskId = TaskId("capability_lifecycle"), val capabilityId: String, val status: String) : AgentEvent(taskId = taskId)
+    data class ExecutionStateChanged(override val taskId: TaskId = TaskId("execution_lifecycle"), val state: String, val details: String) : AgentEvent(taskId = taskId)
 }

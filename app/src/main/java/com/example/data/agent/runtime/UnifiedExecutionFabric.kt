@@ -536,7 +536,7 @@ class UnifiedExecutionFabric(
                 val info = serverManager.serverInfo.value
                 createResult(
                     request = request,
-                    status = UnifiedExecutionStatus.COMPLETED,
+                    status = UnifiedExecutionStatus.VERIFIED,
                     output = "Local Server Status: state=${info.state}, port=${info.port}, requests=${info.requestsHandled}",
                     executor = "WastiLocalServerManager",
                     startedAt = startedAt,
