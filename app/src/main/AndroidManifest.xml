@@ -109,6 +109,17 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Autonomous background execution daemon & local server host -->
+        <service
+            android:name="com.example.service.WastiForegroundExecutionService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Autonomous agent loop execution, background workflows, and local embedded server host." />
+        </service>
     </application>
 
 </manifest>

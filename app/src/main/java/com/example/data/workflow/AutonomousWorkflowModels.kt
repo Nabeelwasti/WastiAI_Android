@@ -52,6 +52,7 @@ enum class WorkflowJobStatus {
     CANCELLED
 }
 
+// TODO: unused — evaluate for removal or wiring in
 enum class CapabilityResolutionStrategy {
     USE_EXISTING_TOOL,
     CREATE_DYNAMIC_WRE_TOOL,

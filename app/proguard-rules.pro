@@ -21,3 +21,26 @@
 #-renamesourcefileattribute SourceFile
 
 -keep class com.example.WastiApplication { *; }
+
+# Retrofit & OkHttp
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+
+# Moshi JSON Serialization
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.* <methods>;
+}
+-keepclasseswithmembers class * {
+    @com.squareup.moshi.* <fields>;
+}
+-keep class com.squareup.moshi.** { *; }
+-keep class com.example.data.api.** { *; }
+-keep class com.example.data.ai.model.** { *; }
+
+# Room Database
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+-keep class com.example.data.db.** { *; }
+

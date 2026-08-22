@@ -69,6 +69,52 @@ class Stage10TransportAndActionTest {
         assertNotNull(reality)
         assertEquals("LOCAL_SERVER", reality?.capabilityId)
 
+        // 1. Test GET /health
+        val healthUrl = java.net.URL("http://127.0.0.1:18080/health")
+        val healthConn = healthUrl.openConnection() as java.net.HttpURLConnection
+        healthConn.requestMethod = "GET"
+        assertEquals(200, healthConn.responseCode)
+        val healthBody = healthConn.inputStream.bufferedReader().readText()
+        assertTrue(healthBody.contains("\"status\":\"UP\""))
+        assertTrue(healthBody.contains("\"brain\":\"OPERATIONAL\""))
+
+        // 2. Test GET /status
+        val statusUrl = java.net.URL("http://127.0.0.1:18080/status")
+        val statusConn = statusUrl.openConnection() as java.net.HttpURLConnection
+        statusConn.requestMethod = "GET"
+        assertEquals(200, statusConn.responseCode)
+        val statusBody = statusConn.inputStream.bufferedReader().readText()
+        assertTrue(statusBody.contains("\"system\":\"WastiAI OS\""))
+
+        // 3. Test GET /capabilities
+        val capUrl = java.net.URL("http://127.0.0.1:18080/capabilities")
+        val capConn = capUrl.openConnection() as java.net.HttpURLConnection
+        capConn.requestMethod = "GET"
+        assertEquals(200, capConn.responseCode)
+        val capBody = capConn.inputStream.bufferedReader().readText()
+        assertTrue(capBody.contains("capabilities"))
+
+        // 4. Test GET /execution
+        val execUrl = java.net.URL("http://127.0.0.1:18080/execution")
+        val execConn = execUrl.openConnection() as java.net.HttpURLConnection
+        execConn.requestMethod = "GET"
+        assertEquals(200, execConn.responseCode)
+        val execBody = execConn.inputStream.bufferedReader().readText()
+        assertTrue(execBody.contains("isBusy"))
+
+        // 5. Test POST /emergency-stop
+        val stopApiUrl = java.net.URL("http://127.0.0.1:18080/emergency-stop")
+        val stopApiConn = stopApiUrl.openConnection() as java.net.HttpURLConnection
+        stopApiConn.requestMethod = "POST"
+        stopApiConn.doOutput = true
+        stopApiConn.outputStream.write("{\"reason\":\"Test stop\"}".toByteArray())
+        assertEquals(200, stopApiConn.responseCode)
+        val stopApiBody = stopApiConn.inputStream.bufferedReader().readText()
+        assertTrue(stopApiBody.contains("\"isEmergencyStopped\":true"))
+
+        // Reset emergency stop for subsequent tests
+        com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+
         val stopResult = serverManager.stopServer("Test complete")
         assertTrue(stopResult.isSuccess)
         assertEquals(LocalServerState.STOPPED, serverManager.serverInfo.value.state)
@@ -121,25 +167,28 @@ class Stage10TransportAndActionTest {
     }
 
     @Test
-    fun testUnifiedExecutionFabricStage10Dispatch() = runBlocking {
+    fun testUnifiedExecutionFabricNavigation() = runBlocking {
         val fabric = UnifiedExecutionFabric.instance
 
-        // 1. Navigation Capability
         val navReq = UnifiedExecutionRequest(
             capabilityId = "navigate_to",
             parameters = mapOf("destination" to "terminal")
         )
         val navRes = fabric.execute(navReq, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, navRes.status)
-        assertTrue(navRes.output.contains("terminal"))
+        assertEquals("Nav execution failed: status=${navRes.status}, output=${navRes.output}, error=${navRes.error}", UnifiedExecutionStatus.VERIFIED, navRes.status)
+        assertTrue("Nav output missing terminal: ${navRes.output}", navRes.output.contains("terminal"))
+    }
 
-        // 2. Local Server Capability Status
+    @Test
+    fun testUnifiedExecutionFabricLocalServer() = runBlocking {
+        val fabric = UnifiedExecutionFabric.instance
+
         val serverReq = UnifiedExecutionRequest(
             capabilityId = "local_server",
             parameters = mapOf("action" to "status")
         )
         val serverRes = fabric.execute(serverReq, context)
-        assertEquals(UnifiedExecutionStatus.COMPLETED, serverRes.status)
-        assertTrue(serverRes.output.contains("Local Server Status"))
+        assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.VERIFIED, serverRes.status)
+        assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
     }
 }

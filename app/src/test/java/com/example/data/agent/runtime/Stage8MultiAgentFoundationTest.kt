@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
  * deterministic by exercising the coordinator's public result API directly.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [34])
 class Stage8MultiAgentFoundationTest {
 
     private lateinit var context: Context

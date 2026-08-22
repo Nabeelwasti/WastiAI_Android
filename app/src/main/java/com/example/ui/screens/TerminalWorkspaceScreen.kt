@@ -131,6 +131,57 @@ fun TerminalWorkspaceScreen(
         isExecuting = true
 
         coroutineScope.launch {
+            if (trimmed.startsWith("agent ") || trimmed.startsWith("wasti ") || trimmed.startsWith("ai ")) {
+                val prompt = trimmed.substringAfter(" ").trim()
+                lines.add(
+                    TerminalLine(
+                        text = "▶ Dispatching to Wasti OS Autonomous Multi-Agent Brain...",
+                        type = TerminalLineType.SYSTEM
+                    )
+                )
+
+                val result = com.example.data.transport.WastiCommandTransport.getInstance().dispatchCommand(
+                    command = prompt,
+                    origin = com.example.data.core.CommandOrigin.TERMINAL,
+                    executionMode = com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS
+                )
+
+                when (result) {
+                    is com.example.data.core.CommandSubmissionResult.Accepted -> {
+                        lines.add(
+                            TerminalLine(
+                                text = "✓ Command Accepted [ID: ${result.commandId.take(8)}]: ${result.message}",
+                                type = TerminalLineType.SUCCESS,
+                                verified = true
+                            )
+                        )
+                    }
+                    is com.example.data.core.CommandSubmissionResult.ImmediateSuccess -> {
+                        lines.add(
+                            TerminalLine(
+                                text = result.output,
+                                type = TerminalLineType.OUTPUT,
+                                verified = true,
+                                verificationEvidence = result.verificationEvidence
+                            )
+                        )
+                    }
+                    is com.example.data.core.CommandSubmissionResult.Rejected -> {
+                        lines.add(
+                            TerminalLine(
+                                text = "✗ Command Rejected: ${result.reason}",
+                                type = TerminalLineType.ERROR
+                            )
+                        )
+                    }
+                }
+                isExecuting = false
+                if (lines.isNotEmpty()) {
+                    listState.animateScrollToItem(lines.size - 1)
+                }
+                return@launch
+            }
+
             val req = ExecutionRequest(
                 command = trimmed,
                 workingDirectory = currentWorkingDir,

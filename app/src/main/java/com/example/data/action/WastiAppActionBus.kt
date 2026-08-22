@@ -32,7 +32,7 @@ sealed class WastiAppAction {
  */
 object WastiAppActionBus {
     private val _actions = MutableSharedFlow<WastiAppAction>(
-        replay = 0,
+        replay = 1,
         extraBufferCapacity = 64
     )
     val actions: SharedFlow<WastiAppAction> = _actions.asSharedFlow()

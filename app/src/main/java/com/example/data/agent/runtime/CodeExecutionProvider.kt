@@ -12,6 +12,7 @@ interface CodeExecutionProvider {
  * Non-operational stub returning a controlled SECURITY error.
  * Guaranteed never to spawn shell commands or execute binaries.
  */
+// TODO: unused — evaluate for removal or wiring in
 class SafeLocalExecutionStub : CodeExecutionProvider {
     override suspend fun execute(request: ExecutionRequest): ExecutionResult {
         return ExecutionResult(

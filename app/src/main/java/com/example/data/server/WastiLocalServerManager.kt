@@ -4,15 +4,14 @@ import android.content.Context
 import android.util.Log
 import com.example.data.action.WastiAppAction
 import com.example.data.action.WastiAppActionBus
-import com.example.data.agent.runtime.AgentEventBus
-import com.example.data.agent.runtime.CapabilityExecutionStatus
-import com.example.data.agent.runtime.CapabilityReality
-import com.example.data.agent.runtime.CapabilityRealityState
-import com.example.data.agent.runtime.ImplementationStatus
-import com.example.data.agent.runtime.LiveConnectionStatus
-import com.example.data.agent.runtime.UnifiedExecutionFabric
-import com.example.data.agent.runtime.UnifiedExecutionRequest
+import com.example.data.agent.runtime.*
+import com.example.data.core.CommandOrigin
+import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiCore
+import com.example.data.core.WastiOSRuntime
+import com.example.data.transport.WastiCommandTransport
+import com.example.data.wre.ExecutionRequest
+import com.example.data.wre.WreManager
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpHandler
 import com.sun.net.httpserver.HttpServer
@@ -25,7 +24,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 
@@ -51,6 +49,7 @@ data class LocalServerInfo(
 /**
  * Stage 10: Canonical Wasti Embedded Local Server Daemon.
  * Exposes a multi-threaded, non-blocking HTTP and event streaming gateway into WastiBrain.
+ * Connects Web Companions, external tools, local scripts, and distributed nodes into WastiOSRuntime.
  */
 class WastiLocalServerManager(
     private val context: Context? = null
@@ -62,48 +61,109 @@ class WastiLocalServerManager(
     private val _serverInfo = MutableStateFlow(LocalServerInfo())
     val serverInfo: StateFlow<LocalServerInfo> = _serverInfo.asStateFlow()
 
+    private val wreManager: WreManager by lazy {
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx != null) WreManager.getInstance(ctx) else WreManager(com.example.WastiApplication.instance ?: throw IllegalStateException("Context required for WreManager"))
+    }
+
     @Synchronized
-    fun startServer(port: Int = 8080): Result<LocalServerInfo> {
+    fun startServer(preferredPort: Int = 8080): Result<LocalServerInfo> {
         if (_serverInfo.value.state == LocalServerState.RUNNING) {
             return Result.success(_serverInfo.value)
         }
 
         _serverInfo.value = _serverInfo.value.copy(
             state = LocalServerState.STARTING,
-            port = port,
+            port = preferredPort,
             lastError = null
         )
 
+        var selectedPort = preferredPort
+        var server: HttpServer? = null
+        var lastException: Exception? = null
+
+        // Try preferred port, fallback to sequential ports up to +5
+        for (offset in 0..5) {
+            try {
+                val candidatePort = preferredPort + offset
+                val address = InetSocketAddress("127.0.0.1", candidatePort)
+                server = HttpServer.create(address, 0)
+                selectedPort = candidatePort
+                break
+            } catch (e: Exception) {
+                lastException = e
+            }
+        }
+
+        if (server == null) {
+            val errMsg = "Failed to bind local server on ports $preferredPort..${preferredPort + 5}: ${lastException?.message}"
+            Log.e(TAG, errMsg, lastException)
+            _serverInfo.value = _serverInfo.value.copy(
+                state = LocalServerState.FAILED,
+                lastError = errMsg
+            )
+            return Result.failure(lastException ?: IllegalStateException(errMsg))
+        }
+
         return try {
-            val address = InetSocketAddress(port)
-            val server = HttpServer.create(address, 0)
             executor = Executors.newFixedThreadPool(4)
             server.executor = executor
 
             // 1. Health endpoint
             server.createContext("/health", HealthHandler())
 
-            // 2. Status & Telemetry endpoint
-            server.createContext("/api/status", StatusHandler())
+            // 2. Status & Telemetry endpoints
+            val statusHandler = StatusHandler()
+            server.createContext("/status", statusHandler)
+            server.createContext("/api/status", statusHandler)
 
-            // 3. Brain Chat Gateway
+            // 3. Capabilities Reality endpoints
+            val capabilitiesHandler = CapabilitiesHandler()
+            server.createContext("/capabilities", capabilitiesHandler)
+            server.createContext("/api/capabilities", capabilitiesHandler)
+
+            // 4. Execution State & Cancellation endpoints
+            val executionHandler = ExecutionHandler(serverScope)
+            server.createContext("/execution", executionHandler)
+            server.createContext("/api/execution", executionHandler)
+
+            // 5. Canonical Command Transport endpoints
+            val commandHandler = TransportHandler(serverScope)
+            server.createContext("/command", commandHandler)
+            server.createContext("/api/command", commandHandler)
+            server.createContext("/api/transport", commandHandler)
+
+            // 6. Emergency Stop endpoints
+            val emergencyStopHandler = EmergencyStopHandler()
+            server.createContext("/emergency-stop", emergencyStopHandler)
+            server.createContext("/api/emergency-stop", emergencyStopHandler)
+
+            // 7. Live Events Polling & Streaming endpoints
+            val eventsHandler = EventsHandler()
+            server.createContext("/events", eventsHandler)
+            server.createContext("/api/events", eventsHandler)
+
+            // 8. Brain Chat Gateway
             server.createContext("/api/chat", ChatHandler(serverScope))
 
-            // 4. Unified Execution Fabric Gateway
+            // 9. Unified Execution Fabric Gateway
             server.createContext("/api/execute", ExecuteHandler(serverScope, context))
 
-            // 5. Semantic App Actions Gateway
+            // 10. Semantic App Actions Gateway
             server.createContext("/api/actions", ActionHandler(serverScope))
 
-            // 6. Live Events Polling/Stream
-            server.createContext("/api/events", EventsHandler())
+            // 11. Native Terminal Execution Endpoint
+            server.createContext("/api/terminal", TerminalHandler(serverScope))
+
+            // 12. Node Registry Endpoint
+            server.createContext("/api/nodes", NodeHandler())
 
             server.start()
             httpServer = server
 
             val updatedInfo = LocalServerInfo(
                 state = LocalServerState.RUNNING,
-                port = port,
+                port = selectedPort,
                 host = "127.0.0.1",
                 startedAt = System.currentTimeMillis(),
                 requestsHandled = 0L,
@@ -119,18 +179,21 @@ class WastiLocalServerManager(
                     implementationStatus = ImplementationStatus.READY,
                     liveConnectionStatus = LiveConnectionStatus.VERIFIED,
                     executionStatus = CapabilityExecutionStatus.OPERATIONAL,
-                    authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                    authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiLocalServerManager",
-                    supportedOperations = listOf("start_server", "stop_server", "get_status", "http_gateway"),
-                    limitations = listOf("Bound to local interface 127.0.0.1:$port"),
+                    supportedOperations = listOf(
+                        "start_server", "stop_server", "get_status", "http_gateway",
+                        "transport_gateway", "terminal_gateway", "events_stream"
+                    ),
+                    limitations = listOf("Bound to local interface 127.0.0.1:$selectedPort"),
                     realityState = CapabilityRealityState.NATIVE
                 )
             )
 
-            Log.i(TAG, "Wasti Embedded Server successfully started on port $port")
+            Log.i(TAG, "Wasti Embedded Server successfully started on port $selectedPort")
             Result.success(updatedInfo)
         } catch (e: Exception) {
-            val errMsg = "Failed to start local server on port $port: ${e.message}"
+            val errMsg = "Failed to start local server on port $selectedPort: ${e.message}"
             Log.e(TAG, errMsg, e)
             _serverInfo.value = _serverInfo.value.copy(
                 state = LocalServerState.FAILED,
@@ -164,7 +227,7 @@ class WastiLocalServerManager(
                     implementationStatus = ImplementationStatus.READY,
                     liveConnectionStatus = LiveConnectionStatus.DISCONNECTED,
                     executionStatus = CapabilityExecutionStatus.UNAVAILABLE,
-                    authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                    authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiLocalServerManager",
                     supportedOperations = listOf("start_server", "stop_server", "get_status"),
                     limitations = listOf("Server stopped: $reason"),
@@ -223,16 +286,123 @@ class WastiLocalServerManager(
                 })
             }
 
+            val runtimeContext = WastiOSRuntime.getInstance(context).activeContext.value
+            val isEmergencyStopped = com.example.data.di.WastiServiceLocator.emergencyStopController.isEmergencyStopped
+
             val responseJson = JSONObject().apply {
                 put("system", "WastiAI OS")
                 put("server", JSONObject().apply {
                     put("state", _serverInfo.value.state.name)
                     put("port", _serverInfo.value.port)
                 })
+                put("runtime", JSONObject().apply {
+                    put("isBusy", runtimeContext.isBusy)
+                    put("activeTask", runtimeContext.activeTaskId)
+                    put("activeTool", runtimeContext.activeTool)
+                    put("progressMessage", runtimeContext.progressMessage)
+                    put("isEmergencyStopped", isEmergencyStopped)
+                })
                 put("capabilities", reportArray)
             }.toString()
 
             sendJsonResponse(exchange, 200, responseJson)
+        }
+    }
+
+    private inner class CapabilitiesHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val realityReport = UnifiedExecutionFabric.instance.realityRegistry.getSystemRealityReport()
+            val reportArray = org.json.JSONArray()
+            for (cap in realityReport) {
+                reportArray.put(JSONObject().apply {
+                    put("id", cap.capabilityId)
+                    put("category", cap.category)
+                    put("status", cap.executionStatus.name)
+                    put("reality", cap.realityState.name)
+                    put("provider", cap.provider)
+                    put("supportedOperations", org.json.JSONArray(cap.supportedOperations))
+                    put("limitations", org.json.JSONArray(cap.limitations))
+                })
+            }
+
+            val responseJson = JSONObject().apply {
+                put("system", "WastiAI OS")
+                put("totalCapabilities", realityReport.size)
+                put("capabilities", reportArray)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, responseJson)
+        }
+    }
+
+    private inner class ExecutionHandler(private val scope: CoroutineScope) : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val path = exchange.requestURI.path
+            val method = exchange.requestMethod.uppercase()
+
+            if (method == "POST" && (path.endsWith("/cancel") || path.contains("/cancel"))) {
+                // Cancel active execution
+                val body = InputStreamReader(exchange.requestBody).readText()
+                val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+                val reason = json.optString("reason", "Cancelled via HTTP execution endpoint")
+                val cancelled = WastiCommandTransport.getInstance(context).cancelActiveExecution(reason)
+
+                val responseJson = JSONObject().apply {
+                    put("success", cancelled)
+                    put("message", if (cancelled) "Execution cancelled successfully" else "No active execution to cancel")
+                }.toString()
+                sendJsonResponse(exchange, 200, responseJson)
+                return
+            }
+
+            // GET active execution status
+            val runtimeContext = WastiOSRuntime.getInstance(context).activeContext.value
+            val responseJson = JSONObject().apply {
+                put("isBusy", runtimeContext.isBusy)
+                put("activeTaskId", runtimeContext.activeTaskId)
+                put("activeCommand", runtimeContext.activeCommand)
+                put("activeTool", runtimeContext.activeTool)
+                put("progressMessage", runtimeContext.progressMessage)
+                put("origin", runtimeContext.currentOrigin?.name ?: "IDLE")
+                put("iteration", runtimeContext.currentIteration)
+                put("lastResultSummary", runtimeContext.lastResultSummary)
+                put("lastError", runtimeContext.lastError)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, responseJson)
+        }
+    }
+
+    private inner class EmergencyStopHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val method = exchange.requestMethod.uppercase()
+            val controller = com.example.data.di.WastiServiceLocator.emergencyStopController
+
+            if (method == "POST") {
+                val body = InputStreamReader(exchange.requestBody).readText()
+                val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
+                val reason = json.optString("reason", "Emergency stop triggered via HTTP API")
+
+                WastiCommandTransport.getInstance(context).triggerEmergencyStop(reason)
+
+                val responseJson = JSONObject().apply {
+                    put("success", true)
+                    put("isEmergencyStopped", true)
+                    put("reason", reason)
+                    put("message", "Emergency stop engaged across all Wasti subsystems")
+                }.toString()
+                sendJsonResponse(exchange, 200, responseJson)
+            } else {
+                val isStopped = controller.isEmergencyStopped
+                val responseJson = JSONObject().apply {
+                    put("isEmergencyStopped", isStopped)
+                    put("activeContext", WastiOSRuntime.getInstance(context).activeContext.value.isBusy)
+                }.toString()
+                sendJsonResponse(exchange, 200, responseJson)
+            }
         }
     }
 
@@ -329,6 +499,134 @@ class WastiLocalServerManager(
                     sendJsonResponse(exchange, 500, res)
                 }
             }
+        }
+    }
+
+    private inner class TransportHandler(private val scope: CoroutineScope) : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val command = json.optString("command", "")
+            val originName = json.optString("origin", "LOCAL_SERVER")
+            val targetAgent = json.optString("agentId", "ceo_agent")
+            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token")
+
+            val origin = try {
+                CommandOrigin.valueOf(originName.uppercase())
+            } catch (_: Exception) {
+                CommandOrigin.LOCAL_SERVER
+            }
+
+            scope.launch {
+                val result = WastiCommandTransport.getInstance(context).dispatchCommand(
+                    command = command,
+                    origin = origin,
+                    executionMode = ExecutionMode.AUTONOMOUS,
+                    targetAgentId = targetAgent,
+                    clientHost = exchange.remoteAddress?.hostString ?: "127.0.0.1",
+                    authToken = authToken
+                )
+
+                when (result) {
+                    is CommandSubmissionResult.Accepted -> {
+                        val res = JSONObject().apply {
+                            put("success", true)
+                            put("commandId", result.commandId)
+                            put("message", result.message)
+                        }.toString()
+                        sendJsonResponse(exchange, 200, res)
+                    }
+                    is CommandSubmissionResult.ImmediateSuccess -> {
+                        val res = JSONObject().apply {
+                            put("success", true)
+                            put("commandId", result.commandId)
+                            put("output", result.output)
+                            put("evidence", result.verificationEvidence)
+                        }.toString()
+                        sendJsonResponse(exchange, 200, res)
+                    }
+                    is CommandSubmissionResult.Rejected -> {
+                        val res = JSONObject().apply {
+                            put("success", false)
+                            put("reason", result.reason)
+                        }.toString()
+                        sendJsonResponse(exchange, 400, res)
+                    }
+                }
+            }
+        }
+    }
+
+    private inner class TerminalHandler(private val scope: CoroutineScope) : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val cmd = json.optString("command", "").trim()
+            val workDir = json.optString("workingDirectory", "home/wasti")
+
+            if (cmd.isBlank()) {
+                sendJsonResponse(exchange, 400, JSONObject().put("error", "Missing 'command'").toString())
+                return
+            }
+
+            scope.launch {
+                try {
+                    val req = ExecutionRequest(
+                        command = cmd,
+                        workingDirectory = workDir,
+                        initiatedBy = "LocalServerHttpGateway"
+                    )
+                    val result = wreManager.execute(req)
+                    val res = JSONObject().apply {
+                        put("stdout", result.stdout)
+                        put("stderr", result.stderr)
+                        put("exitCode", result.exitCode)
+                        put("status", result.status.name)
+                        put("verified", result.verified)
+                        put("evidence", result.verificationEvidence)
+                        put("durationMs", result.durationMs)
+                    }.toString()
+                    sendJsonResponse(exchange, 200, res)
+                } catch (e: Exception) {
+                    sendJsonResponse(exchange, 500, JSONObject().put("error", e.message).toString())
+                }
+            }
+        }
+    }
+
+    private inner class NodeHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val nodeManager = com.example.data.node.WastiNodeManager.getInstance()
+            val allNodes = nodeManager.getAllNodes()
+            val nodesArray = org.json.JSONArray()
+            for (node in allNodes) {
+                nodesArray.put(JSONObject().apply {
+                    put("nodeId", node.nodeId)
+                    put("nodeName", node.nodeName)
+                    put("platform", node.platform.name)
+                    put("connectionState", node.connectionState.name)
+                    put("isLocal", node.isLocal)
+                    put("endpointUrl", node.endpointUrl)
+                })
+            }
+            val res = JSONObject().apply {
+                put("nodes", nodesArray)
+                put("count", allNodes.size)
+            }.toString()
+            sendJsonResponse(exchange, 200, res)
         }
     }
 

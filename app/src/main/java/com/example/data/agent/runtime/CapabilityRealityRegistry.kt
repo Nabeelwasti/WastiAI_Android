@@ -348,6 +348,70 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.NATIVE
             )
         )
+
+        // Stage 10: Navigation & App Action Bus
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "NAVIGATE_TO",
+                category = "ACTION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiAppActionBus",
+                supportedOperations = listOf("navigate_to", "open_screen", "navigate"),
+                limitations = listOf("Dispatches navigation commands through canonical WastiAppActionBus"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Stage 10: Local HTTP/WS Gateway Server
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "LOCAL_SERVER",
+                category = "TRANSPORT",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiLocalServerManager",
+                supportedOperations = listOf("start_server", "stop_server", "server_status"),
+                limitations = listOf("Binds local HTTP/WS bridge to localhost or network interface"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Stage 10: Native Python Bridge
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "PYTHON_BRIDGE",
+                category = "BRIDGE",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiNativeBridgeManager",
+                supportedOperations = listOf("run_python_script", "execute_python"),
+                limitations = listOf("Dispatches execution to native Python runtime via WRE workspace"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Stage 10: Termux CLI Bridge
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "TERMUX_BRIDGE",
+                category = "BRIDGE",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiNativeBridgeManager",
+                supportedOperations = listOf("execute_termux_command"),
+                limitations = listOf("Integrates with Termux CLI via intents and socket bridge"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
@@ -374,6 +438,18 @@ class CapabilityRealityRegistry {
         }
 
         // Check alias mapping
+        if (norm.equals("navigate_to", ignoreCase = true) || norm.equals("open_screen", ignoreCase = true) || norm.equals("navigate", ignoreCase = true)) {
+            capabilityMap["NAVIGATE_TO"]?.let { return it }
+        }
+        if (norm.equals("local_server", ignoreCase = true) || norm.equals("start_server", ignoreCase = true) || norm.equals("stop_server", ignoreCase = true) || norm.equals("server_status", ignoreCase = true) || norm.equals("server", ignoreCase = true)) {
+            capabilityMap["LOCAL_SERVER"]?.let { return it }
+        }
+        if (norm.equals("python_bridge", ignoreCase = true)) {
+            capabilityMap["PYTHON_BRIDGE"]?.let { return it }
+        }
+        if (norm.equals("termux_bridge", ignoreCase = true)) {
+            capabilityMap["TERMUX_BRIDGE"]?.let { return it }
+        }
         if (norm.equals("python", ignoreCase = true) || norm.equals("python3", ignoreCase = true)) {
             capabilityMap["PYTHON_RUNTIME"]?.let { return it }
         }

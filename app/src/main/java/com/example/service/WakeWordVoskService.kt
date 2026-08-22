@@ -127,7 +127,7 @@ class WakeWordVoskService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Wasti Voice Wake-Word Active")
             .setContentText("Listening for 'Hey Wasti' offline wake word via Vosk Engine...")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()

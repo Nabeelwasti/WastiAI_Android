@@ -4,9 +4,11 @@ import android.util.Log
 import com.example.data.ai.AIManager
 import com.example.data.log.DeveloperLogger
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -337,7 +339,14 @@ object WastiCore {
             }
         }
 
-        val successfulOutputs = awaitAll(*tasks.toTypedArray()).filterNotNull()
+        val successfulOutputs = try {
+            withTimeout(20_000) {
+                awaitAll(*tasks.toTypedArray()).filterNotNull()
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.w("WastiCore", "Parallel provider dispatch timed out after 20s", e)
+            emptyList()
+        }
 
         if (successfulOutputs.isEmpty()) {
             return@withContext try {

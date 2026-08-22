@@ -617,39 +617,17 @@ class WastiFloatingService : Service() {
     }
 
     private suspend fun executeCommand(command: String) {
-        val lower = command.lowercase()
-        when {
-            lower.startsWith("open ") || lower.startsWith("launch ") -> {
-                val appTarget = command.substringAfter(" ").trim()
-                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
-                    capabilityId = "open_app",
-                    parameters = mapOf("target" to appTarget, "action" to "open_app")
-                )
-                val result = com.example.data.agent.runtime.UnifiedExecutionFabric.getInstance(applicationContext).execute(req, applicationContext)
-                logSystemEvent("INFO", "Floating Command Execution [OPEN_APP via UnifiedFabric]: ${result.output}")
-            }
-            lower.contains("click ") || lower.contains("tap ") -> {
-                val targetText = command.replace("click", "").replace("tap", "").trim()
-                val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
-                    capabilityId = "simulate_tap",
-                    parameters = mapOf("target" to targetText, "action" to "simulate_tap")
-                )
-                val result = com.example.data.agent.runtime.UnifiedExecutionFabric.getInstance(applicationContext).execute(req, applicationContext)
-                logSystemEvent("INFO", "Floating Command Execution [TAP via UnifiedFabric]: ${result.output}")
-            }
-            else -> {
-                try {
-                    val (response, _) = WastiCore.executeOrchestratedRequest(
-                        userPrompt = command,
-                        systemInstruction = "You are Wasti OS floating assistant. Provide concise actionable mobile execution response.",
-                        activeAgentId = "ceo_agent"
-                    )
-                    logSystemEvent("INFO", "Floating Command WastiCore Execution: ${response.take(100)}")
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error executing floating command via WastiCore", e)
-                    logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
-                }
-            }
+        try {
+            val result = com.example.data.transport.WastiCommandTransport.getInstance(applicationContext).dispatchCommand(
+                command = command,
+                origin = com.example.data.core.CommandOrigin.FLOATING_BUBBLE,
+                executionMode = com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS,
+                targetAgentId = "ceo_agent"
+            )
+            logSystemEvent("INFO", "Floating Command Dispatched via WastiCommandTransport: $command -> $result")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error executing floating command via WastiCommandTransport", e)
+            logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
         }
     }
 

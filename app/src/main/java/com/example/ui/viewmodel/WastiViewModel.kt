@@ -23,8 +23,13 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     val repository = com.example.data.di.WastiServiceLocator.repository
     val wreManager = com.example.data.di.WastiServiceLocator.wreManager
-    val agentRuntime = com.example.data.di.WastiServiceLocator.agentRuntime
-    val agentEventBus = com.example.data.di.WastiServiceLocator.agentEventBus
+    val agentRuntime: com.example.data.agent.runtime.WastiAgentRuntimeImpl = com.example.data.di.WastiServiceLocator.agentRuntime
+    val agentEventBus: com.example.data.agent.runtime.AgentEventBus = com.example.data.di.WastiServiceLocator.agentEventBus
+    val wastiOSRuntime: com.example.data.core.WastiOSRuntime = com.example.data.di.WastiServiceLocator.wastiOSRuntime
+    val commandTransport: com.example.data.transport.WastiCommandTransport = com.example.data.di.WastiServiceLocator.commandTransport
+
+    val activeExecutionContext: StateFlow<com.example.data.core.GlobalExecutionContext> = wastiOSRuntime.activeContext
+    val commandExecutionHistory: StateFlow<List<com.example.data.core.CommandExecutionRecord>> = wastiOSRuntime.executionHistory
 
     private val prefs = application.getSharedPreferences("wasti_prefs", android.content.Context.MODE_PRIVATE)
 
@@ -50,6 +55,12 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     // Real-time Agent Event stream directly from the AgentEventBus
     private val _liveAgentEvents = MutableStateFlow<List<com.example.data.agent.runtime.AgentEvent>>(emptyList())
     val liveAgentEvents: StateFlow<List<com.example.data.agent.runtime.AgentEvent>> = _liveAgentEvents.asStateFlow()
+
+    // Reactive Agentic State representing current execution phase (Planning, Executing, Debugging, Idle)
+    private val _agenticState = MutableStateFlow<com.example.data.agent.runtime.AgenticState>(
+        com.example.data.agent.runtime.AgenticState.Idle()
+    )
+    val agenticState: StateFlow<com.example.data.agent.runtime.AgenticState> = _agenticState.asStateFlow()
 
     fun setActiveTab(tab: String) {
         activeTab.value = tab
@@ -140,6 +151,44 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 current.add(event)
                 if (current.size > 100) current.removeAt(0)
                 _liveAgentEvents.value = current
+
+                _agenticState.value = when (event) {
+                    is com.example.data.agent.runtime.AgentEvent.PlanningStarted ->
+                        com.example.data.agent.runtime.AgenticState.Planning(event.prompt)
+                    is com.example.data.agent.runtime.AgentEvent.PlanningTask ->
+                        com.example.data.agent.runtime.AgenticState.Planning(event.details)
+                    is com.example.data.agent.runtime.AgentEvent.ToolStarted ->
+                        com.example.data.agent.runtime.AgenticState.Executing("Running ${event.toolName}")
+                    is com.example.data.agent.runtime.AgentEvent.ToolRequested ->
+                        com.example.data.agent.runtime.AgenticState.Executing("Executing ${event.toolName}")
+                    is com.example.data.agent.runtime.AgentEvent.ExecutionStarted ->
+                        com.example.data.agent.runtime.AgenticState.Executing("Running ${event.executable}")
+                    is com.example.data.agent.runtime.AgentEvent.DiagnosisCreated ->
+                        com.example.data.agent.runtime.AgenticState.Debugging(event.summary)
+                    is com.example.data.agent.runtime.AgentEvent.CorrectionProposed ->
+                        com.example.data.agent.runtime.AgenticState.Debugging(event.proposal)
+                    is com.example.data.agent.runtime.AgentEvent.FixingError ->
+                        com.example.data.agent.runtime.AgenticState.Debugging(event.errorSummary)
+                    is com.example.data.agent.runtime.AgentEvent.InspectingProject ->
+                        com.example.data.agent.runtime.AgenticState.Inspecting(event.path)
+                    is com.example.data.agent.runtime.AgentEvent.ObservationReceived ->
+                        com.example.data.agent.runtime.AgenticState.Observing(event.observationSummary)
+                    is com.example.data.agent.runtime.AgentEvent.TestingStarted ->
+                        com.example.data.agent.runtime.AgenticState.Testing(event.target)
+                    is com.example.data.agent.runtime.AgentEvent.VerificationStarted ->
+                        com.example.data.agent.runtime.AgenticState.Verification(event.details)
+                    is com.example.data.agent.runtime.AgentEvent.SecurityBlocked ->
+                        com.example.data.agent.runtime.AgenticState.SecurityBlocked(event.reason)
+                    is com.example.data.agent.runtime.AgentEvent.TaskCompleted ->
+                        com.example.data.agent.runtime.AgenticState.Completed(event.summary)
+                    is com.example.data.agent.runtime.AgentEvent.TaskFailed ->
+                        com.example.data.agent.runtime.AgenticState.Failed(event.error)
+                    is com.example.data.agent.runtime.AgentEvent.TaskCancelled ->
+                        com.example.data.agent.runtime.AgenticState.Cancelled(event.reason)
+                    is com.example.data.agent.runtime.AgentEvent.EmergencyStopped ->
+                        com.example.data.agent.runtime.AgenticState.SecurityBlocked(event.reason)
+                    else -> _agenticState.value
+                }
             }
         }
     }
@@ -210,6 +259,21 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
             ?: activeFileContextForCurrentSelection()
 
         launchGeneration("send message") {
+            // Route through WastiAgentRuntime.submitTask to drive multi-agent orchestration
+            val agentTask = try {
+                agentRuntime.submitTaskResult(prompt, com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS).getOrNull()
+            } catch (_: Exception) {
+                null
+            }
+
+            if (agentTask != null) {
+                try {
+                    agentRuntime.executeTask(agentTask.taskId)
+                } catch (e: Exception) {
+                    android.util.Log.w("WastiViewModel", "Agent execution note: ${e.message}")
+                }
+            }
+
             val conversationId = ensureActiveConversation(
                 title = prompt.trim().take(60).ifBlank { "New conversation" },
                 agentId = agentId
@@ -226,6 +290,8 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 attachedMediaUris = attachedMediaUris,
                 mediaList = mediaList
             )
+
+            _agenticState.value = com.example.data.agent.runtime.AgenticState.Idle()
         }
     }
 
@@ -247,6 +313,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                 model,
                 fileContext
             )
+            _agenticState.value = com.example.data.agent.runtime.AgenticState.Idle()
         }
     }
 
@@ -255,6 +322,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun cancelGeneration(generationId: String) {
         activeGenerationJobs[generationId]?.cancel()
+        _agenticState.value = com.example.data.agent.runtime.AgenticState.Idle()
     }
 
     /**
@@ -265,6 +333,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         activeGenerationJobs.clear()
         latestExternalGenerationId = null
         updateGenerationState()
+        _agenticState.value = com.example.data.agent.runtime.AgenticState.Idle()
         jobsToCancel.forEach { it.cancel() }
         com.example.data.ai.AIManager.cancelActiveGeneration()
         com.example.data.core.WastiCore.cancelActiveGeneration()

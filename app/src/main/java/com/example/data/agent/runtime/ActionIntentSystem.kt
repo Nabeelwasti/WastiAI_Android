@@ -2,6 +2,7 @@ package com.example.data.agent.runtime
 
 import java.util.UUID
 
+// TODO: unused — evaluate for removal or wiring in
 enum class ActionExecutionMode {
     PREVIEW,
     USER_CONFIRMED,
@@ -20,6 +21,7 @@ enum class ActionAuthorizationState {
     UNVERIFIED
 }
 
+// TODO: unused — evaluate for removal or wiring in
 data class ActionIntent(
     val actionId: String = UUID.randomUUID().toString(),
     val target: String,
@@ -33,6 +35,7 @@ data class ActionIntent(
     var resultMessage: String? = null
 )
 
+// TODO: unused — evaluate for removal or wiring in
 class ActionIntentEngine(
     private val securityPolicyEngine: WastiSecurityPolicyEngine
 ) {

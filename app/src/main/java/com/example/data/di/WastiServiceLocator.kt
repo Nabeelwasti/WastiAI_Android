@@ -142,6 +142,16 @@ object WastiServiceLocator {
         )
     }
 
+    val wastiOSRuntime: com.example.data.core.WastiOSRuntime by lazy {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        com.example.data.core.WastiOSRuntime.getInstance(ctx)
+    }
+
+    val commandTransport: com.example.data.transport.WastiCommandTransport by lazy {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        com.example.data.transport.WastiCommandTransport.getInstance(ctx)
+    }
+
     val localServerManager: com.example.data.server.WastiLocalServerManager by lazy {
         val ctx = appContext ?: com.example.WastiApplication.instance
         com.example.data.server.WastiLocalServerManager.getInstance(ctx)

@@ -230,10 +230,11 @@ class WastiObservationEngine(
 
             "system_info", "system", "inspect_environment", "environment", "status",
             "project_dev_manager", "create_project", "create_managed_project", "inspect_project",
-            "list_projects", "delete_project", "project", "dev_environment" -> successfulExecutionObservation(
+            "list_projects", "delete_project", "project", "dev_environment",
+            "navigate_to", "open_screen", "navigate" -> successfulExecutionObservation(
                 request = request,
                 executorResult = executorResult,
-                description = "Environment or project operation"
+                description = "Environment, navigation, or project operation"
             )
 
             "build_project", "compile_project", "build", "compile", "build_manager",
@@ -241,6 +242,8 @@ class WastiObservationEngine(
             "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
             "package_manager", "resolve_package", "install_package",
             "wasti_sandbox", "sandbox",
+            "local_server", "start_server", "stop_server", "server_status", "server",
+            "python_bridge", "termux_bridge",
             "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python", "node", "npm" ->
                 verifiedExecutionObservation(request, executorResult, capabilityId)
 
@@ -469,6 +472,7 @@ class WastiObservationEngine(
 
     private fun isVerified(executorResult: UnifiedExecutionResult): Boolean =
         executorResult.status == UnifiedExecutionStatus.VERIFIED ||
+            executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED ||
             executorResult.status.name == "OBSERVED"
 
     private fun normalizeCapabilityId(capabilityId: String): String =

@@ -36,5 +36,15 @@
 * **Language**: Kotlin
 * **UI Framework**: Jetpack Compose (Material Design 3)
 * **Architecture**: MVVM with Coroutines & StateFlow
-* **Networking**: Ktor / OkHttp
+* **Networking**: Ktor / OkHttp / Retrofit
 * **CI/CD**: GitHub Actions
+
+---
+
+## 🔒 Device Permissions & Automation Setup
+
+For full-device automation and assistant features:
+1. **Accessibility Service**: Enable `WastiAccessibilityService` in `Settings → Accessibility` for UI interaction and screen reading.
+2. **Notification Access**: Enable in `Settings → Special app access → Notification access` for notification listeners.
+3. **Display Over Other Apps**: Grant overlay permission for the floating assistant interface.
+4. **All Files Access**: Grant in `Settings → Special app access → All files access` for full workspace and file management.

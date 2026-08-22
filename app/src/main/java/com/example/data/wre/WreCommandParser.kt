@@ -12,6 +12,7 @@ package com.example.data.wre
 sealed class CommandNode {
     data class Simple(val executable: String, val args: List<String>, val raw: String) : CommandNode()
     data class Pipeline(val stages: List<Simple>) : CommandNode()
+    // TODO: unused — evaluate for removal or wiring in
     data class Chained(val left: CommandNode, val operator: ChainOperator, val right: CommandNode) : CommandNode()
 }
 

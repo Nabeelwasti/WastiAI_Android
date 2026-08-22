@@ -19,6 +19,7 @@ data class IntegrationCapabilityAudit(
  * Reality-based audit model reflecting true connectivity status across Wasti OS systems.
  * Prevents claiming live connectivity merely because an interface or button exists.
  */
+// TODO: unused — evaluate for removal or wiring in
 object IntegrationAuditRegistry {
 
     fun getAuditReport(): List<IntegrationCapabilityAudit> {
