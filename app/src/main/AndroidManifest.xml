@@ -120,6 +120,16 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Autonomous agent loop execution, background workflows, and local embedded server host." />
         </service>
+
+        <!-- Boot receiver for reboot recovery and persistent scheduling -->
+        <receiver
+            android:name="com.example.assistant.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

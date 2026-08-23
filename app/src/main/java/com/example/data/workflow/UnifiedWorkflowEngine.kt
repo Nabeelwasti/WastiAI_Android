@@ -107,6 +107,21 @@ class UnifiedWorkflowEngine(
                         task.dynamicToolsCreated.add(res.toolId)
                         dynamicToolsMade.add(res.toolId)
                     }
+                    is CapabilityResolutionResult.SecurityBlocked -> {
+                        val failMsg = "Capability resolution blocked by security policy for '${step.capabilityId}': ${res.reason}"
+                        task.errors.add(failMsg)
+                        updateState(AutonomousWorkflowState.FAILED, failMsg)
+                        val failRes = buildFinalResult(
+                            task = task,
+                            isSuccess = false,
+                            finalState = AutonomousWorkflowState.FAILED,
+                            summary = failMsg,
+                            startTime = startTime,
+                            error = failMsg
+                        )
+                        task.finalResult = failRes
+                        return@withContext failRes
+                    }
                     is CapabilityResolutionResult.ResolutionFailed -> {
                         val failMsg = "Capability resolution failed for '${step.capabilityId}': ${res.reason}"
                         task.errors.add(failMsg)

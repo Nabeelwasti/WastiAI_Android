@@ -234,5 +234,42 @@ data class TerminalSessionEntity(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "proactive_tasks",
+    indices = [
+        Index(value = ["idempotencyKey"]),
+        Index(value = ["state"]),
+        Index(value = ["scheduledAt"])
+    ]
+)
+data class ProactiveTaskEntity(
+    @PrimaryKey val taskId: String = java.util.UUID.randomUUID().toString(),
+    val correlationId: String = "corr_${java.util.UUID.randomUUID()}",
+    val title: String,
+    val prompt: String,
+    val origin: String = "BACKGROUND_WORKER",
+    val priority: String = "MEDIUM",
+    val state: String = "SCHEDULED",
+    val triggerType: String = "ONE_TIME_DELAYED",
+    val createdAt: Long = System.currentTimeMillis(),
+    val scheduledAt: Long = System.currentTimeMillis(),
+    val intervalMs: Long = 0L,
+    val retryCount: Int = 0,
+    val maxRetries: Int = 3,
+    val nextRetryAt: Long = 0L,
+    val requiredCapabilitiesCsv: String = "",
+    val preferredNode: String? = null,
+    val selectedNode: String? = null,
+    val leaseOwnerNode: String? = null,
+    val leaseExpiresAt: Long = 0L,
+    val idempotencyKey: String? = null,
+    val verificationEvidence: String? = null,
+    val lastError: String? = null,
+    val isIdempotent: Boolean = true,
+    val executionMode: String = "AUTONOMOUS",
+    val completedAt: Long? = null,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 
 

@@ -8,9 +8,7 @@ import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.WastiOSRuntime
-import com.example.data.node.NodePlatform
-import com.example.data.node.NodeTrustState
-import com.example.data.node.WastiNodeManager
+import com.example.data.node.*
 import com.example.data.transport.WastiCommandTransport
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -387,13 +385,527 @@ class WastiWebSocketServer private constructor(
                 }.toString())
             }
 
+            "SCHEDULE_PROACTIVE_TASK" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val title = json.optString("title", "Remote Proactive Task")
+                val prompt = json.optString("prompt", "")
+                val delayMs = json.optLong("delayMs", 0L)
+                val intervalMs = json.optLong("intervalMs", 0L)
+                val idempotencyKey = if (json.has("idempotencyKey")) json.optString("idempotencyKey") else null
+
+                val engine = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine
+                val task = if (intervalMs > 0) {
+                    engine.scheduleRecurringTask(
+                        title = title,
+                        prompt = prompt,
+                        intervalMs = intervalMs,
+                        idempotencyKey = idempotencyKey,
+                        origin = CommandOrigin.REMOTE_DEVICE
+                    )
+                } else {
+                    engine.scheduleDelayedTask(
+                        title = title,
+                        prompt = prompt,
+                        delayMs = delayMs,
+                        idempotencyKey = idempotencyKey,
+                        origin = CommandOrigin.REMOTE_DEVICE
+                    )
+                }
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "PROACTIVE_TASK_SCHEDULED_RESPONSE")
+                    put("taskId", task.taskId)
+                    put("title", task.title)
+                    put("scheduledAt", task.scheduledAt)
+                }.toString())
+            }
+
+            "CANCEL_PROACTIVE_TASK" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val taskId = json.optString("taskId", "")
+                val reason = json.optString("reason", "Cancelled via companion")
+                val isCancelled = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine.cancelTask(taskId, reason)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "PROACTIVE_TASK_CANCELLED_RESPONSE")
+                    put("taskId", taskId)
+                    put("isSuccess", isCancelled)
+                }.toString())
+            }
+
+            "LIST_PROACTIVE_TASKS" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val tasks = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine.getAllTasks()
+                val tasksArr = org.json.JSONArray()
+                for (t in tasks) {
+                    tasksArr.put(JSONObject().apply {
+                        put("taskId", t.taskId)
+                        put("title", t.title)
+                        put("state", t.state.name)
+                        put("scheduledAt", t.scheduledAt)
+                        put("leaseOwner", t.leaseOwnerNode ?: "NONE")
+                    })
+                }
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "PROACTIVE_TASKS_LIST")
+                    put("tasks", tasksArr)
+                }.toString())
+            }
+
+            "ACQUIRE_LEASE" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val taskId = json.optString("taskId", "")
+                val durationMs = json.optLong("durationMs", 30000L)
+                val nodeId = session.deviceId ?: "UNKNOWN_NODE"
+                val isAcquired = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine.acquireTaskLease(taskId, nodeId, durationMs)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "LEASE_ACQUIRED_RESPONSE")
+                    put("taskId", taskId)
+                    put("nodeId", nodeId)
+                    put("isSuccess", isAcquired)
+                }.toString())
+            }
+
+            "RELEASE_LEASE" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val taskId = json.optString("taskId", "")
+                val nodeId = session.deviceId ?: "UNKNOWN_NODE"
+                val isReleased = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine.releaseTaskLease(taskId, nodeId)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "LEASE_RELEASED_RESPONSE")
+                    put("taskId", taskId)
+                    put("nodeId", nodeId)
+                    put("isSuccess", isReleased)
+                }.toString())
+            }
+
             "PING" -> {
                 sendTextFrame(session, JSONObject().apply {
                     put("type", "PONG")
                     put("timestamp", System.currentTimeMillis())
                 }.toString())
             }
+
+            // ==========================================
+            // STAGE 17: MESH PROTOCOL HANDLERS
+            // ==========================================
+
+            "NODE_HELLO" -> {
+                val nodeId = json.optString("nodeId", session.deviceId ?: "anonymous_node")
+                val nodeName = json.optString("nodeName", "Remote Node")
+                val platformStr = json.optString("platform", "DESKTOP")
+                val softwareVersion = json.optString("softwareVersion", "1.0.0")
+                val protocolVersion = json.optInt("protocolVersion", 1)
+                val fingerprint = json.optString("capabilityFingerprint", "")
+                val clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1"
+
+                val platform = try { NodePlatform.valueOf(platformStr.uppercase()) } catch (e: Exception) { NodePlatform.DESKTOP }
+                session.deviceId = nodeId
+                session.platform = platform
+
+                val nodeManager = WastiNodeManager.getInstance()
+                val existing = nodeManager.getNode(nodeId)
+                val node = (existing ?: WastiNode(
+                    nodeId = nodeId,
+                    nodeName = nodeName,
+                    platform = platform,
+                    capabilities = emptySet(),
+                    connectionState = NodeConnectionState.CONNECTED,
+                    trustState = if (session.isAuthenticated) NodeTrustState.ACTIVE else NodeTrustState.PAIRING,
+                    healthState = NodeHealthState.ONLINE,
+                    isLocal = false,
+                    networkAddress = clientHost
+                )).copy(
+                    nodeName = nodeName,
+                    platform = platform,
+                    softwareVersion = softwareVersion,
+                    protocolVersion = protocolVersion,
+                    capabilityFingerprint = fingerprint,
+                    networkAddress = clientHost,
+                    connectionState = NodeConnectionState.CONNECTED,
+                    healthState = NodeHealthState.ONLINE,
+                    lastPingTimestamp = System.currentTimeMillis()
+                )
+                nodeManager.registerNode(node)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_HELLO_ACK")
+                    put("serverNodeId", "local_android_node")
+                    put("serverSoftwareVersion", "1.0.0")
+                    put("serverProtocolVersion", 1)
+                    put("serverFingerprint", nodeManager.getNode("local_android_node")?.capabilityFingerprint ?: "")
+                    put("isAuthenticated", session.isAuthenticated)
+                    put("trustState", session.trustState.name)
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "NODE_CAPABILITY_SNAPSHOT" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val softwareVersion = json.optString("softwareVersion", "1.0.0")
+                val protocolVersion = json.optInt("protocolVersion", 1)
+                val capsArray = json.optJSONArray("capabilities") ?: org.json.JSONArray()
+
+                val snapList = mutableListOf<com.example.data.node.AdvertisedCapabilityInfo>()
+                for (i in 0 until capsArray.length()) {
+                    val cObj = capsArray.optJSONObject(i) ?: continue
+                    val capId = cObj.optString("capabilityId", "")
+                    if (capId.isBlank()) continue
+                    val ver = cObj.optString("version", "1.0.0")
+                    val stateStr = cObj.optString("realityState", "LIVE_CONNECTED")
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (e: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val provider = cObj.optString("provider", "Node[$nodeId]")
+                    val reqs = cObj.optString("resourceRequirements", "LOW")
+
+                    val opsList = mutableListOf<String>()
+                    val opsArr = cObj.optJSONArray("supportedOperations")
+                    if (opsArr != null) {
+                        for (j in 0 until opsArr.length()) {
+                            opsList.add(opsArr.optString(j))
+                        }
+                    }
+
+                    val limList = mutableListOf<String>()
+                    val limArr = cObj.optJSONArray("limitations")
+                    if (limArr != null) {
+                        for (j in 0 until limArr.length()) {
+                            limList.add(limArr.optString(j))
+                        }
+                    }
+
+                    snapList.add(
+                        com.example.data.node.AdvertisedCapabilityInfo(
+                            capabilityId = capId,
+                            version = ver,
+                            realityState = state,
+                            provider = provider,
+                            supportedOperations = opsList,
+                            limitations = limList,
+                            resourceRequirements = reqs,
+                            isLocallyExecutable = cObj.optBoolean("isLocallyExecutable", true),
+                            lastVerifiedTimestamp = System.currentTimeMillis()
+                        )
+                    )
+                }
+
+                val isSuccess = WastiNodeManager.getInstance().advertiseCapabilitySnapshot(
+                    nodeId = nodeId,
+                    snapshot = snapList,
+                    softwareVersion = softwareVersion,
+                    protocolVersion = protocolVersion
+                )
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_CAPABILITY_SNAPSHOT_ACK")
+                    put("nodeId", nodeId)
+                    put("isSuccess", isSuccess)
+                    put("capabilitiesCount", snapList.size)
+                    put("fingerprint", WastiNodeManager.getInstance().getNode(nodeId)?.capabilityFingerprint ?: "")
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "NODE_CAPABILITY_UPDATE" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val capObj = json.optJSONObject("capability")
+                if (capObj != null) {
+                    val capId = capObj.optString("capabilityId", "")
+                    val ver = capObj.optString("version", "1.0.0")
+                    val stateStr = capObj.optString("realityState", "LIVE_CONNECTED")
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (e: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val provider = capObj.optString("provider", "Node[$nodeId]")
+                    val reqs = capObj.optString("resourceRequirements", "LOW")
+
+                    val cap = com.example.data.node.AdvertisedCapabilityInfo(
+                        capabilityId = capId,
+                        version = ver,
+                        realityState = state,
+                        provider = provider,
+                        resourceRequirements = reqs
+                    )
+                    val isUpdated = WastiNodeManager.getInstance().updateAdvertisedCapability(nodeId, cap)
+
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "NODE_CAPABILITY_UPDATE_ACK")
+                        put("nodeId", nodeId)
+                        put("capabilityId", capId)
+                        put("isSuccess", isUpdated)
+                    }.toString())
+                }
+            }
+
+            "NODE_CAPABILITY_REMOVE" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val capId = json.optString("capabilityId", "")
+                val isRemoved = WastiNodeManager.getInstance().removeAdvertisedCapability(nodeId, capId)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_CAPABILITY_REMOVE_ACK")
+                    put("nodeId", nodeId)
+                    put("capabilityId", capId)
+                    put("isSuccess", isRemoved)
+                }.toString())
+            }
+
+            "NODE_HEARTBEAT" -> {
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val latencyMs = json.optLong("latencyMs", 0L)
+                val load = json.optDouble("currentLoad", 0.0).toFloat()
+
+                val recorded = WastiNodeManager.getInstance().recordHeartbeat(nodeId, latencyMs, load)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_HEARTBEAT_ACK")
+                    put("nodeId", nodeId)
+                    put("isSuccess", recorded)
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "NODE_SYNC_REQUEST" -> {
+                if (!session.isAuthenticated) {
+                    sendTextFrame(session, JSONObject().apply {
+                        put("type", "SECURITY_BLOCKED")
+                        put("error", "Not authenticated.")
+                    }.toString())
+                    return
+                }
+
+                val localNode = WastiNodeManager.getInstance().getNode("local_android_node")
+                val capsArr = org.json.JSONArray()
+                localNode?.advertisedCapabilities?.values?.forEach { cap ->
+                    capsArr.put(JSONObject().apply {
+                        put("capabilityId", cap.capabilityId)
+                        put("version", cap.version)
+                        put("realityState", cap.realityState.name)
+                        put("provider", cap.provider)
+                    })
+                }
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_SYNC_RESPONSE")
+                    put("hostNodeId", "local_android_node")
+                    put("fingerprint", localNode?.capabilityFingerprint ?: "")
+                    put("capabilities", capsArr)
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "NODE_TASK_ACCEPT" -> {
+                val taskId = json.optString("taskId", "")
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val leaseExpiresAt = json.optLong("leaseExpiresAt", System.currentTimeMillis() + 30000L)
+
+                com.example.data.di.WastiServiceLocator.agentEventBus.tryEmit(
+                    AgentEvent.NodeTaskAccepted(
+                        proactiveTaskId = taskId,
+                        nodeId = nodeId,
+                        leaseExpiresAt = leaseExpiresAt
+                    )
+                )
+            }
+
+            "NODE_TASK_REJECT" -> {
+                val taskId = json.optString("taskId", "")
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val reason = json.optString("reason", "Rejected by remote node")
+
+                com.example.data.di.WastiServiceLocator.agentEventBus.tryEmit(
+                    AgentEvent.NodeTaskRejected(
+                        proactiveTaskId = taskId,
+                        nodeId = nodeId,
+                        reason = reason
+                    )
+                )
+
+                // Trigger immediate failover back to local
+                com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine.failoverTask(taskId, "local_android_node")
+            }
+
+            "NODE_TASK_PROGRESS" -> {
+                val taskId = json.optString("taskId", "")
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val progress = json.optString("progress", "")
+
+                com.example.data.di.WastiServiceLocator.agentEventBus.tryEmit(
+                    AgentEvent.NodeTaskProgress(
+                        proactiveTaskId = taskId,
+                        nodeId = nodeId,
+                        progressSummary = progress
+                    )
+                )
+            }
+
+            "NODE_TASK_RESULT" -> {
+                val taskId = json.optString("taskId", "")
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val isSuccess = json.optBoolean("isSuccess", true)
+                val output = json.optString("output", "")
+                val error = json.optString("error", "")
+
+                // Complete proactive task if running under lease
+                val engine = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine
+                val task = engine.getTask(taskId)
+                if (task != null && task.leaseOwnerNode == nodeId) {
+                    if (isSuccess) {
+                        engine.completeRunningTask(taskId, "Remote task executed by $nodeId: $output")
+                    } else {
+                        engine.failRunningTask(taskId, "Remote execution failed on $nodeId: $error")
+                    }
+                }
+            }
+
+            "NODE_TASK_LEASE_RENEW" -> {
+                val taskId = json.optString("taskId", "")
+                val nodeId = json.optString("nodeId", session.deviceId ?: "")
+                val durationMs = json.optLong("durationMs", 30000L)
+
+                val engine = com.example.data.di.WastiServiceLocator.proactiveAutonomousEngine
+                val renewed = engine.acquireTaskLease(taskId, nodeId, durationMs)
+
+                if (renewed) {
+                    val task = engine.getTask(taskId)
+                    com.example.data.di.WastiServiceLocator.agentEventBus.tryEmit(
+                        AgentEvent.NodeLeaseRenewed(
+                            proactiveTaskId = taskId,
+                            nodeId = nodeId,
+                            newExpiresAt = task?.leaseExpiresAt ?: 0L
+                        )
+                    )
+                }
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "NODE_TASK_LEASE_RENEW_ACK")
+                    put("taskId", taskId)
+                    put("isSuccess", renewed)
+                }.toString())
+            }
         }
+    }
+
+    /**
+     * Stage 17: Dispatches a task offer to a remote node over WebSocket.
+     */
+    fun sendTaskOffer(
+        nodeId: String,
+        taskId: String,
+        title: String,
+        prompt: String,
+        requiredCapabilities: List<String> = emptyList(),
+        leaseDurationMs: Long = 30000L
+    ): Boolean {
+        val session = connectedSessions.find { it.deviceId == nodeId && it.isAuthenticated && !it.socket.isClosed } ?: return false
+        val reqsArr = org.json.JSONArray()
+        requiredCapabilities.forEach { reqsArr.put(it) }
+
+        val offer = JSONObject().apply {
+            put("type", "NODE_TASK_OFFER")
+            put("taskId", taskId)
+            put("title", title)
+            put("prompt", prompt)
+            put("requiredCapabilities", reqsArr)
+            put("leaseDurationMs", leaseDurationMs)
+            put("timestamp", System.currentTimeMillis())
+        }
+
+        sendTextFrame(session, offer.toString())
+        com.example.data.di.WastiServiceLocator.agentEventBus.tryEmit(
+            AgentEvent.NodeTaskOffered(
+                proactiveTaskId = taskId,
+                targetNodeId = nodeId,
+                requiredCapabilities = requiredCapabilities
+            )
+        )
+        return true
+    }
+
+    /**
+     * Stage 17: Dispatches task cancellation to a remote node.
+     */
+    fun sendTaskCancel(nodeId: String, taskId: String, reason: String = "Cancelled by host"): Boolean {
+        val session = connectedSessions.find { it.deviceId == nodeId && it.isAuthenticated && !it.socket.isClosed } ?: return false
+        val msg = JSONObject().apply {
+            put("type", "NODE_TASK_CANCEL")
+            put("taskId", taskId)
+            put("reason", reason)
+            put("timestamp", System.currentTimeMillis())
+        }
+        sendTextFrame(session, msg.toString())
+        return true
+    }
+
+    /**
+     * Stage 17: Broadcasts emergency stop to all connected sessions across the mesh.
+     */
+    fun broadcastEmergencyStop(reason: String) {
+        val msg = JSONObject().apply {
+            put("type", "EMERGENCY_STOP")
+            put("reason", reason)
+            put("timestamp", System.currentTimeMillis())
+        }
+        broadcastText(msg.toString())
     }
 
     private fun startEventBroadcasting() {

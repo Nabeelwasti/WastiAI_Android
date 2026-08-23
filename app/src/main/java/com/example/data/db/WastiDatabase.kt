@@ -208,6 +208,47 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
     }
 }
 
+val MIGRATION_11_12 = object : Migration(11, 12) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `proactive_tasks` (
+                `taskId` TEXT NOT NULL,
+                `correlationId` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `prompt` TEXT NOT NULL,
+                `origin` TEXT NOT NULL DEFAULT 'BACKGROUND_WORKER',
+                `priority` TEXT NOT NULL DEFAULT 'MEDIUM',
+                `state` TEXT NOT NULL DEFAULT 'SCHEDULED',
+                `triggerType` TEXT NOT NULL DEFAULT 'ONE_TIME_DELAYED',
+                `createdAt` INTEGER NOT NULL,
+                `scheduledAt` INTEGER NOT NULL,
+                `intervalMs` INTEGER NOT NULL DEFAULT 0,
+                `retryCount` INTEGER NOT NULL DEFAULT 0,
+                `maxRetries` INTEGER NOT NULL DEFAULT 3,
+                `nextRetryAt` INTEGER NOT NULL DEFAULT 0,
+                `requiredCapabilitiesCsv` TEXT NOT NULL DEFAULT '',
+                `preferredNode` TEXT,
+                `selectedNode` TEXT,
+                `leaseOwnerNode` TEXT,
+                `leaseExpiresAt` INTEGER NOT NULL DEFAULT 0,
+                `idempotencyKey` TEXT,
+                `verificationEvidence` TEXT,
+                `lastError` TEXT,
+                `isIdempotent` INTEGER NOT NULL DEFAULT 1,
+                `executionMode` TEXT NOT NULL DEFAULT 'AUTONOMOUS',
+                `completedAt` INTEGER,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`taskId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_proactive_tasks_idempotencyKey` ON `proactive_tasks` (`idempotencyKey`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_proactive_tasks_state` ON `proactive_tasks` (`state`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_proactive_tasks_scheduledAt` ON `proactive_tasks` (`scheduledAt`)")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -228,9 +269,10 @@ val MIGRATION_10_11 = object : Migration(10, 11) {
         InvoiceEntity::class,
         ProspectEntity::class,
         MediaVaultEntity::class,
-        TerminalSessionEntity::class
+        TerminalSessionEntity::class,
+        ProactiveTaskEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -250,6 +292,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun prospectDao(): ProspectDao
     abstract fun mediaVaultDao(): MediaVaultDao
     abstract fun terminalSessionDao(): TerminalSessionDao
+    abstract fun proactiveTaskDao(): ProactiveTaskDao
 
     companion object {
         @Volatile
@@ -262,7 +305,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration(true)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()

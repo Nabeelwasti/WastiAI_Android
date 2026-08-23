@@ -75,18 +75,17 @@ object WastiServiceLocator {
         AgentTaskManager()
     }
 
+    val realityRegistry: CapabilityRealityRegistry by lazy {
+        executionFabric.realityRegistry
+    }
+
     val executionFabric: UnifiedExecutionFabric by lazy {
         val ctx = requireContext()
-        val realityReg = CapabilityRealityRegistry()
-        UnifiedExecutionFabric(
-            realityRegistry = realityReg,
-            eventBus = agentEventBus,
-            auditEngine = RealityAuditEngine(realityReg, WastiCredentialBroker()),
-            securityPolicyEngine = securityPolicyEngine,
-            observationEngine = WastiObservationEngine(),
-            verificationEngine = WastiVerificationEngine(),
-            appContext = ctx
-        )
+        UnifiedExecutionFabric.getInstance(ctx)
+    }
+
+    val nodeManager: WastiNodeManager by lazy {
+        WastiNodeManager.getInstance()
     }
 
     val toolRouter: WastiAgentToolRouter by lazy {
@@ -164,6 +163,20 @@ object WastiServiceLocator {
     val nativeBridgeManager: com.example.data.bridge.WastiNativeBridgeManager by lazy {
         val ctx = appContext ?: com.example.WastiApplication.instance
         com.example.data.bridge.WastiNativeBridgeManager.getInstance(ctx)
+    }
+
+    val autonomousCapabilityOrchestrator: com.example.data.workflow.AutonomousCapabilityOrchestrator by lazy {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        com.example.data.workflow.AutonomousCapabilityOrchestrator(
+            context = ctx,
+            eventBus = agentEventBus,
+            emergencyStopController = emergencyStopController
+        )
+    }
+
+    val proactiveAutonomousEngine: com.example.data.proactive.WastiProactiveAutonomousEngine by lazy {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        com.example.data.proactive.WastiProactiveAutonomousEngine.getInstance(ctx)
     }
 
     fun init(context: Context) {

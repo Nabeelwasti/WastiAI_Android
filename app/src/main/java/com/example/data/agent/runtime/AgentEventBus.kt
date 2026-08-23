@@ -25,4 +25,15 @@ class AgentEventBus(replay: Int = 50, extraBufferCapacity: Int = 200) {
     fun tryEmit(event: AgentEvent): Boolean {
         return _events.tryEmit(event)
     }
+
+    companion object {
+        @Volatile
+        private var instance: AgentEventBus? = null
+
+        fun getInstance(): AgentEventBus {
+            return instance ?: synchronized(this) {
+                instance ?: AgentEventBus().also { instance = it }
+            }
+        }
+    }
 }

@@ -294,5 +294,62 @@ interface TerminalSessionDao {
     suspend fun clearAllTerminalHistory()
 }
 
+@Dao
+interface ProactiveTaskDao {
+    @Query("SELECT * FROM proactive_tasks ORDER BY scheduledAt ASC")
+    fun getAllTasks(): Flow<List<ProactiveTaskEntity>>
+
+    @Query("SELECT * FROM proactive_tasks ORDER BY scheduledAt ASC")
+    suspend fun getAllTasksSync(): List<ProactiveTaskEntity>
+
+    @Query("SELECT * FROM proactive_tasks WHERE taskId = :taskId")
+    suspend fun getTaskById(taskId: String): ProactiveTaskEntity?
+
+    @Query("SELECT * FROM proactive_tasks WHERE idempotencyKey = :key LIMIT 1")
+    suspend fun getTaskByIdempotencyKey(key: String): ProactiveTaskEntity?
+
+    @Query("SELECT * FROM proactive_tasks WHERE state IN (:states) ORDER BY scheduledAt ASC")
+    suspend fun getTasksByStates(states: List<String>): List<ProactiveTaskEntity>
+
+    @Query("SELECT * FROM proactive_tasks WHERE state = 'RUNNING'")
+    suspend fun getActiveRunningTasks(): List<ProactiveTaskEntity>
+
+    @Query("SELECT * FROM proactive_tasks WHERE (state = 'SCHEDULED' OR state = 'FAILOVER') AND (scheduledAt <= :currentTime OR (nextRetryAt > 0 AND nextRetryAt <= :currentTime)) ORDER BY priority ASC, scheduledAt ASC")
+    suspend fun getDueScheduledTasks(currentTime: Long): List<ProactiveTaskEntity>
+
+    @Query("SELECT * FROM proactive_tasks WHERE (state = 'RUNNING' OR state = 'SCHEDULED') AND leaseOwnerNode IS NOT NULL AND leaseExpiresAt > 0 AND leaseExpiresAt < :currentTime")
+    suspend fun getExpiredLeaseTasks(currentTime: Long): List<ProactiveTaskEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTask(task: ProactiveTaskEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTasks(tasks: List<ProactiveTaskEntity>)
+
+    @Update
+    suspend fun updateTask(task: ProactiveTaskEntity)
+
+    @Query("UPDATE proactive_tasks SET state = :state, updatedAt = :updatedAt WHERE taskId = :taskId")
+    suspend fun updateTaskState(taskId: String, state: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE proactive_tasks SET leaseOwnerNode = :leaseOwnerNode, leaseExpiresAt = :leaseExpiresAt, updatedAt = :updatedAt WHERE taskId = :taskId")
+    suspend fun updateTaskLease(taskId: String, leaseOwnerNode: String?, leaseExpiresAt: Long, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE proactive_tasks SET state = 'COMPLETED', completedAt = :completedAt, verificationEvidence = :verificationEvidence, leaseOwnerNode = NULL, leaseExpiresAt = 0, updatedAt = :updatedAt WHERE taskId = :taskId")
+    suspend fun markTaskCompleted(taskId: String, completedAt: Long, verificationEvidence: String?, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("UPDATE proactive_tasks SET state = 'FAILED', lastError = :lastError, leaseOwnerNode = NULL, updatedAt = :updatedAt WHERE taskId = :taskId")
+    suspend fun markTaskFailed(taskId: String, lastError: String?, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM proactive_tasks WHERE taskId = :taskId")
+    suspend fun deleteTaskById(taskId: String)
+
+    @Query("DELETE FROM proactive_tasks WHERE state = 'COMPLETED' AND completedAt IS NOT NULL AND completedAt < :timestamp")
+    suspend fun deleteCompletedTasksOlderThan(timestamp: Long)
+
+    @Query("DELETE FROM proactive_tasks")
+    suspend fun clearAllTasks()
+}
+
 
 

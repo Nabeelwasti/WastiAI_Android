@@ -80,6 +80,10 @@ class WastiForegroundExecutionService : Service() {
         WastiLocalServerManager.getInstance(applicationContext)
     }
 
+    private val proactiveEngine: com.example.data.proactive.WastiProactiveAutonomousEngine by lazy {
+        com.example.data.proactive.WastiProactiveAutonomousEngine.getInstance(applicationContext)
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -108,6 +112,11 @@ class WastiForegroundExecutionService : Service() {
             localServerManager.startServer(8080)
         }
 
+        // Auto-start Proactive Autonomous Engine for background task execution
+        serviceScope.launch(Dispatchers.Default) {
+            proactiveEngine.startAutonomousEngine()
+        }
+
         observeRuntimeState()
         Log.i(TAG, "WastiForegroundExecutionService initialized and running.")
     }
@@ -115,11 +124,15 @@ class WastiForegroundExecutionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP_DAEMON -> {
+                proactiveEngine.stopAutonomousEngine()
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_CANCEL_ACTIVE_TASK -> {
                 runtime.cancelActiveExecution("User cancelled from system notification")
+                proactiveEngine.getActiveTasks().forEach { task ->
+                    proactiveEngine.cancelTask(task.taskId, "User cancelled from system notification")
+                }
             }
         }
         return START_STICKY
