@@ -83,9 +83,13 @@ class Stage16PersistentAutonomousMemoryTest {
             delayMs = 60000L
         )
 
-        delay(100) // allow async persistence
+        var persisted: ProactiveTaskEntity? = null
+        for (i in 0 until 30) {
+            persisted = taskDao.getTaskById(task.taskId)
+            if (persisted != null) break
+            delay(50)
+        }
 
-        val persisted = taskDao.getTaskById(task.taskId)
         assertNotNull(persisted)
         assertEquals(task.taskId, persisted!!.taskId)
         assertEquals("Durable Maintenance Job", persisted.title)

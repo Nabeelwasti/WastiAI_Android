@@ -271,5 +271,23 @@ data class ProactiveTaskEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "node_metadata")
+data class NodeMetadataEntity(
+    @PrimaryKey val nodeId: String,
+    val nodeName: String,
+    val platform: String,
+    val trustState: String,
+    val isLocal: Boolean,
+    val networkAddress: String? = null,
+    val protocolVersion: Int = 2,
+    val capabilityFingerprint: String = "",
+    val capabilitiesCsv: String = "",
+    val dataLocality: String = "LOCAL_ONLY",
+    val lastSyncTimestamp: Long = 0L,
+    val lastPingTimestamp: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 
 

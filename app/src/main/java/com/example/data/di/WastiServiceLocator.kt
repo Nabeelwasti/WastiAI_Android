@@ -175,6 +175,19 @@ object WastiServiceLocator {
         com.example.data.proactive.WastiProactiveAutonomousEngine.getInstance(ctx)
     }
 
+    val meshTransport: com.example.data.mesh.WebSocketMeshTransport by lazy {
+        com.example.data.mesh.WebSocketMeshTransport.getInstance()
+    }
+
+    val nodeDiagnosticEngine: com.example.data.node.WastiNodeDiagnosticEngine by lazy {
+        com.example.data.node.WastiNodeDiagnosticEngine.getInstance()
+    }
+
+    val conversationFabric: com.example.data.conversation.UniversalConversationFabric by lazy {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        com.example.data.conversation.UniversalConversationFabric.getInstance(ctx)
+    }
+
     fun init(context: Context) {
         if (appContext == null) {
             synchronized(this) {

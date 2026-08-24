@@ -323,6 +323,47 @@ class WastiCommandTransport(
         return result
     }
 
+    /**
+     * Dispatch a cross-room task continuation through canonical transport with preserved correlation.
+     */
+    fun dispatchContinuation(
+        command: String,
+        origin: CommandOrigin,
+        conversationId: String,
+        taskId: String? = null,
+        roomId: String? = null,
+        nodeId: String? = null,
+        continuationIntent: String? = null,
+        executionMode: ExecutionMode = ExecutionMode.AUTONOMOUS,
+        targetAgentId: String = "ceo_agent",
+        parameters: Map<String, Any> = emptyMap(),
+        clientHost: String = "127.0.0.1",
+        authToken: String? = null,
+        deviceId: String? = null,
+        requestId: String? = null,
+        correlationId: String? = null
+    ): CommandSubmissionResult {
+        val contParams = parameters.toMutableMap()
+        contParams["conversationId"] = conversationId
+        if (taskId != null) contParams["taskId"] = taskId
+        if (roomId != null) contParams["roomId"] = roomId
+        if (nodeId != null) contParams["nodeId"] = nodeId
+        if (continuationIntent != null) contParams["continuationIntent"] = continuationIntent
+
+        return dispatchCommand(
+            command = command,
+            origin = origin,
+            executionMode = executionMode,
+            targetAgentId = targetAgentId,
+            parameters = contParams,
+            clientHost = clientHost,
+            authToken = authToken,
+            deviceId = deviceId,
+            requestId = requestId,
+            correlationId = correlationId
+        )
+    }
+
     fun addListener(listener: TransportEventListener) {
         listeners.add(listener)
     }

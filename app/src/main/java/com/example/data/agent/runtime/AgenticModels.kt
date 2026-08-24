@@ -252,4 +252,15 @@ sealed class AgentEvent(
     data class NodeLeaseRenewed(override val taskId: TaskId = TaskId("mesh_lease"), val proactiveTaskId: String, val nodeId: String, val newExpiresAt: Long) : AgentEvent(taskId = taskId)
     data class NodeMeshDisconnected(override val taskId: TaskId = TaskId("mesh_lifecycle"), val nodeId: String, val reason: String) : AgentEvent(taskId = taskId)
     data class NodeMeshReconnected(override val taskId: TaskId = TaskId("mesh_lifecycle"), val nodeId: String) : AgentEvent(taskId = taskId)
+
+    // Stage 18: Cross-Platform Mesh, Binary Framing, Telemetry & Diagnostics
+    data class MeshTransportConnected(override val taskId: TaskId = TaskId("mesh_transport"), val transportType: String, val endpoint: String) : AgentEvent(taskId = taskId)
+    data class MeshTransportDisconnected(override val taskId: TaskId = TaskId("mesh_transport"), val transportType: String, val reason: String) : AgentEvent(taskId = taskId)
+    data class MeshCapabilitySyncStarted(override val taskId: TaskId = TaskId("mesh_sync"), val nodeId: String, val syncType: String) : AgentEvent(taskId = taskId)
+    data class MeshCapabilitySyncCompleted(override val taskId: TaskId = TaskId("mesh_sync"), val nodeId: String, val appliedDeltaCount: Int, val durationMs: Long) : AgentEvent(taskId = taskId)
+    data class MeshCapabilityDeltaApplied(override val taskId: TaskId = TaskId("mesh_sync"), val nodeId: String, val addedCount: Int, val modifiedCount: Int, val removedCount: Int) : AgentEvent(taskId = taskId)
+    data class MeshProtocolNegotiated(override val taskId: TaskId = TaskId("mesh_protocol"), val nodeId: String, val negotiatedVersion: Int, val isPreferred: Boolean) : AgentEvent(taskId = taskId)
+    data class MeshFailoverTriggered(override val taskId: TaskId = TaskId("mesh_failover"), val proactiveTaskId: String, val fromNodeId: String, val toNodeId: String, val reason: String) : AgentEvent(taskId = taskId)
+    data class MeshNodeRecovered(override val taskId: TaskId = TaskId("mesh_recovery"), val nodeId: String, val healthyCapCount: Int) : AgentEvent(taskId = taskId)
+    data class MeshDiagnosticUpdated(override val taskId: TaskId = TaskId("mesh_diagnostics"), val nodeId: String, val isEligible: Boolean, val reasonCount: Int) : AgentEvent(taskId = taskId)
 }

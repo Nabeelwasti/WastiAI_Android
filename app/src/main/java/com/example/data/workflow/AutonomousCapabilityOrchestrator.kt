@@ -224,7 +224,7 @@ class AutonomousCapabilityOrchestrator(
 
         // Phase C: Verification & Reality Registry Update
         eventBus?.emit(AgentEvent.CapabilityVerificationStarted(taskId, capabilityId))
-        val evidence = "WRE script verification passed: $testStdout"
+        val evidence = "WRE script verification passed (exitCode=0): $testStdout"
         eventBus?.emit(AgentEvent.CapabilityVerified(taskId, capabilityId, evidence))
 
         // Phase D: Promotion to Production Tool Pool

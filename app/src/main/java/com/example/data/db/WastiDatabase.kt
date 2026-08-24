@@ -249,6 +249,32 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `node_metadata` (
+                `nodeId` TEXT NOT NULL,
+                `nodeName` TEXT NOT NULL,
+                `platform` TEXT NOT NULL,
+                `trustState` TEXT NOT NULL,
+                `isLocal` INTEGER NOT NULL,
+                `networkAddress` TEXT,
+                `protocolVersion` INTEGER NOT NULL DEFAULT 2,
+                `capabilityFingerprint` TEXT NOT NULL DEFAULT '',
+                `capabilitiesCsv` TEXT NOT NULL DEFAULT '',
+                `dataLocality` TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                `lastSyncTimestamp` INTEGER NOT NULL DEFAULT 0,
+                `lastPingTimestamp` INTEGER NOT NULL DEFAULT 0,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`nodeId`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -270,9 +296,10 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
         ProspectEntity::class,
         MediaVaultEntity::class,
         TerminalSessionEntity::class,
-        ProactiveTaskEntity::class
+        ProactiveTaskEntity::class,
+        NodeMetadataEntity::class
     ],
-    version = 12,
+    version = 13,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -293,6 +320,7 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun mediaVaultDao(): MediaVaultDao
     abstract fun terminalSessionDao(): TerminalSessionDao
     abstract fun proactiveTaskDao(): ProactiveTaskDao
+    abstract fun nodeMetadataDao(): NodeMetadataDao
 
     companion object {
         @Volatile
@@ -305,7 +333,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     .fallbackToDestructiveMigration(true)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()

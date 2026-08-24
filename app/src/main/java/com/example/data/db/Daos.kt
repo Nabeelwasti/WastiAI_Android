@@ -351,5 +351,29 @@ interface ProactiveTaskDao {
     suspend fun clearAllTasks()
 }
 
+@Dao
+interface NodeMetadataDao {
+    @Query("SELECT * FROM node_metadata ORDER BY updatedAt DESC")
+    fun getAllNodeMetadata(): Flow<List<NodeMetadataEntity>>
+
+    @Query("SELECT * FROM node_metadata ORDER BY updatedAt DESC")
+    suspend fun getAllNodeMetadataSync(): List<NodeMetadataEntity>
+
+    @Query("SELECT * FROM node_metadata WHERE nodeId = :nodeId LIMIT 1")
+    suspend fun getNodeMetadata(nodeId: String): NodeMetadataEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateNode(node: NodeMetadataEntity)
+
+    @Query("UPDATE node_metadata SET trustState = :trustState, updatedAt = :updatedAt WHERE nodeId = :nodeId")
+    suspend fun updateTrustState(nodeId: String, trustState: String, updatedAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM node_metadata WHERE nodeId = :nodeId")
+    suspend fun deleteNode(nodeId: String)
+
+    @Query("DELETE FROM node_metadata")
+    suspend fun clearAll()
+}
+
 
 

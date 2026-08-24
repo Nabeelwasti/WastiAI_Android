@@ -285,6 +285,9 @@ class WastiWebSocketServer private constructor(
                         val text = String(payload, Charsets.UTF_8)
                         handleIncomingTextMessage(session, text)
                     }
+                    0x2 -> { // Stage 18: Binary mesh frame
+                        handleIncomingBinaryFrame(session, payload)
+                    }
                     0x8 -> { // Close frame
                         sendCloseFrame(session.outputStream)
                         break
@@ -845,6 +848,27 @@ class WastiWebSocketServer private constructor(
         }
     }
 
+    private fun handleIncomingBinaryFrame(session: WebSocketSession, payload: ByteArray) {
+        serverScope.launch {
+            try {
+                val transport = com.example.data.mesh.WebSocketMeshTransport.getInstance()
+                val clientAddress = session.socket.inetAddress?.hostAddress ?: "127.0.0.1"
+                val result = transport.processIncomingBinaryFrame(payload, clientAddress)
+                if (result.isSuccess) {
+                    val responseEnvelope = result.getOrNull()
+                    if (responseEnvelope != null) {
+                        val responseBytes = com.example.data.mesh.WastiBinaryProtocolSerializer.serialize(responseEnvelope)
+                        sendBinaryFrame(session, responseBytes)
+                    }
+                } else {
+                    Log.w(TAG, "Failed to process incoming binary frame: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error handling binary WebSocket frame: ${e.message}", e)
+            }
+        }
+    }
+
     /**
      * Stage 17: Dispatches a task offer to a remote node over WebSocket.
      */
@@ -950,6 +974,51 @@ class WastiWebSocketServer private constructor(
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error writing frame to WebSocket session: ${e.message}")
+        }
+    }
+
+    fun sendBinaryFrame(session: WebSocketSession, bytes: ByteArray) {
+        try {
+            synchronized(session.outputStream) {
+                val out = session.outputStream
+                out.write(0x82) // FIN=1, Binary Opcode=0x2
+                val length = bytes.size
+                if (length <= 125) {
+                    out.write(length)
+                } else if (length <= 65535) {
+                    out.write(126)
+                    out.write((length shr 8) and 0xFF)
+                    out.write(length and 0xFF)
+                } else {
+                    out.write(127)
+                    for (i in 7 downTo 0) {
+                        out.write(((length.toLong() shr (i * 8)) and 0xFF).toInt())
+                    }
+                }
+                out.write(bytes)
+                out.flush()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error writing binary frame to WebSocket session: ${e.message}")
+        }
+    }
+
+    fun sendBinaryFrameToNode(nodeId: String, bytes: ByteArray): Boolean {
+        var sent = false
+        for (session in connectedSessions) {
+            if (session.deviceId == nodeId && !session.socket.isClosed) {
+                sendBinaryFrame(session, bytes)
+                sent = true
+            }
+        }
+        return sent
+    }
+
+    fun broadcastBinaryFrame(bytes: ByteArray) {
+        for (session in connectedSessions) {
+            if (session.isAuthenticated && !session.socket.isClosed) {
+                sendBinaryFrame(session, bytes)
+            }
         }
     }
 
