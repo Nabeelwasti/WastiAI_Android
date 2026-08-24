@@ -52,7 +52,8 @@ class Stage17CapabilityFederationAndMeshTest {
         context = ApplicationProvider.getApplicationContext()
         WastiServiceLocator.init(context)
         nodeManager = WastiNodeManager.getInstance()
-        realityRegistry = WastiServiceLocator.executionFabric.realityRegistry
+        nodeManager.clearAll()
+        realityRegistry = nodeManager.realityRegistry
         emergencyStop = WastiServiceLocator.emergencyStopController
         emergencyStop.resetEmergencyStop()
         eventBus = WastiServiceLocator.agentEventBus

@@ -84,10 +84,6 @@ object WastiServiceLocator {
         UnifiedExecutionFabric.getInstance(ctx)
     }
 
-    val nodeManager: WastiNodeManager by lazy {
-        WastiNodeManager.getInstance()
-    }
-
     val toolRouter: WastiAgentToolRouter by lazy {
         WastiAgentToolRouter(
             registry = toolRegistry,

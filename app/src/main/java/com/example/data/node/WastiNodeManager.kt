@@ -130,12 +130,17 @@ enum class ExecutionDestination {
  * and coordinates capability reality federation without platform lock-in.
  */
 class WastiNodeManager(
-    private val realityRegistry: CapabilityRealityRegistry = UnifiedExecutionFabric.instance.realityRegistry,
+    val realityRegistry: CapabilityRealityRegistry = UnifiedExecutionFabric.instance.realityRegistry,
     private val eventBus: AgentEventBus = WastiServiceLocator.agentEventBus
 ) {
     private val nodes = ConcurrentHashMap<String, WastiNode>()
 
     init {
+        registerDefaultNodes()
+    }
+
+    fun clearAll() {
+        nodes.clear()
         registerDefaultNodes()
     }
 
@@ -620,8 +625,8 @@ class WastiNodeManager(
         // Rank by: Local preference if light, remote if heavy compute, lowest load, lowest latency
         return eligibleNodes.minByOrNull { node ->
             var score = node.currentLoad * 100.0f + (node.latencyMs.toFloat() / 10.0f)
-            if (isHeavyCompute && (node.platform == NodePlatform.DESKTOP || node.platform == NodePlatform.CLOUD_WORKER)) {
-                score -= 500.0f // Strongly favor desktop/cloud for heavy compute
+            if (isHeavyCompute && (node.platform == NodePlatform.DESKTOP || node.platform == NodePlatform.SERVER || node.platform == NodePlatform.CLOUD_WORKER)) {
+                score -= 500.0f // Strongly favor desktop/server/cloud for heavy compute
             }
             if (node.isLocal && !isHeavyCompute) {
                 score -= 200.0f // Favor local node for normal latency-sensitive tasks
