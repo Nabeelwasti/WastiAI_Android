@@ -121,7 +121,7 @@ class UniversalConversationFabric(
         executionMode: ExecutionMode = ExecutionMode.AUTONOMOUS,
         targetAgentId: String = "ceo_agent"
     ): CommandSubmissionResult {
-        if (emergencyStopController.isEmergencyStopped) {
+        if (emergencyStopController.isEmergencyStopped()) {
             val rejected = CommandSubmissionResult.Rejected(
                 commandId = "",
                 origin = mapRoomToOrigin(originRoom),
@@ -465,7 +465,7 @@ class UniversalConversationFabric(
         val convId = conversationId ?: _activeContext.value.conversationId
         val ctx = conversationContextMap[convId] ?: _activeContext.value
         val pending = pendingConfirmationEntities.values.filter { it.conversationId == convId && !it.isResolved && !it.isExpired() }
-        val activeNodes = nodeManager.getAllNodes().map { "${it.nodeId} (${it.nodeName}) [${it.connectionState.name}]" }
+        val activeNodes = nodeManager.getAllNodes().map { "${it.nodeId} (${it.nodeName}) [${it.status}]" }
         val availableActions = listOf("SUBMIT_TASK", "CONTINUE", "CONFIRM", "REJECT", "CANCEL", "PAUSE", "RESUME", "EMERGENCY_STOP")
 
         return CompanionConversationSnapshot(
@@ -571,7 +571,7 @@ class UniversalConversationFabric(
                 updateExecutionState(ConversationExecutionState.PLANNING, "PLANNING", conversationId = convId)
                 emitFabricEvent(convId, taskId, current.currentRoom, "PLANNING", "Agent planning execution steps")
             }
-            is AgentEvent.ToolStarted -> {
+            is AgentEvent.ToolExecutionStarted -> {
                 updateExecutionState(
                     state = ConversationExecutionState.EXECUTING,
                     phase = "TOOL_START",
@@ -580,26 +580,21 @@ class UniversalConversationFabric(
                 )
                 emitFabricEvent(convId, taskId, current.currentRoom, "TOOL_START", "Executing tool: ${event.toolName}")
             }
-            is AgentEvent.ToolCompleted -> {
+            is AgentEvent.ToolExecutionFinished -> {
                 emitFabricEvent(
                     convId, taskId, current.currentRoom, "TOOL_FINISH",
-                    "Completed tool: ${event.toolName} (success=${event.isSuccess})",
-                    severity = if (event.isSuccess) "INFO" else "WARN"
+                    "Completed tool: ${event.toolName} (success=${event.result.isSuccess})",
+                    severity = if (event.result.isSuccess) "INFO" else "WARN",
+                    evidence = event.result.output
                 )
             }
-            is AgentEvent.ToolFailed -> {
+            is AgentEvent.TaskFinished -> {
+                val state = if (event.result.isSuccess) ConversationExecutionState.COMPLETED else ConversationExecutionState.FAILED
+                updateExecutionState(state, "TASK_FINISHED", conversationId = convId)
                 emitFabricEvent(
-                    convId, taskId, current.currentRoom, "TOOL_FAILED",
-                    "Tool failed: ${event.toolName} - ${event.error}",
-                    severity = "ERROR"
-                )
-            }
-            is AgentEvent.TaskCompleted -> {
-                updateExecutionState(ConversationExecutionState.COMPLETED, "TASK_COMPLETED", conversationId = convId)
-                emitFabricEvent(
-                    convId, taskId, current.currentRoom, "TASK_COMPLETED",
-                    "Task completed: ${event.summary}",
-                    severity = "SUCCESS"
+                    convId, taskId, current.currentRoom, "TASK_FINISHED",
+                    "Task finished with status: ${if (event.result.isSuccess) "SUCCESS" else "FAILURE"}",
+                    severity = if (event.result.isSuccess) "SUCCESS" else "ERROR"
                 )
             }
             is AgentEvent.TaskFailed -> {
@@ -613,11 +608,10 @@ class UniversalConversationFabric(
             is AgentEvent.EmergencyStopTriggered -> {
                 updateExecutionState(ConversationExecutionState.EMERGENCY_STOPPED, "EMERGENCY_STOP", reason = event.reason, conversationId = convId)
             }
-            is AgentEvent.VerificationCompleted -> {
-                val state = if (event.isSuccessful) ConversationExecutionState.VERIFYING else ConversationExecutionState.FAILED
-                updateExecutionState(state, "VERIFICATION", conversationId = convId)
+            is AgentEvent.VerificationSucceeded -> {
+                updateExecutionState(ConversationExecutionState.VERIFYING, "VERIFICATION_SUCCESS", conversationId = convId)
             }
-            is AgentEvent.CorrectionProposed -> {
+            is AgentEvent.SelfCorrectionTriggered -> {
                 updateExecutionState(ConversationExecutionState.DEBUGGING, "SELF_CORRECTION", conversationId = convId)
             }
             else -> {
@@ -642,13 +636,11 @@ class UniversalConversationFabric(
             "DEV_ASSISTANT" -> CommandOrigin.DEV_ASSISTANT
             "VOICE" -> CommandOrigin.VOICE
             "FLOATING_BUBBLE" -> CommandOrigin.FLOATING_BUBBLE
-            "PROJECTS" -> CommandOrigin.PROJECTS
-            "OPERATIONS", "DASHBOARD" -> CommandOrigin.OPERATIONS
+            "DASHBOARD" -> CommandOrigin.DASHBOARD
+            "MEMORY" -> CommandOrigin.MEMORY
             "WEB_COMPANION" -> CommandOrigin.WEB_COMPANION
             "DESKTOP_COMPANION" -> CommandOrigin.DESKTOP_COMPANION
-            "BACKGROUND_WORKER", "PROACTIVE_DAEMON" -> CommandOrigin.BACKGROUND_WORKER
-            "NOTIFICATION" -> CommandOrigin.NOTIFICATION
-            "ACCESSIBILITY" -> CommandOrigin.ACCESSIBILITY
+            "PROACTIVE_DAEMON" -> CommandOrigin.PROACTIVE_DAEMON
             else -> CommandOrigin.CHAT
         }
     }

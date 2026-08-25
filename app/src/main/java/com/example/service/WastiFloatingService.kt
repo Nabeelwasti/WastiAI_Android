@@ -618,15 +618,15 @@ class WastiFloatingService : Service() {
 
     private suspend fun executeCommand(command: String) {
         try {
-            val result = com.example.data.transport.WastiCommandTransport.getInstance(applicationContext).dispatchCommand(
-                command = command,
-                origin = com.example.data.core.CommandOrigin.FLOATING_BUBBLE,
+            val result = com.example.data.conversation.UniversalConversationFabric.getInstance(applicationContext).submitTask(
+                prompt = command,
+                originRoom = com.example.data.conversation.RoomIdentity.FLOATING_BUBBLE.roomId,
                 executionMode = com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS,
                 targetAgentId = "ceo_agent"
             )
-            logSystemEvent("INFO", "Floating Command Dispatched via WastiCommandTransport: $command -> $result")
+            logSystemEvent("INFO", "Floating Command Dispatched via UniversalConversationFabric: $command -> $result")
         } catch (e: Exception) {
-            Log.e(TAG, "Error executing floating command via WastiCommandTransport", e)
+            Log.e(TAG, "Error executing floating command via UniversalConversationFabric", e)
             logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
         }
     }

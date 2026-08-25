@@ -845,6 +845,60 @@ class WastiWebSocketServer private constructor(
                     put("isSuccess", renewed)
                 }.toString())
             }
+
+            "AUDIO_STREAM_METADATA" -> {
+                val sampleRate = json.optInt("sampleRate", 16000)
+                val channels = json.optInt("channels", 1)
+                val isSpeaking = json.optBoolean("isSpeaking", false)
+                val lang = json.optString("language", "en-US")
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "AUDIO_STREAM_METADATA_ACK")
+                    put("sampleRate", sampleRate)
+                    put("channels", channels)
+                    put("isSpeaking", isSpeaking)
+                    put("language", lang)
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "CONFIRMATION_RESOLVED" -> {
+                val token = json.optString("confirmationToken", "")
+                val approved = json.optBoolean("approved", false)
+                val reason = json.optString("reason", "WebSocket remote resolution")
+
+                val isResolved = if (context != null) {
+                    com.example.data.conversation.UniversalConversationFabric.getInstance(context)
+                        .resolveConfirmation(token, approved, reason)
+                } else false
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "CONFIRMATION_RESOLVED_ACK")
+                    put("token", token)
+                    put("isResolved", isResolved)
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
+            "TASK_STATE_UPDATE" -> {
+                val taskId = json.optString("taskId", "")
+                val phaseStr = json.optString("phase", "EXECUTING")
+                val desc = json.optString("description", "")
+                val phase = try {
+                    com.example.data.conversation.TaskTimelinePhase.valueOf(phaseStr)
+                } catch (e: Exception) {
+                    com.example.data.conversation.TaskTimelinePhase.EXECUTING
+                }
+
+                com.example.data.conversation.UniversalTaskTimeline.getInstance()
+                    .appendPhase(taskId, phase, desc)
+
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "TASK_STATE_UPDATE_ACK")
+                    put("taskId", taskId)
+                    put("phase", phase.name)
+                }.toString())
+            }
         }
     }
 

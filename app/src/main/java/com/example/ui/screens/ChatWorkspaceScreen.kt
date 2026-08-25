@@ -39,6 +39,7 @@ import com.example.data.voice.VoiceManager
 import com.example.data.voice.provider.STTState
 import com.example.data.device.WastiIntentParser
 import com.example.ui.components.CodeBlockView
+import com.example.ui.components.UniversalTaskTimelineStepper
 import com.example.ui.components.WastiVoiceCallModal
 import com.example.util.WastiSpeechSanitizer
 import com.example.security.BiometricSecurityManager
@@ -557,6 +558,9 @@ fun ChatWorkspaceScreen(
                         )
                     }
                 }
+
+                // Unified Task Execution Timeline Stepper
+                UniversalTaskTimelineStepper()
 
                 // Expandable Search Bar
                 if (isSearchActive) {

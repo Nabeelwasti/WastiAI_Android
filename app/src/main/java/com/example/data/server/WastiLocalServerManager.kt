@@ -9,6 +9,7 @@ import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiCore
 import com.example.data.core.WastiOSRuntime
+import com.example.data.di.WastiServiceLocator
 import com.example.data.transport.WastiCommandTransport
 import com.example.data.wre.ExecutionRequest
 import com.example.data.wre.WreManager
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStreamReader
 import java.net.InetSocketAddress
@@ -171,6 +173,17 @@ class WastiLocalServerManager(
             val streamHandler = StreamHandler()
             server.createContext("/stream", streamHandler)
             server.createContext("/api/stream", streamHandler)
+
+            // Stage 18: Universal Conversation Companion Gate Endpoints
+            server.createContext("/api/conversation/snapshot", ConversationSnapshotHandler())
+            server.createContext("/api/conversation/confirm", ConversationConfirmHandler())
+            server.createContext("/api/conversation/continue", ConversationContinueHandler(serverScope))
+
+            // Stage 19: Cross-Platform Topology, Timeline, Audio Status & Regression Endpoints
+            server.createContext("/api/topology", TopologyHandler())
+            server.createContext("/api/timeline", TimelineHandler())
+            server.createContext("/api/audio/status", AudioStatusHandler())
+            server.createContext("/api/capabilities/regression", CapabilityRegressionHandler())
 
             // 15. Stage 12: Web Companion Lightweight Dashboard UI
             val webCompanionHandler = WebCompanionDashboardHandler()
@@ -767,6 +780,149 @@ class WastiLocalServerManager(
         }
     }
 
+    private inner class ConversationSnapshotHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("GET", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use GET.").toString())
+                return
+            }
+
+            val fabric = com.example.data.conversation.UniversalConversationFabric.getInstance(context)
+            val snapshot = fabric.getCompanionSnapshot()
+
+            val eventsJson = JSONArray()
+            snapshot.recentEvents.forEach { ev ->
+                eventsJson.put(JSONObject().apply {
+                    put("eventId", ev.eventId)
+                    put("conversationId", ev.conversationId)
+                    put("taskId", ev.taskId)
+                    put("room", ev.originatingRoom)
+                    put("node", ev.originatingNode)
+                    put("phase", ev.executionPhase)
+                    put("message", ev.message)
+                    put("severity", ev.severity)
+                    put("evidence", ev.evidence)
+                    put("timestamp", ev.timestamp)
+                })
+            }
+
+            val confirmationsJson = JSONArray()
+            snapshot.pendingConfirmations.forEach { conf ->
+                confirmationsJson.put(JSONObject().apply {
+                    put("confirmationId", conf.confirmationId)
+                    put("conversationId", conf.conversationId)
+                    put("taskId", conf.taskId)
+                    put("actionTitle", conf.actionTitle)
+                    put("actionDetails", conf.actionDetails)
+                    put("requiredPrivilege", conf.requiredPrivilege)
+                    put("requestedByRoom", conf.requestedByRoom)
+                    put("expiresAt", conf.expiresAt)
+                })
+            }
+
+            val res = JSONObject().apply {
+                put("conversationId", snapshot.conversationContext.conversationId)
+                put("taskId", snapshot.conversationContext.taskId)
+                put("correlationId", snapshot.conversationContext.correlationId)
+                put("currentRoom", snapshot.conversationContext.currentRoom)
+                put("currentNode", snapshot.conversationContext.currentNode)
+                put("executionState", snapshot.conversationContext.activeExecutionState.name)
+                put("currentAgent", snapshot.conversationContext.currentAgent)
+                put("currentTool", snapshot.conversationContext.currentTool)
+                put("currentCapability", snapshot.conversationContext.currentCapability)
+                put("lastUserInteraction", snapshot.conversationContext.lastUserInteraction)
+                put("lastExecutionEvent", snapshot.conversationContext.lastExecutionEvent)
+                put("recentEvents", eventsJson)
+                put("pendingConfirmations", confirmationsJson)
+                put("activeNodes", JSONArray(snapshot.activeNodes))
+                put("availableActions", JSONArray(snapshot.availableActions))
+                put("timestamp", snapshot.generatedAt)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, res)
+        }
+    }
+
+    private inner class ConversationConfirmHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val confirmationId = json.optString("confirmationId", "")
+            val approved = json.optBoolean("approved", false)
+            val resolvedByRoom = json.optString("room", "WEB_COMPANION")
+            val reason = json.optString("reason").takeIf { it.isNotBlank() }
+
+            if (confirmationId.isBlank()) {
+                sendJsonResponse(exchange, 400, JSONObject().put("error", "confirmationId is required").toString())
+                return
+            }
+
+            val fabric = com.example.data.conversation.UniversalConversationFabric.getInstance(context)
+            val resolved = fabric.resolveConfirmation(
+                confirmationId = confirmationId,
+                approved = approved,
+                resolvedByRoom = resolvedByRoom,
+                reason = reason
+            )
+
+            val res = JSONObject().apply {
+                put("success", resolved)
+                put("confirmationId", confirmationId)
+                put("approved", approved)
+                put("resolvedByRoom", resolvedByRoom)
+            }.toString()
+
+            sendJsonResponse(exchange, if (resolved) 200 else 404, res)
+        }
+    }
+
+    private inner class ConversationContinueHandler(private val scope: CoroutineScope) : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
+                sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val body = InputStreamReader(exchange.requestBody).readText()
+            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val prompt = json.optString("prompt", "")
+            val originRoom = json.optString("room", "WEB_COMPANION")
+            val conversationId = json.optString("conversationId").takeIf { it.isNotBlank() }
+
+            if (prompt.isBlank()) {
+                sendJsonResponse(exchange, 400, JSONObject().put("error", "prompt is required").toString())
+                return
+            }
+
+            val fabric = com.example.data.conversation.UniversalConversationFabric.getInstance(context)
+            val submission = fabric.continueConversation(
+                prompt = prompt,
+                originRoom = originRoom,
+                conversationId = conversationId
+            )
+
+            val res = JSONObject().apply {
+                put("success", submission !is CommandSubmissionResult.Rejected)
+                put("status", submission.javaClass.simpleName)
+                when (submission) {
+                    is CommandSubmissionResult.Accepted -> put("commandId", submission.commandId)
+                    is CommandSubmissionResult.ImmediateSuccess -> put("output", submission.output)
+                    is CommandSubmissionResult.Rejected -> put("reason", submission.reason)
+                }
+            }.toString()
+
+            sendJsonResponse(exchange, 200, res)
+        }
+    }
+
     private inner class WebCompanionDashboardHandler : HttpHandler {
         override fun handle(exchange: HttpExchange) {
             incrementRequestCount()
@@ -1152,6 +1308,106 @@ class WastiLocalServerManager(
             }.toString()
 
             sendJsonResponse(exchange, 200, responseJson)
+        }
+    }
+
+    private inner class TopologyHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val topology = WastiServiceLocator.nodeManager.getTopologySnapshot()
+            val nodesArr = org.json.JSONArray()
+            topology.nodes.forEach { node ->
+                nodesArr.put(JSONObject().apply {
+                    put("nodeId", node.nodeId)
+                    put("nodeName", node.nodeName)
+                    put("platform", node.platform.name)
+                    put("connectionState", node.connectionState.name)
+                    put("trustState", node.trustState.name)
+                    put("healthState", node.healthState.name)
+                    put("isLocal", node.isLocal)
+                    put("latencyMs", node.latencyMs)
+                    put("capabilitiesCount", node.capabilities.size)
+                })
+            }
+
+            val json = JSONObject().apply {
+                put("timestamp", topology.timestamp)
+                put("totalNodes", topology.totalNodes)
+                put("onlineNodes", topology.onlineNodes)
+                put("degradedNodes", topology.degradedNodes)
+                put("offlineNodes", topology.offlineNodes)
+                put("totalCapabilitiesFederated", topology.totalCapabilitiesFederated)
+                put("nodes", nodesArr)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, json)
+        }
+    }
+
+    private inner class TimelineHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val entries = WastiServiceLocator.universalTaskTimeline.getRecentEntries(30)
+            val arr = org.json.JSONArray()
+            entries.forEach { e ->
+                arr.put(JSONObject().apply {
+                    put("entryId", e.entryId)
+                    put("taskId", e.taskId)
+                    put("phase", e.phase.name)
+                    put("description", e.description)
+                    put("timestamp", e.timestamp)
+                    put("durationSinceStartMs", e.durationSinceStartMs)
+                })
+            }
+            val json = JSONObject().apply {
+                put("timeline", arr)
+                put("activeTasksCount", WastiServiceLocator.universalTaskTimeline.activeTasksCount.value)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, json)
+        }
+    }
+
+    private inner class AudioStatusHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val audioOrch = WastiServiceLocator.canonicalAudioOrchestrator
+            val json = JSONObject().apply {
+                put("inputRealityState", audioOrch.inputRealityState.value.name)
+                put("outputRealityState", audioOrch.outputRealityState.value.name)
+                put("isListening", audioOrch.isListening.value)
+                put("isSpeaking", audioOrch.isSpeaking.value)
+                put("activeTranscript", audioOrch.activeTranscript.value)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, json)
+        }
+    }
+
+    private inner class CapabilityRegressionHandler : HttpHandler {
+        override fun handle(exchange: HttpExchange) {
+            incrementRequestCount()
+            val monitor = WastiServiceLocator.capabilityRegressionMonitor
+            val records = monitor.getAllHealthRecords()
+            val arr = org.json.JSONArray()
+            records.forEach { r ->
+                arr.put(JSONObject().apply {
+                    put("capabilityId", r.capabilityId)
+                    put("version", r.version)
+                    put("realityState", r.realityState.name)
+                    put("totalExecutions", r.totalExecutions)
+                    put("successRate", r.successRate)
+                    put("regressionStatus", r.regressionStatus.name)
+                    put("repairAttempts", r.repairAttempts)
+                })
+            }
+            val json = JSONObject().apply {
+                put("totalTracked", records.size)
+                put("degradedCount", monitor.degradedCount.value)
+                put("capabilities", arr)
+            }.toString()
+
+            sendJsonResponse(exchange, 200, json)
         }
     }
 

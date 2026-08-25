@@ -430,7 +430,7 @@ class WastiProactiveAutonomousEngine(
         task.state = ProactiveTaskState.CANCELLED
         task.lastError = reason
         updateTasksFlow()
-        persistTaskAsync(task)
+        persistTaskSync(task)
 
         eventBus.tryEmit(
             AgentEvent.ProactiveTaskCancelled(
@@ -904,6 +904,17 @@ class WastiProactiveAutonomousEngine(
             // Rollback lease if offer failed to dispatch
             releaseTaskLease(taskId, targetNode.nodeId)
             return false
+        }
+    }
+
+    fun persistTaskSync(task: ProactiveAutonomousTask) {
+        val dao = effectiveDao ?: return
+        try {
+            runBlocking(Dispatchers.IO) {
+                dao.insertTask(task.toEntity())
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to synchronously persist proactive task ${task.taskId}: ${e.message}")
         }
     }
 

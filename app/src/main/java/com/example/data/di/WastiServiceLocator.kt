@@ -184,8 +184,32 @@ object WastiServiceLocator {
     }
 
     val conversationFabric: com.example.data.conversation.UniversalConversationFabric by lazy {
-        val ctx = appContext ?: com.example.WastiApplication.instance
+        val ctx = requireContext()
         com.example.data.conversation.UniversalConversationFabric.getInstance(ctx)
+    }
+
+    val universalTaskTimeline: com.example.data.conversation.UniversalTaskTimeline by lazy {
+        com.example.data.conversation.UniversalTaskTimeline.getInstance()
+    }
+
+    val canonicalAudioOrchestrator: com.example.data.voice.CanonicalAudioOrchestrator by lazy {
+        val ctx = requireContext()
+        com.example.data.voice.CanonicalAudioOrchestrator(ctx, conversationFabric, agentEventBus)
+    }
+
+    val capabilityCompositionEngine: com.example.data.agent.runtime.CapabilityCompositionEngine by lazy {
+        com.example.data.agent.runtime.CapabilityCompositionEngine(toolRegistry, realityRegistry, agentEventBus)
+    }
+
+    val capabilityRegressionMonitor: com.example.data.agent.runtime.CapabilityRegressionMonitor by lazy {
+        com.example.data.agent.runtime.CapabilityRegressionMonitor(realityRegistry, agentEventBus)
+    }
+
+    val actionIntentEngine: com.example.data.agent.runtime.ActionIntentEngine by lazy {
+        com.example.data.agent.runtime.ActionIntentEngine(
+            securityPolicyEngine = securityPolicyEngine,
+            timeline = universalTaskTimeline
+        )
     }
 
     fun init(context: Context) {

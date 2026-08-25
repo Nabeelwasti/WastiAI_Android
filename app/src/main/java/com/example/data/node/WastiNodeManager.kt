@@ -113,6 +113,17 @@ data class WastiNode(
     val dataLocality: NodeDataLocality = if (isLocal) NodeDataLocality.LOCAL_ONLY else NodeDataLocality.TRUSTED_LAN
 )
 
+data class NodeTopologySnapshot(
+    val timestamp: Long = System.currentTimeMillis(),
+    val totalNodes: Int,
+    val onlineNodes: Int,
+    val degradedNodes: Int,
+    val offlineNodes: Int,
+    val nodes: List<WastiNode>,
+    val totalCapabilitiesFederated: Int,
+    val activeLeasesCount: Int = 0
+)
+
 enum class ExecutionDestination {
     LOCAL_DEVICE,
     REMOTE_DEVICE,
@@ -701,6 +712,54 @@ class WastiNodeManager(
 
         // 7. Default to Local Device Native Execution
         return ExecutionDestination.LOCAL_DEVICE
+    }
+
+    /**
+     * Stage 19: Generates a complete Node Topology Snapshot of all connected and discovered nodes.
+     */
+    fun getTopologySnapshot(): NodeTopologySnapshot {
+        val allNodes = nodes.values.toList()
+        val online = allNodes.count { it.healthState == NodeHealthState.ONLINE }
+        val degraded = allNodes.count { it.healthState == NodeHealthState.DEGRADED }
+        val offline = allNodes.count { it.healthState == NodeHealthState.OFFLINE }
+        val totalCaps = allNodes.flatMap { it.capabilities }.distinct().size
+
+        return NodeTopologySnapshot(
+            timestamp = System.currentTimeMillis(),
+            totalNodes = allNodes.size,
+            onlineNodes = online,
+            degradedNodes = degraded,
+            offlineNodes = offline,
+            nodes = allNodes,
+            totalCapabilitiesFederated = totalCaps
+        )
+    }
+
+    /**
+     * Sweeps nodes and updates health state if heartbeat ping is stale.
+     */
+    fun sweepStaleNodes(heartbeatTimeoutMs: Long = 60000L): Int {
+        val now = System.currentTimeMillis()
+        var updatedCount = 0
+
+        for ((id, node) in nodes) {
+            if (!node.isLocal && node.healthState != NodeHealthState.OFFLINE) {
+                val elapsed = now - node.lastPingTimestamp
+                if (elapsed > heartbeatTimeoutMs * 2) {
+                    nodes[id] = node.copy(
+                        healthState = NodeHealthState.OFFLINE,
+                        connectionState = NodeConnectionState.DISCONNECTED
+                    )
+                    updatedCount++
+                } else if (elapsed > heartbeatTimeoutMs) {
+                    nodes[id] = node.copy(
+                        healthState = NodeHealthState.DEGRADED
+                    )
+                    updatedCount++
+                }
+            }
+        }
+        return updatedCount
     }
 
     /**

@@ -36,16 +36,28 @@ class SelfCorrectionEngine(
             )
         }
 
-        // 2. Rule-based fallback proposals
+        // 2. Rule-based fallback proposals using StructuredDiagnostic analysis
         val fallbackProposal = when (diagnostic.category) {
             ExecutionErrorType.COMPILATION, ExecutionErrorType.SYNTAX -> {
+                val rawLogs = buildString {
+                    appendLine(failedObservation.stdout)
+                    appendLine(failedObservation.stderr)
+                }
+                val structuredReport = DiagnosticParser.parseLogs(
+                    projectId = task.taskId.value,
+                    language = "KOTLIN",
+                    rawLogs = rawLogs
+                )
+                val primaryDiag = structuredReport.diagnostics.firstOrNull()
+                val targetFile = primaryDiag?.file ?: failedObservation.outputMap["filePath"]?.toString() ?: "main.kt"
+                val fixDescription = primaryDiag?.suggestedFix ?: structuredReport.actionableSuggestions.firstOrNull()
+                    ?: "Inspect and correct syntax error in $targetFile at line ${primaryDiag?.line ?: 1}"
+
                 CorrectionProposal(
-                    explanation = "Create backup snapshot and patch file content",
-                    toolName = "write_file",
-                    toolArguments = mapOf(
-                        "path" to "corrected_script.sh",
-                        "content" to "# Auto-corrected script\necho 'correction_applied'\n"
-                    )
+                    explanation = fixDescription,
+                    toolName = "read_file",
+                    toolArguments = mapOf("path" to targetFile),
+                    alternativeStrategy = primaryDiag?.probableCause
                 )
             }
             ExecutionErrorType.TIMEOUT -> {
