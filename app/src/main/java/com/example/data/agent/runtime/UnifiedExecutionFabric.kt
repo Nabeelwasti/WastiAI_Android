@@ -805,6 +805,144 @@ class UnifiedExecutionFabric(
                     verificationEvidence = res.userFeedback
                 )
             }
+            "simulate_tap_at", "click_coord", "tap_at" -> {
+                val x = (params["x"]?.toString()?.toFloatOrNull()) ?: -1f
+                val y = (params["y"]?.toString()?.toFloatOrNull()) ?: -1f
+                if (x < 0f || y < 0f) {
+                    return createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "Error: Valid x and y coordinates required for simulate_tap_at.",
+                        error = "Invalid coordinates ($x, $y)",
+                        executor = "WastiDeviceController",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED
+                    )
+                }
+                val res = WastiDeviceController.simulateTapAt(ctx, x, y)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "simulate_swipe", "swipe" -> {
+                val startX = (params["startX"]?.toString()?.toFloatOrNull()) ?: 0f
+                val startY = (params["startY"]?.toString()?.toFloatOrNull()) ?: 0f
+                val endX = (params["endX"]?.toString()?.toFloatOrNull()) ?: 0f
+                val endY = (params["endY"]?.toString()?.toFloatOrNull()) ?: 0f
+                val duration = (params["duration"]?.toString()?.toLongOrNull()) ?: 300L
+                val res = WastiDeviceController.simulateSwipe(ctx, startX, startY, endX, endY, duration)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "type_text", "set_text" -> {
+                val text = params["text"]?.toString() ?: content
+                val targetElement = params["targetElement"]?.toString() ?: target.takeIf { it.isNotBlank() }
+                val res = WastiDeviceController.typeText(ctx, text, targetElement)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "press_back", "back", "nav_back" -> {
+                val res = WastiDeviceController.performBack(ctx)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "press_home", "home", "nav_home" -> {
+                val res = WastiDeviceController.performHome(ctx)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "press_recents", "recents", "app_switcher" -> {
+                val res = WastiDeviceController.performRecents(ctx)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "notifications", "open_notifications" -> {
+                val res = WastiDeviceController.performNotifications(ctx)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "quick_settings", "open_quick_settings" -> {
+                val res = WastiDeviceController.performQuickSettings(ctx)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
+            "scroll", "scroll_down", "scroll_up" -> {
+                val direction = params["direction"]?.toString() ?: if (action == "scroll_up") "UP" else "DOWN"
+                val res = WastiDeviceController.performScroll(ctx, direction)
+                return createResult(
+                    request = request,
+                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = res.userFeedback,
+                    error = if (res.success) null else res.userFeedback,
+                    executor = "WastiDeviceController",
+                    startedAt = startedAt,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = res.userFeedback
+                )
+            }
             else -> {
                 return createResult(
                     request = request,

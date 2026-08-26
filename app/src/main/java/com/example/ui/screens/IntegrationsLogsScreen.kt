@@ -64,7 +64,7 @@ fun IntegrationsLogsScreen(
             Tab(
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
-                text = { Text("Credential Registry", fontWeight = FontWeight.Bold) },
+                text = { Text("Credentials", fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.VpnKey, contentDescription = null) }
             )
             Tab(
@@ -78,6 +78,12 @@ fun IntegrationsLogsScreen(
                 onClick = { selectedTab = 2 },
                 text = { Text("Audit Logs (${logs.size})", fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Terminal, contentDescription = null) }
+            )
+            Tab(
+                selected = selectedTab == 3,
+                onClick = { selectedTab = 3 },
+                text = { Text("Reality Matrix", fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.HealthAndSafety, contentDescription = null) }
             )
         }
 
@@ -269,7 +275,7 @@ fun IntegrationsLogsScreen(
                     }
                 }
             }
-        } else {
+        } else if (selectedTab == 2) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -356,6 +362,10 @@ fun IntegrationsLogsScreen(
                     }
                 }
             }
+        } else {
+            com.example.ui.components.RealityDiagnosticsView(
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }

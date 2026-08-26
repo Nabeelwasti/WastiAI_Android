@@ -45,6 +45,20 @@ class ActionIntentEngine(
     private val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
     private val timeline: UniversalTaskTimeline = UniversalTaskTimeline.getInstance()
 ) {
+    private val adapters = java.util.concurrent.ConcurrentHashMap<String, ExternalIntegrationAdapter>()
+
+    init {
+        registerAdapter(AndroidDeviceIntegrationAdapter())
+        registerAdapter(WasmSandboxIntegrationAdapter())
+        registerAdapter(GmailIntegrationAdapter())
+    }
+
+    fun registerAdapter(adapter: ExternalIntegrationAdapter) {
+        adapters[adapter.capabilityId.uppercase()] = adapter
+    }
+
+    fun getAdapter(capabilityId: String): ExternalIntegrationAdapter? =
+        adapters[capabilityId.uppercase()]
 
     fun prepareActionIntent(
         target: String,
@@ -100,8 +114,22 @@ class ActionIntentEngine(
 
     fun executeAction(
         action: ActionIntent,
-        adapter: ExternalIntegrationAdapter
+        adapter: ExternalIntegrationAdapter? = null
     ): ActionIntent {
+        val resolvedAdapter = adapter ?: getAdapter(action.target) ?: adapters["ANDROID_DEVICE"]
+        if (resolvedAdapter == null) {
+            action.authorizationState = ActionAuthorizationState.FAILED
+            action.verificationState = LiveConnectionStatus.FAILED
+            action.resultMessage = "No adapter registered for capability target '${action.target}'"
+            timeline.appendPhase(
+                taskId = action.taskId,
+                phase = TaskTimelinePhase.FAILED,
+                description = action.resultMessage ?: "Missing adapter",
+                metadata = mapOf("actionId" to action.actionId)
+            )
+            return action
+        }
+
         if (action.authorizationState != ActionAuthorizationState.AUTHORIZED &&
             action.executionMode != ActionExecutionMode.AUTONOMOUS_WITHIN_POLICY) {
             action.authorizationState = ActionAuthorizationState.REQUIRES_CONFIRMATION
@@ -119,11 +147,11 @@ class ActionIntentEngine(
         timeline.appendPhase(
             taskId = action.taskId,
             phase = TaskTimelinePhase.EXECUTING,
-            description = "Executing action '${action.intent}' via ${adapter::class.simpleName ?: "Adapter"}.",
+            description = "Executing action '${action.intent}' via ${resolvedAdapter::class.simpleName ?: "Adapter"}.",
             metadata = mapOf("actionId" to action.actionId)
         )
 
-        val result = adapter.execute(action.intent, action.payload)
+        val result = resolvedAdapter.execute(action.intent, action.payload)
 
         timeline.appendPhase(
             taskId = action.taskId,

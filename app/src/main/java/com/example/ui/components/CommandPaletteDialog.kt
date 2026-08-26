@@ -42,6 +42,8 @@ fun CommandPaletteDialog(
 
     val allOptions = listOf(
         CommandOption("Chat Workspace", "Open Wasti AI natural chat interface", Icons.AutoMirrored.Filled.Chat, "Open Chat"),
+        CommandOption("Capability & Reality Matrix", "Authoritative runtime device & capability center", Icons.AutoMirrored.Filled.FactCheck, "Open Capabilities"),
+        CommandOption("Operations & Telemetry", "Live platform diagnostics, latency & maintenance", Icons.Default.Analytics, "Open Operations"),
         CommandOption("Executive Brain Dashboard", "View Wasti OS system state, metrics & active tasks", Icons.Default.Dashboard, "Open Dashboard"),
         CommandOption("Long-Term Memory & Knowledge", "Inspect vector memory records & knowledge base", Icons.Default.Memory, "Open Memory"),
         CommandOption("Wasti AI Engine Core", "View unified intelligent core status & capabilities", Icons.Default.Psychology, "Open Agents"),

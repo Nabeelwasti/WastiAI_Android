@@ -545,6 +545,12 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         when {
             normalized.startsWith("open chat") || normalized.startsWith("chat") ->
                 activeTab.value = "chat"
+            normalized.startsWith("open capabilities") || normalized.startsWith("capabilities") || normalized.startsWith("reality") || normalized.startsWith("matrix") ->
+                activeTab.value = "capabilities"
+            normalized.startsWith("open operations") || normalized.startsWith("operations") || normalized.startsWith("telemetry") ->
+                activeTab.value = "operations"
+            normalized.startsWith("open dashboard") || normalized.startsWith("dashboard") ->
+                activeTab.value = "dashboard"
             normalized.startsWith("open memory") || normalized.startsWith("memory") ->
                 activeTab.value = "memory"
             normalized.startsWith("open agents") || normalized.startsWith("agents") ->

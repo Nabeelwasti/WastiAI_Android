@@ -324,6 +324,73 @@ object WastiDeviceController {
         return DeviceCommandResult(false, "Wasti Accessibility Service is inactive. Intent dispatched to local IPC bridge.", "SERVICE_INACTIVE")
     }
 
+    fun typeText(context: Context? = null, text: String, targetElement: String? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.typeText(text, targetElement)
+            return if (success) {
+                DeviceCommandResult(true, "Successfully typed text into target UI field.", "TYPE_TEXT")
+            } else {
+                DeviceCommandResult(false, "No active editable input field found on screen.", "TYPE_TEXT")
+            }
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performBack(context: Context? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performBack()
+            return DeviceCommandResult(success, if (success) "Executed Back button navigation." else "Back navigation failed.", "NAV_BACK")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performHome(context: Context? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performHome()
+            return DeviceCommandResult(success, if (success) "Navigated to Android Home screen." else "Home navigation failed.", "NAV_HOME")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performRecents(context: Context? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performRecents()
+            return DeviceCommandResult(success, if (success) "Opened Android Recents / App Switcher." else "Recents action failed.", "NAV_RECENTS")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performNotifications(context: Context? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performNotifications()
+            return DeviceCommandResult(success, if (success) "Opened Android Notification shade." else "Notification action failed.", "NAV_NOTIFICATIONS")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performQuickSettings(context: Context? = null): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performQuickSettings()
+            return DeviceCommandResult(success, if (success) "Opened Android Quick Settings panel." else "Quick Settings action failed.", "NAV_QUICK_SETTINGS")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
+    fun performScroll(context: Context? = null, direction: String = "DOWN"): DeviceCommandResult {
+        val service = WastiAccessibilityService.instance
+        if (service != null && WastiAccessibilityService.isServiceActive) {
+            val success = service.performScroll(direction)
+            return DeviceCommandResult(success, if (success) "Scrolled screen container $direction." else "No scrollable container detected.", "SCROLL")
+        }
+        return DeviceCommandResult(false, "Wasti Accessibility Service is inactive.", "SERVICE_INACTIVE")
+    }
+
     // 5. Connect Online Voice & AI Provider Models
     suspend fun connectVoiceProvider(
         db: WastiDatabase,

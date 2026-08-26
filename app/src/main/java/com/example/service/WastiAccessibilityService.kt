@@ -697,6 +697,121 @@ class WastiAccessibilityService : AccessibilityService() {
         return dispatchGesture(gesture, callback, null)
     }
 
+    /**
+     * Executes global navigation actions: Back, Home, Recents, Notifications, QuickSettings.
+     */
+    fun performBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
+
+    fun performHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
+
+    fun performRecents(): Boolean = performGlobalAction(GLOBAL_ACTION_RECENTS)
+
+    fun performNotifications(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+
+    fun performQuickSettings(): Boolean = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+
+    /**
+     * Types text into a specific target element or currently focused editable node.
+     */
+    fun typeText(text: String, targetElement: String? = null): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
+        
+        if (!targetElement.isNullOrBlank()) {
+            val targetLower = targetElement.lowercase().trim()
+            val matchingNodes = mutableListOf<AccessibilityNodeInfo>()
+            collectMatchingNodes(rootNode, targetLower, matchingNodes)
+            for (node in matchingNodes) {
+                if (node.isEditable) {
+                    val args = android.os.Bundle().apply {
+                        putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+                    }
+                    if (node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        return true
+                    }
+                }
+            }
+        }
+
+        // Search for any focused or editable node
+        val focusedNode = rootNode.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focusedNode != null && focusedNode.isEditable) {
+            val args = android.os.Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            return focusedNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        }
+
+        // Search active tree for editable node
+        val editableNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectEditableNodes(rootNode, editableNodes)
+        val firstEditable = editableNodes.firstOrNull()
+        if (firstEditable != null) {
+            val args = android.os.Bundle().apply {
+                putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+            }
+            return firstEditable.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        }
+
+        return false
+    }
+
+    private fun collectEditableNodes(
+        node: AccessibilityNodeInfo?,
+        outList: MutableList<AccessibilityNodeInfo>,
+        depth: Int = 0,
+        visited: MutableSet<Int> = mutableSetOf()
+    ) {
+        if (node == null || depth > 25 || outList.size >= 10) return
+        val hash = System.identityHashCode(node)
+        if (!visited.add(hash)) return
+
+        if (node.isEditable) {
+            outList.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            collectEditableNodes(node.getChild(i), outList, depth + 1, visited)
+        }
+    }
+
+    /**
+     * Executes scroll forward/down or backward/up on scrollable containers.
+     */
+    fun performScroll(direction: String = "DOWN"): Boolean {
+        val rootNode = rootInActiveWindow ?: return false
+        val action = if (direction.uppercase() == "UP" || direction.uppercase() == "BACKWARD") {
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        } else {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        }
+
+        val scrollableNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectScrollableNodes(rootNode, scrollableNodes)
+        for (scrollNode in scrollableNodes) {
+            if (scrollNode.performAction(action)) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun collectScrollableNodes(
+        node: AccessibilityNodeInfo?,
+        outList: MutableList<AccessibilityNodeInfo>,
+        depth: Int = 0,
+        visited: MutableSet<Int> = mutableSetOf()
+    ) {
+        if (node == null || depth > 25 || outList.size >= 10) return
+        val hash = System.identityHashCode(node)
+        if (!visited.add(hash)) return
+
+        if (node.isScrollable) {
+            outList.add(node)
+        }
+        for (i in 0 until node.childCount) {
+            collectScrollableNodes(node.getChild(i), outList, depth + 1, visited)
+        }
+    }
+
     private fun logGestureResultToDb(x: Float, y: Float, success: Boolean, reason: String) {
         CoroutineScope(Dispatchers.IO).launch {
             try {

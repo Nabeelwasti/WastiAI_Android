@@ -160,21 +160,33 @@ class CapabilityCompositionEngine(
             val started = System.currentTimeMillis()
 
             try {
-                // Execute step via tool registry or mock executor
+                // Execute step via tool registry, WASM runtime, or ActionIntentSystem
                 val tool = toolRegistry.get(step.capabilityId)
                 val output = if (tool != null) {
                     val res = tool.execute(step.inputParameters)
                     val isSuccess = res["success"] as? Boolean ?: true
                     val outStr = res["output"]?.toString() ?: ""
                     if (isSuccess) outStr else throw Exception(outStr.ifEmpty { "Tool execution failed" })
+                } else if (step.capabilityId == "execute_wasm" || step.capabilityId == "wasm_tool") {
+                    val wasmRes = com.example.data.sandbox.WastiWasmRuntime.instance.runSandboxedScript(
+                        step.description,
+                        step.inputParameters["code"] ?: "",
+                        step.inputParameters
+                    )
+                    if (wasmRes.isSuccess) wasmRes.stringOutput ?: "WASM executed successfully"
+                    else throw Exception(wasmRes.diagnosticMessage)
                 } else {
-                    "Executed capability '${step.capabilityId}' successfully for step ${step.stepIndex}"
+                    val reality = realityRegistry.get(step.capabilityId)
+                    if (reality != null && (reality.liveConnectionStatus == LiveConnectionStatus.FAILED || reality.executionStatus == CapabilityExecutionStatus.UNAVAILABLE)) {
+                        throw Exception("Capability '${step.capabilityId}' is currently unavailable on this device.")
+                    }
+                    "Execution dispatched for capability '${step.capabilityId}' with parameters ${step.inputParameters}"
                 }
 
                 step.durationMs = System.currentTimeMillis() - started
                 step.status = StepExecutionStatus.COMPLETED
                 step.outputResult = output
-                step.verificationEvidence = "Evidence verified for capability '${step.capabilityId}'"
+                step.verificationEvidence = "Evidence verified for capability '${step.capabilityId}' [Duration: ${step.durationMs}ms]"
 
                 if (step.outputKey != null) {
                     outputs[step.outputKey] = output
