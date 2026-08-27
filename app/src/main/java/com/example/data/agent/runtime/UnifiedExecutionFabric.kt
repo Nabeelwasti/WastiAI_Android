@@ -445,6 +445,10 @@ class UnifiedExecutionFabric(
             capId in listOf("wasti_sandbox", "sandbox") ->
                 executeSandboxOperations(request, ctx, startedAt)
 
+            capId in listOf("wasm", "wasm_sandbox", "wasm_runtime") ||
+                (capId in listOf("terminal", "execute_code") && request.parameters["language"]?.toString()?.lowercase() == "wasm") ->
+                executeWasmSandboxOperations(request, startedAt)
+
             capId in listOf("local_server", "start_server", "stop_server", "server_status", "server") ->
                 executeLocalServerOperations(request, ctx, startedAt)
 
@@ -983,7 +987,7 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
+            status = UnifiedExecutionStatus.COMPLETED,
             output = outputText,
             executor = "MemoryManager",
             startedAt = startedAt,
@@ -1086,6 +1090,9 @@ class UnifiedExecutionFabric(
         val path = request.parameters["path"]?.toString() ?: request.parameters["filePath"]?.toString() ?: ""
         val content = request.parameters["content"]?.toString() ?: ""
 
+        val dest = request.parameters["destination"]?.toString() ?: request.parameters["destPath"]?.toString() ?: request.parameters["target"]?.toString() ?: ""
+        val query = request.parameters["query"]?.toString() ?: ""
+
         val action = request.parameters["action"]?.toString()
             ?.lowercase(Locale.ROOT)
             ?.trim()
@@ -1102,17 +1109,66 @@ class UnifiedExecutionFabric(
                 resultStr = readRes.getOrNull() ?: ""
                 errorMsg = readRes.exceptionOrNull()?.message
             }
-            "write_file", "write", "modify_file" -> {
+            "write_file", "write", "create_file", "modify_file" -> {
                 val writeRes = wm.writeFile(path, content)
                 isSuccess = writeRes.isSuccess
                 resultStr = if (isSuccess) "Successfully wrote ${content.length} characters to $path" else ""
                 errorMsg = writeRes.exceptionOrNull()?.message
+            }
+            "append_file", "append" -> {
+                val appRes = wm.appendFile(path, content)
+                isSuccess = appRes.isSuccess
+                resultStr = if (isSuccess) "Successfully appended ${content.length} characters to $path" else ""
+                errorMsg = appRes.exceptionOrNull()?.message
             }
             "list_files", "list" -> {
                 val listRes = wm.listDirectory(path)
                 isSuccess = listRes.isSuccess
                 resultStr = listRes.getOrNull()?.joinToString("\n") ?: ""
                 errorMsg = listRes.exceptionOrNull()?.message
+            }
+            "delete_file", "delete", "remove_file", "rm" -> {
+                val delRes = wm.deleteFile(path)
+                isSuccess = delRes.isSuccess && (delRes.getOrNull() == true)
+                resultStr = if (isSuccess) "Successfully deleted $path" else "File $path did not exist or could not be deleted"
+                errorMsg = delRes.exceptionOrNull()?.message
+            }
+            "create_directory", "mkdir", "create_dir" -> {
+                val dirRes = wm.createDirectory(path)
+                isSuccess = dirRes.isSuccess
+                resultStr = if (isSuccess) "Successfully created directory $path" else ""
+                errorMsg = dirRes.exceptionOrNull()?.message
+            }
+            "move_file", "move", "mv" -> {
+                val mvRes = wm.moveFile(path, dest)
+                isSuccess = mvRes.isSuccess
+                resultStr = if (isSuccess) "Successfully moved $path to $dest" else ""
+                errorMsg = mvRes.exceptionOrNull()?.message
+            }
+            "copy_file", "copy", "cp" -> {
+                val cpRes = wm.copyFile(path, dest)
+                isSuccess = cpRes.isSuccess
+                resultStr = if (isSuccess) "Successfully copied $path to $dest" else ""
+                errorMsg = cpRes.exceptionOrNull()?.message
+            }
+            "rename_file", "rename" -> {
+                val rnRes = wm.renameFile(path, dest)
+                isSuccess = rnRes.isSuccess
+                resultStr = if (isSuccess) "Successfully renamed $path to $dest" else ""
+                errorMsg = rnRes.exceptionOrNull()?.message
+            }
+            "search_files", "search", "find" -> {
+                val sRes = wm.searchFiles(query.ifBlank { path }, path.takeIf { query.isNotBlank() } ?: "")
+                isSuccess = sRes.isSuccess
+                val matches = sRes.getOrNull() ?: emptyList()
+                resultStr = if (matches.isEmpty()) "No matching files found." else matches.joinToString("\n")
+                errorMsg = sRes.exceptionOrNull()?.message
+            }
+            "inspect_metadata", "metadata", "stat" -> {
+                val metaRes = wm.inspectMetadata(path)
+                isSuccess = metaRes.isSuccess
+                resultStr = metaRes.getOrNull()?.entries?.joinToString("\n") { "${it.key}: ${it.value}" } ?: ""
+                errorMsg = metaRes.exceptionOrNull()?.message
             }
             else -> {
                 return createResult(
@@ -1129,7 +1185,7 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = if (isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+            status = if (isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
             output = if (isSuccess) resultStr else (errorMsg ?: "File operation failed"),
             error = errorMsg,
             executor = "WorkspaceManager",
@@ -1512,6 +1568,32 @@ class UnifiedExecutionFabric(
             startedAt = startedAt,
             verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = res.verificationState
+        )
+    }
+
+    private fun executeWasmSandboxOperations(
+        request: UnifiedExecutionRequest,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val wasmRuntime = com.example.data.sandbox.WastiWasmRuntime.instance
+        val toolName = request.parameters["toolName"]?.toString() ?: "sandboxed_wasm_eval"
+        val expression = request.parameters["expression"]?.toString() ?: request.parameters["code"]?.toString() ?: ""
+        val pMap = request.parameters.filterKeys { it !in setOf("toolName", "expression", "code", "action", "language") }
+            .mapValues { it.value.toString() }
+
+        val res = wasmRuntime.runSandboxedScript(toolName, expression, pMap)
+        val status = if (res.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED
+        val output = res.stringOutput ?: (if (res.isSuccess) "WASM sandboxed tool executed successfully. Fuel: ${res.fuelConsumed}" else (res.diagnosticMessage ?: "WASM execution failed"))
+
+        return createResult(
+            request = request,
+            status = status,
+            output = output,
+            error = if (res.isSuccess) null else res.diagnosticMessage,
+            executor = "WastiWasmRuntime",
+            startedAt = startedAt,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = "WASM Execution verified, fuel: ${res.fuelConsumed}"
         )
     }
 

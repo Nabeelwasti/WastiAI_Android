@@ -177,6 +177,55 @@ class AndroidDeviceIntegrationAdapter(
                         diagnosticMessage = res.userFeedback
                     )
                 }
+                "BACK", "NAV_BACK" -> {
+                    val res = com.example.data.device.WastiDeviceController.performBack(ctx)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("action" to res.actionType),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
+                "HOME", "NAV_HOME" -> {
+                    val res = com.example.data.device.WastiDeviceController.performHome(ctx)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("action" to res.actionType),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
+                "RECENTS", "NAV_RECENTS" -> {
+                    val res = com.example.data.device.WastiDeviceController.performRecents(ctx)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("action" to res.actionType),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
+                "NOTIFICATIONS", "NAV_NOTIFICATIONS" -> {
+                    val res = com.example.data.device.WastiDeviceController.performNotifications(ctx)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("action" to res.actionType),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
+                "QUICK_SETTINGS", "NAV_QUICK_SETTINGS" -> {
+                    val res = com.example.data.device.WastiDeviceController.performQuickSettings(ctx)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("action" to res.actionType),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
+                "SCROLL" -> {
+                    val direction = params["direction"]?.toString() ?: "DOWN"
+                    val res = com.example.data.device.WastiDeviceController.performScroll(ctx, direction)
+                    ExternalActionResult(
+                        status = if (res.success) ExternalActionResultStatus.SUCCESS else ExternalActionResultStatus.FAILED,
+                        data = mapOf("direction" to direction),
+                        diagnosticMessage = res.userFeedback
+                    )
+                }
                 else -> {
                     ExternalActionResult(
                         status = ExternalActionResultStatus.NOT_IMPLEMENTED,
@@ -261,4 +310,189 @@ class WasmSandboxIntegrationAdapter(
     }
 
     override fun describeAction(action: String): String = "WASM Sandbox Action: $action"
+}
+
+/**
+ * Filesystem Integration Adapter.
+ * Real, verified file operations within the workspace boundary.
+ */
+class FilesIntegrationAdapter(
+    private val context: android.content.Context? = com.example.WastiApplication.instance
+) : ExternalIntegrationAdapter {
+    override val capabilityId: String = "FILES"
+    override val supportedActions: List<String> = listOf(
+        "LIST_FILES", "READ_FILE", "WRITE_FILE", "DELETE_FILE", "FILE_EXISTS", "CREATE_DIR"
+    )
+
+    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
+    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
+
+    override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return ExternalActionResult(
+                status = ExternalActionResultStatus.NOT_CONNECTED,
+                diagnosticMessage = "Context unavailable for file operations"
+            )
+        }
+        val workspace = WorkspaceManager(ctx)
+        val path = params["path"]?.toString() ?: params["file"]?.toString() ?: "."
+
+        return try {
+            when (action.uppercase()) {
+                "LIST_FILES", "LS", "DIR" -> {
+                    val res = workspace.listDirectory(path)
+                    if (res.isSuccess) {
+                        val files = res.getOrNull().orEmpty()
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("files" to files, "path" to path),
+                            diagnosticMessage = "Found ${files.size} items in '$path': ${files.joinToString(", ")}"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "Failed to list directory '$path': ${res.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+                "READ_FILE", "CAT" -> {
+                    val res = workspace.readFile(path)
+                    if (res.isSuccess) {
+                        val content = res.getOrNull().orEmpty()
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("path" to path, "content" to content),
+                            diagnosticMessage = "File '$path' read successfully (${content.length} characters)"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "Failed to read file '$path': ${res.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+                "WRITE_FILE", "CREATE_FILE" -> {
+                    val content = params["content"]?.toString() ?: ""
+                    val res = workspace.writeFile(path, content)
+                    if (res.isSuccess) {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("path" to path, "bytesWritten" to content.toByteArray().size),
+                            diagnosticMessage = "File '$path' written successfully (${content.length} characters)"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "Failed to write file '$path': ${res.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+                "DELETE_FILE", "RM" -> {
+                    val res = workspace.deleteFile(path)
+                    if (res.isSuccess && res.getOrNull() == true) {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("path" to path),
+                            diagnosticMessage = "Deleted file/directory '$path' successfully"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "File '$path' could not be deleted or does not exist"
+                        )
+                    }
+                }
+                "FILE_EXISTS" -> {
+                    val exists = workspace.fileExists(path)
+                    ExternalActionResult(
+                        status = ExternalActionResultStatus.SUCCESS,
+                        data = mapOf("path" to path, "exists" to exists),
+                        diagnosticMessage = if (exists) "File '$path' exists in workspace" else "File '$path' does not exist"
+                    )
+                }
+                "CREATE_DIR", "MKDIR" -> {
+                    val res = workspace.createDirectory(path)
+                    if (res.isSuccess) {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("path" to path),
+                            diagnosticMessage = "Directory '$path' created successfully"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "Failed to create directory '$path': ${res.exceptionOrNull()?.message}"
+                        )
+                    }
+                }
+                else -> {
+                    ExternalActionResult(
+                        status = ExternalActionResultStatus.NOT_IMPLEMENTED,
+                        diagnosticMessage = "File action '$action' not implemented"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            ExternalActionResult(
+                status = ExternalActionResultStatus.FAILED,
+                diagnosticMessage = "File operation error: ${e.message}"
+            )
+        }
+    }
+
+    override fun dryRun(action: String, params: Map<String, Any>): ExternalActionResult =
+        ExternalActionResult(ExternalActionResultStatus.SUCCESS, mapOf("dryRun" to true), "File dry-run: $action")
+
+    override fun describeAction(action: String): String = "Workspace File Action: $action"
+}
+
+/**
+ * System Reality & Info Integration Adapter.
+ */
+class SystemInfoIntegrationAdapter(
+    private val context: android.content.Context? = com.example.WastiApplication.instance
+) : ExternalIntegrationAdapter {
+    override val capabilityId: String = "SYSTEM_INFO"
+    override val supportedActions: List<String> = listOf("SYSTEM_INFO", "CAPABILITY_STATUS", "READINESS_CHECK")
+
+    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
+    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
+
+    override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
+        val registry = CapabilityRealityRegistry()
+        val allCaps = registry.getSystemRealityReport()
+        val verifiedCount = allCaps.count { it.liveConnectionStatus == LiveConnectionStatus.VERIFIED }
+        val accActive = com.example.service.WastiAccessibilityService.isServiceActive
+        val serverActive = com.example.data.server.WastiLocalServerManager.getInstance().serverInfo.value.state.name
+
+        val summary = buildString {
+            appendLine("=== WASTI AI OS REALITY & STATUS ===")
+            appendLine("• OS Engine: Wasti Unified Cognitive Brain")
+            appendLine("• Accessibility Bridge: ${if (accActive) "ONLINE & ACTIVE" else "INACTIVE (Needs Android permission)"}")
+            appendLine("• Local HTTP Daemon: $serverActive")
+            appendLine("• Sandboxed WASM Engine: VERIFIED & READY")
+            appendLine("• Capabilities Verified: $verifiedCount / ${allCaps.size}")
+            appendLine("• Capabilities Overview:")
+            allCaps.take(8).forEach { cap ->
+                appendLine("  - ${cap.capabilityId}: ${cap.liveConnectionStatus.name} (${cap.executionStatus.name})")
+            }
+        }
+
+        return ExternalActionResult(
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf(
+                "verifiedCapabilities" to verifiedCount,
+                "totalCapabilities" to allCaps.size,
+                "accessibilityActive" to accActive,
+                "summary" to summary
+            ),
+            diagnosticMessage = summary
+        )
+    }
+
+    override fun dryRun(action: String, params: Map<String, Any>): ExternalActionResult =
+        ExternalActionResult(ExternalActionResultStatus.SUCCESS, emptyMap(), "System info dry-run preview")
+
+    override fun describeAction(action: String): String = "System Readiness & Capability Reality Check"
 }

@@ -375,5 +375,69 @@ interface NodeMetadataDao {
     suspend fun clearAll()
 }
 
+@Dao
+interface LearnedSkillDao {
+    @Query("SELECT * FROM learned_skills ORDER BY regressionScore DESC, successCount DESC")
+    fun getAllLearnedSkills(): Flow<List<LearnedSkillEntity>>
+
+    @Query("SELECT * FROM learned_skills WHERE operationalStatus = 'ACTIVE' ORDER BY regressionScore DESC")
+    suspend fun getActiveSkillsSync(): List<LearnedSkillEntity>
+
+    @Query("SELECT * FROM learned_skills WHERE skillId = :skillId LIMIT 1")
+    suspend fun getSkillById(skillId: String): LearnedSkillEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSkill(skill: LearnedSkillEntity)
+
+    @Update
+    suspend fun updateSkill(skill: LearnedSkillEntity)
+
+    @Query("UPDATE learned_skills SET promotionTier = :tier, lastVerifiedAt = :time WHERE skillId = :skillId")
+    suspend fun updatePromotionTier(skillId: String, tier: String, time: Long = System.currentTimeMillis())
+
+    @Query("UPDATE learned_skills SET successCount = successCount + 1, lastVerifiedAt = :time WHERE skillId = :skillId")
+    suspend fun recordSkillSuccess(skillId: String, time: Long = System.currentTimeMillis())
+
+    @Query("UPDATE learned_skills SET failureCount = failureCount + 1, regressionScore = :score, lastVerifiedAt = :time WHERE skillId = :skillId")
+    suspend fun recordSkillFailure(skillId: String, score: Float, time: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM learned_skills WHERE skillId = :skillId")
+    suspend fun deleteSkill(skillId: String)
+}
+
+@Dao
+interface ReusableWorkflowDao {
+    @Query("SELECT * FROM reusable_workflows ORDER BY usageCount DESC, successRate DESC")
+    fun getAllWorkflows(): Flow<List<ReusableWorkflowEntity>>
+
+    @Query("SELECT * FROM reusable_workflows WHERE workflowId = :workflowId LIMIT 1")
+    suspend fun getWorkflowById(workflowId: String): ReusableWorkflowEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWorkflow(workflow: ReusableWorkflowEntity)
+
+    @Update
+    suspend fun updateWorkflow(workflow: ReusableWorkflowEntity)
+
+    @Query("DELETE FROM reusable_workflows WHERE workflowId = :workflowId")
+    suspend fun deleteWorkflow(workflowId: String)
+}
+
+@Dao
+interface ExecutionAuditDao {
+    @Query("SELECT * FROM execution_audits ORDER BY timestamp DESC LIMIT 200")
+    fun getRecentAudits(): Flow<List<ExecutionAuditEntity>>
+
+    @Query("SELECT * FROM execution_audits WHERE taskId = :taskId ORDER BY timestamp ASC")
+    suspend fun getAuditsForTask(taskId: String): List<ExecutionAuditEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAudit(audit: ExecutionAuditEntity)
+
+    @Query("DELETE FROM execution_audits WHERE timestamp < :olderThan")
+    suspend fun deleteOlderThan(olderThan: Long)
+}
+
+
 
 

@@ -289,5 +289,62 @@ data class NodeMetadataEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "learned_skills")
+data class LearnedSkillEntity(
+    @PrimaryKey val skillId: String,
+    val name: String,
+    val description: String,
+    val originatingTaskId: String,
+    val executionGraphJson: String,
+    val requiredCapabilitiesJson: String,
+    val requiredPermissionsJson: String,
+    val inputParametersJson: String,
+    val expectedOutputsJson: String,
+    val verificationCriteriaJson: String,
+    val actualEvidenceSummary: String?,
+    val successCount: Int = 1,
+    val failureCount: Int = 0,
+    val recoveryCount: Int = 0,
+    val regressionScore: Float = 1.0f,
+    val promotionTier: String = "SANDBOX_EXPERIMENTAL",
+    val operationalStatus: String = "ACTIVE",
+    val version: String = "1.0.0",
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastVerifiedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "reusable_workflows")
+data class ReusableWorkflowEntity(
+    @PrimaryKey val workflowId: String,
+    val name: String,
+    val description: String,
+    val triggerPattern: String,
+    val stepsJson: String,
+    val parameterSchemaJson: String,
+    val requiredPermissionsJson: String,
+    val isAutoExecutable: Boolean = false,
+    val usageCount: Int = 0,
+    val successRate: Float = 1.0f,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "execution_audits")
+data class ExecutionAuditEntity(
+    @PrimaryKey val auditId: String,
+    val taskId: String,
+    val userGoal: String,
+    val capabilityId: String,
+    val actionName: String,
+    val executionDestination: String,
+    val status: String,
+    val verificationStatus: String,
+    val verificationEvidence: String?,
+    val error: String?,
+    val executionDurationMs: Long,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+
 
 

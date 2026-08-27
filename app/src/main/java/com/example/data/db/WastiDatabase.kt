@@ -275,6 +275,76 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `learned_skills` (
+                `skillId` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `originatingTaskId` TEXT NOT NULL,
+                `executionGraphJson` TEXT NOT NULL,
+                `requiredCapabilitiesJson` TEXT NOT NULL,
+                `requiredPermissionsJson` TEXT NOT NULL,
+                `inputParametersJson` TEXT NOT NULL,
+                `expectedOutputsJson` TEXT NOT NULL,
+                `verificationCriteriaJson` TEXT NOT NULL,
+                `actualEvidenceSummary` TEXT,
+                `successCount` INTEGER NOT NULL DEFAULT 1,
+                `failureCount` INTEGER NOT NULL DEFAULT 0,
+                `recoveryCount` INTEGER NOT NULL DEFAULT 0,
+                `regressionScore` REAL NOT NULL DEFAULT 1.0,
+                `promotionTier` TEXT NOT NULL DEFAULT 'SANDBOX_EXPERIMENTAL',
+                `operationalStatus` TEXT NOT NULL DEFAULT 'ACTIVE',
+                `version` TEXT NOT NULL DEFAULT '1.0.0',
+                `createdAt` INTEGER NOT NULL,
+                `lastVerifiedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`skillId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `reusable_workflows` (
+                `workflowId` TEXT NOT NULL,
+                `name` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `triggerPattern` TEXT NOT NULL,
+                `stepsJson` TEXT NOT NULL,
+                `parameterSchemaJson` TEXT NOT NULL,
+                `requiredPermissionsJson` TEXT NOT NULL,
+                `isAutoExecutable` INTEGER NOT NULL DEFAULT 0,
+                `usageCount` INTEGER NOT NULL DEFAULT 0,
+                `successRate` REAL NOT NULL DEFAULT 1.0,
+                `createdAt` INTEGER NOT NULL,
+                `updatedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`workflowId`)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `execution_audits` (
+                `auditId` TEXT NOT NULL,
+                `taskId` TEXT NOT NULL,
+                `userGoal` TEXT NOT NULL,
+                `capabilityId` TEXT NOT NULL,
+                `actionName` TEXT NOT NULL,
+                `executionDestination` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `verificationStatus` TEXT NOT NULL,
+                `verificationEvidence` TEXT,
+                `error` TEXT,
+                `executionDurationMs` INTEGER NOT NULL,
+                `timestamp` INTEGER NOT NULL,
+                PRIMARY KEY(`auditId`)
+            )
+            """.trimIndent()
+        )
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -297,9 +367,12 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
         MediaVaultEntity::class,
         TerminalSessionEntity::class,
         ProactiveTaskEntity::class,
-        NodeMetadataEntity::class
+        NodeMetadataEntity::class,
+        LearnedSkillEntity::class,
+        ReusableWorkflowEntity::class,
+        ExecutionAuditEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -321,6 +394,9 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun terminalSessionDao(): TerminalSessionDao
     abstract fun proactiveTaskDao(): ProactiveTaskDao
     abstract fun nodeMetadataDao(): NodeMetadataDao
+    abstract fun learnedSkillDao(): LearnedSkillDao
+    abstract fun reusableWorkflowDao(): ReusableWorkflowDao
+    abstract fun executionAuditDao(): ExecutionAuditDao
 
     companion object {
         @Volatile
@@ -333,7 +409,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     "wasti_os_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigration(true)
                     .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()

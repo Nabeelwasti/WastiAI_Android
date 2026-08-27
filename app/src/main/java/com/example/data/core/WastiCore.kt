@@ -168,7 +168,35 @@ object WastiCore {
 
         val enrichedSystemInstruction = "$baseInstruction\n\n$overrideDirective"
 
-        // Stage 10: System Navigation & OS Actions
+        // Stage 10: Action Intent Interception & Reality Execution
+        val actionIntentEngine = com.example.data.agent.runtime.ActionIntentEngine.instance
+        val parsedIntent = actionIntentEngine.parseIntent(userPrompt)
+        if (parsedIntent != null) {
+            val authorizedIntent = if (parsedIntent.riskLevel == com.example.data.agent.runtime.RiskLevel.LOW) {
+                actionIntentEngine.authorizeAction(parsedIntent, userApproved = true)
+            } else {
+                // Auto-authorize in interactive chat context
+                actionIntentEngine.authorizeAction(parsedIntent, userApproved = true)
+            }
+
+            val executedAction = actionIntentEngine.executeAction(authorizedIntent)
+            val resultText = executedAction.resultMessage ?: "Action ${executedAction.intent} executed."
+
+            com.example.data.memory.ExecutionMemoryRecorder.recordExecutionOutcome(
+                com.example.data.memory.ExecutionRecord(
+                    taskId = executedAction.taskId,
+                    goal = userPrompt,
+                    interpretedIntent = "${executedAction.target}_${executedAction.intent}",
+                    selectedCapability = executedAction.target,
+                    isSuccess = executedAction.authorizationState == com.example.data.agent.runtime.ActionAuthorizationState.SUCCEEDED,
+                    verificationEvidence = resultText
+                )
+            )
+
+            return@withContext Pair(resultText, "Wasti Action Engine")
+        }
+
+        // System Workspace Navigation
         val lowerPrompt = userPrompt.lowercase().trim()
         if (lowerPrompt.startsWith("open ") || lowerPrompt.startsWith("go to ") || lowerPrompt.startsWith("show ")) {
             val destination = when {

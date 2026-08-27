@@ -108,6 +108,145 @@ class WorkspaceManager(context: Context) {
         }
     }
 
+    fun deleteFile(relativePath: String): Result<Boolean> {
+        return resolvePathSafely(relativePath).mapCatching { file ->
+            if (!file.exists()) {
+                false
+            } else if (file.isDirectory) {
+                file.deleteRecursively()
+            } else {
+                file.delete()
+            }
+        }
+    }
+
+    fun appendFile(relativePath: String, content: String): Result<Unit> {
+        return resolvePathSafely(relativePath).mapCatching { file ->
+            val parent = file.parentFile
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs()
+            }
+            file.appendText(content, StandardCharsets.UTF_8)
+        }
+    }
+
+    fun moveFile(sourcePath: String, destPath: String): Result<Unit> {
+        return try {
+            val src = resolvePathSafely(sourcePath).getOrThrow()
+            val dst = resolvePathSafely(destPath).getOrThrow()
+            if (!src.exists()) {
+                throw NoSuchFileException(src, null, "Source file '$sourcePath' does not exist")
+            }
+            val parent = dst.parentFile
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs()
+            }
+            if (src.isDirectory) {
+                src.copyRecursively(dst, overwrite = true)
+                src.deleteRecursively()
+            } else {
+                src.copyTo(dst, overwrite = true)
+                src.delete()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun copyFile(sourcePath: String, destPath: String): Result<Unit> {
+        return try {
+            val src = resolvePathSafely(sourcePath).getOrThrow()
+            val dst = resolvePathSafely(destPath).getOrThrow()
+            if (!src.exists()) {
+                throw NoSuchFileException(src, null, "Source file '$sourcePath' does not exist")
+            }
+            val parent = dst.parentFile
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs()
+            }
+            if (src.isDirectory) {
+                src.copyRecursively(dst, overwrite = true)
+            } else {
+                src.copyTo(dst, overwrite = true)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun renameFile(sourcePath: String, newName: String): Result<Unit> {
+        return try {
+            val src = resolvePathSafely(sourcePath).getOrThrow()
+            if (!src.exists()) {
+                throw NoSuchFileException(src, null, "Source file '$sourcePath' does not exist")
+            }
+            val parent = src.parentFile ?: workspaceRoot
+            val dst = File(parent, newName).canonicalFile
+            if (!isWithinWorkspace(dst)) {
+                throw SecurityException("Renaming escapes workspace root")
+            }
+            val success = src.renameTo(dst)
+            if (!success) {
+                if (src.isDirectory) {
+                    src.copyRecursively(dst, overwrite = true)
+                    src.deleteRecursively()
+                } else {
+                    src.copyTo(dst, overwrite = true)
+                    src.delete()
+                }
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun searchFiles(query: String, startPath: String = ""): Result<List<String>> {
+        return resolvePathSafely(startPath).mapCatching { startDir ->
+            if (!startDir.exists() || !startDir.isDirectory) {
+                return@mapCatching emptyList<String>()
+            }
+            val matchedPaths = mutableListOf<String>()
+            startDir.walkTopDown().filter { it.isFile && it.name != ".snapshots" && !it.path.contains(".snapshots") }.forEach { file ->
+                val relPath = file.relativeTo(workspaceRoot).path
+                if (file.name.contains(query, ignoreCase = true)) {
+                    matchedPaths.add(relPath)
+                } else {
+                    try {
+                        if (file.length() < 1_000_000) { // Limit inspection to files under 1MB
+                            val text = file.readText(StandardCharsets.UTF_8)
+                            if (text.contains(query, ignoreCase = true)) {
+                                matchedPaths.add(relPath)
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+            matchedPaths
+        }
+    }
+
+    fun inspectMetadata(relativePath: String): Result<Map<String, Any>> {
+        return resolvePathSafely(relativePath).mapCatching { file ->
+            if (!file.exists()) {
+                throw NoSuchFileException(file, null, "File does not exist")
+            }
+            mapOf(
+                "name" to file.name,
+                "path" to file.relativeTo(workspaceRoot).path,
+                "canonicalPath" to file.canonicalPath,
+                "isDirectory" to file.isDirectory,
+                "isFile" to file.isFile,
+                "length" to file.length(),
+                "lastModified" to file.lastModified(),
+                "canRead" to file.canRead(),
+                "canWrite" to file.canWrite()
+            )
+        }
+    }
+
     /**
      * Stage 3 Task 5: Autonomous Workspace Project Creation
      */
