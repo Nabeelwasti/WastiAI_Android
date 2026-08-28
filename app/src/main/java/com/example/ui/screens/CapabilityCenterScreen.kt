@@ -60,8 +60,11 @@ fun CapabilityCenterScreen(
     var isExecutingAction by remember { mutableStateOf(false) }
     var lastActionResult by remember { mutableStateOf<UnifiedExecutionResult?>(null) }
 
+    val nodeManager = remember { WastiServiceLocator.nodeManager }
+    val nodeTopology = remember(isRefreshing) { nodeManager.getTopologySnapshot() }
+
     val categories = remember {
-        listOf("ALL", "AUTOMATION", "EXECUTION", "STORAGE", "DEVELOPMENT", "BRIDGE", "SECURITY", "AI_PROVIDERS")
+        listOf("ALL", "NODES_MESH", "AUTOMATION", "EXECUTION", "STORAGE", "DEVELOPMENT", "BRIDGE", "SECURITY", "AI_PROVIDERS")
     }
 
     val actionOptions = listOf(
@@ -446,35 +449,128 @@ fun CapabilityCenterScreen(
             }
         }
 
-        // Filtered Capability List
-        val filteredList = if (selectedCategoryFilter == null || selectedCategoryFilter == "ALL") {
-            realityList
+        // Filtered Capability List or Node Mesh
+        if (selectedCategoryFilter == "NODES_MESH") {
+            item {
+                Text(
+                    "Federated Mesh Nodes (${nodeTopology.totalNodes})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+
+            items(nodeTopology.nodes) { node ->
+                NodeMeshDetailCard(node = node)
+            }
         } else {
-            realityList.filter { it.category.equals(selectedCategoryFilter, ignoreCase = true) }
-        }
+            val filteredList = if (selectedCategoryFilter == null || selectedCategoryFilter == "ALL") {
+                realityList
+            } else {
+                realityList.filter { it.category.equals(selectedCategoryFilter, ignoreCase = true) }
+            }
 
-        item {
-            Text(
-                "Registered Capabilities (${filteredList.size})",
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
+            item {
+                Text(
+                    "Registered Capabilities (${filteredList.size})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
 
-        items(filteredList) { cap ->
-            CapabilityDetailCard(
-                cap = cap,
-                onTestPing = {
-                    coroutineScope.launch {
-                        val req = UnifiedExecutionRequest(
-                            capabilityId = cap.capabilityId,
-                            parameters = mapOf("ping" to "true")
-                        )
-                        val res = UnifiedExecutionFabric.instance.execute(req, context)
-                        Toast.makeText(context, "${cap.capabilityId}: ${res.status.name} (${res.verificationStatus.name})", Toast.LENGTH_SHORT).show()
+            items(filteredList) { cap ->
+                CapabilityDetailCard(
+                    cap = cap,
+                    onTestPing = {
+                        coroutineScope.launch {
+                            val req = UnifiedExecutionRequest(
+                                capabilityId = cap.capabilityId,
+                                parameters = mapOf("ping" to "true")
+                            )
+                            val res = UnifiedExecutionFabric.instance.execute(req, context)
+                            Toast.makeText(context, "${cap.capabilityId}: ${res.status.name} (${res.verificationStatus.name})", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NodeMeshDetailCard(node: com.example.data.node.WastiNode) {
+    val isOnline = node.connectionState == com.example.data.node.NodeConnectionState.CONNECTED
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        node.nodeName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "ID: ${node.nodeId} • Platform: ${node.platform.name} • Trust: ${node.trustState.name}",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Surface(
+                    color = if (isOnline) Color(0xFF1B5E20).copy(alpha = 0.15f) else Color(0xFFB71C1C).copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = node.connectionState.name,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOnline) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+
+            if (node.capabilities.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    node.capabilities.take(4).forEach { cap ->
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                        ) {
+                            Text(
+                                cap,
+                                fontSize = 10.sp,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
                     }
                 }
+            }
+
+            Text(
+                text = "Locality: ${node.dataLocality.name} • Endpoint: ${node.endpointUrl ?: "IPC/Internal"}",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

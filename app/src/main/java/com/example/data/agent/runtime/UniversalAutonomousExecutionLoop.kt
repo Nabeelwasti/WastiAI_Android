@@ -192,13 +192,74 @@ class UniversalAutonomousExecutionLoop(
 
                 val recoveryPlan = recoveryPlanner.createRecoveryPlan(execReq, execResult)
                 
-                if (recoveryPlan.recommendedStrategy == RecoveryStrategy.FALLBACK_CAPABILITY && recoveryPlan.targetCapabilityId != null) {
-                    // Fallback capability
-                    val fallbackReq = execReq.copy(
-                        capabilityId = recoveryPlan.targetCapabilityId,
-                        parameters = recoveryPlan.modifiedParameters.ifEmpty { execReq.parameters }
-                    )
-                    execResult = executionFabric.execute(fallbackReq, context)
+                when (recoveryPlan.recommendedStrategy) {
+                    RecoveryStrategy.FALLBACK_CAPABILITY -> {
+                        if (recoveryPlan.targetCapabilityId != null) {
+                            timeline.appendPhase(
+                                taskId = originatingTaskId,
+                                phase = TaskTimelinePhase.EXECUTING,
+                                description = "Executing fallback capability: ${recoveryPlan.targetCapabilityId}"
+                            )
+                            val fallbackReq = execReq.copy(
+                                capabilityId = recoveryPlan.targetCapabilityId,
+                                parameters = recoveryPlan.modifiedParameters.ifEmpty { execReq.parameters }
+                            )
+                            execResult = executionFabric.execute(fallbackReq, context)
+                        }
+                    }
+                    RecoveryStrategy.REFINE_PARAMETERS -> {
+                        timeline.appendPhase(
+                            taskId = originatingTaskId,
+                            phase = TaskTimelinePhase.EXECUTING,
+                            description = "Retrying with refined parameters: ${recoveryPlan.modifiedParameters.keys}"
+                        )
+                        val refinedReq = execReq.copy(
+                            parameters = recoveryPlan.modifiedParameters
+                        )
+                        execResult = executionFabric.execute(refinedReq, context)
+                    }
+                    RecoveryStrategy.RETRY_WITH_BACKOFF -> {
+                        timeline.appendPhase(
+                            taskId = originatingTaskId,
+                            phase = TaskTimelinePhase.EXECUTING,
+                            description = "Retrying execution with backoff..."
+                        )
+                        kotlinx.coroutines.delay(200)
+                        execResult = executionFabric.execute(execReq, context)
+                    }
+                    RecoveryStrategy.ROUTE_TO_MESH_NODE -> {
+                        timeline.appendPhase(
+                            taskId = originatingTaskId,
+                            phase = TaskTimelinePhase.EXECUTING,
+                            description = "Dispatching capability to paired Wasti Mesh node..."
+                        )
+                        val meshReq = execReq.copy(
+                            parameters = execReq.parameters + mapOf("mesh_route" to true)
+                        )
+                        execResult = executionFabric.execute(meshReq, context)
+                    }
+                    RecoveryStrategy.DIAGNOSE_AND_AUTO_PATCH -> {
+                        timeline.appendPhase(
+                            taskId = originatingTaskId,
+                            phase = TaskTimelinePhase.DIAGNOSED,
+                            description = "Auto-patching triggered: ${recoveryPlan.userExplanation}"
+                        )
+                        // Trigger diagnostics / patch inspection
+                        val patchReq = execReq.copy(
+                            capabilityId = "wasm_sandbox",
+                            parameters = mapOf("action" to "execute_code", "language" to "wasm")
+                        )
+                        execResult = executionFabric.execute(patchReq, context)
+                    }
+                    RecoveryStrategy.REQUEST_USER_PERMISSION,
+                    RecoveryStrategy.FALLBACK_PROVIDER,
+                    RecoveryStrategy.ESCALATE_TO_USER -> {
+                        timeline.appendPhase(
+                            taskId = originatingTaskId,
+                            phase = TaskTimelinePhase.FAILED,
+                            description = recoveryPlan.userExplanation
+                        )
+                    }
                 }
             }
 

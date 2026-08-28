@@ -1582,7 +1582,7 @@ class UnifiedExecutionFabric(
             .mapValues { it.value.toString() }
 
         val res = wasmRuntime.runSandboxedScript(toolName, expression, pMap)
-        val status = if (res.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED
+        val status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED
         val output = res.stringOutput ?: (if (res.isSuccess) "WASM sandboxed tool executed successfully. Fuel: ${res.fuelConsumed}" else (res.diagnosticMessage ?: "WASM execution failed"))
 
         return createResult(

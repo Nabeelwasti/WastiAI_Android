@@ -241,7 +241,7 @@ class WastiObservationEngine(
             "test_project", "run_tests", "test", "test_runner",
             "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
             "package_manager", "resolve_package", "install_package",
-            "wasti_sandbox", "sandbox",
+            "wasti_sandbox", "sandbox", "wasm", "wasm_sandbox", "wasm_runtime",
             "local_server", "start_server", "stop_server", "server_status", "server",
             "python_bridge", "termux_bridge",
             "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python", "node", "npm" ->

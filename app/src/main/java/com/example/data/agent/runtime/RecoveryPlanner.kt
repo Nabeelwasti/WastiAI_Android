@@ -44,6 +44,17 @@ class RecoveryPlanner(
         val capId = failedRequest.capabilityId.lowercase()
 
         return when {
+            errorMsg.contains("invalid parameter") || errorMsg.contains("bad parameter") || errorMsg.contains("missing parameter") || errorMsg.contains("illegal argument") || errorMsg.contains("invalid_argument") -> {
+                val refined = refineParameters(failedRequest.capabilityId, failedRequest.parameters, errorMsg)
+                RecoveryPlan(
+                    failureReason = "Invalid or malformed parameter detected in capability request",
+                    recommendedStrategy = RecoveryStrategy.REFINE_PARAMETERS,
+                    targetCapabilityId = failedRequest.capabilityId,
+                    modifiedParameters = refined,
+                    userExplanation = "Refining capability input parameters and automatically retrying."
+                )
+            }
+
             errorMsg.contains("permission") || errorMsg.contains("inactive") || failedResult.status == UnifiedExecutionStatus.AUTHENTICATION_REQUIRED -> {
                 RecoveryPlan(
                     failureReason = "System permission or Accessibility Service inactive",
@@ -113,4 +124,58 @@ class RecoveryPlanner(
             }
         }
     }
+
+    /**
+     * Intelligently cleans, adjusts, or coerces parameters when validation fails.
+     */
+    fun refineParameters(
+        capabilityId: String,
+        currentParameters: Map<String, Any>,
+        errorDiagnostic: String
+    ): Map<String, Any> {
+        val refined = currentParameters.toMutableMap()
+        val cap = capabilityId.lowercase()
+
+        // 1. Files / Workspace Refinement
+        if (cap.contains("file") || cap.contains("workspace")) {
+            val path = refined["path"]?.toString() ?: refined["filePath"]?.toString()
+            if (path != null) {
+                // Strip absolute prefix or illicit path separators if outside sandbox
+                val cleaned = path.removePrefix("/").removePrefix("./").replace("../", "")
+                refined["path"] = cleaned
+                refined["filePath"] = cleaned
+            }
+            if (!refined.containsKey("content") && refined.containsKey("data")) {
+                refined["content"] = refined["data"].toString()
+            }
+        }
+
+        // 2. Terminal / Code Refinement
+        if (cap.contains("terminal") || cap.contains("code") || cap.contains("wasm")) {
+            if (!refined.containsKey("action")) {
+                refined["action"] = "execute_code"
+            }
+            if (errorDiagnostic.contains("language") && !refined.containsKey("language")) {
+                refined["language"] = "wasm"
+            }
+        }
+
+        // 3. Search / Query Refinement
+        if (cap.contains("search") || cap.contains("memory") || cap.contains("web")) {
+            val q = refined["query"]?.toString() ?: refined["q"]?.toString() ?: refined["text"]?.toString()
+            if (q != null) {
+                refined["query"] = q.trim()
+            }
+        }
+
+        // 4. Device / UI Refinement
+        if (cap.contains("device") || cap.contains("accessibility")) {
+            if (!refined.containsKey("action")) {
+                refined["action"] = "inspect_screen"
+            }
+        }
+
+        return refined
+    }
 }
+
