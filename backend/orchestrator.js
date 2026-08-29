@@ -17,9 +17,27 @@ async function callOpenAI(payload) {
 }
 
 async function callGemini(payload) {
-  // Placeholder for Gemini API. Implement when key and endpoint specifics are known.
   if (!GEMINI_KEY) throw new Error('Gemini key not configured');
-  throw new Error('Gemini support not implemented in this orchestrator yet');
+  const model = payload.model || 'gemini-2.5-flash';
+  // Map standard OpenAI chat messages or prompt to Gemini content format
+  let contents = [];
+  if (Array.isArray(payload.messages)) {
+    contents = payload.messages.map(msg => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content) }]
+    }));
+  } else if (payload.prompt) {
+    contents = [{ role: 'user', parts: [{ text: payload.prompt }] }];
+  } else {
+    contents = [{ role: 'user', parts: [{ text: JSON.stringify(payload) }] }];
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_KEY}`;
+  const res = await axios.post(endpoint, { contents }, {
+    headers: { 'Content-Type': 'application/json' },
+    timeout: 30000
+  });
+  return res.data;
 }
 
 async function callLocalLLM(payload) {

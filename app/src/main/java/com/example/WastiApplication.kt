@@ -157,8 +157,12 @@ class WastiApplication : Application() {
                 Log.i("WastiApplication", "All core subsystems initialized successfully. AppStartupManager set to Ready.")
             } catch (e: Throwable) {
                 Log.e("WastiApplication", "Error during startup in stage [${currentStage.name}]", e)
-                AppStartupManager.recordWarning(currentStage, "Subsystem startup issue resolved via fallback: ${e.localizedMessage}")
-                AppStartupManager.setReady()
+                if (currentStage.isCritical) {
+                    AppStartupManager.setFatalError(currentStage, "Critical subsystem initialization failure: ${e.localizedMessage}", e)
+                } else {
+                    AppStartupManager.recordWarning(currentStage, "Optional subsystem startup issue handled via fallback: ${e.localizedMessage}")
+                    AppStartupManager.setReady()
+                }
             }
         }
     }

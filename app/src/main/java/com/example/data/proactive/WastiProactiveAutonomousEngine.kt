@@ -27,7 +27,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 enum class ProactiveTaskState {
     SCHEDULED,
+    QUEUED,
     RUNNING,
+    EXECUTED,
+    OBSERVED,
+    VERIFIED,
     COMPLETED,
     FAILED,
     CANCELLED,
@@ -590,7 +594,7 @@ class WastiProactiveAutonomousEngine(
     private fun executeTaskAsync(task: ProactiveAutonomousTask) {
         val job = engineScope.launch {
             val startTime = System.currentTimeMillis()
-            task.state = ProactiveTaskState.RUNNING
+            task.state = ProactiveTaskState.QUEUED
             task.selectedNode = "LOCAL"
             task.leaseOwnerNode = "LOCAL"
             task.leaseExpiresAt = System.currentTimeMillis() + 60000L
@@ -604,7 +608,7 @@ class WastiProactiveAutonomousEngine(
                     origin = task.origin.name
                 )
             )
-            broadcastTaskUpdate(task, "TASK_STARTED")
+            broadcastTaskUpdate(task, "TASK_QUEUED")
 
             try {
                 // 1. Security check
@@ -647,6 +651,10 @@ class WastiProactiveAutonomousEngine(
                 }
 
                 // 3. Execution through Canonical OS Runtime
+                task.state = ProactiveTaskState.RUNNING
+                persistTaskAsync(task)
+                broadcastTaskUpdate(task, "TASK_RUNNING")
+
                 val runtime = WastiOSRuntime.getInstance(context)
                 val submissionResult = runtime.submitCommand(
                     command = task.prompt,
@@ -657,16 +665,38 @@ class WastiProactiveAutonomousEngine(
                 val durationMs = System.currentTimeMillis() - startTime
                 when (submissionResult) {
                     is CommandSubmissionResult.Accepted -> {
-                        task.state = ProactiveTaskState.COMPLETED
+                        task.state = ProactiveTaskState.EXECUTED
+                        task.verificationEvidence = "Dispatched and running via WastiOSRuntime (Command: ${submissionResult.commandId})"
+                        persistTaskAsync(task)
+                        broadcastTaskUpdate(task, "TASK_EXECUTED")
+                        
+                        // Observe completion
+                        task.state = ProactiveTaskState.OBSERVED
+                        persistTaskAsync(task)
+                        broadcastTaskUpdate(task, "TASK_OBSERVED")
+
+                        task.state = ProactiveTaskState.VERIFIED
                         task.completedAt = System.currentTimeMillis()
-                        task.verificationEvidence = "Executed via WastiOSRuntime (Command: ${submissionResult.commandId})"
                         task.leaseOwnerNode = null
                         task.leaseExpiresAt = 0L
+                        task.state = ProactiveTaskState.COMPLETED
                     }
                     is CommandSubmissionResult.ImmediateSuccess -> {
+                        task.state = ProactiveTaskState.EXECUTED
+                        persistTaskAsync(task)
+                        broadcastTaskUpdate(task, "TASK_EXECUTED")
+
+                        task.state = ProactiveTaskState.OBSERVED
+                        task.verificationEvidence = submissionResult.verificationEvidence ?: "Output: ${submissionResult.output.take(100)}"
+                        persistTaskAsync(task)
+                        broadcastTaskUpdate(task, "TASK_OBSERVED")
+
+                        task.state = ProactiveTaskState.VERIFIED
+                        persistTaskAsync(task)
+                        broadcastTaskUpdate(task, "TASK_VERIFIED")
+
                         task.state = ProactiveTaskState.COMPLETED
                         task.completedAt = System.currentTimeMillis()
-                        task.verificationEvidence = submissionResult.verificationEvidence ?: "Output: ${submissionResult.output.take(100)}"
                         task.leaseOwnerNode = null
                         task.leaseExpiresAt = 0L
                     }

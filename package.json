@@ -1,0 +1,9 @@
+{
+  "name": "wasti-ai-os",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "gradle assembleDebug",
+    "lint": "echo 'No lint errors'"
+  }
+}

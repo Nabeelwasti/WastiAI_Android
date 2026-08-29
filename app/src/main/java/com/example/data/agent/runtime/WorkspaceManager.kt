@@ -3,6 +3,15 @@ package com.example.data.agent.runtime
 import android.content.Context
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+
+data class WorkspaceSnapshotMetadata(
+    val snapshotId: String,
+    val timestamp: Long,
+    val sha256TreeHash: String,
+    val fileCount: Int,
+    val fileList: List<String>
+)
 
 /**
  * Stage 1: Software Filesystem Boundary.
@@ -268,7 +277,7 @@ class WorkspaceManager(context: Context) {
     }
 
     /**
-     * Stage 3 Task 5: Workspace Snapshot Creation
+     * Stage 3 Task 5: Workspace Snapshot Creation with Deterministic SHA-256 Tree Hash
      */
     fun createSnapshot(snapshotId: String): Result<String> {
         val snapshotsDir = File(workspaceRoot, ".snapshots/$snapshotId")
@@ -280,6 +289,35 @@ class WorkspaceManager(context: Context) {
 
             // Copy workspace files excluding .snapshots
             copyDirectoryExcludingSnapshots(workspaceRoot, snapshotsDir)
+
+            // Compute file list & SHA-256 tree digest
+            val fileList = mutableListOf<String>()
+            val digest = MessageDigest.getInstance("SHA-256")
+            snapshotsDir.walkTopDown().filter { it.isFile && it.name != "snapshot_metadata.json" }.forEach { file ->
+                val rel = file.relativeTo(snapshotsDir).path
+                fileList.add(rel)
+                digest.update(rel.toByteArray(StandardCharsets.UTF_8))
+                digest.update(file.readBytes())
+            }
+            val treeHash = digest.digest().joinToString("") { "%02x".format(it) }
+
+            val metadata = WorkspaceSnapshotMetadata(
+                snapshotId = snapshotId,
+                timestamp = System.currentTimeMillis(),
+                sha256TreeHash = treeHash,
+                fileCount = fileList.size,
+                fileList = fileList
+            )
+
+            val metaJson = org.json.JSONObject().apply {
+                put("snapshotId", metadata.snapshotId)
+                put("timestamp", metadata.timestamp)
+                put("sha256TreeHash", metadata.sha256TreeHash)
+                put("fileCount", metadata.fileCount)
+                put("fileList", org.json.JSONArray(metadata.fileList))
+            }
+            File(snapshotsDir, "snapshot_metadata.json").writeText(metaJson.toString(), StandardCharsets.UTF_8)
+
             Result.success(snapshotId)
         } catch (e: Exception) {
             Result.failure(e)
@@ -300,18 +338,39 @@ class WorkspaceManager(context: Context) {
                 }
             }
 
-            // Restore from snapshot
+            // Restore from snapshot excluding metadata file
             snapshotsDir.listFiles()?.forEach { file ->
-                val target = File(workspaceRoot, file.name)
-                if (file.isDirectory) {
-                    file.copyRecursively(target, overwrite = true)
-                } else {
-                    file.copyTo(target, overwrite = true)
+                if (file.name != "snapshot_metadata.json") {
+                    val target = File(workspaceRoot, file.name)
+                    if (file.isDirectory) {
+                        file.copyRecursively(target, overwrite = true)
+                    } else {
+                        file.copyTo(target, overwrite = true)
+                    }
                 }
             }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    fun getSnapshotMetadata(snapshotId: String): WorkspaceSnapshotMetadata? {
+        val metaFile = File(workspaceRoot, ".snapshots/$snapshotId/snapshot_metadata.json")
+        if (!metaFile.exists()) return null
+        return try {
+            val json = org.json.JSONObject(metaFile.readText(StandardCharsets.UTF_8))
+            val arr = json.optJSONArray("fileList") ?: org.json.JSONArray()
+            val files = (0 until arr.length()).map { arr.getString(it) }
+            WorkspaceSnapshotMetadata(
+                snapshotId = json.getString("snapshotId"),
+                timestamp = json.getLong("timestamp"),
+                sha256TreeHash = json.getString("sha256TreeHash"),
+                fileCount = json.getInt("fileCount"),
+                fileList = files
+            )
+        } catch (e: Exception) {
+            null
         }
     }
 

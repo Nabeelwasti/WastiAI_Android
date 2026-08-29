@@ -4,6 +4,81 @@ import com.example.data.di.WastiServiceLocator
 import java.util.UUID
 
 /**
+ * Structured semantic task interpretation models for Wasti AI OS.
+ */
+enum class TaskDomain {
+    DEVELOPMENT,
+    FILESYSTEM,
+    RESEARCH_AND_WEB,
+    DEVICE_AUTOMATION,
+    MEMORY_AND_KNOWLEDGE,
+    SYSTEM_AND_OPS,
+    COMMUNICATION,
+    SANDBOX_COMPUTE,
+    GENERAL_REASONING
+}
+
+enum class TaskOperation {
+    SEARCH,
+    INSPECT,
+    ANALYZE,
+    CREATE,
+    MODIFY,
+    BUILD,
+    TEST,
+    DEPLOY,
+    NAVIGATE,
+    COMMUNICATE,
+    SYNC,
+    DIAGNOSE,
+    REPAIR,
+    VERIFY
+}
+
+data class TaskTarget(
+    val entityType: String, // "file", "project", "web_topic", "ui_element", "contact", "system_metric"
+    val identifier: String = "",
+    val path: String? = null,
+    val query: String? = null
+)
+
+data class TaskInput(
+    val key: String,
+    val value: Any,
+    val isMandatory: Boolean = true
+)
+
+data class TaskExpectedOutput(
+    val outputType: String, // "FILE_CONTENT", "BUILD_ARTIFACT", "TEST_REPORT", "SYNTHESIS", "UI_STATE_CHANGE"
+    val description: String,
+    val verificationCriteria: String = "NON_EMPTY"
+)
+
+data class TaskConstraint(
+    val constraintType: String, // "TIMEOUT", "NO_PATH_TRAVERSAL", "REQUIRE_AUTH", "MAX_DEPTH"
+    val value: String
+)
+
+data class TaskRequirement(
+    val capabilityId: String,
+    val isMandatory: Boolean = true,
+    val minimumRealityState: CapabilityRealityState = CapabilityRealityState.LIVE_CONNECTED
+)
+
+data class SemanticTaskInterpretation(
+    val rawGoal: String,
+    val primaryIntent: String,
+    val domain: TaskDomain,
+    val operations: List<TaskOperation>,
+    val targets: List<TaskTarget>,
+    val inputs: List<TaskInput>,
+    val expectedOutputs: List<TaskExpectedOutput>,
+    val constraints: List<TaskConstraint> = emptyList(),
+    val requiredCapabilities: List<TaskRequirement> = emptyList(),
+    val estimatedRisk: RiskLevel = RiskLevel.LOW
+)
+
+/**
  * Capability Planner for Wasti AI OS.
  * Breaks high-level user goals into executable capability execution graphs (DAGs),
  * mapping dependencies, required preconditions, fallback routes, and verification criteria.
@@ -27,6 +102,7 @@ data class PlannedCapabilityGraph(
     val nodes: List<PlannedCapabilityNode>,
     val estimatedRisk: RiskLevel = RiskLevel.LOW,
     val requiresUserApproval: Boolean = false,
+    val semanticInterpretation: SemanticTaskInterpretation? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -35,9 +111,97 @@ class CapabilityPlanner(
 ) {
 
     /**
+     * Performs semantic task interpretation on natural language input.
+     */
+    fun interpretGoal(userGoal: String): SemanticTaskInterpretation {
+        val lower = userGoal.lowercase().trim()
+        val domain = when {
+            lower.contains("find") && (lower.contains("fix") || lower.contains("edit") || lower.contains("error")) -> TaskDomain.DEVELOPMENT
+            lower.contains("build") || lower.contains("compile") || lower.contains("test") || lower.contains("gradle") || lower.contains("package") -> TaskDomain.DEVELOPMENT
+            lower.contains("search") || lower.contains("research") || lower.contains("google") || lower.contains("compare") || lower.contains("summarize") -> TaskDomain.RESEARCH_AND_WEB
+            lower.contains("screen") || lower.contains("tap") || lower.contains("click") || lower.contains("whatsapp") || lower.contains("open app") -> TaskDomain.DEVICE_AUTOMATION
+            lower.contains("file") || lower.contains("directory") || lower.contains("folder") || lower.contains("read") || lower.contains("write") -> TaskDomain.FILESYSTEM
+            lower.contains("memory") || lower.contains("recall") || lower.contains("remember") || lower.contains("knowledge") -> TaskDomain.MEMORY_AND_KNOWLEDGE
+            lower.contains("wasm") || lower.contains("sandbox") || lower.contains("compute") -> TaskDomain.SANDBOX_COMPUTE
+            lower.contains("system") || lower.contains("status") || lower.contains("cpu") || lower.contains("battery") -> TaskDomain.SYSTEM_AND_OPS
+            else -> TaskDomain.GENERAL_REASONING
+        }
+
+        val operations = mutableListOf<TaskOperation>()
+        val targets = mutableListOf<TaskTarget>()
+        val requiredCaps = mutableListOf<TaskRequirement>()
+
+        when (domain) {
+            TaskDomain.DEVELOPMENT -> {
+                if (lower.contains("find") || lower.contains("search")) operations.add(TaskOperation.SEARCH)
+                if (lower.contains("analyze") || lower.contains("diagnos") || lower.contains("error")) operations.add(TaskOperation.DIAGNOSE)
+                if (lower.contains("fix") || lower.contains("repair") || lower.contains("edit")) operations.add(TaskOperation.REPAIR)
+                if (lower.contains("build") || lower.contains("compile")) operations.add(TaskOperation.BUILD)
+                if (lower.contains("test")) operations.add(TaskOperation.TEST)
+                if (operations.isEmpty()) operations.add(TaskOperation.INSPECT)
+
+                targets.add(TaskTarget(entityType = "project", query = extractExtensibleTarget(userGoal)))
+                requiredCaps.add(TaskRequirement("files"))
+                requiredCaps.add(TaskRequirement("build_project", isMandatory = false))
+            }
+            TaskDomain.RESEARCH_AND_WEB -> {
+                operations.add(TaskOperation.SEARCH)
+                operations.add(TaskOperation.ANALYZE)
+                if (lower.contains("compare") || lower.contains("contradict") || lower.contains("summarize")) {
+                    operations.add(TaskOperation.VERIFY)
+                }
+                targets.add(TaskTarget(entityType = "web_topic", query = userGoal))
+                requiredCaps.add(TaskRequirement("search_web"))
+            }
+            TaskDomain.DEVICE_AUTOMATION -> {
+                operations.add(TaskOperation.INSPECT)
+                if (lower.contains("tap") || lower.contains("click") || lower.contains("send")) {
+                    operations.add(TaskOperation.NAVIGATE)
+                }
+                targets.add(TaskTarget(entityType = "ui_element", query = userGoal))
+                requiredCaps.add(TaskRequirement("device_control"))
+            }
+            TaskDomain.MEMORY_AND_KNOWLEDGE -> {
+                operations.add(TaskOperation.SEARCH)
+                targets.add(TaskTarget(entityType = "memory_node", query = userGoal))
+                requiredCaps.add(TaskRequirement("memory_search"))
+            }
+            TaskDomain.SANDBOX_COMPUTE -> {
+                operations.add(TaskOperation.CREATE)
+                targets.add(TaskTarget(entityType = "sandbox_module", query = userGoal))
+                requiredCaps.add(TaskRequirement("wasm_sandbox"))
+            }
+            else -> {
+                operations.add(TaskOperation.INSPECT)
+                targets.add(TaskTarget(entityType = "general", query = userGoal))
+                requiredCaps.add(TaskRequirement("terminal"))
+            }
+        }
+
+        val estimatedRisk = if (operations.contains(TaskOperation.REPAIR) ||
+            operations.contains(TaskOperation.MODIFY) ||
+            operations.contains(TaskOperation.NAVIGATE) ||
+            lower.contains("delete") || lower.contains("rm")
+        ) RiskLevel.HIGH else RiskLevel.LOW
+
+        return SemanticTaskInterpretation(
+            rawGoal = userGoal,
+            primaryIntent = "${domain.name}_${operations.firstOrNull()?.name ?: "EXECUTE"}",
+            domain = domain,
+            operations = operations,
+            targets = targets,
+            inputs = listOf(TaskInput("goal", userGoal)),
+            expectedOutputs = listOf(TaskExpectedOutput("EXECUTION_REPORT", "Observable outcome of $domain workflow")),
+            requiredCapabilities = requiredCaps,
+            estimatedRisk = estimatedRisk
+        )
+    }
+
+    /**
      * Deconstructs a natural language or structured user goal into a dependency-ordered PlannedCapabilityGraph.
      */
     fun createPlan(userGoal: String): PlannedCapabilityGraph {
+        val interpretation = interpretGoal(userGoal)
         val lower = userGoal.lowercase().trim()
         val nodes = mutableListOf<PlannedCapabilityNode>()
         var requiresApproval = false
@@ -120,6 +284,17 @@ class CapabilityPlanner(
                 nodes.add(actNode)
             }
 
+            interpretation.domain == TaskDomain.RESEARCH_AND_WEB -> {
+                val searchNode = PlannedCapabilityNode(
+                    capabilityId = "search_web",
+                    actionName = "deep_search",
+                    description = "Execute multi-source deep query and extract evidence",
+                    inputParameters = mapOf("query" to userGoal),
+                    expectedEvidenceType = "SYNTHESIS_REPORT"
+                )
+                nodes.add(searchNode)
+            }
+
             else -> {
                 // Single step or direct capability execution
                 val primaryCap = if (lower.contains("memory")) "memory_search"
@@ -140,9 +315,8 @@ class CapabilityPlanner(
         }
 
         val maxRisk = nodes.maxOfOrNull { node ->
-            val reality = realityRegistry.get(node.capabilityId)
             if (node.actionName in listOf("delete_file", "write_file", "simulate_tap")) RiskLevel.HIGH else RiskLevel.LOW
-        } ?: RiskLevel.LOW
+        } ?: interpretation.estimatedRisk
 
         if (maxRisk == RiskLevel.HIGH || maxRisk == RiskLevel.CRITICAL) {
             requiresApproval = true
@@ -152,7 +326,8 @@ class CapabilityPlanner(
             userGoal = userGoal,
             nodes = nodes,
             estimatedRisk = maxRisk,
-            requiresUserApproval = requiresApproval
+            requiresUserApproval = requiresApproval,
+            semanticInterpretation = interpretation
         )
     }
 
@@ -160,5 +335,10 @@ class CapabilityPlanner(
         val tokens = text.split(" ")
         val keywords = listOf("python", "kt", "kotlin", "json", "js", "ts", "md", "txt", "code", "file")
         return tokens.firstOrNull { t -> keywords.any { kw -> t.contains(kw) } }
+    }
+
+    private fun extractExtensibleTarget(goal: String): String {
+        val tokens = goal.split(" ")
+        return tokens.drop(1).joinToString(" ").take(40).ifBlank { goal }
     }
 }

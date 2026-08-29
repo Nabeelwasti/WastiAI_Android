@@ -140,7 +140,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             )
 
             WastiTheme(darkTheme = darkTheme) {
-                if (startupState !is AppStartupState.Ready) {
+                if (!startupState.isWorkspaceAccessible) {
                     WastiStartupSplashScreen(
                         startupState = startupState,
                         onRetry = {

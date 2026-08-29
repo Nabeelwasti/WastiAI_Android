@@ -58,7 +58,10 @@ enum class TestExecutionStatus {
     FAILED,
     SKIPPED,
     ERROR,
-    UNAVAILABLE
+    UNAVAILABLE,
+    TOOLCHAIN_MISSING,
+    STATICALLY_VALIDATED,
+    NOT_EXECUTED
 }
 
 data class TestCaseResult(
@@ -185,7 +188,7 @@ class WastiBuildAndTestManager(
                     stderr = "",
                     artifacts = pyFiles.map { it.name },
                     errors = errors,
-                    verificationState = "VERIFIED_WORKSPACE_BUILD"
+                    verificationState = "STATICALLY_VALIDATED"
                 )
             }
             "WEB_MARKUP", "HTML", "CSS", "JAVASCRIPT" -> {
@@ -395,16 +398,9 @@ class WastiBuildAndTestManager(
                     casePassed = true
                     caseMsg = execRes.stdout
                 } else if (execRes.exitCode == 127 || execRes.stderr.contains("not found", ignoreCase = true) || execRes.stderr.contains("Cannot run program", ignoreCase = true)) {
-                    // Fallback to on-device source & syntax validation if binary not present in environment
-                    val content = try { file.readText() } catch (e: Exception) { "" }
-                    val hasSyntaxErrors = content.isBlank() || content.lines().any { it.trim().startsWith("<<<<<") }
-                    if (!hasSyntaxErrors) {
-                        casePassed = true
-                        caseMsg = "Validated source integrity and structure for ${file.name} (toolchain binary missing on host, verified via static analysis)."
-                    } else {
-                        casePassed = false
-                        caseErr = "Syntax anomaly detected in ${file.name}"
-                    }
+                    // Truthful reporting: toolchain binary is missing on Android host
+                    casePassed = false
+                    caseErr = "TOOLCHAIN_MISSING: Host runtime binary not found (${execRes.stderr.ifBlank { "Exit code 127" }}). Real test execution requires installed runtime."
                 } else {
                     casePassed = false
                     caseErr = execRes.stderr.ifBlank { "Exit code ${execRes.exitCode}" }
@@ -412,6 +408,13 @@ class WastiBuildAndTestManager(
             }
 
             val caseDuration = System.currentTimeMillis() - caseStart
+            val itemStatus = when {
+                casePassed && isWebOrMarkup -> TestExecutionStatus.STATICALLY_VALIDATED
+                casePassed -> TestExecutionStatus.PASSED
+                caseErr?.contains("TOOLCHAIN_MISSING", ignoreCase = true) == true -> TestExecutionStatus.TOOLCHAIN_MISSING
+                else -> TestExecutionStatus.FAILED
+            }
+
             if (casePassed) {
                 passed++
                 cases.add(
@@ -419,11 +422,11 @@ class WastiBuildAndTestManager(
                         testName = file.nameWithoutExtension,
                         sourceFile = file.name,
                         lineNumber = 1,
-                        status = TestExecutionStatus.PASSED,
+                        status = itemStatus,
                         durationMs = caseDuration
                     )
                 )
-                stdoutBuilder.appendLine("[PASS] ${file.name} (${caseDuration}ms)\n$caseMsg")
+                stdoutBuilder.appendLine("[PASS - ${itemStatus.name}] ${file.name} (${caseDuration}ms)\n$caseMsg")
             } else {
                 failed++
                 cases.add(
@@ -431,17 +434,25 @@ class WastiBuildAndTestManager(
                         testName = file.nameWithoutExtension,
                         sourceFile = file.name,
                         lineNumber = 1,
-                        status = TestExecutionStatus.FAILED,
+                        status = itemStatus,
                         durationMs = caseDuration,
                         errorMessage = caseErr ?: "Test execution failed",
                         stackTrace = caseErr
                     )
                 )
-                stderrBuilder.appendLine("[FAIL] ${file.name}:\n$caseErr")
+                stderrBuilder.appendLine("[FAIL - ${itemStatus.name}] ${file.name}:\n$caseErr")
             }
         }
 
         val completedAt = System.currentTimeMillis()
+        val overallStatus = when {
+            cases.any { it.status == TestExecutionStatus.TOOLCHAIN_MISSING } -> TestExecutionStatus.TOOLCHAIN_MISSING
+            cases.any { it.status == TestExecutionStatus.FAILED } -> TestExecutionStatus.FAILED
+            cases.all { it.status == TestExecutionStatus.STATICALLY_VALIDATED } -> TestExecutionStatus.STATICALLY_VALIDATED
+            passed > 0 && failed == 0 -> TestExecutionStatus.PASSED
+            else -> TestExecutionStatus.UNAVAILABLE
+        }
+
         TestReport(
             testRunId = testRunId,
             projectId = projectId,
@@ -453,10 +464,10 @@ class WastiBuildAndTestManager(
             failedTests = failed,
             skippedTests = 0,
             testCases = cases,
-            status = if (failed == 0 && passed > 0) TestExecutionStatus.PASSED else TestExecutionStatus.FAILED,
+            status = overallStatus,
             stdout = stdoutBuilder.toString().trim(),
             stderr = stderrBuilder.toString().trim(),
-            failureLocations = cases.filter { it.status == TestExecutionStatus.FAILED }.mapNotNull { it.sourceFile }
+            failureLocations = cases.filter { it.status == TestExecutionStatus.FAILED || it.status == TestExecutionStatus.TOOLCHAIN_MISSING }.mapNotNull { it.sourceFile }
         )
     }
 

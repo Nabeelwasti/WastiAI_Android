@@ -428,8 +428,14 @@ interface ExecutionAuditDao {
     @Query("SELECT * FROM execution_audits ORDER BY timestamp DESC LIMIT 200")
     fun getRecentAudits(): Flow<List<ExecutionAuditEntity>>
 
+    @Query("SELECT * FROM execution_audits ORDER BY timestamp DESC LIMIT :limit")
+    suspend fun getRecentAuditsSync(limit: Int = 50): List<ExecutionAuditEntity>
+
     @Query("SELECT * FROM execution_audits WHERE taskId = :taskId ORDER BY timestamp ASC")
     suspend fun getAuditsForTask(taskId: String): List<ExecutionAuditEntity>
+
+    @Query("SELECT * FROM execution_audits WHERE capabilityId = :capabilityId ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getLastExecutionForCapability(capabilityId: String): ExecutionAuditEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAudit(audit: ExecutionAuditEntity)

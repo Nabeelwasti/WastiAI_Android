@@ -165,7 +165,46 @@ fun WastiStartupSplashScreen(
                     }
                 }
 
-                is AppStartupState.Ready -> {
+                is AppStartupState.StartupBlocked -> {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f),
+                        modifier = Modifier.fillMaxWidth(0.9f)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "Startup Blocked: ${startupState.stage.displayName}",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = startupState.reason,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.9f),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Button(
+                                onClick = onRetry,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Text("Retry Subsystem Startup", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
+                is AppStartupState.Ready,
+                is AppStartupState.CoreReady,
+                is AppStartupState.CoreReadyDegraded,
+                is AppStartupState.BodyPartUnavailable -> {
                     // Handled by parent container transition
                 }
             }

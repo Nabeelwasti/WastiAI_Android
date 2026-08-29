@@ -1037,6 +1037,20 @@ class UnifiedExecutionFabric(
         }
 
         return when (operation) {
+            "deep_search", "deep_research" -> {
+                val researchResult = WebSearchEngine.executeDeepResearch(query, maxSources = 3, context = context)
+                val ok = researchResult.isEvidenceVerified
+                createResult(
+                    request = request,
+                    status = if (ok) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    output = researchResult.synthesisSummary,
+                    error = if (ok) null else "Deep research could not verify online sources for topic",
+                    executor = "WebSearchEngine_DeepResearch",
+                    startedAt = startedAt,
+                    verificationStatus = if (ok) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Sources verified: ${researchResult.sourcesConsulted.size}, Facts extracted: ${researchResult.verifiedFacts.size}"
+                )
+            }
             "read_web_page" -> {
                 val pageData = WebSearchEngine.scrapeWebPage(query)
                 val ok = !pageData.startsWith("Failed to fetch")
@@ -1185,7 +1199,7 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = if (isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
+            status = if (isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
             output = if (isSuccess) resultStr else (errorMsg ?: "File operation failed"),
             error = errorMsg,
             executor = "WorkspaceManager",

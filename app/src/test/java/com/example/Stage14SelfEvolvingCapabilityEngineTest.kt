@@ -240,7 +240,7 @@ class Stage14SelfEvolvingCapabilityEngineTest {
         // Execute dynamic tool
         val output = dynamicCreated.tool.execute(mapOf("arguments" to listOf("sample input text")))
         assertNotNull(output)
-        assertTrue(output.contains("CAPABILITY_EXECUTION_SUCCESS") || output.isNotEmpty())
+        assertTrue(output.contains("Executing") || output.isNotEmpty())
     }
 
     @Test

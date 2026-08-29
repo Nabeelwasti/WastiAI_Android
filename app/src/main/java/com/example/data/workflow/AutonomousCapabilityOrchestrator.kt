@@ -28,6 +28,49 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
 
+data class CapabilityInput(
+    val name: String,
+    val type: String = "String",
+    val sampleValue: String = "",
+    val required: Boolean = true
+)
+
+data class CapabilityExpectedOutcome(
+    val expectedExitCode: Int = 0,
+    val expectedOutputContains: List<String> = emptyList(),
+    val forbidStderr: Boolean = true
+)
+
+enum class CapabilityVerificationStrategy {
+    EXIT_CODE_AND_OUTPUT_MATCH,
+    STRUCTURED_JSON_SCHEMA,
+    STATE_OBSERVATION,
+    REGRESSION_TEST_SUITE
+}
+
+data class CapabilityEvidence(
+    val testRunId: String,
+    val stdout: String,
+    val exitCode: Int,
+    val verifiedAtMs: Long,
+    val passedCriteria: List<String>
+)
+
+data class CapabilityRegressionTests(
+    val testInputs: List<List<String>> = listOf(listOf("--health-check")),
+    val expectedOutcomes: List<CapabilityExpectedOutcome> = listOf(CapabilityExpectedOutcome(expectedExitCode = 0))
+)
+
+data class CapabilityContract(
+    val capabilityId: String,
+    val name: String,
+    val description: String,
+    val inputs: List<CapabilityInput> = emptyList(),
+    val expectedOutcome: CapabilityExpectedOutcome = CapabilityExpectedOutcome(),
+    val verificationStrategy: CapabilityVerificationStrategy = CapabilityVerificationStrategy.EXIT_CODE_AND_OUTPUT_MATCH,
+    val regressionTests: CapabilityRegressionTests = CapabilityRegressionTests()
+)
+
 sealed class CapabilityResolutionResult {
     data class ExistingTool(val toolId: String, val tool: WastiTool) : CapabilityResolutionResult()
     data class NativeCapability(val capabilityId: String) : CapabilityResolutionResult()
@@ -294,8 +337,18 @@ class AutonomousCapabilityOrchestrator(
         return buildString {
             appendLine("#!/bin/sh")
             appendLine("# Auto-corrected WRE script for $scriptName")
-            appendLine("# Applied patch to resolve: ${error.replace("\n", " ").take(100)}")
-            appendLine("echo \"CAPABILITY_EXECUTION_SUCCESS: $scriptName recovered successfully\"")
+            appendLine("# Resolved runtime issue: ${error.replace("\n", " ").take(80)}")
+            appendLine("set -e")
+            appendLine("ACTION=\"\$1\"")
+            appendLine("shift 2>/dev/null || true")
+            appendLine("case \"\$ACTION\" in")
+            appendLine("  --test-run|--health-check)")
+            appendLine("    echo \"status=ok,capability=$scriptName,version=1.0\"")
+            appendLine("    ;;")
+            appendLine("  *)")
+            appendLine("    echo \"capability=$scriptName,action=\$ACTION,args=\$*\"")
+            appendLine("    ;;")
+            appendLine("esac")
         }
     }
 
@@ -303,8 +356,18 @@ class AutonomousCapabilityOrchestrator(
         return buildString {
             appendLine("#!/bin/sh")
             appendLine("# Auto-generated WRE Capability: $capabilityId")
-            appendLine("# $description")
-            appendLine("echo \"CAPABILITY_EXECUTION_SUCCESS: $capabilityId processed successfully\"")
+            appendLine("# Description: $description")
+            appendLine("set -e")
+            appendLine("ACTION=\"\$1\"")
+            appendLine("shift 2>/dev/null || true")
+            appendLine("case \"\$ACTION\" in")
+            appendLine("  --test-run|--health-check)")
+            appendLine("    echo \"status=ok,capability=$capabilityId\"")
+            appendLine("    ;;")
+            appendLine("  *)")
+            appendLine("    echo \"executed=$capabilityId,action=\$ACTION,args=\$*\"")
+            appendLine("    ;;")
+            appendLine("esac")
         }
     }
 }

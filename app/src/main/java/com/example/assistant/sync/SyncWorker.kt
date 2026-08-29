@@ -4,24 +4,28 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.ListenableWorker
-import com.example.data.credential.CredentialRegistry
-import java.io.File
+import com.example.data.db.WastiDatabase
+import com.example.data.sync.CloudSyncManager
+import com.example.data.sync.SyncResult
 
 class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): ListenableWorker.Result {
         return try {
-            val dbFile = applicationContext.getDatabasePath("wasti_database")
-            val clientId = CredentialRegistry.getRawValue("DRIVE_CLIENT_ID")
-            val clientSecret = CredentialRegistry.getRawValue("DRIVE_CLIENT_SECRET")
+            // 1. Create a genuine verified database snapshot archive
+            val snapshotResult = CloudSyncManager.createDatabaseSnapshotArchive(applicationContext)
+            
+            // 2. Perform entity sync to cloud if database exists
+            val db = WastiDatabase.getDatabase(applicationContext)
+            val syncResult = CloudSyncManager.backupToCloud(db, "default_user")
 
-            if (dbFile.exists() && !clientId.isNullOrBlank()) {
-                // Perform scheduled encrypted backup zip
-                val backupFile = File(applicationContext.cacheDir, "wasti_encrypted_backup_${System.currentTimeMillis()}.bak")
-                backupFile.writeText("WASTI_ENCRYPTED_DB_BACKUP_V1\nClient:$clientId\nTimestamp:${System.currentTimeMillis()}")
+            if (snapshotResult is SyncResult.SnapshotSuccess || syncResult is SyncResult.Success) {
+                ListenableWorker.Result.success()
+            } else {
+                ListenableWorker.Result.retry()
             }
-            ListenableWorker.Result.success()
         } catch (e: Exception) {
             ListenableWorker.Result.retry()
         }
     }
 }
+

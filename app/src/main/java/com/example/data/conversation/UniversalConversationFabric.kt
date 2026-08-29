@@ -9,6 +9,9 @@ import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
+import com.example.data.db.ConversationEntity
+import com.example.data.db.MessageEntity
+import com.example.data.db.WastiDatabase
 import com.example.data.di.WastiServiceLocator
 import com.example.data.node.WastiNodeManager
 import com.example.data.transport.WastiCommandTransport
@@ -478,7 +481,7 @@ class UniversalConversationFabric(
     }
 
     /**
-     * Record a message snapshot in the conversation history.
+     * Record a message snapshot in the conversation history and persist to Room database.
      */
     fun recordMessage(role: String, content: String, originRoom: String, conversationId: String? = null) {
         val convId = conversationId ?: _activeContext.value.conversationId
@@ -498,6 +501,23 @@ class UniversalConversationFabric(
         conversationContextMap[convId] = updated
         if (_activeContext.value.conversationId == convId) {
             _activeContext.value = updated
+        }
+
+        // Persist to Room database
+        scope.launch(Dispatchers.IO) {
+            try {
+                val db = WastiDatabase.getDatabase(context)
+                val msgEntity = MessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    conversationId = convId,
+                    role = role,
+                    content = content,
+                    timestamp = System.currentTimeMillis()
+                )
+                db.messageDao().insertMessage(msgEntity)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist conversation message: ${e.message}")
+            }
         }
     }
 
