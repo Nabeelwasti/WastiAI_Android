@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "gradle assembleDebug",
-    "lint": "echo 'No lint errors'"
+    "lint": "gradle lintDebug",
+    "test": "gradle testDebugUnitTest"
   }
 }

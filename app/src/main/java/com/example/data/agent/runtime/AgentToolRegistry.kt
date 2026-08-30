@@ -50,9 +50,15 @@ class AgentToolRegistry {
                 override suspend fun execute(input: Map<String, Any?>): Map<String, Any?> {
                     val nonNullParams = input.filterValues { it != null }.mapValues { it.value!! }
                     val res = wastiTool.execute(nonNullParams)
+                    val isError = res.startsWith("Error", ignoreCase = true) || 
+                                  res.startsWith("Tool Execution Error", ignoreCase = true) ||
+                                  res.startsWith("Security Violation", ignoreCase = true) ||
+                                  res.startsWith("Permission Denied", ignoreCase = true)
                     return mapOf(
-                        "success" to (!res.startsWith("Error", ignoreCase = true) && !res.startsWith("Tool Execution Error", ignoreCase = true)),
-                        "output" to res
+                        "success" to !isError,
+                        "output" to res,
+                        "error" to if (isError) res else null,
+                        "verificationStatus" to if (!isError) "VERIFIED" else "FAILED"
                     )
                 }
             }
@@ -71,10 +77,24 @@ class AgentToolRegistry {
                 list.add(object : AgentTool {
                     override val name: String = wastiTool.definition.id
                     override val description: String = wastiTool.definition.description
-                    override val permissionLevel: PermissionLevel = PermissionLevel.SAFE
+                    override val permissionLevel: PermissionLevel = when {
+                        wastiTool.definition.category.contains("PRIVILEGED", ignoreCase = true) -> PermissionLevel.PRIVILEGED
+                        wastiTool.definition.category.contains("Dynamic", ignoreCase = true) -> PermissionLevel.CONTROLLED
+                        else -> PermissionLevel.SAFE
+                    }
                     override suspend fun execute(input: Map<String, Any?>): Map<String, Any?> {
-                        val res = wastiTool.execute(input.filterValues { it != null }.mapValues { it.value!! })
-                        return mapOf("success" to true, "output" to res)
+                        val nonNullParams = input.filterValues { it != null }.mapValues { it.value!! }
+                        val res = wastiTool.execute(nonNullParams)
+                        val isError = res.startsWith("Error", ignoreCase = true) || 
+                                      res.startsWith("Tool Execution Error", ignoreCase = true) ||
+                                      res.startsWith("Security Violation", ignoreCase = true) ||
+                                      res.startsWith("Permission Denied", ignoreCase = true)
+                        return mapOf(
+                            "success" to !isError,
+                            "output" to res,
+                            "error" to if (isError) res else null,
+                            "verificationStatus" to if (!isError) "VERIFIED" else "FAILED"
+                        )
                     }
                 })
             }

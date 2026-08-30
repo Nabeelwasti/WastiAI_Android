@@ -331,7 +331,17 @@ class WastiBuildAndTestManager(
             }.toList()
         } else {
             projectDir.walkTopDown().filter {
-                it.isFile && (it.name.contains("test", ignoreCase = true) || it.name.startsWith("test_") || it.name.endsWith("Test.kt") || it.name.endsWith("Test.java") || it.name.endsWith(".spec.ts") || it.name.endsWith(".test.js") || it.name.endsWith(".py"))
+                it.isFile && (
+                    (it.name.startsWith("test_") && it.name.endsWith(".py")) ||
+                    it.name.endsWith("_test.py") ||
+                    it.name.endsWith("Test.kt") ||
+                    it.name.endsWith("Test.java") ||
+                    it.name.endsWith(".spec.ts") ||
+                    it.name.endsWith(".test.ts") ||
+                    it.name.endsWith(".spec.js") ||
+                    it.name.endsWith(".test.js") ||
+                    it.name.contains("test", ignoreCase = true)
+                )
             }.toList()
         }
 

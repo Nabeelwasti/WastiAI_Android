@@ -61,18 +61,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             ) { _ -> }
 
             LaunchedEffect(Unit) {
-                try {
-                    // Smooth 400ms splash display before automatically rendering workspace
-                    kotlinx.coroutines.delay(400)
-                    if (AppStartupManager.startupState.value !is AppStartupState.Ready) {
-                        AppStartupManager.setReady()
-                    }
-                } catch (e: Exception) {
-                    AppStartupManager.setReady()
-                }
-            }
-
-            LaunchedEffect(Unit) {
                 com.example.data.action.WastiAppActionBus.actions.collect { action ->
                     when (action) {
                         is com.example.data.action.WastiAppAction.NavigateTo -> {
@@ -127,7 +115,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val navItems = listOf(
                 WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
                 WastiNavDestination("chat", "AI Chat", Icons.AutoMirrored.Filled.Chat),
-                WastiNavDestination("capabilities", "Reality Matrix", Icons.Filled.FactCheck),
+                WastiNavDestination("capabilities", "Reality Matrix", Icons.AutoMirrored.Filled.FactCheck),
                 WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),

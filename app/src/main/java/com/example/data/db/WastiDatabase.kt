@@ -399,6 +399,8 @@ abstract class WastiDatabase : RoomDatabase() {
     abstract fun executionAuditDao(): ExecutionAuditDao
 
     companion object {
+        const val WASTI_DATABASE_NAME = "wasti_os_database"
+
         @Volatile
         private var INSTANCE: WastiDatabase? = null
 
@@ -407,11 +409,9 @@ abstract class WastiDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     WastiDatabase::class.java,
-                    "wasti_os_database"
+                    WASTI_DATABASE_NAME
                 )
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
-                    .fallbackToDestructiveMigration(true)
-                    .fallbackToDestructiveMigrationOnDowngrade(true)
                     .build()
                 INSTANCE = instance
                 instance

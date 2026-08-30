@@ -65,12 +65,12 @@ data class AutonomousExecutionCycleState(
 
 class UniversalAutonomousExecutionLoop(
     private val context: Context,
-    private val realityRegistry: CapabilityRealityRegistry = CapabilityRealityRegistry(),
+    private val executionFabric: UnifiedExecutionFabric = UnifiedExecutionFabric.getInstance(context),
+    private val realityRegistry: CapabilityRealityRegistry = executionFabric.realityRegistry,
     private val capabilityPlanner: CapabilityPlanner = CapabilityPlanner(realityRegistry),
     private val verificationPlanner: VerificationPlanner = VerificationPlanner(),
     private val costResourcePlanner: CostResourcePlanner = CostResourcePlanner(context),
     private val actionIntentEngine: ActionIntentEngine = ActionIntentEngine.instance,
-    private val executionFabric: UnifiedExecutionFabric = UnifiedExecutionFabric.getInstance(context),
     private val recoveryPlanner: RecoveryPlanner = RecoveryPlanner(realityRegistry),
     private val timeline: UniversalTaskTimeline = UniversalTaskTimeline.getInstance(),
     private val skillEvolutionEngine: AutonomousSkillEvolutionEngine = AutonomousSkillEvolutionEngine(context),

@@ -5,6 +5,12 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
+enum class WorkspaceRestoreMode {
+    FULL_RESTORE,
+    FILE_LEVEL_RESTORE,
+    MERGE_RESTORE
+}
+
 data class WorkspaceSnapshotMetadata(
     val snapshotId: String,
     val timestamp: Long,
@@ -324,27 +330,57 @@ class WorkspaceManager(context: Context) {
         }
     }
 
-    fun restoreSnapshot(snapshotId: String): Result<Unit> {
+    fun restoreSnapshot(
+        snapshotId: String,
+        mode: WorkspaceRestoreMode = WorkspaceRestoreMode.FULL_RESTORE
+    ): Result<Unit> {
         val snapshotsDir = File(workspaceRoot, ".snapshots/$snapshotId")
         return try {
             if (!snapshotsDir.exists()) {
                 throw NoSuchFileException(snapshotsDir, null, "Snapshot $snapshotId does not exist")
             }
 
-            // Clear current workspace files excluding .snapshots
-            workspaceRoot.listFiles()?.forEach { file ->
-                if (file.name != ".snapshots") {
-                    file.deleteRecursively()
-                }
-            }
+            when (mode) {
+                WorkspaceRestoreMode.FULL_RESTORE -> {
+                    // Clear current workspace files excluding .snapshots
+                    workspaceRoot.listFiles()?.forEach { file ->
+                        if (file.name != ".snapshots") {
+                            file.deleteRecursively()
+                        }
+                    }
 
-            // Restore from snapshot excluding metadata file
-            snapshotsDir.listFiles()?.forEach { file ->
-                if (file.name != "snapshot_metadata.json") {
-                    val target = File(workspaceRoot, file.name)
-                    if (file.isDirectory) {
-                        file.copyRecursively(target, overwrite = true)
-                    } else {
+                    // Restore all from snapshot excluding metadata file
+                    snapshotsDir.listFiles()?.forEach { file ->
+                        if (file.name != "snapshot_metadata.json") {
+                            val target = File(workspaceRoot, file.name)
+                            if (file.isDirectory) {
+                                file.copyRecursively(target, overwrite = true)
+                            } else {
+                                file.copyTo(target, overwrite = true)
+                            }
+                        }
+                    }
+                }
+                WorkspaceRestoreMode.FILE_LEVEL_RESTORE -> {
+                    // Restore only the specific files present in the snapshot metadata
+                    val metadata = getSnapshotMetadata(snapshotId)
+                    val snapshotFiles = metadata?.fileList ?: emptyList()
+
+                    snapshotFiles.forEach { relPath ->
+                        val srcFile = File(snapshotsDir, relPath)
+                        val targetFile = File(workspaceRoot, relPath)
+                        if (srcFile.exists() && srcFile.isFile) {
+                            targetFile.parentFile?.mkdirs()
+                            srcFile.copyTo(targetFile, overwrite = true)
+                        }
+                    }
+                }
+                WorkspaceRestoreMode.MERGE_RESTORE -> {
+                    // Apply snapshot files over workspace without deleting existing unrelated files
+                    snapshotsDir.walkTopDown().filter { it.isFile && it.name != "snapshot_metadata.json" }.forEach { file ->
+                        val rel = file.relativeTo(snapshotsDir).path
+                        val target = File(workspaceRoot, rel)
+                        target.parentFile?.mkdirs()
                         file.copyTo(target, overwrite = true)
                     }
                 }

@@ -79,8 +79,14 @@ jobs:
         EOF
         echo "Successfully generated .env file for build."
 
+    - name: Run Unit Tests
+      run: gradle testDebugUnitTest --stacktrace
+
+    - name: Run Android Lint
+      run: gradle lintDebug --stacktrace
+
     - name: Build Debug APK
-      run: gradle clean assembleDebug --stacktrace
+      run: gradle assembleDebug --stacktrace
 
     - name: Verify WastiApplication in APK
       run: |

@@ -113,7 +113,7 @@ fun CapabilityCenterScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    Icons.Filled.FactCheck,
+                                    Icons.AutoMirrored.Filled.FactCheck,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(22.dp)

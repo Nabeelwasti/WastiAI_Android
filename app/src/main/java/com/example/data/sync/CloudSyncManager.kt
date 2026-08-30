@@ -36,12 +36,12 @@ object CloudSyncManager {
      */
     suspend fun createDatabaseSnapshotArchive(context: Context): SyncResult = withContext(Dispatchers.IO) {
         try {
-            val dbFile = context.getDatabasePath("wasti_database")
-            val walFile = File(dbFile.parentFile, "wasti_database-wal")
-            val shmFile = File(dbFile.parentFile, "wasti_database-shm")
+            val dbFile = context.getDatabasePath(WastiDatabase.WASTI_DATABASE_NAME)
+            val walFile = File(dbFile.parentFile, "${WastiDatabase.WASTI_DATABASE_NAME}-wal")
+            val shmFile = File(dbFile.parentFile, "${WastiDatabase.WASTI_DATABASE_NAME}-shm")
 
             if (!dbFile.exists()) {
-                return@withContext SyncResult.Error("Database file wasti_database does not exist on disk.")
+                return@withContext SyncResult.Error("Database file ${WastiDatabase.WASTI_DATABASE_NAME} does not exist on disk.")
             }
 
             val backupDir = File(context.filesDir, "backups").apply { if (!exists()) mkdirs() }

@@ -147,7 +147,7 @@ class Stage7WastiNativeDevEnvironmentTest {
             language = "WEB_MARKUP"
         )
 
-        assertEquals(TestExecutionStatus.PASSED, testReport.status)
+        assertEquals(TestExecutionStatus.STATICALLY_VALIDATED, testReport.status)
         assertTrue(testReport.totalTests >= 1)
         assertEquals(testReport.totalTests, testReport.passedTests)
         assertEquals(0, testReport.failedTests)

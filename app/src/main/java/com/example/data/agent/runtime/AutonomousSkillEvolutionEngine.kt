@@ -138,10 +138,10 @@ class AutonomousSkillEvolutionEngine(
         if (wasVerified) {
             val newSuccess = skill.successCount + 1
             val newScore = (newSuccess.toFloat() / (newSuccess + skill.failureCount)).coerceIn(0.0f, 1.0f)
-            val newTier = if (newSuccess >= 5 && newScore >= 0.95f) {
-                CapabilityPromotionTier.COMMUNITY_VERIFIED.name
-            } else if (newSuccess >= 15 && newScore >= 0.99f) {
+            val newTier = if (newSuccess >= 15 && newScore >= 0.99f) {
                 CapabilityPromotionTier.CORE_PROMOTED.name
+            } else if (newSuccess >= 5 && newScore >= 0.95f) {
+                CapabilityPromotionTier.COMMUNITY_VERIFIED.name
             } else {
                 skill.promotionTier
             }
