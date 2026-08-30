@@ -79,7 +79,7 @@ object ProductionReadinessGate {
         // 3. Unified Execution Fabric & Reality Registry
         val fabric = UnifiedExecutionFabric.instance
         val realities = fabric.realityRegistry.getSystemRealityReport()
-        val operationalCount = realities.count { it.executionStatus.isOperational }
+        val operationalCount = realities.count { it.executionStatus == CapabilityExecutionStatus.OPERATIONAL }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "UnifiedExecutionFabric",
