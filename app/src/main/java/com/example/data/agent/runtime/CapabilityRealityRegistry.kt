@@ -412,6 +412,86 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.NATIVE
             )
         )
+
+        // B2B X-Ray Engine Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "B2B_XRAY",
+                category = "RESEARCH",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiCore",
+                supportedOperations = listOf("b2b_xray_search", "analyze_prospects", "enrich_company"),
+                limitations = listOf("Dispatches real market and enterprise intelligence queries"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Lead Radar Engine Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "LEAD_RADAR",
+                category = "RESEARCH",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "LeadRadarRepository",
+                supportedOperations = listOf("lead_radar_search", "find_leads", "scan_opportunities"),
+                limitations = listOf("Dispatches structured real-time lead radar scans"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Screen Reading & Device Accessibility Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "SCREEN_ACCESSIBILITY",
+                category = "AUTOMATION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiDeviceController",
+                supportedOperations = listOf("device_screen_read", "device_screen_tap", "inspect_screen_elements"),
+                limitations = listOf("Requires Android accessibility service permission when accessing external apps"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Draft Persistence & CRM Integration Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "DRAFT_PERSISTENCE",
+                category = "COMMUNICATION",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "DraftPersistenceManager",
+                supportedOperations = listOf("save_draft", "get_drafts", "email_draft_creation", "linkedin_draft_creation"),
+                limitations = listOf("Persists verified drafts locally and bridges with verified OAuth providers"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
+
+        // Web Research & Scraper Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "WEB_RESEARCH_SCRAPER",
+                category = "RESEARCH",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WebSearchEngine",
+                supportedOperations = listOf("web_search", "web_scraping", "fetch_url_content"),
+                limitations = listOf("Executes real network requests without fabricating results"),
+                realityState = CapabilityRealityState.NATIVE
+            )
+        )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {

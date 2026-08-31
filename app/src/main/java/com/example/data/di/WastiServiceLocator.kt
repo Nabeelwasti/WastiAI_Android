@@ -197,8 +197,12 @@ object WastiServiceLocator {
         com.example.data.voice.CanonicalAudioOrchestrator(ctx, conversationFabric, agentEventBus)
     }
 
+    val capabilityPlanner: com.example.data.agent.runtime.CapabilityPlanner by lazy {
+        com.example.data.agent.runtime.CapabilityPlanner(realityRegistry)
+    }
+
     val capabilityCompositionEngine: com.example.data.agent.runtime.CapabilityCompositionEngine by lazy {
-        com.example.data.agent.runtime.CapabilityCompositionEngine(toolRegistry, realityRegistry, agentEventBus)
+        com.example.data.agent.runtime.CapabilityCompositionEngine(toolRegistry, realityRegistry, capabilityPlanner, agentEventBus)
     }
 
     val capabilityRegressionMonitor: com.example.data.agent.runtime.CapabilityRegressionMonitor by lazy {

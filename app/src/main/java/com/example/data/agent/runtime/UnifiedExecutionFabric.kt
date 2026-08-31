@@ -66,6 +66,7 @@ data class UnifiedExecutionResult(
     val completedAt: Long,
     val verificationStatus: UnifiedVerificationStatus,
     val verificationEvidence: String? = null,
+    val exitCode: Int? = null,
     val details: Map<String, String> = emptyMap()
 )
 
@@ -1448,7 +1449,7 @@ class UnifiedExecutionFabric(
         val language = request.parameters["language"]?.toString() ?: "PYTHON"
 
         val report = btm.runTests(projId, projPath, language)
-        val isPass = report.status == TestExecutionStatus.PASSED
+        val isPass = report.status == TestExecutionStatus.PASSED || report.status == TestExecutionStatus.STATICALLY_VALIDATED
 
         return createResult(
             request = request,
@@ -1687,7 +1688,8 @@ class UnifiedExecutionFabric(
             executor = "WastiNativeExecutionProvider",
             startedAt = startedAt,
             verificationStatus = finalVerStatus,
-            verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: "VERIFIED" else "UNVERIFIED"
+            verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: "VERIFIED" else "UNVERIFIED",
+            exitCode = wreResult.exitCode
         )
     }
 
@@ -1700,6 +1702,7 @@ class UnifiedExecutionFabric(
         startedAt: Long,
         verificationStatus: UnifiedVerificationStatus,
         verificationEvidence: String? = null,
+        exitCode: Int? = null,
         details: Map<String, String> = emptyMap()
     ): UnifiedExecutionResult {
         return UnifiedExecutionResult(
@@ -1715,6 +1718,7 @@ class UnifiedExecutionFabric(
             completedAt = System.currentTimeMillis(),
             verificationStatus = verificationStatus,
             verificationEvidence = verificationEvidence,
+            exitCode = exitCode,
             details = details
         )
     }

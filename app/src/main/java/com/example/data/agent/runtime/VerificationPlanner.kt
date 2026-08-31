@@ -108,6 +108,59 @@ class VerificationPlanner {
                 )
             }
 
+            capLower.contains("b2b") || capLower.contains("lead") || capLower.contains("research") -> {
+                criteria.add(
+                    VerificationCriterion(
+                        type = VerificationCriterionType.STRUCTURED_OUTPUT_VALID,
+                        description = "Research or lead scan must return verified result entities or verifiable error state",
+                        targetKey = "output",
+                        expectedValue = null
+                    )
+                )
+            }
+
+            capLower.contains("draft") -> {
+                criteria.add(
+                    VerificationCriterion(
+                        type = VerificationCriterionType.DATABASE_RECORD_CREATED,
+                        description = "Draft record must be saved in persistence engine",
+                        targetKey = "draft_status",
+                        expectedValue = "SAVED"
+                    )
+                )
+            }
+
+            capLower.startsWith("wre_tool_") || capLower.contains("dynamic") -> {
+                if (parameters.containsKey("output_file") || parameters.containsKey("path")) {
+                    val path = (parameters["output_file"] ?: parameters["path"])?.toString() ?: ""
+                    criteria.add(
+                        VerificationCriterion(
+                            type = VerificationCriterionType.FILE_EXISTS_AND_NONEMPTY,
+                            description = "Dynamic tool output file '$path' must exist and have size > 0 bytes",
+                            targetKey = "filePath",
+                            expectedValue = path
+                        )
+                    )
+                } else {
+                    criteria.add(
+                        VerificationCriterion(
+                            type = VerificationCriterionType.STRUCTURED_OUTPUT_VALID,
+                            description = "Dynamic WRE tool must produce non-empty stdout evidence without unhandled process exception",
+                            targetKey = "stdout",
+                            expectedValue = null
+                        )
+                    )
+                    criteria.add(
+                        VerificationCriterion(
+                            type = VerificationCriterionType.EXIT_CODE_ZERO,
+                            description = "Dynamic WRE tool process exit code must be zero",
+                            targetKey = "exitCode",
+                            expectedValue = 0
+                        )
+                    )
+                }
+            }
+
             else -> {
                 criteria.add(
                     VerificationCriterion(

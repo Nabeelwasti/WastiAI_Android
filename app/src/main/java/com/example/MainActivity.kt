@@ -115,7 +115,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val navItems = listOf(
                 WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
                 WastiNavDestination("chat", "AI Chat", Icons.AutoMirrored.Filled.Chat),
-                WastiNavDestination("capabilities", "Reality Matrix", Icons.AutoMirrored.Filled.FactCheck),
+                WastiNavDestination("capabilities", "Reality Matrix", Icons.Default.Checklist),
                 WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),

@@ -29,7 +29,31 @@ sealed class SyncResult {
 object CloudSyncManager {
 
     private const val TAG = "CloudSyncManager"
-    private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+
+    private fun getFirestore(): FirebaseFirestore? {
+        return try {
+            val app = try {
+                com.google.firebase.FirebaseApp.getInstance()
+            } catch (_: Throwable) {
+                val ctx = com.example.WastiApplication.instance?.applicationContext
+                if (ctx != null) {
+                    try {
+                        com.google.firebase.FirebaseApp.initializeApp(ctx)
+                    } catch (_: Throwable) {
+                        null
+                    }
+                } else null
+            }
+            if (app != null) {
+                FirebaseFirestore.getInstance(app)
+            } else {
+                null
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Firestore instance unavailable: ${e.message}")
+            null
+        }
+    }
 
     /**
      * Creates a genuine compressed snapshot archive of the SQLite database files with SHA-256 verification.
@@ -78,6 +102,11 @@ object CloudSyncManager {
 
     suspend fun backupToCloud(db: WastiDatabase, userId: String): SyncResult = withContext(Dispatchers.IO) {
         try {
+            val firestore = getFirestore()
+            if (firestore == null) {
+                Log.w(TAG, "Cloud backup skipped: Firebase is not initialized or configured in this environment.")
+                return@withContext SyncResult.Error("Firebase is not initialized or configured. Please provide google-services.json or Firebase configuration.")
+            }
             val sanitizedUserId = if (userId.isBlank()) "default_user" else userId
 
             val prospects = db.prospectDao().getAllProspectsSync()
@@ -164,6 +193,11 @@ object CloudSyncManager {
 
     suspend fun restoreFromCloud(db: WastiDatabase, userId: String): SyncResult = withContext(Dispatchers.IO) {
         try {
+            val firestore = getFirestore()
+            if (firestore == null) {
+                Log.w(TAG, "Cloud restore skipped: Firebase is not initialized or configured in this environment.")
+                return@withContext SyncResult.Error("Firebase is not initialized or configured. Please provide google-services.json or Firebase configuration.")
+            }
             val sanitizedUserId = if (userId.isBlank()) "default_user" else userId
 
             val prospectsSnapshot = firestore.collection("users").document(sanitizedUserId)

@@ -50,13 +50,14 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
             Log.i(TAG, "Sync execution outcome: $outcome (Snapshot: $snapshotResult, Entities: $syncResult)")
 
             when (outcome) {
-                SyncExecutionOutcome.FULL_SYNC_SUCCESS -> {
+                SyncExecutionOutcome.FULL_SYNC_SUCCESS,
+                SyncExecutionOutcome.PARTIAL_SYNC_SNAPSHOT_ONLY -> {
+                    // Local snapshot secured successfully (cloud sync optional/deferred)
                     ListenableWorker.Result.success()
                 }
-                SyncExecutionOutcome.PARTIAL_SYNC_SNAPSHOT_ONLY,
                 SyncExecutionOutcome.PARTIAL_SYNC_ENTITY_ONLY,
                 SyncExecutionOutcome.RETRYABLE_FAILURE -> {
-                    // Retry incomplete / partial sync operations
+                    // Retry incomplete sync operations
                     if (runAttemptCount < 3) {
                         ListenableWorker.Result.retry()
                     } else {

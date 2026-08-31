@@ -116,6 +116,8 @@ class CapabilityPlanner(
     fun interpretGoal(userGoal: String): SemanticTaskInterpretation {
         val lower = userGoal.lowercase().trim()
         val domain = when {
+            lower.contains("b2b") || lower.contains("lead") || lower.contains("prospect") -> TaskDomain.RESEARCH_AND_WEB
+            lower.contains("email") || lower.contains("linkedin") || lower.contains("draft") -> TaskDomain.COMMUNICATION
             lower.contains("find") && (lower.contains("fix") || lower.contains("edit") || lower.contains("error")) -> TaskDomain.DEVELOPMENT
             lower.contains("build") || lower.contains("compile") || lower.contains("test") || lower.contains("gradle") || lower.contains("package") -> TaskDomain.DEVELOPMENT
             lower.contains("search") || lower.contains("research") || lower.contains("google") || lower.contains("compare") || lower.contains("summarize") -> TaskDomain.RESEARCH_AND_WEB
@@ -143,6 +145,12 @@ class CapabilityPlanner(
                 targets.add(TaskTarget(entityType = "project", query = extractExtensibleTarget(userGoal)))
                 requiredCaps.add(TaskRequirement("files"))
                 requiredCaps.add(TaskRequirement("build_project", isMandatory = false))
+            }
+            TaskDomain.COMMUNICATION -> {
+                operations.add(TaskOperation.CREATE)
+                operations.add(TaskOperation.COMMUNICATE)
+                targets.add(TaskTarget(entityType = "draft", query = userGoal))
+                requiredCaps.add(TaskRequirement("draft_persistence"))
             }
             TaskDomain.RESEARCH_AND_WEB -> {
                 operations.add(TaskOperation.SEARCH)
@@ -196,6 +204,15 @@ class CapabilityPlanner(
             estimatedRisk = estimatedRisk
         )
     }
+
+    /**
+     * Creates an execution plan from a structured semantic task interpretation.
+     */
+    fun createExecutionPlan(interpretation: SemanticTaskInterpretation): PlannedCapabilityGraph =
+        createPlan(interpretation.rawGoal)
+
+    fun createExecutionPlan(userGoal: String): PlannedCapabilityGraph =
+        createPlan(userGoal)
 
     /**
      * Deconstructs a natural language or structured user goal into a dependency-ordered PlannedCapabilityGraph.
@@ -300,15 +317,22 @@ class CapabilityPlanner(
                 val primaryCap = if (lower.contains("memory")) "memory_search"
                 else if (lower.contains("search") || lower.contains("google") || lower.contains("lookup")) "search_web"
                 else if (lower.contains("wasm")) "wasm_sandbox"
-                else if (lower.contains("system") || lower.contains("status")) "system_info"
-                else "terminal"
+                else if (lower.contains("system") || lower.contains("status") || lower.contains("telemetry") || lower.contains("sync") || lower.contains("diagnostic")) "system_info"
+                else if (lower.contains("terminal") || lower.contains("shell") || lower.contains("bash") || lower.contains("echo") || lower.contains("cmd")) "terminal"
+                else "system_info"
+
+                val params = if (primaryCap == "terminal") {
+                    mapOf("command" to if (lower.startsWith("echo ") || lower.startsWith("ls ") || lower.startsWith("pwd")) userGoal else "echo '$userGoal'")
+                } else {
+                    mapOf("query" to userGoal)
+                }
 
                 nodes.add(
                     PlannedCapabilityNode(
                         capabilityId = primaryCap,
                         actionName = "execute",
                         description = "Direct execution of requested capability '$primaryCap'",
-                        inputParameters = mapOf("query" to userGoal)
+                        inputParameters = params
                     )
                 )
             }

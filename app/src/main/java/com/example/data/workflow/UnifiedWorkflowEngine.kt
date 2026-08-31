@@ -262,7 +262,7 @@ class UnifiedWorkflowEngine(
                     capabilityId = step.capabilityId,
                     stdout = execResult.output,
                     stderr = execResult.error ?: "",
-                    exitCode = if (execResult.status == UnifiedExecutionStatus.FAILED) 1 else 0,
+                    exitCode = execResult.exitCode,
                     durationMs = System.currentTimeMillis() - stepStart,
                     evidence = step.observationEvidence ?: ""
                 )
@@ -280,8 +280,13 @@ class UnifiedWorkflowEngine(
                 )
             )
 
-            val isSuccess = execResult.status == UnifiedExecutionStatus.VERIFIED ||
-                execResult.status == UnifiedExecutionStatus.COMPLETED
+            val isSuccess = if (step.requiresVerification) {
+                execResult.verificationStatus == UnifiedVerificationStatus.VERIFIED ||
+                    execResult.status == UnifiedExecutionStatus.VERIFIED
+            } else {
+                execResult.status == UnifiedExecutionStatus.VERIFIED ||
+                    execResult.status == UnifiedExecutionStatus.COMPLETED
+            }
 
             if (isSuccess) {
                 step.state = if (execResult.verificationStatus == UnifiedVerificationStatus.VERIFIED) {
@@ -353,53 +358,37 @@ class UnifiedWorkflowEngine(
     }
 
     private fun generatePlanForGoal(originalRequest: String, intent: String): WorkflowPlan {
+        val plannedGraph = com.example.data.di.WastiServiceLocator.capabilityPlanner.createExecutionPlan(originalRequest)
+        val nodeToStepMap = mutableMapOf<String, WorkflowStep>()
         val steps = mutableListOf<WorkflowStep>()
-        val reqLower = originalRequest.lowercase()
 
-        when {
-            reqLower.contains("device") || reqLower.contains("whatsapp") -> {
-                steps.add(
-                    WorkflowStep(
-                        name = "Inspect System Environment",
-                        capabilityId = "system_info",
-                        description = "Check Android device status and capabilities"
-                    )
+        for (node in plannedGraph.nodes) {
+            val step = WorkflowStep(
+                name = node.actionName,
+                capabilityId = node.capabilityId,
+                parameters = node.inputParameters,
+                dependsOnStepIds = node.dependencies.mapNotNull { nodeToStepMap[it]?.stepId },
+                description = node.description,
+                requiresVerification = true
+            )
+            nodeToStepMap[node.nodeId] = step
+            steps.add(step)
+        }
+
+        if (steps.isEmpty()) {
+            steps.add(
+                WorkflowStep(
+                    name = "Inspect System Environment",
+                    capabilityId = "system_info",
+                    description = "Retrieve system diagnostics and status",
+                    requiresVerification = true
                 )
-                steps.add(
-                    WorkflowStep(
-                        name = "Execute Device Operation",
-                        capabilityId = "device_control",
-                        parameters = mapOf("action" to "open_app", "target" to "Settings"),
-                        dependsOnStepIds = listOf(steps[0].stepId),
-                        description = "Perform required device control intent"
-                    )
-                )
-            }
-            reqLower.contains("memory") -> {
-                steps.add(
-                    WorkflowStep(
-                        name = "Query Memory Store",
-                        capabilityId = "memory_search",
-                        parameters = mapOf("query" to originalRequest),
-                        description = "Retrieve relevant contextual memories"
-                    )
-                )
-            }
-            else -> {
-                steps.add(
-                    WorkflowStep(
-                        name = "Execute Primary Capability",
-                        capabilityId = if (reqLower.contains("terminal")) "terminal" else "system_info",
-                        parameters = mapOf("command" to "echo 'Wasti Autonomous Workflow Executed'"),
-                        description = "Execute core task request"
-                    )
-                )
-            }
+            )
         }
 
         return WorkflowPlan(
             goal = originalRequest,
-            interpretedIntent = intent,
+            interpretedIntent = plannedGraph.semanticInterpretation?.primaryIntent ?: intent,
             steps = steps,
             requiredCapabilities = steps.map { it.capabilityId }.distinct()
         )

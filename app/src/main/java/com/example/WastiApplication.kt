@@ -34,6 +34,12 @@ class WastiApplication : Application() {
         com.example.data.di.WastiServiceLocator.init(this)
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
+        try {
+            com.google.firebase.FirebaseApp.initializeApp(this)
+        } catch (e: Throwable) {
+            Log.w("WastiApplication", "Firebase auto-initialization skipped/deferred: ${e.message}")
+        }
+
         // Install Global Uncaught Exception Handler for Crash Telemetry & Debugging
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->

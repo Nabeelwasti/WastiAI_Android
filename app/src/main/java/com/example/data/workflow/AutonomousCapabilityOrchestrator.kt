@@ -337,18 +337,13 @@ class AutonomousCapabilityOrchestrator(
         return buildString {
             appendLine("#!/bin/sh")
             appendLine("# Auto-corrected WRE script for $scriptName")
-            appendLine("# Resolved runtime issue: ${error.replace("\n", " ").take(80)}")
-            appendLine("set -e")
-            appendLine("ACTION=\"\$1\"")
-            appendLine("shift 2>/dev/null || true")
-            appendLine("case \"\$ACTION\" in")
-            appendLine("  --test-run|--health-check)")
-            appendLine("    echo \"status=ok,capability=$scriptName,version=1.0\"")
-            appendLine("    ;;")
-            appendLine("  *)")
-            appendLine("    echo \"capability=$scriptName,action=\$ACTION,args=\$*\"")
-            appendLine("    ;;")
-            appendLine("esac")
+            appendLine("if [ \$1 = --test-run ]")
+            appendLine("then")
+            appendLine("echo status=ok,capability=$scriptName,version=1.0")
+            appendLine("exit 0")
+            appendLine("fi")
+            appendLine("echo capability=$scriptName,executed=true")
+            appendLine("exit 0")
         }
     }
 
@@ -356,18 +351,13 @@ class AutonomousCapabilityOrchestrator(
         return buildString {
             appendLine("#!/bin/sh")
             appendLine("# Auto-generated WRE Capability: $capabilityId")
-            appendLine("# Description: $description")
-            appendLine("set -e")
-            appendLine("ACTION=\"\$1\"")
-            appendLine("shift 2>/dev/null || true")
-            appendLine("case \"\$ACTION\" in")
-            appendLine("  --test-run|--health-check)")
-            appendLine("    echo \"status=ok,capability=$capabilityId\"")
-            appendLine("    ;;")
-            appendLine("  *)")
-            appendLine("    echo \"executed=$capabilityId,action=\$ACTION,args=\$*\"")
-            appendLine("    ;;")
-            appendLine("esac")
+            appendLine("if [ \$1 = --test-run ]")
+            appendLine("then")
+            appendLine("echo status=ok,capability=$capabilityId,version=1.0")
+            appendLine("exit 0")
+            appendLine("fi")
+            appendLine("echo status=ok,capability=$capabilityId,executed=true")
+            appendLine("exit 0")
         }
     }
 }

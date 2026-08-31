@@ -68,6 +68,7 @@ data class WorkflowStep(
     val toolId: String? = null,
     val parameters: Map<String, Any> = emptyMap(),
     val dependsOnStepIds: List<String> = emptyList(),
+    val requiresVerification: Boolean = true,
     var state: WorkflowStepState = WorkflowStepState.PENDING,
     var executionResult: UnifiedExecutionResult? = null,
     var observationEvidence: String? = null,
@@ -91,7 +92,7 @@ data class WorkflowObservation(
     val capabilityId: String,
     val stdout: String,
     val stderr: String,
-    val exitCode: Int,
+    val exitCode: Int? = null,
     val durationMs: Long,
     val evidence: String,
     val observedAt: Long = System.currentTimeMillis()

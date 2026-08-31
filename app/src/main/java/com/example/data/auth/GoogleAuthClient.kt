@@ -29,13 +29,28 @@ sealed class GoogleAuthResult {
 class GoogleAuthClient(private val context: Context) {
 
     private val credentialManager = CredentialManager.create(context)
-    private val firebaseAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val firebaseAuth: FirebaseAuth?
+        get() = try {
+            FirebaseAuth.getInstance()
+        } catch (_: Throwable) {
+            try {
+                com.google.firebase.FirebaseApp.initializeApp(context.applicationContext)
+                FirebaseAuth.getInstance()
+            } catch (_: Throwable) {
+                null
+            }
+        }
 
     val currentUser: FirebaseUser?
-        get() = try { firebaseAuth.currentUser } catch (_: Exception) { null }
+        get() = try { firebaseAuth?.currentUser } catch (_: Exception) { null }
 
     suspend fun signIn(serverClientId: String? = null): GoogleAuthResult {
         return try {
+            val auth = firebaseAuth
+            if (auth == null) {
+                return GoogleAuthResult.Error("Firebase is not initialized or configured in this environment.")
+            }
+
             val webClientId = serverClientId
                 ?: CredentialRegistry.getRawValue("GOOGLE_WEB_CLIENT_ID")
                 ?: "206322177649-fs2048huimberjvb4etaih1scn7ldh30.apps.googleusercontent.com"
@@ -66,7 +81,7 @@ class GoogleAuthClient(private val context: Context) {
                 val idToken = googleIdTokenCredential.idToken
 
                 val firebaseCredential = GoogleAuthProvider.getCredential(idToken, null)
-                val authResult: AuthResult = firebaseAuth.signInWithCredential(firebaseCredential).awaitTask()
+                val authResult: AuthResult = auth.signInWithCredential(firebaseCredential).awaitTask()
                 val user = authResult.user
 
                 if (user != null) {
@@ -93,7 +108,7 @@ class GoogleAuthClient(private val context: Context) {
             Log.w("GoogleAuthClient", "Error clearing credential state: ${e.message}")
         }
         try {
-            firebaseAuth.signOut()
+            firebaseAuth?.signOut()
         } catch (e: Exception) {
             Log.w("GoogleAuthClient", "Error signing out of Firebase: ${e.message}")
         }

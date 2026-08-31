@@ -57,71 +57,38 @@ data class CompositionExecutionResult(
 class CapabilityCompositionEngine(
     private val toolRegistry: AgentToolRegistry = WastiServiceLocator.toolRegistry,
     private val realityRegistry: CapabilityRealityRegistry = UnifiedExecutionFabric.instance.realityRegistry,
+    private val capabilityPlanner: CapabilityPlanner = CapabilityPlanner(realityRegistry),
     private val eventBus: AgentEventBus = AgentEventBus.getInstance()
 ) {
     private val TAG = "CapCompositionEngine"
     private val activeWorkflows = ConcurrentHashMap<String, ComposedCapabilityWorkflow>()
 
     /**
-     * Synthesizes a multi-step capability workflow plan for a complex compound request.
+     * Synthesizes a multi-step capability workflow plan for a complex compound request
+     * using semantic task interpretation and capability DAG planning.
      */
     fun planWorkflow(userGoal: String): ComposedCapabilityWorkflow {
         val workflowId = "wf_${UUID.randomUUID().toString().take(8)}"
-        val steps = mutableListOf<CapabilityWorkflowStep>()
-        val lowerGoal = userGoal.lowercase()
+        val interpretation = capabilityPlanner.interpretGoal(userGoal)
+        val plannedGraph = capabilityPlanner.createExecutionPlan(interpretation)
 
+        val steps = mutableListOf<CapabilityWorkflowStep>()
         var stepIdx = 0
 
-        // Step 1: Research or Inspection if needed
-        if (lowerGoal.contains("search") || lowerGoal.contains("find") || lowerGoal.contains("research") || lowerGoal.contains("lookup")) {
+        for (node in plannedGraph.nodes) {
+            val stringParams = node.inputParameters.mapValues { it.value.toString() }
             steps.add(
                 CapabilityWorkflowStep(
+                    stepId = node.nodeId,
                     stepIndex = stepIdx++,
-                    capabilityId = "web_search",
-                    description = "Perform structured search to collect source evidence",
-                    inputParameters = mapOf("query" to userGoal),
-                    outputKey = "search_results"
-                )
-            )
-        } else if (lowerGoal.contains("inspect") || lowerGoal.contains("scan") || lowerGoal.contains("audit")) {
-            steps.add(
-                CapabilityWorkflowStep(
-                    stepIndex = stepIdx++,
-                    capabilityId = "file_read",
-                    description = "Inspect workspace files and dependencies",
-                    inputParameters = mapOf("target" to "workspace"),
-                    outputKey = "inspection_data"
+                    capabilityId = node.capabilityId,
+                    description = node.description,
+                    inputParameters = stringParams,
+                    outputKey = "${node.capabilityId}_output"
                 )
             )
         }
 
-        // Step 2: Code Generation or Modification if needed
-        if (lowerGoal.contains("code") || lowerGoal.contains("create file") || lowerGoal.contains("build") || lowerGoal.contains("generate")) {
-            steps.add(
-                CapabilityWorkflowStep(
-                    stepIndex = stepIdx++,
-                    capabilityId = "execute_code",
-                    description = "Generate or execute code in sandbox workspace",
-                    inputParameters = mapOf("prompt" to userGoal),
-                    outputKey = "code_artifact"
-                )
-            )
-        }
-
-        // Step 3: Verification / Testing
-        if (lowerGoal.contains("verify") || lowerGoal.contains("test") || steps.any { it.capabilityId == "execute_code" }) {
-            steps.add(
-                CapabilityWorkflowStep(
-                    stepIndex = stepIdx++,
-                    capabilityId = "test_runner",
-                    description = "Execute verification tests and capture structured evidence",
-                    inputParameters = mapOf("scope" to "automated"),
-                    outputKey = "test_evidence"
-                )
-            )
-        }
-
-        // Fallback: If no specialized match, create direct capability execution step
         if (steps.isEmpty()) {
             steps.add(
                 CapabilityWorkflowStep(

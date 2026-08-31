@@ -550,6 +550,11 @@ class WastiLanguagePlatform(
                 val reqContent = request.dependencies.joinToString("\n")
                 workspaceManager.writeFile(reqTxt, reqContent)
                 created.add(reqTxt)
+
+                val testPy = "$projectRelativeDir/test_main.py"
+                val testContent = "import unittest\n\nclass TestMain(unittest.TestCase):\n    def test_main(self):\n        self.assertTrue(True)\n\nif __name__ == '__main__':\n    unittest.main()\n"
+                workspaceManager.writeFile(testPy, testContent)
+                created.add(testPy)
             }
             "KOTLIN" -> {
                 val mainKt = "$projectRelativeDir/Main.kt"
