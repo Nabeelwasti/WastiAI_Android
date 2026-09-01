@@ -76,8 +76,6 @@ android {
       isIncludeAndroidResources = false
       isReturnDefaultValues = true
       all {
-        it.forkEvery = 1
-        it.maxParallelForks = 1
         it.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
         it.testLogging {
           events("passed", "skipped", "failed", "standardError")

@@ -264,7 +264,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val testResult = fabric.execute(testReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, testResult.status)
+        assertEquals("Test execution failed: output=${testResult.output}, error=${testResult.error}, status=${testResult.status}", UnifiedExecutionStatus.VERIFIED, testResult.status)
         assertEquals("WastiBuildAndTestManager", testResult.executor)
 
         // Diagnostics via Fabric

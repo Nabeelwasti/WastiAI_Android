@@ -125,15 +125,22 @@ class WastiWebSocketServer private constructor(
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
 
-                // Read HTTP Upgrade Request Header
-                val headerBytes = ByteArray(4096)
-                val bytesRead = input.read(headerBytes)
-                if (bytesRead <= 0) {
-                    socket.close()
-                    return@withContext
+                // Read HTTP Upgrade Request Header precisely up to \r\n\r\n
+                val headerBaos = java.io.ByteArrayOutputStream()
+                while (true) {
+                    val b = input.read()
+                    if (b == -1) {
+                        socket.close()
+                        return@withContext
+                    }
+                    headerBaos.write(b)
+                    val current = headerBaos.toString(Charsets.UTF_8.name())
+                    if (current.endsWith("\r\n\r\n")) {
+                        break
+                    }
                 }
 
-                val headerStr = String(headerBytes, 0, bytesRead, Charsets.UTF_8)
+                val headerStr = headerBaos.toString(Charsets.UTF_8.name())
                 val lines = headerStr.split("\r\n")
                 if (lines.isEmpty()) {
                     socket.close()
@@ -524,13 +531,6 @@ class WastiWebSocketServer private constructor(
                     put("taskId", taskId)
                     put("nodeId", nodeId)
                     put("isSuccess", isReleased)
-                }.toString())
-            }
-
-            "PING" -> {
-                sendTextFrame(session, JSONObject().apply {
-                    put("type", "PONG")
-                    put("timestamp", System.currentTimeMillis())
                 }.toString())
             }
 

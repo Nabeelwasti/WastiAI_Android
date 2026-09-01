@@ -313,25 +313,36 @@ class UnifiedExecutionFabric(
             // 5. Real Execution Dispatch
             eventBus?.emit(AgentEvent.ToolStarted(taskId, request.capabilityId))
 
-            val rawExecResult = withTimeoutOrNull(request.timeoutMs) {
+            val execResult = try {
                 val customExec = customExecutors[normalizedCapabilityId(request.capabilityId)]
                 if (customExec != null) {
                     customExec.execute(request, ctx)
                 } else {
                     executeBuiltIn(request, ctx)
                 }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.FAILED,
+                    output = "Execution timed out after ${request.timeoutMs} ms.",
+                    error = "Execution timeout: ${e.message}",
+                    executor = "UnifiedExecutionFabric",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Timeout exceeded"
+                )
+            } catch (e: Exception) {
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.FAILED,
+                    output = "Execution failed with exception: ${e.message}",
+                    error = e.stackTraceToString(),
+                    executor = "UnifiedExecutionFabric",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Exception thrown during execution"
+                )
             }
-
-            val execResult = rawExecResult ?: createResult(
-                request = request,
-                status = UnifiedExecutionStatus.FAILED,
-                output = "Execution timed out after ${request.timeoutMs} ms.",
-                error = "Execution timeout",
-                executor = "UnifiedExecutionFabric",
-                startedAt = startedAt,
-                verificationStatus = UnifiedVerificationStatus.FAILED,
-                verificationEvidence = "Timeout exceeded"
-            )
 
             // 6. Observation Phase
             val obsRequest = ObservationRequest(

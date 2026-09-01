@@ -71,9 +71,7 @@ class Stage13PhysicalRealityAndWebSocketTest {
             out.flush()
 
             // 2. Verify Handshake Response
-            val responseBuffer = ByteArray(2048)
-            val read = inp.read(responseBuffer)
-            val responseStr = String(responseBuffer, 0, read, Charsets.UTF_8)
+            val responseStr = readHttpHeaders(inp)
 
             assertTrue(responseStr.contains("101 Switching Protocols"))
             assertTrue(responseStr.contains("Upgrade: websocket"))
@@ -128,8 +126,7 @@ class Stage13PhysicalRealityAndWebSocketTest {
             out.write(("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $testKey\r\n\r\n").toByteArray())
             out.flush()
 
-            val resp = ByteArray(2048)
-            inp.read(resp) // discard handshake header
+            readHttpHeaders(inp) // discard handshake header
 
             // Read welcome
             readServerFrame(inp)
@@ -220,6 +217,20 @@ class Stage13PhysicalRealityAndWebSocketTest {
         assertEquals(9099, info.wsPort)
 
         serverManager.stopServer()
+    }
+
+    private fun readHttpHeaders(inp: InputStream): String {
+        val baos = java.io.ByteArrayOutputStream()
+        while (true) {
+            val b = inp.read()
+            if (b == -1) break
+            baos.write(b)
+            val current = baos.toString(Charsets.UTF_8.name())
+            if (current.endsWith("\r\n\r\n")) {
+                break
+            }
+        }
+        return baos.toString(Charsets.UTF_8.name())
     }
 
     private fun computeExpectedAccept(key: String): String {

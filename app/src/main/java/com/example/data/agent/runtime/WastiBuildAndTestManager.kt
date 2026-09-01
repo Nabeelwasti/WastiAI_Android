@@ -332,17 +332,13 @@ class WastiBuildAndTestManager(
             }.toList()
         } else {
             projectDir.walkTopDown().filter {
-                it.isFile && (
-                    (it.name.startsWith("test_") && it.name.endsWith(".py")) ||
-                    it.name.endsWith("_test.py") ||
-                    it.name.endsWith("Test.kt") ||
-                    it.name.endsWith("Test.java") ||
-                    it.name.endsWith(".spec.ts") ||
-                    it.name.endsWith(".test.ts") ||
-                    it.name.endsWith(".spec.js") ||
-                    it.name.endsWith(".test.js") ||
-                    it.name.contains("test", ignoreCase = true)
-                )
+                it.isFile && when (normLang) {
+                    "PYTHON" -> (it.name.startsWith("test_") && it.name.endsWith(".py")) || it.name.endsWith("_test.py") || (it.name.contains("test", ignoreCase = true) && it.extension == "py")
+                    "KOTLIN" -> it.name.endsWith("Test.kt") || (it.name.contains("test", ignoreCase = true) && it.extension == "kt")
+                    "JAVA" -> it.name.endsWith("Test.java") || (it.name.contains("test", ignoreCase = true) && it.extension == "java")
+                    "JAVASCRIPT", "NODE", "TYPESCRIPT" -> (it.extension in listOf("js", "ts", "mjs", "cjs")) && (it.name.contains("test", ignoreCase = true) || it.name.contains("spec", ignoreCase = true))
+                    else -> (it.name.startsWith("test_") || it.name.endsWith("_test") || it.name.endsWith("Test") || it.name.contains("test", ignoreCase = true))
+                }
             }.toList()
         }
 
@@ -395,7 +391,7 @@ class WastiBuildAndTestManager(
             } else {
                 val execRes = when (normLang) {
                     "PYTHON" -> {
-                        nativeProvider.executeCommand("python3", listOf("-m", "unittest", file.absolutePath), timeoutMs = 15000L)
+                        nativeProvider.executeCommand("python3", listOf(file.absolutePath), timeoutMs = 15000L)
                     }
                     "JAVASCRIPT", "NODE", "TYPESCRIPT" -> {
                         nativeProvider.executeCommand("node", listOf(file.absolutePath), timeoutMs = 15000L)

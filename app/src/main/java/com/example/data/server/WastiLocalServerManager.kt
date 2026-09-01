@@ -281,12 +281,12 @@ class WastiLocalServerManager(
                     category = "TRANSPORT",
                     implementationStatus = ImplementationStatus.READY,
                     liveConnectionStatus = LiveConnectionStatus.DISCONNECTED,
-                    executionStatus = CapabilityExecutionStatus.UNAVAILABLE,
+                    executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                     authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiLocalServerManager",
-                    supportedOperations = listOf("start_server", "stop_server", "get_status"),
+                    supportedOperations = listOf("start_server", "stop_server", "server_status", "status", "get_status"),
                     limitations = listOf("Server stopped: $reason"),
-                    realityState = CapabilityRealityState.UNAVAILABLE
+                    realityState = CapabilityRealityState.NATIVE
                 )
             )
 
