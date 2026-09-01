@@ -35,7 +35,8 @@ class UnifiedWorkflowEngine(
     private val context: Context? = null,
     private val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
     private val emergencyStopController: WastiEmergencyStopController? = null,
-    private val capabilityOrchestrator: AutonomousCapabilityOrchestrator = AutonomousCapabilityOrchestrator(context)
+    private val capabilityOrchestrator: AutonomousCapabilityOrchestrator = AutonomousCapabilityOrchestrator(context),
+    private val capabilityPlanner: com.example.data.agent.runtime.CapabilityPlanner? = null
 ) {
     private val activeTasks = ConcurrentHashMap<String, WorkflowTask>()
     private val _taskStateFlow = MutableStateFlow<Map<String, AutonomousWorkflowState>>(emptyMap())
@@ -358,7 +359,15 @@ class UnifiedWorkflowEngine(
     }
 
     private fun generatePlanForGoal(originalRequest: String, intent: String): WorkflowPlan {
-        val plannedGraph = com.example.data.di.WastiServiceLocator.capabilityPlanner.createExecutionPlan(originalRequest)
+        val planner = capabilityPlanner ?: try {
+            com.example.data.di.WastiServiceLocator.capabilityPlanner
+        } catch (_: Throwable) {
+            context?.let { ctx ->
+                val realityReg = com.example.data.agent.runtime.UnifiedExecutionFabric.getInstance(ctx).realityRegistry
+                com.example.data.agent.runtime.CapabilityPlanner(realityReg)
+            } ?: com.example.data.di.WastiServiceLocator.capabilityPlanner
+        }
+        val plannedGraph = planner.createExecutionPlan(originalRequest)
         val nodeToStepMap = mutableMapOf<String, WorkflowStep>()
         val steps = mutableListOf<WorkflowStep>()
 

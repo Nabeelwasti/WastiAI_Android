@@ -46,6 +46,7 @@ class Stage9EWorkflowOrchestrationTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
+        com.example.data.di.WastiServiceLocator.init(context)
         wreManager = WreManager.getInstance(context)
         capabilityOrchestrator = AutonomousCapabilityOrchestrator(context)
         workflowEngine = UnifiedWorkflowEngine(context = context, capabilityOrchestrator = capabilityOrchestrator)

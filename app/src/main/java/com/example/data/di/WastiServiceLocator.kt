@@ -240,7 +240,22 @@ object WastiServiceLocator {
     }
 
     private fun requireContext(): Context {
-        return appContext ?: com.example.WastiApplication.instance
-        ?: throw IllegalStateException("WastiServiceLocator is not initialized. Call init(context) first.")
+        if (appContext != null) return appContext!!
+        val appInstance = com.example.WastiApplication.instance
+        if (appInstance != null) {
+            appContext = appInstance.applicationContext
+            return appContext!!
+        }
+        try {
+            val providerClass = Class.forName("androidx.test.core.app.ApplicationProvider")
+            val getAppContextMethod = providerClass.getMethod("getApplicationContext")
+            val testContext = getAppContextMethod.invoke(null) as? Context
+            if (testContext != null) {
+                init(testContext)
+                return testContext
+            }
+        } catch (_: Throwable) {
+        }
+        throw IllegalStateException("WastiServiceLocator is not initialized. Call init(context) first.")
     }
 }
