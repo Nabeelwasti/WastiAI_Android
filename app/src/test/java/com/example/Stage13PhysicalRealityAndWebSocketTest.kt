@@ -54,6 +54,7 @@ class Stage13PhysicalRealityAndWebSocketTest {
 
         try {
             val socket = Socket("127.0.0.1", port)
+            socket.soTimeout = 3000
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 
@@ -118,6 +119,7 @@ class Stage13PhysicalRealityAndWebSocketTest {
 
         try {
             val socket = Socket("127.0.0.1", port)
+            socket.soTimeout = 3000
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 

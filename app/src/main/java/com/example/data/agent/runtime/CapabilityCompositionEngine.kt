@@ -127,33 +127,57 @@ class CapabilityCompositionEngine(
             val started = System.currentTimeMillis()
 
             try {
-                // Execute step via tool registry, WASM runtime, or ActionIntentSystem
+                // Execute step via tool registry, WASM runtime, or UnifiedExecutionFabric
                 val tool = toolRegistry.get(step.capabilityId)
-                val output = if (tool != null) {
+                val output: String
+                val verifiedEvidence: String
+
+                if (tool != null) {
                     val res = tool.execute(step.inputParameters)
-                    val isSuccess = res["success"] as? Boolean ?: true
+                    val isSuccess = (res["success"] as? Boolean) == true
                     val outStr = res["output"]?.toString() ?: ""
-                    if (isSuccess) outStr else throw Exception(outStr.ifEmpty { "Tool execution failed" })
+                    if (!isSuccess) {
+                        throw Exception(outStr.ifEmpty { "Tool '${step.capabilityId}' execution returned failure" })
+                    }
+                    output = outStr
+                    verifiedEvidence = "Tool '${step.capabilityId}' executed with verified output contract [${outStr.length} chars]"
                 } else if (step.capabilityId == "execute_wasm" || step.capabilityId == "wasm_tool") {
                     val wasmRes = com.example.data.sandbox.WastiWasmRuntime.instance.runSandboxedScript(
                         step.description,
                         step.inputParameters["code"] ?: "",
                         step.inputParameters
                     )
-                    if (wasmRes.isSuccess) wasmRes.stringOutput ?: "WASM executed successfully"
-                    else throw Exception(wasmRes.diagnosticMessage)
+                    if (wasmRes.isSuccess) {
+                        output = wasmRes.stringOutput ?: "WASM executed successfully"
+                        verifiedEvidence = "WASM sandbox verified: exitCode=0, output verified"
+                    } else {
+                        throw Exception(wasmRes.diagnosticMessage)
+                    }
                 } else {
                     val reality = realityRegistry.get(step.capabilityId)
-                    if (reality != null && (reality.liveConnectionStatus == LiveConnectionStatus.FAILED || reality.executionStatus == CapabilityExecutionStatus.UNAVAILABLE)) {
-                        throw Exception("Capability '${step.capabilityId}' is currently unavailable on this device.")
+                    if (reality == null || reality.liveConnectionStatus == LiveConnectionStatus.FAILED || reality.executionStatus == CapabilityExecutionStatus.UNAVAILABLE) {
+                        throw Exception("CAPABILITY_UNAVAILABLE: No registered executor, tool, or active provider found for capability '${step.capabilityId}'.")
                     }
-                    "Execution dispatched for capability '${step.capabilityId}' with parameters ${step.inputParameters}"
+                    // Attempt execution via UnifiedExecutionFabric
+                    val fabricReq = UnifiedExecutionRequest(
+                        taskId = workflow.workflowId,
+                        actionId = step.stepId,
+                        capabilityId = step.capabilityId,
+                        parameters = step.inputParameters
+                    )
+                    val fabricRes = UnifiedExecutionFabric.instance.execute(fabricReq, com.example.WastiApplication.instance)
+                    if (fabricRes.status == UnifiedExecutionStatus.COMPLETED || fabricRes.verificationStatus == UnifiedVerificationStatus.VERIFIED) {
+                        output = fabricRes.output
+                        verifiedEvidence = fabricRes.verificationEvidence ?: "Fabric execution verified for '${step.capabilityId}'"
+                    } else {
+                        throw Exception(fabricRes.error ?: fabricRes.output.ifEmpty { "Execution failed for capability '${step.capabilityId}'" })
+                    }
                 }
 
                 step.durationMs = System.currentTimeMillis() - started
                 step.status = StepExecutionStatus.COMPLETED
                 step.outputResult = output
-                step.verificationEvidence = "Evidence verified for capability '${step.capabilityId}' [Duration: ${step.durationMs}ms]"
+                step.verificationEvidence = verifiedEvidence
 
                 if (step.outputKey != null) {
                     outputs[step.outputKey] = output

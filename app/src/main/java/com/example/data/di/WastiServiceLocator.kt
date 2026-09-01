@@ -216,6 +216,19 @@ object WastiServiceLocator {
         )
     }
 
+    val universalAutonomousExecutionLoop: com.example.data.agent.runtime.UniversalAutonomousExecutionLoop by lazy {
+        val ctx = requireContext()
+        com.example.data.agent.runtime.UniversalAutonomousExecutionLoop(
+            context = ctx,
+            executionFabric = executionFabric,
+            realityRegistry = realityRegistry,
+            capabilityPlanner = capabilityPlanner,
+            actionIntentEngine = actionIntentEngine,
+            timeline = universalTaskTimeline,
+            database = database
+        )
+    }
+
     fun init(context: Context) {
         if (appContext == null) {
             synchronized(this) {

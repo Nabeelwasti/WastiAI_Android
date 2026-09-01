@@ -88,11 +88,11 @@ jobs:
 
     - name: Run Unit Tests
       timeout-minutes: 6
-      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace || true
+      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace
 
     - name: Run Android Lint
       timeout-minutes: 4
-      run: gradle lintDebug --stacktrace || true
+      run: gradle lintDebug --stacktrace
 
     - name: Build Debug APK
       timeout-minutes: 8

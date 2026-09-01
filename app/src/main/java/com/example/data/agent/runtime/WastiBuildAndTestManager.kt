@@ -219,10 +219,10 @@ class WastiBuildAndTestManager(
                     durationMs = completedAt - startedAt,
                     status = BuildStatus.SUCCESS,
                     exitCode = 0,
-                    stdout = "Kotlin/Java workspace module validated (${srcFiles.size} source files).",
+                    stdout = "Kotlin/Java workspace module statically validated (${srcFiles.size} source files).",
                     stderr = "",
                     artifacts = srcFiles.map { it.name },
-                    verificationState = "VERIFIED_KOTLIN_MODULE"
+                    verificationState = "STATICALLY_VALIDATED"
                 )
             }
             "CPP", "C", "RUST", "GO" -> {
@@ -238,7 +238,7 @@ class WastiBuildAndTestManager(
                         exitCode = 0,
                         stdout = "Compiled native binary using on-device toolchain.",
                         stderr = "",
-                        verificationState = "VERIFIED_NATIVE_TOOLCHAIN"
+                        verificationState = "BUILD_VERIFIED"
                     )
                 } else {
                     BuildResult(
@@ -264,11 +264,12 @@ class WastiBuildAndTestManager(
                     startedAt = startedAt,
                     completedAt = completedAt,
                     durationMs = completedAt - startedAt,
-                    status = BuildStatus.SUCCESS,
-                    exitCode = 0,
-                    stdout = "Project build completed for '${request.language}'.",
-                    stderr = "",
-                    verificationState = "VERIFIED_GENERIC_PROJECT"
+                    status = BuildStatus.UNAVAILABLE,
+                    exitCode = 1,
+                    stdout = "",
+                    stderr = "Unsupported build target or missing toolchain for '${request.language}'.",
+                    errors = listOf("TOOLCHAIN_UNAVAILABLE: No native build runner configured for '${request.language}'"),
+                    verificationState = "UNAVAILABLE_TOOLCHAIN_MISSING"
                 )
             }
         }
