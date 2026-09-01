@@ -2,7 +2,10 @@ package com.example.data.agent.runtime
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -12,7 +15,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.io.File
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class Stage7WastiNativeDevEnvironmentTest {
@@ -26,10 +31,17 @@ class Stage7WastiNativeDevEnvironmentTest {
     private lateinit var sandbox: WastiSandbox
     private lateinit var fabric: UnifiedExecutionFabric
     private lateinit var observationEngine: WastiObservationEngine
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        val testWorkspaceDir = File(context.filesDir, "wasti_workspace")
+        if (testWorkspaceDir.exists()) {
+            testWorkspaceDir.deleteRecursively()
+        }
+        testWorkspaceDir.mkdirs()
+
         realityRegistry = CapabilityRealityRegistry()
         workspaceManager = WorkspaceManager(context)
         runtimeManager = WastiRuntimeManager(context, workspaceManager)
@@ -43,6 +55,16 @@ class Stage7WastiNativeDevEnvironmentTest {
             appContext = context
         )
         observationEngine = WastiObservationEngine()
+    }
+
+    @After
+    fun tearDown() {
+        try {
+            val testWorkspaceDir = File(context.filesDir, "wasti_workspace")
+            if (testWorkspaceDir.exists()) {
+                testWorkspaceDir.deleteRecursively()
+            }
+        } catch (_: Exception) {}
     }
 
     // 1. Runtime Manager & Reality Status Tests
@@ -122,7 +144,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 3. Build & Test Manager Lifecycle Tests
     @Test
-    fun testBuildAndTestManagerExecution() = runBlocking {
+    fun testBuildAndTestManagerExecution() = runTest(testDispatcher) {
         // Create project first
         projectManager.createManagedProject("web_dashboard", "WEB_MARKUP", "static_page")
 
@@ -171,7 +193,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 4. Wasti Sandbox Security & Confinement Tests
     @Test
-    fun testSandboxPathEscapeBlocked() = runBlocking {
+    fun testSandboxPathEscapeBlocked() = runTest(testDispatcher) {
         val res = sandbox.executeInSandbox(
             SandboxExecutionRequest(
                 command = "sh",
@@ -187,7 +209,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 5. Unified Execution Fabric Routing Tests
     @Test
-    fun testFabricRoutingDevCapabilities() = runBlocking {
+    fun testFabricRoutingDevCapabilities() = runTest(testDispatcher) {
         // Managed Project Creation via Fabric
         val createReq = UnifiedExecutionRequest(
             taskId = "task_create_proj",
@@ -274,3 +296,4 @@ class Stage7WastiNativeDevEnvironmentTest {
         assertEquals(UnifiedExecutionStatus.VERIFIED, pkgResult.status)
     }
 }
+
