@@ -20,10 +20,13 @@ import java.util.Locale
  * can run concurrently through [observeAll].
  */
 class WastiObservationEngine(
-    private val realityRegistry: CapabilityRealityRegistry = CapabilityRealityRegistry(),
+    private val realityRegistry: CapabilityRealityRegistry? = null,
     private val appContext: Context? = null,
     private val deviceObservationDelayMs: Long = DEFAULT_DEVICE_OBSERVATION_DELAY_MS
 ) {
+    private val effectiveRegistry: CapabilityRealityRegistry
+        get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry
+
     init {
         require(deviceObservationDelayMs >= 0L) { "deviceObservationDelayMs must not be negative" }
     }
@@ -49,8 +52,8 @@ class WastiObservationEngine(
         observationBlockedByExecutionState(request, executorResult)?.let { return it }
 
         val capabilityId = normalizeCapabilityId(request.capabilityId)
-        val category = realityRegistry.get(request.capabilityId)?.category?.uppercase(Locale.ROOT)
-            ?: realityRegistry.get(capabilityId)?.category?.uppercase(Locale.ROOT)
+        val category = effectiveRegistry.get(request.capabilityId)?.category?.uppercase(Locale.ROOT)
+            ?: effectiveRegistry.get(capabilityId)?.category?.uppercase(Locale.ROOT)
 
         return when {
             capabilityId in FILESYSTEM_CAPABILITIES || category == "FILESYSTEM" || category == "FILES" ->

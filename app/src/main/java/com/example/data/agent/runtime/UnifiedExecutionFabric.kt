@@ -85,10 +85,12 @@ class UnifiedExecutionFabric(
     val eventBus: AgentEventBus? = null,
     val auditEngine: RealityAuditEngine? = null,
     val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
-    val observationEngine: WastiObservationEngine = WastiObservationEngine(),
-    val verificationEngine: WastiVerificationEngine = WastiVerificationEngine(),
+    observationEngine: WastiObservationEngine? = null,
+    verificationEngine: WastiVerificationEngine? = null,
     val appContext: Context? = null
 ) {
+    val observationEngine: WastiObservationEngine = observationEngine ?: WastiObservationEngine(realityRegistry = realityRegistry, appContext = appContext)
+    val verificationEngine: WastiVerificationEngine = verificationEngine ?: WastiVerificationEngine()
     private val customExecutors = ConcurrentHashMap<String, UnifiedExecutor>()
     private val activeExecutionHashes = ConcurrentHashMap.newKeySet<String>()
 

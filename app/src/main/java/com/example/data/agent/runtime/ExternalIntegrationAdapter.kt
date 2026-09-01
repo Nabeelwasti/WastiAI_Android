@@ -460,7 +460,7 @@ class SystemInfoIntegrationAdapter(
     override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
 
     override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
-        val registry = CapabilityRealityRegistry()
+        val registry = UnifiedExecutionFabric.instance.realityRegistry
         val allCaps = registry.getSystemRealityReport()
         val verifiedCount = allCaps.count { it.liveConnectionStatus == LiveConnectionStatus.VERIFIED }
         val accActive = com.example.service.WastiAccessibilityService.isServiceActive

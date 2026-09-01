@@ -30,8 +30,10 @@ data class RecoveryPlan(
 )
 
 class RecoveryPlanner(
-    private val realityRegistry: CapabilityRealityRegistry = CapabilityRealityRegistry()
+    private val realityRegistry: CapabilityRealityRegistry? = null
 ) {
+    private val registry: CapabilityRealityRegistry
+        get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry
 
     /**
      * Synthesizes a RecoveryPlan based on execution error, status, and capability reality.
@@ -104,7 +106,7 @@ class RecoveryPlanner(
             }
 
             else -> {
-                val reality = realityRegistry.get(failedRequest.capabilityId)
+                val reality = registry.get(failedRequest.capabilityId)
                 val fallback = reality?.fallbackCapabilities?.firstOrNull()
                 if (fallback != null) {
                     RecoveryPlan(

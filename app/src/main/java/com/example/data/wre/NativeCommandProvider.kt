@@ -748,9 +748,9 @@ class NativeCommandProvider(
                         exitCode = 0
                         verified = true
                     } else {
-                        stdout.append("Python executed: ${args.joinToString(" ")}")
-                        exitCode = 0
-                        verified = true
+                        stderr.append("python3: can't open file '${args.last()}': [Errno 2] No such file or directory. Python runtime is not currently available on this device.")
+                        exitCode = 127
+                        verified = false
                     }
                 }
             }
@@ -767,9 +767,9 @@ class NativeCommandProvider(
                         exitCode = 0
                         verified = true
                     } else {
-                        stdout.append("Node.js executed: ${args.joinToString(" ")}")
-                        exitCode = 0
-                        verified = true
+                        stderr.append("node: cannot find module '${args.last()}'. Node runtime is not currently available on this device.")
+                        exitCode = 127
+                        verified = false
                     }
                 }
             }
