@@ -87,18 +87,10 @@ android {
 
   sourceSets {
     getByName("main") {
-      java.srcDirs(
-        "src/main/java",
-        "src/main/kotlin",
-        "build/generated/ksp/main/kotlin",
-        "build/generated/ksp/main/java"
-      )
+      java.srcDir("src/main/kotlin")
     }
     getByName("test") {
-      java.srcDirs(
-        "src/test/java",
-        "src/test/kotlin"
-      )
+      java.srcDir("src/test/kotlin")
     }
   }
 }
