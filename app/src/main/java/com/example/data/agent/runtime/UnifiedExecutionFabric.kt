@@ -314,11 +314,15 @@ class UnifiedExecutionFabric(
             eventBus?.emit(AgentEvent.ToolStarted(taskId, request.capabilityId))
 
             val execResult = try {
-                val customExec = customExecutors[normalizedCapabilityId(request.capabilityId)]
-                if (customExec != null) {
-                    customExec.execute(request, ctx)
-                } else {
-                    executeBuiltIn(request, ctx)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    kotlinx.coroutines.withTimeout(request.timeoutMs) {
+                        val customExec = customExecutors[normalizedCapabilityId(request.capabilityId)]
+                        if (customExec != null) {
+                            customExec.execute(request, ctx)
+                        } else {
+                            executeBuiltIn(request, ctx)
+                        }
+                    }
                 }
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 createResult(

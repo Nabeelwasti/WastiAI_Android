@@ -94,7 +94,7 @@ class WastiNativeExecutionProvider(
         }
 
         // 3. Python Runtime Detection
-        val pythonPaths = listOf("/usr/bin/python3", "/bin/python3", "/usr/local/bin/python3", "/system/bin/python3", "/system/bin/python", "/data/local/tmp/python3")
+        val pythonPaths = listOf("/system/bin/python3", "/system/bin/python", "/data/local/tmp/python3")
         val foundPython = pythonPaths.find { File(it).exists() }
         if (foundPython != null) {
             runtimes["PYTHON_RUNTIME"] = RuntimeInfo(
@@ -114,7 +114,7 @@ class WastiNativeExecutionProvider(
         }
 
         // 4. Node.js Runtime Detection
-        val nodePaths = listOf("/usr/bin/node", "/bin/node", "/usr/local/bin/node", "/system/bin/node", "/data/local/tmp/node")
+        val nodePaths = listOf("/system/bin/node", "/data/local/tmp/node")
         val foundNode = nodePaths.find { File(it).exists() }
         if (foundNode != null) {
             runtimes["NODE_RUNTIME"] = RuntimeInfo(

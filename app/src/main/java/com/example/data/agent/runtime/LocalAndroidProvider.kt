@@ -73,10 +73,6 @@ class LocalAndroidProvider(
             directory(targetDirectory)
             // Sanitize environment overrides
             val env = environment()
-            val currentPath = env["PATH"] ?: ""
-            val standardPaths = listOf("/usr/bin", "/bin", "/usr/local/bin", "/system/bin", "/system/xbin")
-            val newPathParts = (standardPaths + currentPath.split(":")).filter { it.isNotBlank() }.distinct()
-            env["PATH"] = newPathParts.joinToString(":")
             request.environment.forEach { (key, value) ->
                 if (!DISALLOWED_ENV_KEYS.contains(key.uppercase())) {
                     env[key] = value
