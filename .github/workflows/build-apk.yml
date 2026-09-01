@@ -7,11 +7,18 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
+    env:
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m'
 
     steps:
     - name: Checkout Repository
@@ -80,7 +87,7 @@ jobs:
         echo "Successfully generated .env file for build."
 
     - name: Run Unit Tests
-      run: gradle testDebugUnitTest --stacktrace
+      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace
 
     - name: Run Android Lint
       run: gradle lintDebug --stacktrace
