@@ -313,6 +313,13 @@ class WastiWebSocketServer private constructor(
         val type = json.optString("type", "UNKNOWN").uppercase()
 
         when (type) {
+            "PING" -> {
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "PONG")
+                    put("timestamp", System.currentTimeMillis())
+                }.toString())
+            }
+
             "AUTHENTICATE" -> {
                 val token = json.optString("token", "")
                 val deviceId = json.optString("deviceId", session.deviceId ?: "")
