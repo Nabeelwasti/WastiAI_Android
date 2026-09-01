@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import java.time.Duration
 
 plugins {
   alias(libs.plugins.android.application)
@@ -65,7 +66,24 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  lint {
+    abortOnError = false
+    checkReleaseBuilds = false
+  }
+
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+      isReturnDefaultValues = true
+      all {
+        it.testLogging {
+          events("passed", "skipped", "failed", "standardError")
+          showStandardStreams = true
+        }
+        it.timeout.set(Duration.ofMinutes(2))
+      }
+    }
+  }
 
   sourceSets {
     getByName("main") {

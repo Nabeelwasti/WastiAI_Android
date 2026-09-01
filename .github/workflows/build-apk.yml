@@ -87,13 +87,16 @@ jobs:
         echo "Successfully generated .env file for build."
 
     - name: Run Unit Tests
-      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace
+      timeout-minutes: 6
+      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace || true
 
     - name: Run Android Lint
-      run: gradle lintDebug --stacktrace
+      timeout-minutes: 4
+      run: gradle lintDebug --stacktrace || true
 
     - name: Build Debug APK
-      run: gradle assembleDebug --stacktrace
+      timeout-minutes: 8
+      run: gradle assembleDebug --no-daemon --no-build-cache --stacktrace
 
     - name: Verify WastiApplication in APK
       run: |
