@@ -108,7 +108,7 @@ jobs:
 
         for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
           echo "Checking $DEX..."
-          if unzip -p "$APK" "$DEX" | strings | grep -q "WastiApplication"; then
+          if unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
             echo "SUCCESS: WastiApplication found in $DEX"
             FOUND=1
           fi
@@ -128,6 +128,7 @@ jobs:
         path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Create or Update GitHub Release
+      if: github.event_name != 'pull_request'
       uses: ncipollo/release-action@v1
       with:
         artifacts: "app/build/outputs/apk/debug/app-debug.apk"
