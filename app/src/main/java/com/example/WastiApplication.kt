@@ -3,6 +3,7 @@ package com.example
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -10,6 +11,7 @@ import com.example.assistant.sync.SyncWorker
 import com.example.data.core.AppStartupManager
 import com.example.data.core.StartupStage
 import com.example.data.db.WastiDatabase
+import com.example.data.worker.WastiWorkManagerHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -19,12 +21,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
-class WastiApplication : Application() {
+class WastiApplication : Application(), Configuration.Provider {
 
     companion object {
         var instance: WastiApplication? = null
             private set
     }
+
+    override fun getWorkManagerConfiguration(): Configuration = Configuration.Builder()
+        .setMinimumLoggingLevel(Log.INFO)
+        .build()
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
@@ -141,16 +147,20 @@ class WastiApplication : Application() {
                             com.example.data.core.LeadRadarRepository.initDatabase(this@WastiApplication)
                             com.example.data.core.ClientInvoiceManager.initDatabase(this@WastiApplication)
 
-                            val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(4, TimeUnit.HOURS).build()
-                            WorkManager.getInstance(this@WastiApplication).enqueueUniquePeriodicWork(
-                                "wasti_sync_worker",
-                                ExistingPeriodicWorkPolicy.KEEP,
-                                syncRequest
-                            )
-
-                            com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
-                            com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
-                            com.example.data.worker.ProactiveReconciliationWorker.schedulePeriodicReconciliation(this@WastiApplication)
+                            val wm = WastiWorkManagerHelper.getWorkManager(this@WastiApplication)
+                            if (wm != null) {
+                                val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(4, TimeUnit.HOURS).build()
+                                wm.enqueueUniquePeriodicWork(
+                                    "wasti_sync_worker",
+                                    ExistingPeriodicWorkPolicy.KEEP,
+                                    syncRequest
+                                )
+                                com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
+                                com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
+                                com.example.data.worker.ProactiveReconciliationWorker.schedulePeriodicReconciliation(this@WastiApplication)
+                            } else {
+                                AppStartupManager.recordWarning(StartupStage.SYNC_WORKER, "WorkManager unavailable on host environment")
+                            }
                         } catch (e: Throwable) {
                             Log.e("WastiApplication", "Failed to schedule SyncWorker safely", e)
                             AppStartupManager.recordWarning(StartupStage.SYNC_WORKER, "Sync worker deferred: ${e.message}")

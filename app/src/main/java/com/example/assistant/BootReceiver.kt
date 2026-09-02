@@ -24,7 +24,10 @@ class BootReceiver : BroadcastReceiver() {
             if (context == null) return
 
             WastiServiceLocator.init(context)
-            ProactiveReconciliationWorker.schedulePeriodicReconciliation(context)
+            val scheduled = ProactiveReconciliationWorker.schedulePeriodicReconciliation(context)
+            if (!scheduled) {
+                Log.w("BootReceiver", "WorkManager reconciliation worker deferred; foreground daemon will handle active recovery.")
+            }
             WastiForegroundExecutionService.startDaemon(context)
 
             CoroutineScope(Dispatchers.IO).launch {

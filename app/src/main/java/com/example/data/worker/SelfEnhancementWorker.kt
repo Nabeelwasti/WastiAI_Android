@@ -34,8 +34,12 @@ class SelfEnhancementWorker(
         private const val TAG = "SelfEnhancementWorker"
         const val WORK_NAME = "wasti_self_enhancement_24h_worker"
 
-        fun schedulePeriodicSelfEnhancement(context: Context) {
-            try {
+        fun schedulePeriodicSelfEnhancement(context: Context): Boolean {
+            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+                Log.w(TAG, "SelfEnhancementWorker scheduling deferred: WorkManager unavailable in environment.")
+                return false
+            }
+            return try {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
@@ -46,14 +50,16 @@ class SelfEnhancementWorker(
                     .setConstraints(constraints)
                     .build()
 
-                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                wm.enqueueUniquePeriodicWork(
                     WORK_NAME,
                     ExistingPeriodicWorkPolicy.KEEP,
                     request
                 )
                 Log.i(TAG, "SelfEnhancementWorker scheduled successfully for 24h interval.")
+                true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule SelfEnhancementWorker", e)
+                false
             }
         }
     }

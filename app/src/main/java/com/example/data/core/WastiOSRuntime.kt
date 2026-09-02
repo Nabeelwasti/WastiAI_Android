@@ -420,8 +420,8 @@ class WastiOSRuntime(
             val loopResult = safeAgentRuntime.executeTask(task.taskId)
             val duration = System.currentTimeMillis() - startTime
 
-            isSuccess = loopResult.isSuccess
-            outputSummary = loopResult.executionSummary
+            var taskSuccess = loopResult.isSuccess
+            var finalSummary = loopResult.executionSummary
             
             // Reconcile and execute through Canonical Universal Execution Loop for objective verification evidence
             val autoLoopResult = try {
@@ -432,6 +432,23 @@ class WastiOSRuntime(
             } catch (e: Exception) {
                 null
             }
+
+            if (autoLoopResult != null) {
+                if (autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.COMPLETED || autoLoopResult.isVerified) {
+                    taskSuccess = true
+                    if (autoLoopResult.finalOutput.isNotBlank()) {
+                        finalSummary = autoLoopResult.finalOutput
+                    }
+                } else if (autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.FAILED) {
+                    taskSuccess = false
+                    if (autoLoopResult.finalOutput.isNotBlank()) {
+                        finalSummary = autoLoopResult.finalOutput
+                    }
+                }
+            }
+
+            isSuccess = taskSuccess
+            outputSummary = finalSummary
 
             evidence = if (autoLoopResult != null && autoLoopResult.isVerified) {
                 autoLoopResult.verificationEvidence ?: "Objective verification passed: ${autoLoopResult.finalOutput.take(120)}"

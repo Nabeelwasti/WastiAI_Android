@@ -1153,8 +1153,8 @@ class UnifiedExecutionFabric(
                 resultStr = if (isSuccess) "Successfully appended ${content.length} characters to $path" else ""
                 errorMsg = appRes.exceptionOrNull()?.message
             }
-            "list_files", "list" -> {
-                val listRes = wm.listDirectory(path)
+            "list_files", "list", "files", "ls", "dir" -> {
+                val listRes = wm.listDirectory(path.ifBlank { "." })
                 isSuccess = listRes.isSuccess
                 resultStr = listRes.getOrNull()?.joinToString("\n") ?: ""
                 errorMsg = listRes.exceptionOrNull()?.message

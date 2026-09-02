@@ -32,8 +32,12 @@ class LeadSyncWorker(
         private const val TAG = "LeadSyncWorker"
         const val WORK_NAME = "wasti_lead_and_invoice_sync_worker"
 
-        fun schedulePeriodicSync(context: Context) {
-            try {
+        fun schedulePeriodicSync(context: Context): Boolean {
+            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+                Log.w(TAG, "LeadSyncWorker scheduling deferred: WorkManager unavailable in environment.")
+                return false
+            }
+            return try {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
@@ -44,14 +48,16 @@ class LeadSyncWorker(
                     .setConstraints(constraints)
                     .build()
 
-                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                wm.enqueueUniquePeriodicWork(
                     WORK_NAME,
                     ExistingPeriodicWorkPolicy.KEEP,
                     syncRequest
                 )
                 Log.i(TAG, "Lead & Stripe Invoice periodic WorkManager worker scheduled successfully.")
+                true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule LeadSyncWorker", e)
+                false
             }
         }
     }

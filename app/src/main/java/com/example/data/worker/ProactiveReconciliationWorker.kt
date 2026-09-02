@@ -31,8 +31,12 @@ class ProactiveReconciliationWorker(
         private const val TAG = "ProactiveReconciliationWorker"
         const val WORK_NAME = "wasti_proactive_reconciliation_worker"
 
-        fun schedulePeriodicReconciliation(context: Context) {
-            try {
+        fun schedulePeriodicReconciliation(context: Context): Boolean {
+            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+                Log.w(TAG, "ProactiveReconciliationWorker scheduling deferred: WorkManager unavailable in environment.")
+                return false
+            }
+            return try {
                 val constraints = Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
                     .build()
@@ -43,14 +47,16 @@ class ProactiveReconciliationWorker(
                     .setConstraints(constraints)
                     .build()
 
-                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                wm.enqueueUniquePeriodicWork(
                     WORK_NAME,
                     ExistingPeriodicWorkPolicy.KEEP,
                     request
                 )
                 Log.i(TAG, "ProactiveReconciliationWorker scheduled successfully (15m interval).")
+                true
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule ProactiveReconciliationWorker", e)
+                false
             }
         }
 

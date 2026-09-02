@@ -104,8 +104,8 @@ class AndroidTTSSpeechProvider(private val context: Context? = null) : SpeechPro
         }
 
         val locale = when (request.language) {
-            SpeechLanguage.URDU, SpeechLanguage.ROMAN_URDU -> Locale("ur", "PK")
-            SpeechLanguage.PUNJABI -> Locale("pa", "PK")
+            SpeechLanguage.URDU, SpeechLanguage.ROMAN_URDU -> Locale.Builder().setLanguage("ur").setRegion("PK").build()
+            SpeechLanguage.PUNJABI -> Locale.Builder().setLanguage("pa").setRegion("PK").build()
             else -> Locale.US
         }
 

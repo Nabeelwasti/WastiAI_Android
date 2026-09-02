@@ -85,12 +85,12 @@ android {
     }
   }
 
-  sourceSets {
-    getByName("main") {
-      java.srcDir("src/main/kotlin")
+  packaging {
+    resources {
+      excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST", "/META-INF/DEPENDENCIES")
     }
-    getByName("test") {
-      java.srcDir("src/test/kotlin")
+    jniLibs {
+      keepDebugSymbols += "**/libjnidispatch.so"
     }
   }
 }
