@@ -46,4 +46,11 @@ class Stage18AuditRemediationTest {
         assertNotNull(GmailOAuthService)
         assertNotNull(LinkedInOAuthService)
     }
+
+    @Test
+    fun testMemoryManagerObservability() {
+        val stats = MemoryManager.getObservabilityStats()
+        assertNotNull(stats)
+        assertTrue(stats.totalVectorsIndexed >= 0)
+    }
 }
