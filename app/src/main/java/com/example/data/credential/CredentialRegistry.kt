@@ -523,17 +523,6 @@ object CredentialRegistry {
             }
         ),
         CredentialEntry(
-            keyName = "GOOGLE_ACCOUNT_PASSWORD",
-            displayName = "Google Account Password (Legacy/Optional)",
-            category = CredentialCategory.AUTOMATION_COMMS,
-            isDefaultActive = false,
-            description = "Optional Google Account Password. Note: Google requires App Passwords or OAuth for API access.",
-            testConnection = { value ->
-                if (value.isBlank()) Pair(false, "Not Configured (Optional)")
-                else Pair(true, "Stored (App Password Recommended)")
-            }
-        ),
-        CredentialEntry(
             keyName = "ELEVENLABS_API_KEY",
             displayName = "ElevenLabs Neural Voice API Key",
             category = CredentialCategory.AUTOMATION_COMMS,

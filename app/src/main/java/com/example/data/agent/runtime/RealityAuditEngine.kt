@@ -22,7 +22,7 @@ class RealityAuditEngine(
 ) {
 
     private fun isSystemNetworkConnected(): Boolean {
-        val ctx = CredentialRegistry.appContext ?: return true // Default fallback if context not yet initialized
+        val ctx = CredentialRegistry.appContext ?: com.example.WastiApplication.instance ?: return false // Fail-closed when context unavailable
         return try {
             val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val activeNetwork = cm?.activeNetwork
@@ -39,14 +39,15 @@ class RealityAuditEngine(
         val systemNetworkOnline = isSystemNetworkConnected()
 
         for (r in realities) {
-            val isNetworkCapability = r.capabilityId in listOf("search_web", "gemini_pro", "cloud_deployment", "github_sync", "api_client", "websocket_mesh")
+            val isNetworkCapability = r.capabilityId in listOf("search_web", "gemini_pro", "cloud_deployment", "github_sync", "api_client", "websocket_mesh", "B2B_XRAY", "LEAD_RADAR", "WEB_RESEARCH_SCRAPER")
             val networkAvailable = if (isNetworkCapability) systemNetworkOnline else true
             val authPresent = if (r.authenticationStatus == CapabilityAuthStatus.NOT_REQUIRED) {
                 true
             } else {
                 credentialBroker.hasValidCredentials(r.capabilityId) || r.authenticationStatus == CapabilityAuthStatus.AUTHENTICATED
             }
-            val liveSuccess = r.liveConnectionStatus == LiveConnectionStatus.VERIFIED
+            val liveRequestOk = r.liveConnectionStatus == LiveConnectionStatus.VERIFIED
+            val liveActionOk = liveRequestOk && r.realityState == CapabilityRealityState.LIVE_CONNECTED
 
             val status = ConnectivityStatus(
                 capabilityId = r.capabilityId,
@@ -54,8 +55,8 @@ class RealityAuditEngine(
                 configPresent = r.provider != "None" && r.provider.isNotBlank(),
                 authPresent = authPresent,
                 networkAvailable = networkAvailable,
-                liveRequestSuccessful = liveSuccess,
-                liveActionSuccessful = liveSuccess,
+                liveRequestSuccessful = liveRequestOk,
+                liveActionSuccessful = liveActionOk,
                 summaryRealityState = r.realityState
             )
             report.add(status)

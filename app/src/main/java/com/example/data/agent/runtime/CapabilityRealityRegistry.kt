@@ -83,13 +83,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "FILES",
                 category = "STORAGE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WorkspaceManager",
                 supportedOperations = listOf("read_file", "write_file", "list_files", "delete_file"),
                 limitations = listOf("Restricted to workspace boundary"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -99,13 +99,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "TERMINAL",
                 category = "EXECUTION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "LocalAndroidProvider",
                 supportedOperations = listOf("execute_code", "run_script"),
                 limitations = listOf("Sandboxed execution environment"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -115,13 +115,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "device_control",
                 category = "AUTOMATION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiDeviceController",
                 supportedOperations = listOf("open_app", "send_whatsapp", "send_email", "send_sms", "read_screen", "simulate_tap"),
                 limitations = listOf("Requires accessibility service for node clicking"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -131,13 +131,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "memory_search",
                 category = "MEMORY",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "MemoryManager",
                 supportedOperations = listOf("hybridSearch"),
                 limitations = emptyList(),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -147,13 +147,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "SYSTEM_INFO",
                 category = "INSPECTION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiEnvironmentInspector",
                 supportedOperations = listOf("get_system_info", "inspect_environment", "get_status"),
                 limitations = emptyList(),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -163,13 +163,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "search_web",
                 category = "INTELLIGENCE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WebSearchEngine",
                 supportedOperations = listOf("search", "read_web_page", "b2b_xray_search"),
                 limitations = listOf("Network dependent"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -259,13 +259,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "PROJECT_DEV_MANAGER",
                 category = "DEVELOPMENT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiProjectManager",
                 supportedOperations = listOf("create_project", "create_managed_project", "inspect_project", "list_projects", "delete_project", "scan_languages", "get_language_profile"),
                 limitations = listOf("Projects created inside sandboxed wasti_workspace"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -275,13 +275,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "BUILD_MANAGER",
                 category = "DEVELOPMENT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiBuildAndTestManager",
                 supportedOperations = listOf("build_project", "compile_project"),
                 limitations = listOf("Builds validated within workspace; compiled languages check toolchain availability"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -291,13 +291,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "TEST_RUNNER",
                 category = "DEVELOPMENT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiBuildAndTestManager",
                 supportedOperations = listOf("test_project", "run_tests"),
                 limitations = listOf("Discovers and executes workspace tests"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -307,13 +307,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "DEBUG_DIAGNOSTICS",
                 category = "DEVELOPMENT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiBuildAndTestManager",
                 supportedOperations = listOf("debug_project", "analyze_diagnostics"),
                 limitations = listOf("Analyzes compiler errors and stack traces without fabricating debug protocols"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -323,13 +323,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "PACKAGE_MANAGER",
                 category = "DEVELOPMENT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiRuntimeManager",
                 supportedOperations = listOf("resolve_package", "install_package", "list_packages"),
                 limitations = listOf("Resolves packages for discovered language runtimes"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -339,13 +339,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "WASTI_SANDBOX",
                 category = "SECURITY",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiSandbox",
                 supportedOperations = listOf("execute_in_sandbox", "enforce_resource_limits", "enforce_network_policy"),
                 limitations = listOf("Confines execution to workspace with emergency stop, timeout and resource limit controls"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -355,13 +355,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "NAVIGATE_TO",
                 category = "ACTION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiAppActionBus",
                 supportedOperations = listOf("navigate_to", "open_screen", "navigate"),
                 limitations = listOf("Dispatches navigation commands through canonical WastiAppActionBus"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -371,13 +371,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "LOCAL_SERVER",
                 category = "TRANSPORT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiLocalServerManager",
                 supportedOperations = listOf("start_server", "stop_server", "server_status"),
                 limitations = listOf("Binds local HTTP/WS bridge to localhost or network interface"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -387,13 +387,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "PYTHON_BRIDGE",
                 category = "BRIDGE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiNativeBridgeManager",
                 supportedOperations = listOf("run_python_script", "execute_python"),
                 limitations = listOf("Dispatches execution to native Python runtime via WRE workspace"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -403,13 +403,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "TERMUX_BRIDGE",
                 category = "BRIDGE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiNativeBridgeManager",
                 supportedOperations = listOf("execute_termux_command"),
                 limitations = listOf("Integrates with Termux CLI via intents and socket bridge"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -419,13 +419,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "B2B_XRAY",
                 category = "RESEARCH",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiCore",
                 supportedOperations = listOf("b2b_xray_search", "analyze_prospects", "enrich_company"),
                 limitations = listOf("Dispatches real market and enterprise intelligence queries"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -435,13 +435,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "LEAD_RADAR",
                 category = "RESEARCH",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "LeadRadarRepository",
                 supportedOperations = listOf("lead_radar_search", "find_leads", "scan_opportunities"),
                 limitations = listOf("Dispatches structured real-time lead radar scans"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -451,13 +451,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "SCREEN_ACCESSIBILITY",
                 category = "AUTOMATION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiDeviceController",
                 supportedOperations = listOf("device_screen_read", "device_screen_tap", "inspect_screen_elements"),
                 limitations = listOf("Requires Android accessibility service permission when accessing external apps"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -467,13 +467,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "DRAFT_PERSISTENCE",
                 category = "COMMUNICATION",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "DraftPersistenceManager",
                 supportedOperations = listOf("save_draft", "get_drafts", "email_draft_creation", "linkedin_draft_creation"),
                 limitations = listOf("Persists verified drafts locally and bridges with verified OAuth providers"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -483,13 +483,13 @@ class CapabilityRealityRegistry {
                 capabilityId = "WEB_RESEARCH_SCRAPER",
                 category = "RESEARCH",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WebSearchEngine",
                 supportedOperations = listOf("web_search", "web_scraping", "fetch_url_content"),
                 limitations = listOf("Executes real network requests without fabricating results"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
     }
@@ -507,13 +507,13 @@ class CapabilityRealityRegistry {
                 capabilityId = capabilityId,
                 category = "DYNAMIC_WRE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WreDynamicToolProvider",
                 supportedOperations = listOf("execute"),
                 limitations = emptyList(),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         }
 
@@ -589,6 +589,34 @@ class CapabilityRealityRegistry {
             "Capability ID must not be blank."
         }
         capabilityMap[normalizedKey(capability.capabilityId)] = capability
+    }
+
+    /**
+     * Updates capability reality based on an observed and verified ExecutionFact.
+     * Replaces optimistic assumptions with factual post-execution truth.
+     */
+    fun recordExecutionFact(fact: ExecutionFact) {
+        val key = normalizedKey(fact.capabilityId)
+        val existing = getCapabilityReality(fact.capabilityId)
+        if (fact.isVerifiedSuccess) {
+            val updated = existing.copy(
+                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                realityState = CapabilityRealityState.LIVE_CONNECTED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                lastVerifiedAt = fact.completedAt,
+                verificationMethod = "EXECUTION_FACT_VERIFIED"
+            )
+            capabilityMap[key] = updated
+        } else if (fact.terminalTruthState == TerminalTruthState.EXECUTION_FAILED || fact.terminalTruthState == TerminalTruthState.VERIFICATION_FAILED) {
+            val updated = existing.copy(
+                liveConnectionStatus = LiveConnectionStatus.FAILED,
+                realityState = CapabilityRealityState.FAILED,
+                executionStatus = CapabilityExecutionStatus.DEGRADED,
+                lastVerifiedAt = fact.completedAt,
+                verificationMethod = "EXECUTION_FACT_FAILED"
+            )
+            capabilityMap[key] = updated
+        }
     }
 
     /**

@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "/opt/gradle/gradle-9.3.1/bin/gradle assembleDebug",
-    "lint": "/opt/gradle/gradle-9.3.1/bin/gradle lintDebug",
-    "test": "/opt/gradle/gradle-9.3.1/bin/gradle testDebugUnitTest"
+    "build": "gradle assembleDebug",
+    "lint": "gradle lintDebug",
+    "test": "gradle testDebugUnitTest"
   }
 }
+
