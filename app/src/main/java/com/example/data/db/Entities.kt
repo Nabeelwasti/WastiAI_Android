@@ -186,7 +186,10 @@ data class InvoiceEntity(
 
 @Entity(
     tableName = "prospects",
-    indices = [Index(value = ["status"])]
+    indices = [
+        Index(value = ["status"]),
+        Index(value = ["timestamp"])
+    ]
 )
 data class ProspectEntity(
     @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
@@ -329,7 +332,13 @@ data class ReusableWorkflowEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "execution_audits")
+@Entity(
+    tableName = "execution_audits",
+    indices = [
+        Index(value = ["taskId"]),
+        Index(value = ["timestamp"])
+    ]
+)
 data class ExecutionAuditEntity(
     @PrimaryKey val auditId: String,
     val taskId: String,

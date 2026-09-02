@@ -63,7 +63,7 @@ object LeadScraperEngine {
                     val tagName = parser.name
                     when (eventType) {
                         XmlPullParser.START_TAG -> {
-                            if (tagName.equals("item", ignoreCase = true)) {
+                            if (tagName.equals("item", ignoreCase = true) || tagName.equals("entry", ignoreCase = true)) {
                                 insideItem = true
                                 currentTitle = ""
                                 currentLink = ""
@@ -72,14 +72,18 @@ object LeadScraperEngine {
                             } else if (insideItem) {
                                 when (tagName.lowercase()) {
                                     "title" -> currentTitle = safeNextText(parser)
-                                    "link" -> currentLink = safeNextText(parser)
-                                    "description" -> currentDescription = cleanHtml(safeNextText(parser))
-                                    "pubdate" -> currentPubDate = safeNextText(parser)
+                                    "link" -> {
+                                        val href = parser.getAttributeValue(null, "href")
+                                        val text = safeNextText(parser)
+                                        currentLink = if (!href.isNullOrBlank()) href else text
+                                    }
+                                    "description", "summary", "content" -> currentDescription = cleanHtml(safeNextText(parser))
+                                    "pubdate", "published", "updated" -> currentPubDate = safeNextText(parser)
                                 }
                             }
                         }
                         XmlPullParser.END_TAG -> {
-                            if (tagName.equals("item", ignoreCase = true) && insideItem) {
+                            if ((tagName.equals("item", ignoreCase = true) || tagName.equals("entry", ignoreCase = true)) && insideItem) {
                                 insideItem = false
                                 if (currentTitle.isNotBlank() || currentDescription.isNotBlank()) {
                                     leads.add(

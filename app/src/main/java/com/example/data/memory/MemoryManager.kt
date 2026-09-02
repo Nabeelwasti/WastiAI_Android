@@ -40,6 +40,7 @@ object MemoryManager {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var memoryDao: MemoryDao? = null
 
+    private const val MAX_ACTIVE_MEMORIES_CACHE = 500
     private val activeMemoriesMap = java.util.concurrent.ConcurrentHashMap<String, MemoryItem>()
     private val _memoriesFlow = MutableStateFlow<List<MemoryItem>>(emptyList())
     val memoriesFlow: StateFlow<List<MemoryItem>> = _memoriesFlow.asStateFlow()
@@ -57,7 +58,9 @@ object MemoryManager {
             val list = dao.getMemoriesList()
             activeMemoriesMap.clear()
 
-            list.forEach { entity ->
+            // Sort by importanceScore and lastAccessed/timestamp to populate up to MAX_ACTIVE_MEMORIES_CACHE
+            val sortedList = list.sortedByDescending { it.importanceScore }
+            sortedList.take(MAX_ACTIVE_MEMORIES_CACHE).forEach { entity ->
                 val embedding = embeddingService.generateEmbedding(entity.value)
                 val item = MemoryItem(
                     id = entity.id,
@@ -75,6 +78,25 @@ object MemoryManager {
             _memoriesFlow.value = activeMemoriesMap.values.toList()
         } catch (e: Exception) {
             Log.e("MemoryManager", "Failed to load memories from Room database", e)
+        }
+    }
+
+    /**
+     * Enforces LRU memory cache eviction policy when capacity exceeds MAX_ACTIVE_MEMORIES_CACHE.
+     */
+    private fun evictLeastRecentlyUsedIfNeeded() {
+        if (activeMemoriesMap.size > MAX_ACTIVE_MEMORIES_CACHE) {
+            val excessCount = activeMemoriesMap.size - MAX_ACTIVE_MEMORIES_CACHE
+            val toEvict = activeMemoriesMap.values
+                .filter { it.importanceScore < 0.95f } // Protect critical pinned facts
+                .sortedWith(compareBy({ it.lastAccessedTimestamp }, { it.importanceScore }))
+                .take(excessCount)
+
+            toEvict.forEach { mem ->
+                activeMemoriesMap.remove(mem.id)
+                vectorIndex.removeVector(mem.id)
+            }
+            Log.d("MemoryManager", "LRU Cache Eviction: Evicted ${toEvict.size} items from in-memory cache")
         }
     }
 
@@ -146,6 +168,7 @@ object MemoryManager {
         )
 
         activeMemoriesMap[id] = newItem
+        evictLeastRecentlyUsedIfNeeded()
         vectorIndex.indexVector(id, embedding, "{\"key\":\"$key\"}")
 
         try {

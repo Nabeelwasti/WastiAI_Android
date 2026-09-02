@@ -46,6 +46,67 @@ object GmailOAuthService {
         prefs.edit().putString("gmail_oauth_access_token", token.trim()).apply()
     }
 
+    fun getRefreshToken(context: Context?): String? {
+        if (context != null) {
+            val prefs = CredentialRegistry.getSecureSharedPreferences(context)
+            val token = prefs.getString("gmail_oauth_refresh_token", null)
+            if (!token.isNullOrBlank()) return token
+        }
+        return CredentialRegistry.getRawValue("GMAIL_OAUTH_REFRESH_TOKEN", context)
+            ?: CredentialRegistry.getRawValue("GOOGLE_REFRESH_TOKEN", context)
+    }
+
+    fun saveRefreshToken(context: Context, refreshToken: String) {
+        val prefs = CredentialRegistry.getSecureSharedPreferences(context)
+        prefs.edit().putString("gmail_oauth_refresh_token", refreshToken.trim()).apply()
+    }
+
+    /**
+     * Refreshes the Gmail/Google OAuth access token using the stored refresh token.
+     */
+    suspend fun refreshAccessToken(context: Context?): String? = withContext(Dispatchers.IO) {
+        val refreshToken = getRefreshToken(context) ?: return@withContext null
+        val clientId = CredentialRegistry.getRawValue("DRIVE_CLIENT_ID", context)
+            ?: CredentialRegistry.getRawValue("GOOGLE_WEB_CLIENT_ID", context)
+            ?: return@withContext null
+        val clientSecret = CredentialRegistry.getRawValue("DRIVE_CLIENT_SECRET", context) ?: ""
+
+        try {
+            val formBuilder = okhttp3.FormBody.Builder()
+                .add("client_id", clientId)
+                .add("refresh_token", refreshToken)
+                .add("grant_type", "refresh_token")
+            if (clientSecret.isNotBlank()) {
+                formBuilder.add("client_secret", clientSecret)
+            }
+
+            val request = Request.Builder()
+                .url("https://oauth2.googleapis.com/token")
+                .post(formBuilder.build())
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val json = JSONObject(body)
+                    val newAccessToken = json.optString("access_token", "")
+                    if (newAccessToken.isNotBlank()) {
+                        if (context != null) {
+                            saveAccessToken(context, newAccessToken)
+                        }
+                        Log.i(TAG, "Successfully refreshed Gmail OAuth access token")
+                        return@withContext newAccessToken
+                    }
+                } else {
+                    Log.e(TAG, "Failed to refresh Google OAuth token: HTTP ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing Google OAuth token", e)
+        }
+        return@withContext null
+    }
+
     /**
      * Executes OAuth 2.0 Gmail REST API dispatch for outreach emails.
      * Requires https://www.googleapis.com/auth/gmail.send OAuth scope.
@@ -68,7 +129,10 @@ object GmailOAuthService {
     ): SendEmailResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "Initiating Secure Gmail OAuth 2.0 email dispatch to: $to")
 
-        val token = getAccessToken(context)
+        var token = getAccessToken(context)
+        if (token.isNullOrBlank()) {
+            token = refreshAccessToken(context)
+        }
         if (token.isNullOrBlank()) {
             return@withContext SendEmailResult.Error("Gmail not connected — go to Settings to connect your Google account before sending outreach emails.")
         }
@@ -94,15 +158,34 @@ object GmailOAuthService {
         try {
             val url = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val request = Request.Builder()
+            var request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $token")
                 .post(jsonPayload.toRequestBody(mediaType))
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string() ?: ""
-                if (response.isSuccessful) {
+            var response = httpClient.newCall(request).execute()
+            
+            // Retry on 401 Unauthorized by attempting a token refresh
+            if (response.code == 401) {
+                response.close()
+                val refreshedToken = refreshAccessToken(context)
+                if (!refreshedToken.isNullOrBlank()) {
+                    token = refreshedToken
+                    request = Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer $token")
+                        .post(jsonPayload.toRequestBody(mediaType))
+                        .build()
+                    response = httpClient.newCall(request).execute()
+                } else {
+                    return@withContext SendEmailResult.Error("Gmail OAuth token expired and refresh failed.")
+                }
+            }
+
+            response.use { resp ->
+                val responseBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful) {
                     val respJson = JSONObject(responseBody)
                     val msgId = respJson.optString("id", "gmail_msg_${System.currentTimeMillis()}")
                     Log.i(TAG, "Email successfully sent via Gmail API! Message ID: $msgId")
@@ -122,8 +205,8 @@ object GmailOAuthService {
 
                     return@withContext SendEmailResult.Success(msgId, "Email sent via Gmail API")
                 } else {
-                    Log.e(TAG, "Gmail API returned HTTP ${response.code}: $responseBody")
-                    return@withContext SendEmailResult.Error("Gmail API returned HTTP ${response.code}: $responseBody")
+                    Log.e(TAG, "Gmail API returned HTTP ${resp.code}: $responseBody")
+                    return@withContext SendEmailResult.Error("Gmail API returned HTTP ${resp.code}: $responseBody")
                 }
             }
         } catch (e: Exception) {

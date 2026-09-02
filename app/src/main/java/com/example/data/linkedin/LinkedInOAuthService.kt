@@ -58,6 +58,64 @@ object LinkedInOAuthService {
         prefs.edit().putString("linkedin_oauth_access_token", token.trim()).apply()
     }
 
+    fun getRefreshToken(context: Context?): String? {
+        if (context != null) {
+            val prefs = CredentialRegistry.getSecureSharedPreferences(context)
+            val token = prefs.getString("linkedin_oauth_refresh_token", null)
+            if (!token.isNullOrBlank()) return token
+        }
+        return CredentialRegistry.getRawValue("LINKEDIN_OAUTH_REFRESH_TOKEN", context)
+            ?: CredentialRegistry.getRawValue("LINKEDIN_REFRESH_TOKEN", context)
+    }
+
+    fun saveRefreshToken(context: Context, refreshToken: String) {
+        val prefs = CredentialRegistry.getSecureSharedPreferences(context)
+        prefs.edit().putString("linkedin_oauth_refresh_token", refreshToken.trim()).apply()
+    }
+
+    /**
+     * Refreshes the LinkedIn OAuth 2.0 access token using the stored refresh token.
+     */
+    suspend fun refreshAccessToken(context: Context?): String? = withContext(Dispatchers.IO) {
+        val refreshToken = getRefreshToken(context) ?: return@withContext null
+        val clientId = getClientId(context) ?: return@withContext null
+        val clientSecret = getClientSecret(context) ?: return@withContext null
+
+        try {
+            val formBody = okhttp3.FormBody.Builder()
+                .add("grant_type", "refresh_token")
+                .add("refresh_token", refreshToken)
+                .add("client_id", clientId)
+                .add("client_secret", clientSecret)
+                .build()
+
+            val request = Request.Builder()
+                .url("https://www.linkedin.com/oauth/v2/accessToken")
+                .post(formBody)
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val json = JSONObject(body)
+                    val newAccessToken = json.optString("access_token", "")
+                    if (newAccessToken.isNotBlank()) {
+                        if (context != null) {
+                            saveAccessToken(context, newAccessToken)
+                        }
+                        Log.i(TAG, "Successfully refreshed LinkedIn OAuth access token")
+                        return@withContext newAccessToken
+                    }
+                } else {
+                    Log.e(TAG, "Failed to refresh LinkedIn OAuth token: HTTP ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error refreshing LinkedIn OAuth token", e)
+        }
+        return@withContext null
+    }
+
     fun getAuthorUrn(context: Context?): String? {
         if (context != null) {
             val prefs = CredentialRegistry.getSecureSharedPreferences(context)
@@ -88,7 +146,10 @@ object LinkedInOAuthService {
 
         Log.i(TAG, "Initiating REST dispatch to LinkedIn UGC Post API...")
 
-        val token = getAccessToken(context)
+        var token = getAccessToken(context)
+        if (token.isNullOrBlank()) {
+            token = refreshAccessToken(context)
+        }
         if (token.isNullOrBlank()) {
             val errorMsg = "LinkedIn not connected — please configure LINKEDIN_OAUTH_TOKEN or client credentials in Settings before publishing posts."
             logSystemEvent(context, "WARN", errorMsg)
@@ -120,7 +181,7 @@ object LinkedInOAuthService {
         try {
             val url = "https://api.linkedin.com/v2/ugcPosts"
             val mediaType = "application/json; charset=utf-8".toMediaType()
-            val request = Request.Builder()
+            var request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $token")
                 .addHeader("X-Restli-Protocol-Version", "2.0.0")
@@ -128,12 +189,33 @@ object LinkedInOAuthService {
                 .post(jsonPayload.toRequestBody(mediaType))
                 .build()
 
-            httpClient.newCall(request).execute().use { response ->
-                val responseBody = response.body?.string() ?: ""
-                if (response.isSuccessful || response.code == 201 || response.code == 200) {
+            var response = httpClient.newCall(request).execute()
+
+            // Handle 401 token expiry by refreshing
+            if (response.code == 401) {
+                response.close()
+                val refreshed = refreshAccessToken(context)
+                if (!refreshed.isNullOrBlank()) {
+                    token = refreshed
+                    request = Request.Builder()
+                        .url(url)
+                        .addHeader("Authorization", "Bearer $token")
+                        .addHeader("X-Restli-Protocol-Version", "2.0.0")
+                        .addHeader("LinkedIn-Version", "202304")
+                        .post(jsonPayload.toRequestBody(mediaType))
+                        .build()
+                    response = httpClient.newCall(request).execute()
+                } else {
+                    return@withContext LinkedInPostResult.Error("LinkedIn OAuth token expired and refresh failed.")
+                }
+            }
+
+            response.use { resp ->
+                val responseBody = resp.body?.string() ?: ""
+                if (resp.isSuccessful || resp.code == 201 || resp.code == 200) {
                     val jsonResp = try { JSONObject(responseBody) } catch (e: Exception) { null }
                     val postId = jsonResp?.optString("id")
-                        ?: response.header("x-restli-id")
+                        ?: resp.header("x-restli-id")
                         ?: "urn:li:ugcPost:${System.currentTimeMillis()}"
 
                     val details = "Successfully published post to LinkedIn (ID: $postId)"
@@ -141,7 +223,7 @@ object LinkedInOAuthService {
                     logSystemEvent(context, "INFO", "LinkedIn Post Published: $details")
                     return@withContext LinkedInPostResult.Success(postId, details)
                 } else {
-                    val errorDetail = "LinkedIn API Error (HTTP ${response.code}): ${responseBody.ifBlank { response.message }}"
+                    val errorDetail = "LinkedIn API Error (HTTP ${resp.code}): ${responseBody.ifBlank { resp.message }}"
                     Log.e(TAG, errorDetail)
                     logSystemEvent(context, "ERROR", errorDetail)
                     return@withContext LinkedInPostResult.Error(errorDetail)
