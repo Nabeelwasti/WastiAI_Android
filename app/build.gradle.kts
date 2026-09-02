@@ -101,6 +101,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("sdk.dir")
+  ignoreList.add("GOOGLE_ACCOUNT_PASSWORD")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

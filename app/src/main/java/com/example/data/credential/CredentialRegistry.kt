@@ -676,7 +676,6 @@ object CredentialRegistry {
             "ZAPIER_MCP_SHARE_LINK" -> try { com.example.BuildConfig.ZAPIER_MCP_SHARE_LINK } catch (e: Throwable) { null }
             "GMAIL_SENDER_EMAIL" -> try { com.example.BuildConfig.GMAIL_SENDER_EMAIL } catch (e: Throwable) { null }
             "GMAIL_APP_PASSWORD" -> try { com.example.BuildConfig.GMAIL_APP_PASSWORD } catch (e: Throwable) { null }
-            "GOOGLE_ACCOUNT_PASSWORD" -> try { com.example.BuildConfig.GMAIL_APP_PASSWORD } catch (e: Throwable) { null }
             else -> null
         }
 
