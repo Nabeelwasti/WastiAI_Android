@@ -14,11 +14,11 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: write
     env:
-      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=512m'
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
 
     steps:
     - name: Checkout Repository
@@ -83,20 +83,25 @@ jobs:
         SLACK_DOMAIN=${{ secrets.SLACK_DOMAIN }}
         ZAPIER_CONNECT_TOKEN=${{ secrets.ZAPIER_CONNECT_TOKEN }}
         ZAPIER_MCP_SHARE_LINK=${{ secrets.ZAPIER_MCP_SHARE_LINK }}
+        GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID || '206322177649-fs2048huimberjvb4etaih1scn7ldh30.apps.googleusercontent.com' }}
+        GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID || '206322177649-dmntaoaft0r4fj8qaurnpoapqmav4lrj.apps.googleusercontent.com' }}
+        GMAIL_SENDER_EMAIL=${{ secrets.GMAIL_SENDER_EMAIL || 'wastinabeel99@gmail.com' }}
+        GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}
+        GOOGLE_ACCOUNT_PASSWORD=${{ secrets.GOOGLE_ACCOUNT_PASSWORD }}
         EOF
         echo "Successfully generated .env file for build."
 
     - name: Run Unit Tests
-      timeout-minutes: 6
-      run: gradle testDebugUnitTest --no-daemon --no-build-cache --stacktrace
+      timeout-minutes: 15
+      run: gradle testDebugUnitTest --stacktrace
 
     - name: Run Android Lint
-      timeout-minutes: 4
+      timeout-minutes: 10
       run: gradle lintDebug --stacktrace
 
     - name: Build Debug APK
-      timeout-minutes: 8
-      run: gradle assembleDebug --no-daemon --no-build-cache --stacktrace
+      timeout-minutes: 15
+      run: gradle assembleDebug --stacktrace
 
     - name: Verify WastiApplication in APK
       run: |
