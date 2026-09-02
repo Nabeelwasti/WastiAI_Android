@@ -3,8 +3,8 @@ package com.example.data.core
 import com.example.data.credential.CredentialRegistry
 import com.example.data.gmail.GmailOAuthService
 import com.example.data.linkedin.LinkedInOAuthService
-import com.example.data.memory.MemoryItem
 import com.example.data.memory.MemoryManager
+import com.example.data.memory.model.MemoryItem
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,7 +17,7 @@ class Stage18AuditRemediationTest {
         assertEquals(RoutingTier.FAST_LANE, WastiCore.classifyIntentTier("what is the time"))
         assertEquals(RoutingTier.DEEP_LANE, WastiCore.classifyIntentTier("deep search market analysis for competitors"))
         assertEquals(RoutingTier.OFFLINE_LANE, WastiCore.classifyIntentTier("offline query local memory"))
-        assertEquals(RoutingTier.STANDARD_LANE, WastiCore.classifyIntentTier("write an email draft to John"))
+        assertEquals(RoutingTier.STANDARD_LANE, WastiCore.classifyIntentTier("write a professional email draft proposing partnership to John Doe at Acme Corp"))
     }
 
     @Test

@@ -345,6 +345,15 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
     }
 }
 
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_prospects_status` ON `prospects` (`status`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_prospects_timestamp` ON `prospects` (`timestamp`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_execution_audits_taskId` ON `execution_audits` (`taskId`)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS `index_execution_audits_timestamp` ON `execution_audits` (`timestamp`)")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -372,7 +381,7 @@ val MIGRATION_13_14 = object : Migration(13, 14) {
         ReusableWorkflowEntity::class,
         ExecutionAuditEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -411,7 +420,8 @@ abstract class WastiDatabase : RoomDatabase() {
                     WastiDatabase::class.java,
                     WASTI_DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance
