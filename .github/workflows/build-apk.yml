@@ -135,6 +135,7 @@ jobs:
     - name: Create or Update GitHub Release
       if: github.event_name != 'pull_request'
       uses: ncipollo/release-action@v1
+      continue-on-error: true
       with:
         artifacts: "app/build/outputs/apk/debug/app-debug.apk"
         tag: "v1.0.0"
@@ -144,4 +145,5 @@ jobs:
           - **File:** `app-debug.apk`
           - Download the `app-debug.apk` file below and open it on your Android phone to install!
         allowUpdates: true
+        replacesArtifacts: true
         token: ${{ secrets.GITHUB_TOKEN }}
