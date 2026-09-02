@@ -38,12 +38,12 @@ jobs:
       with:
         gradle-version: '9.3.1'
 
-    - name: Ensure Gradle Wrapper Executable
+    - name: Ensure Gradle Wrapper
       run: |
-        if [ ! -f "gradlew" ]; then
+        if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
           gradle wrapper --gradle-version 9.3.1
         fi
-        chmod +x gradlew
+        chmod +x gradlew || true
 
     - name: Accept Android SDK Licenses
       run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -100,15 +100,15 @@ jobs:
 
     - name: Run Unit Tests
       timeout-minutes: 15
-      run: ./gradlew testDebugUnitTest --no-configuration-cache --stacktrace
+      run: gradle testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace
 
     - name: Run Android Lint
       timeout-minutes: 10
-      run: ./gradlew lintDebug --no-configuration-cache --stacktrace
+      run: gradle lintDebug --no-configuration-cache --no-build-cache --stacktrace
 
     - name: Build Debug APK
       timeout-minutes: 15
-      run: ./gradlew assembleDebug --no-configuration-cache --stacktrace
+      run: gradle assembleDebug --no-configuration-cache --no-build-cache --stacktrace
 
     - name: Verify WastiApplication in APK
       run: |
