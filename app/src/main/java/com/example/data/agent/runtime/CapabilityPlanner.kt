@@ -218,73 +218,104 @@ class CapabilityPlanner(
 
     /**
      * Deconstructs a natural language or structured user goal into a dependency-ordered PlannedCapabilityGraph.
+     * Uses pure SemanticTaskInterpretation without keyword branching in graph creation.
      */
     fun createPlan(userGoal: String): PlannedCapabilityGraph {
         val interpretation = interpretGoal(userGoal)
-        val lower = userGoal.lowercase().trim()
         val nodes = mutableListOf<PlannedCapabilityNode>()
         var requiresApproval = false
 
-        when {
-            lower.contains("find") && (lower.contains("fix") || lower.contains("edit") || lower.contains("error")) -> {
-                // Multi-step file inspection -> diagnostics -> repair -> verification plan
-                val searchNode = PlannedCapabilityNode(
-                    capabilityId = "files",
-                    actionName = "search_files",
-                    description = "Search workspace for target files matching query",
-                    inputParameters = mapOf("query" to (extractQueryKeyword(lower) ?: "")),
-                    expectedEvidenceType = "FILE_LIST"
-                )
-                nodes.add(searchNode)
+        when (interpretation.domain) {
+            TaskDomain.DEVELOPMENT -> {
+                val hasBuild = interpretation.operations.contains(TaskOperation.BUILD)
+                val hasTest = interpretation.operations.contains(TaskOperation.TEST)
+                val hasRepair = interpretation.operations.contains(TaskOperation.REPAIR) || interpretation.operations.contains(TaskOperation.DIAGNOSE)
 
-                val readNode = PlannedCapabilityNode(
-                    capabilityId = "files",
-                    actionName = "read_file",
-                    description = "Read target file content for inspection",
-                    dependencies = listOf(searchNode.nodeId),
-                    expectedEvidenceType = "FILE_CONTENT"
-                )
-                nodes.add(readNode)
+                if (hasRepair) {
+                    val searchNode = PlannedCapabilityNode(
+                        capabilityId = "files",
+                        actionName = "search_files",
+                        description = "Search workspace for target files matching query",
+                        inputParameters = mapOf("query" to (extractQueryKeyword(interpretation.rawGoal) ?: "")),
+                        expectedEvidenceType = "FILE_LIST"
+                    )
+                    nodes.add(searchNode)
 
-                val diagNode = PlannedCapabilityNode(
-                    capabilityId = "debug_project",
-                    actionName = "analyze_diagnostics",
-                    description = "Analyze syntax and runtime diagnostics",
-                    dependencies = listOf(readNode.nodeId),
-                    expectedEvidenceType = "STRUCTURED_FINDINGS"
-                )
-                nodes.add(diagNode)
+                    val readNode = PlannedCapabilityNode(
+                        capabilityId = "files",
+                        actionName = "read_file",
+                        description = "Read target file content for inspection",
+                        dependencies = listOf(searchNode.nodeId),
+                        expectedEvidenceType = "FILE_CONTENT"
+                    )
+                    nodes.add(readNode)
 
-                val patchNode = PlannedCapabilityNode(
-                    capabilityId = "files",
-                    actionName = "write_file",
-                    description = "Apply verified repair patch to file",
-                    dependencies = listOf(diagNode.nodeId),
-                    expectedEvidenceType = "FILE_WRITTEN"
-                )
-                nodes.add(patchNode)
+                    val diagNode = PlannedCapabilityNode(
+                        capabilityId = "debug_project",
+                        actionName = "analyze_diagnostics",
+                        description = "Analyze syntax and runtime diagnostics",
+                        dependencies = listOf(readNode.nodeId),
+                        expectedEvidenceType = "STRUCTURED_FINDINGS"
+                    )
+                    nodes.add(diagNode)
+
+                    val patchNode = PlannedCapabilityNode(
+                        capabilityId = "files",
+                        actionName = "write_file",
+                        description = "Apply verified repair patch to file",
+                        dependencies = listOf(diagNode.nodeId),
+                        expectedEvidenceType = "FILE_WRITTEN"
+                    )
+                    nodes.add(patchNode)
+                } else if (hasBuild && hasTest) {
+                    val buildNode = PlannedCapabilityNode(
+                        capabilityId = "build_project",
+                        actionName = "build",
+                        description = "Compile and build project artifacts",
+                        expectedEvidenceType = "BUILD_ARTIFACT"
+                    )
+                    nodes.add(buildNode)
+
+                    val testNode = PlannedCapabilityNode(
+                        capabilityId = "test_project",
+                        actionName = "run_tests",
+                        description = "Run automated test suite",
+                        dependencies = listOf(buildNode.nodeId),
+                        expectedEvidenceType = "TEST_REPORT"
+                    )
+                    nodes.add(testNode)
+                } else if (hasBuild) {
+                    nodes.add(
+                        PlannedCapabilityNode(
+                            capabilityId = "build_project",
+                            actionName = "build",
+                            description = "Compile and build project artifacts",
+                            expectedEvidenceType = "BUILD_ARTIFACT"
+                        )
+                    )
+                } else if (hasTest) {
+                    nodes.add(
+                        PlannedCapabilityNode(
+                            capabilityId = "test_project",
+                            actionName = "run_tests",
+                            description = "Run automated test suite",
+                            expectedEvidenceType = "TEST_REPORT"
+                        )
+                    )
+                } else {
+                    nodes.add(
+                        PlannedCapabilityNode(
+                            capabilityId = "files",
+                            actionName = "inspect_project",
+                            description = "Inspect workspace structure and files",
+                            inputParameters = mapOf("target" to (interpretation.targets.firstOrNull()?.query ?: userGoal)),
+                            expectedEvidenceType = "PROJECT_STRUCTURE"
+                        )
+                    )
+                }
             }
 
-            lower.contains("build") && lower.contains("test") -> {
-                val buildNode = PlannedCapabilityNode(
-                    capabilityId = "build_project",
-                    actionName = "build",
-                    description = "Compile and build project artifacts",
-                    expectedEvidenceType = "BUILD_ARTIFACT"
-                )
-                nodes.add(buildNode)
-
-                val testNode = PlannedCapabilityNode(
-                    capabilityId = "test_project",
-                    actionName = "run_tests",
-                    description = "Run automated test suite",
-                    dependencies = listOf(buildNode.nodeId),
-                    expectedEvidenceType = "TEST_REPORT"
-                )
-                nodes.add(testNode)
-            }
-
-            lower.contains("screen") || lower.contains("tap") || lower.contains("click") -> {
+            TaskDomain.DEVICE_AUTOMATION -> {
                 val inspectNode = PlannedCapabilityNode(
                     capabilityId = "device_control",
                     actionName = "read_screen",
@@ -293,9 +324,10 @@ class CapabilityPlanner(
                 )
                 nodes.add(inspectNode)
 
+                val needsTap = interpretation.operations.contains(TaskOperation.NAVIGATE)
                 val actNode = PlannedCapabilityNode(
                     capabilityId = "device_control",
-                    actionName = if (lower.contains("tap") || lower.contains("click")) "simulate_tap" else "read_screen",
+                    actionName = if (needsTap) "simulate_tap" else "read_screen",
                     description = "Execute targeted interactive screen action",
                     dependencies = listOf(inspectNode.nodeId),
                     expectedEvidenceType = "UI_STATE_CHANGE"
@@ -303,7 +335,7 @@ class CapabilityPlanner(
                 nodes.add(actNode)
             }
 
-            interpretation.domain == TaskDomain.RESEARCH_AND_WEB -> {
+            TaskDomain.RESEARCH_AND_WEB -> {
                 val searchNode = PlannedCapabilityNode(
                     capabilityId = "search_web",
                     actionName = "deep_search",
@@ -314,17 +346,75 @@ class CapabilityPlanner(
                 nodes.add(searchNode)
             }
 
-            else -> {
-                // Single step or direct capability execution
-                val primaryCap = if (lower.contains("memory")) "memory_search"
-                else if (lower.contains("search") || lower.contains("google") || lower.contains("lookup")) "search_web"
-                else if (lower.contains("wasm")) "wasm_sandbox"
-                else if (lower.contains("system") || lower.contains("status") || lower.contains("telemetry") || lower.contains("sync") || lower.contains("diagnostic")) "system_info"
-                else if (lower.contains("terminal") || lower.contains("shell") || lower.contains("bash") || lower.contains("echo") || lower.contains("cmd")) "terminal"
-                else "system_info"
+            TaskDomain.MEMORY_AND_KNOWLEDGE -> {
+                nodes.add(
+                    PlannedCapabilityNode(
+                        capabilityId = "memory_search",
+                        actionName = "recall_memory",
+                        description = "Retrieve semantic, episodic, or procedural knowledge",
+                        inputParameters = mapOf("query" to userGoal),
+                        expectedEvidenceType = "KNOWLEDGE_GRAPH"
+                    )
+                )
+            }
 
+            TaskDomain.SANDBOX_COMPUTE -> {
+                nodes.add(
+                    PlannedCapabilityNode(
+                        capabilityId = "wasm_sandbox",
+                        actionName = "execute_wasm",
+                        description = "Execute isolated WebAssembly sandboxed computation",
+                        inputParameters = mapOf("query" to userGoal),
+                        expectedEvidenceType = "COMPUTE_OUTPUT"
+                    )
+                )
+            }
+
+            TaskDomain.FILESYSTEM -> {
+                val actionName = when {
+                    interpretation.operations.contains(TaskOperation.CREATE) || interpretation.operations.contains(TaskOperation.MODIFY) -> "write_file"
+                    interpretation.operations.contains(TaskOperation.SEARCH) -> "search_files"
+                    else -> "read_file"
+                }
+                nodes.add(
+                    PlannedCapabilityNode(
+                        capabilityId = "files",
+                        actionName = actionName,
+                        description = "Perform filesystem operation ($actionName)",
+                        inputParameters = mapOf("path" to (interpretation.targets.firstOrNull()?.path ?: ""), "query" to userGoal),
+                        expectedEvidenceType = "FILE_OPERATION_RESULT"
+                    )
+                )
+            }
+
+            TaskDomain.SYSTEM_AND_OPS -> {
+                nodes.add(
+                    PlannedCapabilityNode(
+                        capabilityId = "system_info",
+                        actionName = "query_telemetry",
+                        description = "Query active system telemetry and environment health",
+                        inputParameters = mapOf("query" to userGoal),
+                        expectedEvidenceType = "SYSTEM_TELEMETRY"
+                    )
+                )
+            }
+
+            TaskDomain.COMMUNICATION -> {
+                nodes.add(
+                    PlannedCapabilityNode(
+                        capabilityId = "draft_persistence",
+                        actionName = "create_draft",
+                        description = "Draft structured communication message",
+                        inputParameters = mapOf("content" to userGoal),
+                        expectedEvidenceType = "DRAFT_ENTITY"
+                    )
+                )
+            }
+
+            TaskDomain.GENERAL_REASONING -> {
+                val primaryCap = interpretation.requiredCapabilities.firstOrNull()?.capabilityId ?: "terminal"
                 val params = if (primaryCap == "terminal") {
-                    mapOf("command" to if (lower.startsWith("echo ") || lower.startsWith("ls ") || lower.startsWith("pwd")) userGoal else "echo '$userGoal'")
+                    mapOf("command" to if (userGoal.startsWith("echo ") || userGoal.startsWith("ls ") || userGoal.startsWith("pwd")) userGoal else "echo '$userGoal'")
                 } else {
                     mapOf("query" to userGoal)
                 }
@@ -334,7 +424,8 @@ class CapabilityPlanner(
                         capabilityId = primaryCap,
                         actionName = "execute",
                         description = "Direct execution of requested capability '$primaryCap'",
-                        inputParameters = params
+                        inputParameters = params,
+                        expectedEvidenceType = "EXECUTION_REPORT"
                     )
                 )
             }

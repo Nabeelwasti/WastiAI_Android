@@ -70,6 +70,16 @@ class WastiCredentialBroker : CredentialProvider {
         credentialHealthMap[health.keyName] = health
     }
 
+    fun hasValidCredentials(capabilityId: String): Boolean {
+        val mappedKey = when (capabilityId.lowercase()) {
+            "gemini_pro", "gemini_flash", "gemini" -> "GEMINI_API_KEY"
+            "openai" -> "OPENAI_API_KEY"
+            "github_sync", "github_pr" -> "GITHUB_ACTIONS_TOKEN"
+            else -> capabilityId
+        }
+        return hasCredential(CredentialRef(mappedKey))
+    }
+
     override fun hasCredential(ref: CredentialRef): Boolean {
         val health = credentialHealthMap[ref.keyName]
         return health?.availabilityScope == SecretAvailabilityScope.SECRET_AVAILABLE_TO_RUNTIME ||

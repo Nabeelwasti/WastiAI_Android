@@ -47,7 +47,9 @@ class DeviceControlException(
     cause: Throwable? = null
 ) : WastiException(message, cause, errorCode = "DEVICE_CONTROL_ERROR", isRecoverable = true)
 
-// TODO: unused — evaluate for removal or wiring in
+/**
+ * Exception raised when a local, sandboxed, or remote tool execution fails.
+ */
 class ToolExecutionException(
     val toolName: String,
     message: String,

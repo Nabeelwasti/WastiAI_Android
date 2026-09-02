@@ -151,39 +151,28 @@ sealed class AgentEvent(
     data class UnderstandingStarted(override val taskId: TaskId, val prompt: String) : AgentEvent(taskId = taskId)
     data class PlanningStarted(override val taskId: TaskId, val prompt: String) : AgentEvent(taskId = taskId)
     data class PlanningTask(override val taskId: TaskId, val details: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class CapabilityChecked(override val taskId: TaskId, val capability: String, val isAvailable: Boolean) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class Searching(override val taskId: TaskId, val query: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class Connecting(override val taskId: TaskId, val endpoint: String) : AgentEvent(taskId = taskId)
     data class Authenticating(override val taskId: TaskId, val service: String) : AgentEvent(taskId = taskId)
     data class ProviderSelected(override val taskId: TaskId, val providerId: String, val modelId: String?) : AgentEvent(taskId = taskId)
     data class WaitingForUser(override val taskId: TaskId, val reason: String) : AgentEvent(taskId = taskId)
     data class CapabilityUnavailable(override val taskId: TaskId, val capability: String, val reason: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class InspectingProject(override val taskId: TaskId, val path: String) : AgentEvent(taskId = taskId)
     data class ToolRequested(override val taskId: TaskId, val toolName: String, val args: Map<String, Any?>) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class PermissionRequired(override val taskId: TaskId, val action: String, val level: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class PermissionRequested(override val taskId: TaskId, val action: String, val level: String) : AgentEvent(taskId = taskId)
     data class ToolStarted(override val taskId: TaskId, val toolName: String) : AgentEvent(taskId = taskId)
     data class ToolCompleted(override val taskId: TaskId, val toolName: String, val isSuccess: Boolean) : AgentEvent(taskId = taskId)
     data class ToolFailed(override val taskId: TaskId, val toolName: String, val error: String) : AgentEvent(taskId = taskId)
     data class SecurityBlocked(override val taskId: TaskId, val reason: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class EditingFile(override val taskId: TaskId, val filePath: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class ExecutionStarted(override val taskId: TaskId, val executable: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class ExecutionCompleted(override val taskId: TaskId, val exitCode: Int) : AgentEvent(taskId = taskId)
     data class ObservationReceived(override val taskId: TaskId, val observationSummary: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class CompilationFailed(override val taskId: TaskId, val errors: String) : AgentEvent(taskId = taskId)
     data class DiagnosisCreated(override val taskId: TaskId, val category: String, val summary: String) : AgentEvent(taskId = taskId)
     data class CorrectionProposed(override val taskId: TaskId, val proposal: String) : AgentEvent(taskId = taskId)
-    // TODO: unused — evaluate for removal or wiring in
     data class FixingError(override val taskId: TaskId, val errorSummary: String) : AgentEvent(taskId = taskId)
     data class TestingStarted(override val taskId: TaskId, val target: String) : AgentEvent(taskId = taskId)
     data class VerificationStarted(override val taskId: TaskId, val details: String) : AgentEvent(taskId = taskId)

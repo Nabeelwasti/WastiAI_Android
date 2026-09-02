@@ -1,20 +1,23 @@
-// Stripe webhook helper (uses stripe package). Verifies webhook signature if STRIPE_SECRET_KEY is present.
+// Stripe webhook helper (uses stripe package). Strictly verifies webhook cryptographic signature.
 
 require('dotenv').config();
 const Stripe = require('stripe');
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || process.env.BACKEND_STRIPE_SECRET || '', { apiVersion: '2022-11-15' });
+const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.BACKEND_STRIPE_SECRET || '';
+const stripe = stripeKey ? new Stripe(stripeKey, { apiVersion: '2022-11-15' }) : null;
 
 module.exports = {
   constructEvent: function(rawBody, sigHeader) {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || null;
-    if (webhookSecret) {
-      try {
-        return stripe.webhooks.constructEvent(rawBody, sigHeader, webhookSecret);
-      } catch (err) {
-        throw err;
-      }
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      throw new Error('STRIPE_WEBHOOK_SECRET is not configured on server. Insecure unverified webhook parsing is prohibited.');
     }
-    // If no webhook secret configured, parse JSON body directly (less secure)
-    try { return JSON.parse(rawBody); } catch (e) { throw e; }
+    if (!sigHeader) {
+      throw new Error('Missing stripe-signature header. Webhook signature verification required.');
+    }
+    if (!stripe) {
+      throw new Error('Stripe client is not initialized with a valid secret key.');
+    }
+    return stripe.webhooks.constructEvent(rawBody, sigHeader, webhookSecret);
   }
 };
+
