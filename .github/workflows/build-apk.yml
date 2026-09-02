@@ -36,12 +36,12 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '9.3.1'
+        gradle-version: '9.7.1'
 
     - name: Ensure Gradle Wrapper
       run: |
         if [ ! -f "gradle/wrapper/gradle-wrapper.jar" ]; then
-          gradle wrapper --gradle-version 9.3.1
+          gradle wrapper --gradle-version 9.7.1
         fi
         chmod +x gradlew
 
