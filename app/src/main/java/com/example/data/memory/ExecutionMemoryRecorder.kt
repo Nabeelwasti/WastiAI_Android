@@ -150,9 +150,20 @@ object ExecutionMemoryRecorder {
         try {
             val db = WastiDatabase.getDatabase(ctx)
             val audit = db.executionAuditDao().getLastExecutionForCapability(capabilityId) ?: return@withContext null
-            val isSuccess = when (audit.status) {
-                "SUCCESS" -> true
-                "FAILED" -> false
+            val terminalTruth = try {
+                TerminalTruthState.valueOf(audit.status)
+            } catch (_: Exception) {
+                when (audit.status) {
+                    "SUCCESS" -> if (audit.verificationStatus == "VERIFIED") TerminalTruthState.COMPLETED_VERIFIED else TerminalTruthState.COMPLETED_UNVERIFIED
+                    "FAILED" -> if (audit.verificationStatus == "VERIFICATION_FAILED") TerminalTruthState.VERIFICATION_FAILED else TerminalTruthState.EXECUTION_FAILED
+                    else -> null
+                }
+            }
+            val isSuccess = when {
+                terminalTruth == TerminalTruthState.COMPLETED_VERIFIED || terminalTruth == TerminalTruthState.COMPLETED_UNVERIFIED -> true
+                terminalTruth == TerminalTruthState.EXECUTION_FAILED || terminalTruth == TerminalTruthState.VERIFICATION_FAILED -> false
+                audit.status == "SUCCESS" -> true
+                audit.status == "FAILED" -> false
                 else -> null
             }
             ExecutionRecord(
@@ -167,6 +178,7 @@ object ExecutionMemoryRecorder {
                 verificationStatus = audit.verificationStatus,
                 verificationEvidence = audit.verificationEvidence,
                 error = audit.error,
+                terminalTruthState = terminalTruth,
                 timestamp = audit.timestamp
             )
         } catch (e: Exception) {
@@ -175,7 +187,53 @@ object ExecutionMemoryRecorder {
         }
     }
 
-    fun getRecentExecutions(limit: Int = 20): List<ExecutionRecord> {
-        return executionHistory.toList().takeLast(limit).reversed()
+    fun getRecentExecutions(limit: Int = 20, context: Context? = null): List<ExecutionRecord> {
+        val inMemory = executionHistory.toList().takeLast(limit).reversed()
+        if (inMemory.isNotEmpty()) return inMemory
+
+        // Fallback to database when in-memory queue is empty (e.g. after process restart)
+        val ctx = context ?: com.example.WastiApplication.instance ?: return emptyList()
+        return try {
+            val db = WastiDatabase.getDatabase(ctx)
+            val audits = kotlinx.coroutines.runBlocking {
+                db.executionAuditDao().getRecentAuditsSync(limit)
+            }
+            audits.map { audit ->
+                val terminalTruth = try {
+                    TerminalTruthState.valueOf(audit.status)
+                } catch (_: Exception) {
+                    when (audit.status) {
+                        "SUCCESS" -> if (audit.verificationStatus == "VERIFIED") TerminalTruthState.COMPLETED_VERIFIED else TerminalTruthState.COMPLETED_UNVERIFIED
+                        "FAILED" -> if (audit.verificationStatus == "VERIFICATION_FAILED") TerminalTruthState.VERIFICATION_FAILED else TerminalTruthState.EXECUTION_FAILED
+                        else -> null
+                    }
+                }
+                val isSuccess = when {
+                    terminalTruth == TerminalTruthState.COMPLETED_VERIFIED || terminalTruth == TerminalTruthState.COMPLETED_UNVERIFIED -> true
+                    terminalTruth == TerminalTruthState.EXECUTION_FAILED || terminalTruth == TerminalTruthState.VERIFICATION_FAILED -> false
+                    audit.status == "SUCCESS" -> true
+                    audit.status == "FAILED" -> false
+                    else -> null
+                }
+                ExecutionRecord(
+                    recordId = audit.auditId,
+                    taskId = audit.taskId,
+                    goal = audit.userGoal,
+                    interpretedIntent = audit.actionName,
+                    selectedCapability = audit.capabilityId,
+                    selectedNode = audit.executionDestination,
+                    durationMs = audit.executionDurationMs,
+                    isSuccess = isSuccess,
+                    verificationStatus = audit.verificationStatus,
+                    verificationEvidence = audit.verificationEvidence,
+                    error = audit.error,
+                    terminalTruthState = terminalTruth,
+                    timestamp = audit.timestamp
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error fetching recent audits from database: ${e.message}")
+            emptyList()
+        }
     }
 }

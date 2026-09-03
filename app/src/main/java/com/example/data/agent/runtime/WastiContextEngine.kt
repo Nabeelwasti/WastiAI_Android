@@ -24,7 +24,11 @@ class WastiContextEngine(
         activeFiles: List<String> = emptyList()
     ): ContextSnapshot {
         val availableCaps = realityRegistry.getSystemRealityReport()
-            .filter { it.realityState == CapabilityRealityState.NATIVE || it.realityState == CapabilityRealityState.LIVE_CONNECTED }
+            .filter {
+                it.realityState == CapabilityRealityState.NATIVE ||
+                    it.realityState == CapabilityRealityState.LIVE_CONNECTED ||
+                    it.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            }
             .map { it.capabilityId }
 
         val constraints = listOf(

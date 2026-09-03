@@ -307,28 +307,35 @@ class WastiObservationEngine(
         request: ObservationRequest,
         executorResult: UnifiedExecutionResult,
         capabilityId: String
-    ): ObservationResult = when {
-        isVerified(executorResult) -> result(
-            request = request,
-            status = ObservationStatus.OBSERVED,
-            observedState = executorResult.output,
-            evidence = "Verified $capabilityId operation: ${executorResult.output.take(EVIDENCE_PREVIEW_LENGTH)}",
-            confidence = 1.0
-        )
-        isExecutionSuccessful(executorResult) -> result(
-            request = request,
-            status = ObservationStatus.UNAVAILABLE,
-            observedState = executorResult.output,
-            evidence = "$capabilityId completed execution, but no independent verification evidence or probe was supplied.",
-            confidence = 0.0
-        )
-        else -> result(
-            request = request,
-            status = ObservationStatus.UNKNOWN,
-            observedState = executorResult.output,
-            evidence = "$capabilityId did not reach a successful terminal execution state.",
-            confidence = 0.0
-        )
+    ): ObservationResult {
+        val hasIndependentProof = executorResult.details.containsKey("artifact_path") ||
+            (executorResult.details["exit_code"]?.toIntOrNull() == 0) ||
+            (executorResult.details["probe_verified"] == "true") ||
+            (isExecutionSuccessful(executorResult) && isVerified(executorResult))
+
+        return when {
+            hasIndependentProof -> result(
+                request = request,
+                status = ObservationStatus.OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Verified $capabilityId operation: ${executorResult.output.take(EVIDENCE_PREVIEW_LENGTH)}",
+                confidence = 1.0
+            )
+            isExecutionSuccessful(executorResult) -> result(
+                request = request,
+                status = ObservationStatus.UNAVAILABLE,
+                observedState = executorResult.output,
+                evidence = "$capabilityId completed execution, but no independent verification evidence or probe was supplied.",
+                confidence = 0.0
+            )
+            else -> result(
+                request = request,
+                status = ObservationStatus.UNKNOWN,
+                observedState = executorResult.output,
+                evidence = "$capabilityId did not reach a successful terminal execution state.",
+                confidence = 0.0
+            )
+        }
     }
 
     private suspend fun observeDeviceControl(
@@ -360,13 +367,23 @@ class WastiObservationEngine(
             "open_app" -> observeAppLaunch(request, executorResult, service, target)
             "simulate_tap", "click_element" -> {
                 val latestObservation = service.latestUiObservation
-                result(
-                    request = request,
-                    status = ObservationStatus.OBSERVED,
-                    observedState = latestObservation?.text ?: executorResult.output,
-                    evidence = "Accessibility action '$action' completed; latest UI event is ${latestObservation?.eventType ?: "unavailable"}.",
-                    confidence = if (latestObservation == null) 0.7 else 0.9
-                )
+                if (latestObservation != null) {
+                    result(
+                        request = request,
+                        status = ObservationStatus.CHANGED,
+                        observedState = latestObservation.text ?: executorResult.output,
+                        evidence = "Accessibility action '$action' completed; latest UI event is ${latestObservation.eventType}.",
+                        confidence = 0.9
+                    )
+                } else {
+                    result(
+                        request = request,
+                        status = ObservationStatus.UNAVAILABLE,
+                        observedState = executorResult.output,
+                        evidence = "Tap executed, but no post-tap UI event was observed by the Accessibility Service.",
+                        confidence = 0.0
+                    )
+                }
             }
             "send_whatsapp", "send_email", "send_sms" -> result(
                 request = request,
@@ -408,20 +425,20 @@ class WastiObservationEngine(
                 evidence = "Accessibility observed an active package matching '$target'.",
                 confidence = 0.95
             )
-            executorResult.output.contains("dispatched", ignoreCase = true) ||
-                executorResult.output.contains("launched", ignoreCase = true) -> result(
-                request = request,
-                status = ObservationStatus.OBSERVED,
-                observedState = executorResult.output,
-                evidence = "Launch intent was dispatched but the target package was not confirmed in the active window.",
-                confidence = 0.75
-            )
             target.isBlank() -> result(
                 request = request,
                 status = ObservationStatus.UNKNOWN,
                 observedState = "No launch target was supplied; active package is '$activePackage'.",
                 evidence = "Cannot verify an app launch without a target package or application identifier.",
                 confidence = 0.0
+            )
+            executorResult.output.contains("dispatched", ignoreCase = true) ||
+                executorResult.output.contains("launched", ignoreCase = true) -> result(
+                request = request,
+                status = ObservationStatus.NOT_OBSERVED,
+                observedState = executorResult.output,
+                evidence = "Launch intent was dispatched but the target package was not confirmed in the active window.",
+                confidence = 0.4
             )
             else -> result(
                 request = request,

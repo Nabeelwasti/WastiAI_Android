@@ -81,7 +81,7 @@ class CapabilityDiscoveryEngine(
             executors.add(reality.provider)
             limitationsList.addAll(reality.limitations)
 
-            if (reality.realityState == CapabilityRealityState.NATIVE) {
+            if (reality.realityState == CapabilityRealityState.NATIVE || reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED) {
                 available.add("PROJECT_DEV_MANAGER")
                 strategies.add(ExecutionStrategy.NATIVE)
             } else {
@@ -104,7 +104,7 @@ class CapabilityDiscoveryEngine(
             executors.add(reality.provider)
             limitationsList.addAll(reality.limitations)
 
-            if (reality.realityState == CapabilityRealityState.NATIVE) {
+            if (reality.realityState == CapabilityRealityState.NATIVE || reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED) {
                 available.add("FILES")
                 strategies.add(ExecutionStrategy.NATIVE)
             } else {
@@ -126,7 +126,7 @@ class CapabilityDiscoveryEngine(
             executors.add(reality.provider)
             limitationsList.addAll(reality.limitations)
 
-            if (reality.realityState == CapabilityRealityState.NATIVE) {
+            if (reality.realityState == CapabilityRealityState.NATIVE || reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED) {
                 available.add("TERMINAL")
                 strategies.add(ExecutionStrategy.NATIVE)
                 strategies.add(ExecutionStrategy.LOCAL)

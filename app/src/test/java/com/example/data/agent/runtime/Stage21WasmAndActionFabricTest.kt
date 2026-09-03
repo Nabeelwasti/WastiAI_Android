@@ -80,6 +80,7 @@ class Stage21WasmAndActionFabricTest {
         assertTrue(report.isNotEmpty())
         val filesCap = registry.get("FILES")
         assertNotNull(filesCap)
-        assertEquals(LiveConnectionStatus.VERIFIED, filesCap?.liveConnectionStatus)
+        assertEquals(LiveConnectionStatus.NOT_VERIFIED, filesCap?.liveConnectionStatus)
+        assertEquals(CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED, filesCap?.realityState)
     }
 }

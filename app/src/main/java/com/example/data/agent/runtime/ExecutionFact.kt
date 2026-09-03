@@ -24,8 +24,55 @@ enum class TerminalTruthState {
     VERIFICATION_UNAVAILABLE,
     BLOCKED,
     CANCELLED,
-    ROLLED_BACK
+    ROLLED_BACK;
+
+    val isTerminal: Boolean
+        get() = true
+
+    val isVerified: Boolean
+        get() = this == COMPLETED_VERIFIED
+
+    val isExecutionSuccess: Boolean
+        get() = this == COMPLETED_VERIFIED || this == COMPLETED_UNVERIFIED
+
+    val isTerminalFailure: Boolean
+        get() = this == EXECUTION_FAILED || this == VERIFICATION_FAILED || this == BLOCKED
+
+    val isCancelled: Boolean
+        get() = this == CANCELLED
+
+    val isRolledBack: Boolean
+        get() = this == ROLLED_BACK
 }
+
+/**
+ * Structured Evidence Bundle capturing end-to-end provenance.
+ * Provides verifiable audit trail from execution through observation and verification.
+ */
+data class EvidenceBundle(
+    val evidenceId: String = UUID.randomUUID().toString(),
+    val taskId: String,
+    val actionId: String,
+    val capabilityId: String,
+    val provider: String,
+    val nodeId: String = "local_android_node",
+    val timestamp: Long = System.currentTimeMillis(),
+    val observationType: String = "POST_EXECUTION_PROBE",
+    val source: String = "WastiObservationEngine",
+    val preState: String? = null,
+    val postState: String? = null,
+    val artifactPath: String? = null,
+    val artifactHash: String? = null,
+    val command: String? = null,
+    val exitCode: Int? = null,
+    val httpStatus: Int? = null,
+    val screenshotRef: String? = null,
+    val independentProbe: String? = null,
+    val verifier: String = "WastiVerificationEngine",
+    val verificationMethod: String = "INDEPENDENT_PROBE",
+    val confidence: Double = 1.0,
+    val provenance: String = "CANONICAL_EXECUTION_FABRIC"
+)
 
 /**
  * Canonical Immutable Execution Fact.
@@ -54,13 +101,18 @@ data class ExecutionFact(
     val verificationEvidence: String? = null,
     val terminalTruthState: TerminalTruthState,
     val recoveryStrategyApplied: String? = null,
+    val evidenceBundle: EvidenceBundle? = null,
     val timestamp: Long = completedAt
 ) {
     val isVerifiedSuccess: Boolean
-        get() = terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED
+        get() = terminalTruthState.isVerified
 
     val isTerminalFailure: Boolean
-        get() = terminalTruthState == TerminalTruthState.EXECUTION_FAILED ||
-                terminalTruthState == TerminalTruthState.VERIFICATION_FAILED ||
-                terminalTruthState == TerminalTruthState.BLOCKED
+        get() = terminalTruthState.isTerminalFailure
+
+    val isTerminal: Boolean
+        get() = terminalTruthState.isTerminal
+
+    val isSuccess: Boolean
+        get() = terminalTruthState.isExecutionSuccess
 }

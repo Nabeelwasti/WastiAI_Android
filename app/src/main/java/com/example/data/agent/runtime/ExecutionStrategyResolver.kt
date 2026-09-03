@@ -36,7 +36,10 @@ class ExecutionStrategyResolver(
         val reality = realityRegistry.getCapabilityReality(requiredCapability)
 
         // 1. Priority 1: NATIVE
-        if (reality.realityState == CapabilityRealityState.NATIVE) {
+        if (reality.realityState == CapabilityRealityState.NATIVE ||
+            (reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED &&
+             (reality.provider == "WorkspaceManager" || reality.provider == "LocalAndroidProvider" || reality.provider == "WastiNativeExecutionProvider" || reality.provider == "WastiProjectManager"))
+        ) {
             return ExecutionStrategyDecision(
                 strategy = ExecutionStrategy.NATIVE,
                 reasoning = "Capability [$requiredCapability] is natively available in Wasti OS workspace runtime.",

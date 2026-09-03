@@ -289,7 +289,7 @@ class WastiOSRuntime(
             is AgenticState.Testing -> "Testing: ${state.message}"
             is AgenticState.Verification -> "Truth Verification: ${state.message}"
             is AgenticState.SecurityBlocked -> "Security Gate: ${state.message}"
-            is AgenticState.Completed -> "Execution Verified & Successful: ${state.message}"
+            is AgenticState.Completed -> "Execution Completed: ${state.message}"
             is AgenticState.Failed -> "Execution Failed: ${state.message}"
             is AgenticState.Cancelled -> "Execution Cancelled: ${state.message}"
             is AgenticState.RolledBack -> "Workspace Rolled Back: ${state.message}"
@@ -417,31 +417,39 @@ class WastiOSRuntime(
             )
 
             // 2. Canonical Single Execution via UniversalAutonomousExecutionLoop
+            var loopExecutionException: Exception? = null
             val autoLoopResult = try {
                 WastiServiceLocator.universalAutonomousExecutionLoop.executeGoal(
                     userGoal = submission.rawCommand,
                     originatingTaskId = taskIdStr
                 )
             } catch (e: Exception) {
+                loopExecutionException = e
+                Log.e(TAG, "Execution exception in canonical UniversalAutonomousExecutionLoop: ${e.message}", e)
                 null
             }
 
             val duration = System.currentTimeMillis() - startTime
 
             val snapshot = if (autoLoopResult != null) {
-                val success = autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.COMPLETED || autoLoopResult.isVerified
+                val isVerified = autoLoopResult.isVerified
+                val isCompleted = autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.COMPLETED
+                val success = isCompleted && autoLoopResult.finalOutput.isNotBlank()
                 val summary = if (autoLoopResult.finalOutput.isNotBlank()) autoLoopResult.finalOutput else "Universal loop completed."
                 val state: AgenticState = if (success) {
                     AgenticState.Completed(summary)
                 } else {
-                    AgenticState.Failed(summary)
+                    AgenticState.Failed(autoLoopResult.lastError ?: summary)
                 }
                 WastiServiceLocator.taskManager.updateTaskState(task.taskId, state)
                 TaskExecutionSnapshot(success, summary, autoLoopResult.totalSteps, state)
             } else {
-                // Fallback to safeAgentRuntime only if universal autonomous loop is unavailable
-                val loopResult = safeAgentRuntime.executeTask(task.taskId)
-                TaskExecutionSnapshot(loopResult.isSuccess, loopResult.executionSummary, loopResult.iterationsCompleted, loopResult.finalState)
+                // If the loop threw an exception, report the failure truthfully rather than re-running
+                // a fallback executor that risks creating duplicate side effects.
+                val errorMsg = loopExecutionException?.message ?: "Canonical autonomous execution loop failed"
+                val state = AgenticState.Failed(errorMsg)
+                WastiServiceLocator.taskManager.updateTaskState(task.taskId, state)
+                TaskExecutionSnapshot(false, errorMsg, 0, state)
             }
 
             val taskSuccess = snapshot.isSuccess
@@ -459,6 +467,7 @@ class WastiOSRuntime(
             val terminalTruth = when {
                 autoLoopResult != null && autoLoopResult.isVerified -> TerminalTruthState.COMPLETED_VERIFIED
                 taskSuccess -> TerminalTruthState.COMPLETED_UNVERIFIED
+                loopExecutionException != null -> TerminalTruthState.EXECUTION_FAILED
                 else -> TerminalTruthState.EXECUTION_FAILED
             }
 
@@ -466,7 +475,12 @@ class WastiOSRuntime(
             _activeContext.value = _activeContext.value.copy(
                 isBusy = false,
                 agenticState = finalAgenticState,
-                progressMessage = if (terminalTruth == TerminalTruthState.COMPLETED_VERIFIED) "Execution Verified & Successful" else if (isSuccess) "Execution Completed (Unverified)" else "Execution Failed: $outputSummary",
+                progressMessage = when (terminalTruth) {
+                    TerminalTruthState.COMPLETED_VERIFIED -> "Execution Verified & Successful: ${outputSummary.take(60)}"
+                    TerminalTruthState.COMPLETED_UNVERIFIED -> "Execution Completed (Unverified): ${outputSummary.take(60)}"
+                    TerminalTruthState.EXECUTION_FAILED -> "Execution Failed: ${outputSummary.take(60)}"
+                    else -> "Execution Ended (${terminalTruth.name}): ${outputSummary.take(60)}"
+                },
                 lastResultSummary = outputSummary,
                 lastError = if (!isSuccess) outputSummary else null,
                 lastUpdatedTimestamp = System.currentTimeMillis()

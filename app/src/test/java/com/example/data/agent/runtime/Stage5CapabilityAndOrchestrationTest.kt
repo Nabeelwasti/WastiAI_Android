@@ -56,8 +56,9 @@ class Stage5CapabilityAndOrchestrationTest {
     @Test
     fun testCapabilityRealityStates() {
         val filesReality = realityRegistry.getCapabilityReality("FILES")
-        assertEquals(CapabilityRealityState.NATIVE, filesReality.realityState)
+        assertEquals(CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED, filesReality.realityState)
         assertEquals(ImplementationStatus.READY, filesReality.implementationStatus)
+        assertEquals(LiveConnectionStatus.NOT_VERIFIED, filesReality.liveConnectionStatus)
 
         val gmailReality = realityRegistry.getCapabilityReality("GMAIL")
         assertEquals(CapabilityRealityState.AUTHENTICATION_REQUIRED, gmailReality.realityState)
@@ -268,6 +269,6 @@ class Stage5CapabilityAndOrchestrationTest {
         assertTrue(connectivity.isNotEmpty())
 
         val realityAudit = auditEngine.generateRealityAuditReport()
-        assertTrue(realityAudit.any { it.capabilityId == "FILES" && it.realityState == CapabilityRealityState.NATIVE })
+        assertTrue(realityAudit.any { it.capabilityId == "FILES" && it.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED })
     }
 }
