@@ -598,13 +598,15 @@ class CapabilityRealityRegistry {
     fun recordExecutionFact(fact: ExecutionFact) {
         val key = normalizedKey(fact.capabilityId)
         val existing = getCapabilityReality(fact.capabilityId)
+        val isHostSimulated = fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST
+
         if (fact.isVerifiedSuccess) {
             val updated = existing.copy(
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
-                realityState = CapabilityRealityState.LIVE_CONNECTED,
+                liveConnectionStatus = if (isHostSimulated) LiveConnectionStatus.NOT_VERIFIED else LiveConnectionStatus.VERIFIED,
+                realityState = if (isHostSimulated) CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED else CapabilityRealityState.LIVE_CONNECTED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 lastVerifiedAt = fact.completedAt,
-                verificationMethod = "EXECUTION_FACT_VERIFIED"
+                verificationMethod = if (isHostSimulated) "ROBOLECTRIC_HOST_SIMULATED_VERIFIED" else "EXECUTION_FACT_VERIFIED"
             )
             capabilityMap[key] = updated
         } else if (fact.terminalTruthState == TerminalTruthState.EXECUTION_FAILED || fact.terminalTruthState == TerminalTruthState.VERIFICATION_FAILED) {
@@ -613,7 +615,7 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.FAILED,
                 executionStatus = CapabilityExecutionStatus.DEGRADED,
                 lastVerifiedAt = fact.completedAt,
-                verificationMethod = "EXECUTION_FACT_FAILED"
+                verificationMethod = if (isHostSimulated) "ROBOLECTRIC_HOST_SIMULATED_FAILED" else "EXECUTION_FACT_FAILED"
             )
             capabilityMap[key] = updated
         }

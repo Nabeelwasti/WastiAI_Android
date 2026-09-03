@@ -278,9 +278,12 @@ class Stage16PersistentAutonomousMemoryTest {
         val intent = Intent(Intent.ACTION_BOOT_COMPLETED)
 
         receiver.onReceive(context, intent)
-        delay(100)
-        // Passes without crashing or throwing
-        assertTrue(true)
+        delay(150)
+        
+        // Assert host test environment is explicitly recognized and recovery engine is verified
+        assertTrue("Robolectric host test must be detected", com.example.data.security.WastiSecureStorage.isRobolectricHost)
+        val recovered = proactiveEngine.recoverOnBootOrProcessStart()
+        assertTrue("Boot recovery should return valid reconciled count >= 0", recovered >= 0)
     }
 
     @Test

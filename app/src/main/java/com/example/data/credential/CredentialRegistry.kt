@@ -577,19 +577,16 @@ object CredentialRegistry {
     val credentialStates: StateFlow<List<CredentialState>> = _credentialStates.asStateFlow()
 
     fun getSecureSharedPreferences(context: Context): SharedPreferences {
+        return com.example.data.security.WastiSecureStorage.getEncryptedPreferences(context, "wasti_secure_prefs")
+    }
+
+    private fun getBuildConfigString(key: String): String? {
         return try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                "wasti_secure_prefs",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
+            val field = com.example.BuildConfig::class.java.getField(key)
+            val value = field.get(null) as? String
+            if (!value.isNullOrBlank() && !isPlaceholder(value)) value else null
         } catch (e: Throwable) {
-            context.getSharedPreferences("wasti_prefs", Context.MODE_PRIVATE)
+            null
         }
     }
 
@@ -627,47 +624,8 @@ object CredentialRegistry {
             }
         }
 
-        // 3. Direct BuildConfig property resolution
-        val directBuildConfig = when (keyName) {
-            "GEMINI_API_KEY" -> try { com.example.BuildConfig.GEMINI_API_KEY } catch (e: Throwable) { null }
-            "XAI_API_KEY" -> try { com.example.BuildConfig.XAI_API_KEY } catch (e: Throwable) { null }
-            "OPENAI_API_KEY" -> try { com.example.BuildConfig.OPENAI_API_KEY } catch (e: Throwable) { null }
-            "ANTHROPIC_API_KEY" -> try { com.example.BuildConfig.ANTHROPIC_API_KEY } catch (e: Throwable) { null }
-            "DEEPSEEK_API_KEY" -> try { com.example.BuildConfig.DEEPSEEK_API_KEY } catch (e: Throwable) { null }
-            "OPENROUTER_API_KEY" -> try { com.example.BuildConfig.OPENROUTER_API_KEY } catch (e: Throwable) { null }
-            "GROQ_API_KEY" -> try { com.example.BuildConfig.GROQ_API_KEY } catch (e: Throwable) { null }
-            "ELEVENLABS_API_KEY" -> try { com.example.BuildConfig.ELEVENLABS_API_KEY } catch (e: Throwable) { null }
-            "CANVA_CLIENT_ID" -> try { com.example.BuildConfig.CANVA_CLIENT_ID } catch (e: Throwable) { null }
-            "CANVA_CLIENT_SECRET" -> try { com.example.BuildConfig.CANVA_CLIENT_SECRET } catch (e: Throwable) { null }
-            "WASTI_GIT_PAT" -> try { com.example.BuildConfig.WASTI_GIT_PAT } catch (e: Throwable) { null }
-            "WASTI_GIT_FINE_GRAINED_PAT" -> try { com.example.BuildConfig.WASTI_GIT_FINE_GRAINED_PAT } catch (e: Throwable) { null }
-            "BREVO_API_KEY" -> try { com.example.BuildConfig.BREVO_API_KEY } catch (e: Throwable) { null }
-            "BREVO_MCP_SERVER_API_KEY" -> try { com.example.BuildConfig.BREVO_MCP_SERVER_API_KEY } catch (e: Throwable) { null }
-            "STRIPE_PUBLISHABLE_KEY" -> try { com.example.BuildConfig.STRIPE_PUBLISHABLE_KEY } catch (e: Throwable) { null }
-            "STRIPE_SECRET_KEY" -> try { com.example.BuildConfig.STRIPE_SECRET_KEY } catch (e: Throwable) { null }
-            "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN" -> try { com.example.BuildConfig.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN } catch (e: Throwable) { null }
-            "DRIVE_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
-            "DRIVE_CLIENT_SECRET" -> try { com.example.BuildConfig.DRIVE_CLIENT_SECRET } catch (e: Throwable) { null }
-            "GOOGLE_WEB_CLIENT_ID" -> try { com.example.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { null }
-            "GOOGLE_ANDROID_CLIENT_ID" -> try { com.example.BuildConfig.GOOGLE_ANDROID_CLIENT_ID } catch (e: Throwable) { null }
-            "HUGGINGFACE_ACCESS_TOKEN" -> try { com.example.BuildConfig.HUGGINGFACE_ACCESS_TOKEN } catch (e: Throwable) { null }
-            "UNSPLASH_APP_ID" -> try { com.example.BuildConfig.UNSPLASH_APP_ID } catch (e: Throwable) { null }
-            "UNSPLASH_ACCESS_KEY" -> try { com.example.BuildConfig.UNSPLASH_ACCESS_KEY } catch (e: Throwable) { null }
-            "UNSPLASH_SECRET_KEY" -> try { com.example.BuildConfig.UNSPLASH_SECRET_KEY } catch (e: Throwable) { null }
-            "DISCORD_BOT_ID" -> try { com.example.BuildConfig.DISCORD_BOT_ID } catch (e: Throwable) { null }
-            "DISCORD_BOT_KEY" -> try { com.example.BuildConfig.DISCORD_BOT_KEY } catch (e: Throwable) { null }
-            "BYTEZ_API_KEY" -> try { com.example.BuildConfig.BYTEZ_API_KEY } catch (e: Throwable) { null }
-            "CLOUDFLARE_API_KEY" -> try { com.example.BuildConfig.CLOUDFLARE_API_KEY } catch (e: Throwable) { null }
-            "NOTION_CONNECTION_ID" -> try { com.example.BuildConfig.NOTION_CONNECTION_ID } catch (e: Throwable) { null }
-            "HUBSPOT_CONNECTION_ID" -> try { com.example.BuildConfig.HUBSPOT_CONNECTION_ID } catch (e: Throwable) { null }
-            "SLACK_DOMAIN" -> try { com.example.BuildConfig.SLACK_DOMAIN } catch (e: Throwable) { null }
-            "ZAPIER_CONNECT_TOKEN" -> try { com.example.BuildConfig.ZAPIER_CONNECT_TOKEN } catch (e: Throwable) { null }
-            "ZAPIER_MCP_SHARE_LINK" -> try { com.example.BuildConfig.ZAPIER_MCP_SHARE_LINK } catch (e: Throwable) { null }
-            "GMAIL_SENDER_EMAIL" -> try { com.example.BuildConfig.GMAIL_SENDER_EMAIL } catch (e: Throwable) { null }
-            "GMAIL_APP_PASSWORD" -> try { com.example.BuildConfig.GMAIL_APP_PASSWORD } catch (e: Throwable) { null }
-            else -> null
-        }
-
+        // 3. Dynamic Safe BuildConfig property resolution
+        val directBuildConfig = getBuildConfigString(keyName)
         if (!directBuildConfig.isNullOrBlank() && !isPlaceholder(directBuildConfig)) {
             return directBuildConfig
         }

@@ -1,6 +1,29 @@
 package com.example.data.agent.runtime
 
+import com.example.data.security.WastiSecureStorage
 import java.util.UUID
+
+/**
+ * Execution Environment Tier for Wasti AI OS.
+ * Distinguishes host/Robolectric test execution from physical Android hardware reality.
+ */
+enum class ExecutionEnvironmentTier {
+    PHYSICAL_DEVICE,
+    ROBOLECTRIC_HOST,
+    EMULATOR,
+    CLOUD_BACKBONE;
+
+    val isSimulated: Boolean
+        get() = this == ROBOLECTRIC_HOST
+
+    companion object {
+        fun current(): ExecutionEnvironmentTier = when {
+            WastiSecureStorage.isRobolectricHost -> ROBOLECTRIC_HOST
+            android.os.Build.FINGERPRINT.startsWith("generic") || android.os.Build.MODEL.contains("google_sdk") -> EMULATOR
+            else -> PHYSICAL_DEVICE
+        }
+    }
+}
 
 /**
  * Terminal Truth States for Wasti AI OS.
@@ -56,8 +79,9 @@ data class EvidenceBundle(
     val capabilityId: String,
     val provider: String,
     val nodeId: String = "local_android_node",
+    val environmentTier: ExecutionEnvironmentTier = ExecutionEnvironmentTier.current(),
     val timestamp: Long = System.currentTimeMillis(),
-    val observationType: String = "POST_EXECUTION_PROBE",
+    val observationType: String = if (WastiSecureStorage.isRobolectricHost) "HOST_SIMULATED_PROBE" else "POST_EXECUTION_PROBE",
     val source: String = "WastiObservationEngine",
     val preState: String? = null,
     val postState: String? = null,
@@ -68,10 +92,10 @@ data class EvidenceBundle(
     val httpStatus: Int? = null,
     val screenshotRef: String? = null,
     val independentProbe: String? = null,
-    val verifier: String = "WastiVerificationEngine",
-    val verificationMethod: String = "INDEPENDENT_PROBE",
-    val confidence: Double = 1.0,
-    val provenance: String = "CANONICAL_EXECUTION_FABRIC"
+    val verifier: String = if (WastiSecureStorage.isRobolectricHost) "WastiHostVerificationProbe" else "WastiVerificationEngine",
+    val verificationMethod: String = if (WastiSecureStorage.isRobolectricHost) "ROBOLECTRIC_HOST_VERIFICATION" else "INDEPENDENT_PROBE",
+    val confidence: Double = if (WastiSecureStorage.isRobolectricHost) 0.85 else 1.0,
+    val provenance: String = if (WastiSecureStorage.isRobolectricHost) "CANONICAL_FABRIC_HOST_SIMULATED" else "CANONICAL_EXECUTION_FABRIC"
 )
 
 /**
@@ -89,6 +113,7 @@ data class ExecutionFact(
     val executor: String,
     val provider: String = "LOCAL_EMBEDDED",
     val nodeId: String = "local_android_node",
+    val environmentTier: ExecutionEnvironmentTier = ExecutionEnvironmentTier.current(),
     val startedAt: Long = System.currentTimeMillis(),
     val completedAt: Long = System.currentTimeMillis(),
     val durationMs: Long = completedAt - startedAt,

@@ -6,6 +6,8 @@ import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
+import com.example.data.security.WastiSecureStorage
+
 object DraftPersistenceManager {
 
     private const val TAG = "DraftPersistenceManager"
@@ -16,21 +18,7 @@ object DraftPersistenceManager {
     private const val KEY_SCRAPED_SCREEN_TIMESTAMP = "active_screen_scraped_timestamp"
 
     private fun getSecurePrefs(context: Context): SharedPreferences {
-        return try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                PREFS_FILE,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Throwable) {
-            Log.w(TAG, "Falling back to standard SharedPreferences for draft storage", e)
-            context.getSharedPreferences("wasti_chat_drafts_fallback", Context.MODE_PRIVATE)
-        }
+        return WastiSecureStorage.getEncryptedPreferences(context, PREFS_FILE)
     }
 
     /**

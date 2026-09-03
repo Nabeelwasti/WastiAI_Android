@@ -1019,7 +1019,8 @@ class UnifiedExecutionFabric(
         context: Context?,
         startedAt: Long
     ): UnifiedExecutionResult {
-        val osInfo = "Android OS ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}), Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+        val tierTag = if (com.example.data.security.WastiSecureStorage.isRobolectricHost) "[HOST_ROBOLECTRIC_SIMULATED]" else "[PHYSICAL_DEVICE]"
+        val osInfo = "Android OS ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}), Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} $tierTag"
         val memoryInfo = "Runtime max memory: ${Runtime.getRuntime().maxMemory() / (1024 * 1024)} MB, free: ${Runtime.getRuntime().freeMemory() / (1024 * 1024)} MB"
         val totalCaps = realityRegistry.getSystemRealityReport().size
         val output = "Wasti OS Environment Reality:\n- $osInfo\n- $memoryInfo\n- Registered capabilities: $totalCaps\n- UnifiedExecutionFabric active."
@@ -1031,7 +1032,7 @@ class UnifiedExecutionFabric(
             executor = "WastiEnvironmentInspector",
             startedAt = startedAt,
             verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Environment reality verified via UnifiedExecutionFabric"
+            verificationEvidence = "Environment reality verified via UnifiedExecutionFabric $tierTag"
         )
     }
 
