@@ -648,8 +648,8 @@ object CredentialRegistry {
             "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN" -> try { com.example.BuildConfig.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN } catch (e: Throwable) { null }
             "DRIVE_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
             "DRIVE_CLIENT_SECRET" -> try { com.example.BuildConfig.DRIVE_CLIENT_SECRET } catch (e: Throwable) { null }
-            "GOOGLE_WEB_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
-            "GOOGLE_ANDROID_CLIENT_ID" -> try { com.example.BuildConfig.DRIVE_CLIENT_ID } catch (e: Throwable) { null }
+            "GOOGLE_WEB_CLIENT_ID" -> try { com.example.BuildConfig.GOOGLE_WEB_CLIENT_ID } catch (e: Throwable) { null }
+            "GOOGLE_ANDROID_CLIENT_ID" -> try { com.example.BuildConfig.GOOGLE_ANDROID_CLIENT_ID } catch (e: Throwable) { null }
             "HUGGINGFACE_ACCESS_TOKEN" -> try { com.example.BuildConfig.HUGGINGFACE_ACCESS_TOKEN } catch (e: Throwable) { null }
             "UNSPLASH_APP_ID" -> try { com.example.BuildConfig.UNSPLASH_APP_ID } catch (e: Throwable) { null }
             "UNSPLASH_ACCESS_KEY" -> try { com.example.BuildConfig.UNSPLASH_ACCESS_KEY } catch (e: Throwable) { null }
