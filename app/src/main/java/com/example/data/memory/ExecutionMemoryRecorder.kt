@@ -8,6 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import com.example.data.agent.runtime.ExecutionFact
+import com.example.data.agent.runtime.TerminalTruthState
+
 data class ExecutionRecord(
     val recordId: String = java.util.UUID.randomUUID().toString(),
     val taskId: String,
@@ -22,6 +25,7 @@ data class ExecutionRecord(
     val verificationEvidence: String? = null,
     val recoveryStrategy: String? = null,
     val error: String? = null,
+    val terminalTruthState: TerminalTruthState? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -34,6 +38,27 @@ object ExecutionMemoryRecorder {
     private const val TAG = "ExecutionMemoryRecorder"
     private val executionHistory = ConcurrentLinkedQueue<ExecutionRecord>()
 
+    suspend fun recordExecutionFact(fact: ExecutionFact, context: Context? = null) = withContext(Dispatchers.IO) {
+        val record = ExecutionRecord(
+            recordId = fact.factId,
+            taskId = fact.taskId,
+            goal = fact.command,
+            interpretedIntent = fact.actionId,
+            selectedCapability = fact.capabilityId,
+            selectedNode = fact.nodeId,
+            stepsCount = 1,
+            durationMs = fact.durationMs,
+            isSuccess = fact.isVerifiedSuccess,
+            verificationStatus = fact.verificationStatus.name,
+            verificationEvidence = fact.verificationEvidence,
+            recoveryStrategy = fact.recoveryStrategyApplied,
+            error = fact.rawError,
+            terminalTruthState = fact.terminalTruthState,
+            timestamp = fact.completedAt
+        )
+        recordExecutionOutcome(record, context)
+    }
+
     suspend fun recordExecutionOutcome(record: ExecutionRecord, context: Context? = null) = withContext(Dispatchers.IO) {
         executionHistory.add(record)
         // Keep max 100 recent in-memory records
@@ -45,10 +70,11 @@ object ExecutionMemoryRecorder {
         if (ctx != null) {
             try {
                 val db = WastiDatabase.getDatabase(ctx)
-                val statusStr = when (record.isSuccess) {
-                    true -> "SUCCESS"
-                    false -> "FAILED"
-                    null -> "UNVERIFIED"
+                val statusStr = when {
+                    record.terminalTruthState != null -> record.terminalTruthState.name
+                    record.isSuccess == true -> "SUCCESS"
+                    record.isSuccess == false -> "FAILED"
+                    else -> "UNVERIFIED"
                 }
                 db.executionAuditDao().insertAudit(
                     ExecutionAuditEntity(
@@ -71,19 +97,21 @@ object ExecutionMemoryRecorder {
             }
         }
 
-        // Only verified success or explicit failures get indexed into semantic memory
+        // Truthful state mapping: Do NOT claim VERIFIED_FAILED if task succeeded unverified
         try {
-            val outcomeStr = when (record.isSuccess) {
-                true -> "VERIFIED_SUCCESS"
-                false -> "VERIFIED_FAILED"
-                null -> "OUTCOME_UNVERIFIED"
+            val outcomeStr = when {
+                record.terminalTruthState != null -> record.terminalTruthState.name
+                record.isSuccess == true -> "VERIFIED_SUCCESS"
+                record.verificationStatus == "VERIFICATION_FAILED" -> "VERIFICATION_FAILED"
+                record.isSuccess == false -> "EXECUTION_FAILED"
+                else -> "COMPLETED_UNVERIFIED"
             }
 
             val memoryContent = buildString {
                 appendLine("[EXECUTION_GRAPH_RECORD]")
                 appendLine("Task: ${record.taskId} | Goal: ${record.goal}")
                 appendLine("Intent: ${record.interpretedIntent} | Capability: ${record.selectedCapability} | Node: ${record.selectedNode}")
-                appendLine("Result: $outcomeStr | Verification: ${record.verificationStatus} in ${record.durationMs}ms")
+                appendLine("Truth State: $outcomeStr | Verification: ${record.verificationStatus} in ${record.durationMs}ms")
                 if (!record.verificationEvidence.isNullOrBlank()) {
                     appendLine("Evidence: ${record.verificationEvidence}")
                 }
@@ -95,11 +123,11 @@ object ExecutionMemoryRecorder {
                 }
             }
 
-            // Only promote high importance for verified success or verified failure for debugging
-            val importance = when (record.isSuccess) {
-                true -> 0.8f
-                false -> 0.9f
-                null -> 0.3f
+            // High importance for verified success or explicit failures needing debugging
+            val importance = when {
+                record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED || record.isSuccess == true -> 0.8f
+                record.terminalTruthState == TerminalTruthState.VERIFICATION_FAILED || record.isSuccess == false -> 0.7f
+                else -> 0.4f
             }
 
             MemoryManager.saveMemory(

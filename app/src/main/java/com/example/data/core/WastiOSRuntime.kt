@@ -416,14 +416,7 @@ class WastiOSRuntime(
                 progressMessage = "Running task ${task.taskId.value} via ${submission.targetAgentId}..."
             )
 
-            // 2. Execute Autonomous Loop via Universal Execution Lifecycle
-            val loopResult = safeAgentRuntime.executeTask(task.taskId)
-            val duration = System.currentTimeMillis() - startTime
-
-            var taskSuccess = loopResult.isSuccess
-            var finalSummary = loopResult.executionSummary
-            
-            // Reconcile and execute through Canonical Universal Execution Loop for objective verification evidence
+            // 2. Canonical Single Execution via UniversalAutonomousExecutionLoop
             val autoLoopResult = try {
                 WastiServiceLocator.universalAutonomousExecutionLoop.executeGoal(
                     userGoal = submission.rawCommand,
@@ -433,34 +426,47 @@ class WastiOSRuntime(
                 null
             }
 
-            if (autoLoopResult != null) {
-                if (autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.COMPLETED || autoLoopResult.isVerified) {
-                    taskSuccess = true
-                    if (autoLoopResult.finalOutput.isNotBlank()) {
-                        finalSummary = autoLoopResult.finalOutput
-                    }
-                } else if (autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.FAILED) {
-                    taskSuccess = false
-                    if (autoLoopResult.finalOutput.isNotBlank()) {
-                        finalSummary = autoLoopResult.finalOutput
-                    }
+            val duration = System.currentTimeMillis() - startTime
+
+            val snapshot = if (autoLoopResult != null) {
+                val success = autoLoopResult.phase == com.example.data.conversation.TaskTimelinePhase.COMPLETED || autoLoopResult.isVerified
+                val summary = if (autoLoopResult.finalOutput.isNotBlank()) autoLoopResult.finalOutput else "Universal loop completed."
+                val state: AgenticState = if (success) {
+                    AgenticState.Completed(summary)
+                } else {
+                    AgenticState.Failed(summary)
                 }
+                WastiServiceLocator.taskManager.updateTaskState(task.taskId, state)
+                TaskExecutionSnapshot(success, summary, autoLoopResult.totalSteps, state)
+            } else {
+                // Fallback to safeAgentRuntime only if universal autonomous loop is unavailable
+                val loopResult = safeAgentRuntime.executeTask(task.taskId)
+                TaskExecutionSnapshot(loopResult.isSuccess, loopResult.executionSummary, loopResult.iterationsCompleted, loopResult.finalState)
             }
+
+            val taskSuccess = snapshot.isSuccess
+            val finalSummary = snapshot.summary
+            val loopIterations = snapshot.iterations
+            val finalAgenticState = snapshot.state
 
             isSuccess = taskSuccess
             outputSummary = finalSummary
 
             evidence = if (autoLoopResult != null && autoLoopResult.isVerified) {
                 autoLoopResult.verificationEvidence ?: "Objective verification passed: ${autoLoopResult.finalOutput.take(120)}"
-            } else if (isSuccess) {
-                "Execution verified: Process completed without error"
             } else null
+
+            val terminalTruth = when {
+                autoLoopResult != null && autoLoopResult.isVerified -> TerminalTruthState.COMPLETED_VERIFIED
+                taskSuccess -> TerminalTruthState.COMPLETED_UNVERIFIED
+                else -> TerminalTruthState.EXECUTION_FAILED
+            }
 
             // 3. Update global context
             _activeContext.value = _activeContext.value.copy(
                 isBusy = false,
-                agenticState = loopResult.finalState,
-                progressMessage = if (isSuccess) "Execution Verified & Successful" else "Execution Failed: $outputSummary",
+                agenticState = finalAgenticState,
+                progressMessage = if (terminalTruth == TerminalTruthState.COMPLETED_VERIFIED) "Execution Verified & Successful" else if (isSuccess) "Execution Completed (Unverified)" else "Execution Failed: $outputSummary",
                 lastResultSummary = outputSummary,
                 lastError = if (!isSuccess) outputSummary else null,
                 lastUpdatedTimestamp = System.currentTimeMillis()
@@ -475,7 +481,7 @@ class WastiOSRuntime(
                 response = outputSummary,
                 durationMs = duration,
                 verificationEvidence = evidence,
-                agenticState = loopResult.finalState.javaClass.simpleName,
+                agenticState = finalAgenticState::class.simpleName ?: "Unknown",
                 timestamp = System.currentTimeMillis()
             )
             recordExecutionRecord(record)
@@ -487,10 +493,12 @@ class WastiOSRuntime(
                     interpretedIntent = submission.targetAgentId,
                     selectedCapability = "WastiOSRuntime",
                     selectedNode = "local_android_node",
-                    stepsCount = loopResult.iterationsCompleted,
+                    stepsCount = loopIterations,
                     durationMs = duration,
-                    isSuccess = isSuccess,
-                    verificationEvidence = evidence
+                    isSuccess = if (terminalTruth == TerminalTruthState.COMPLETED_VERIFIED) true else if (isSuccess) null else false,
+                    verificationStatus = if (terminalTruth == TerminalTruthState.COMPLETED_VERIFIED) "VERIFIED" else if (isSuccess) "UNVERIFIED" else "FAILED",
+                    verificationEvidence = evidence,
+                    terminalTruthState = terminalTruth
                 )
             )
 
@@ -593,3 +601,10 @@ class WastiOSRuntime(
         )
     }
 }
+
+private data class TaskExecutionSnapshot(
+    val isSuccess: Boolean,
+    val summary: String,
+    val iterations: Int,
+    val state: AgenticState
+)

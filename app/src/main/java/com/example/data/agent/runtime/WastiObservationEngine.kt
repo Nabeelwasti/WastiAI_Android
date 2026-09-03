@@ -276,13 +276,22 @@ class WastiObservationEngine(
         request: ObservationRequest,
         executorResult: UnifiedExecutionResult,
         description: String
-    ): ObservationResult = if (isExecutionSuccessful(executorResult)) {
+    ): ObservationResult = if (isVerified(executorResult)) {
         result(
             request = request,
             status = ObservationStatus.OBSERVED,
             observedState = executorResult.output,
-            evidence = "$description completed through UnifiedExecutionFabric: ${executorResult.output.take(EVIDENCE_PREVIEW_LENGTH)}",
-            confidence = if (isVerified(executorResult)) 1.0 else 0.8
+            evidence = "$description verified through independent execution proof: ${executorResult.output.take(EVIDENCE_PREVIEW_LENGTH)}",
+            confidence = 1.0
+        )
+    } else if (isExecutionSuccessful(executorResult)) {
+        // Honest truth architecture: Execution completion without independent probe is UNAVAILABLE for verification
+        result(
+            request = request,
+            status = ObservationStatus.UNAVAILABLE,
+            observedState = executorResult.output,
+            evidence = "$description completed execution, but no independent post-state probe is available for capability '${request.capabilityId}'.",
+            confidence = 0.0
         )
     } else {
         result(
@@ -308,10 +317,10 @@ class WastiObservationEngine(
         )
         isExecutionSuccessful(executorResult) -> result(
             request = request,
-            status = ObservationStatus.UNKNOWN,
+            status = ObservationStatus.UNAVAILABLE,
             observedState = executorResult.output,
-            evidence = "$capabilityId completed, but no independent verification evidence was supplied.",
-            confidence = 0.4
+            evidence = "$capabilityId completed execution, but no independent verification evidence or probe was supplied.",
+            confidence = 0.0
         )
         else -> result(
             request = request,

@@ -146,11 +146,14 @@ jobs:
         mkdir -p /tmp/apk_inspect
         unzip -q "$APK" -d /tmp/apk_inspect
         
-        # Check if sensitive pattern like GOOGLE_ACCOUNT_PASSWORD was baked in
-        if grep -rn "MY_GOOGLE_ACCOUNT_PASSWORD" /tmp/apk_inspect/; then
-          echo "ERROR: Forbidden secret string found inside APK!"
-          exit 1
-        fi
+        # Check if sensitive patterns like passwords or private tokens were baked in
+        PATTERNS=("MY_GOOGLE_ACCOUNT_PASSWORD" "GOOGLE_ACCOUNT_PASSWORD" "ghp_" "gho_" "xoxb-" "sk-ant-")
+        for PATTERN in "${PATTERNS[@]}"; do
+          if grep -rn "$PATTERN" /tmp/apk_inspect/; then
+            echo "ERROR: Forbidden secret pattern '$PATTERN' found inside APK!"
+            exit 1
+          fi
+        done
         rm -rf /tmp/apk_inspect
         echo "SUCCESS: APK secret boundary scan passed cleanly."
 

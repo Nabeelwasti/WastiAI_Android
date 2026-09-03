@@ -3,10 +3,13 @@ package com.example.data.core
 import android.content.Context
 import com.example.data.agent.runtime.CapabilityExecutionStatus
 import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.LiveConnectionStatus
 import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.credential.CredentialRegistry
 import com.example.data.credential.CredentialStatus
 import com.example.data.db.WastiDatabase
+import com.example.data.memory.ExecutionMemoryRecorder
+import com.example.data.node.NodeConnectionState
 import com.example.data.node.WastiNodeManager
 
 /**
@@ -80,25 +83,31 @@ object ProductionReadinessGate {
         val fabric = UnifiedExecutionFabric.instance
         val realities = fabric.realityRegistry.getSystemRealityReport()
         val operationalCount = realities.count { it.executionStatus == CapabilityExecutionStatus.OPERATIONAL }
+        val liveVerifiedCount = realities.count { it.liveConnectionStatus == LiveConnectionStatus.VERIFIED }
+        val hasRecentVerifiedExecution = ExecutionMemoryRecorder.getRecentExecutions(10).any { it.isSuccess == true && it.verificationStatus == "VERIFIED" }
+        val fabricLiveVerified = liveVerifiedCount > 0 || hasRecentVerifiedExecution
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "UnifiedExecutionFabric",
-                isOperational = true,
-                isLiveVerified = true,
-                state = ProductionReadinessState.TEST_VERIFIED,
-                notes = "$operationalCount / ${realities.size} native capabilities operational"
+                isOperational = operationalCount > 0,
+                isLiveVerified = fabricLiveVerified,
+                state = if (fabricLiveVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.TEST_VERIFIED,
+                notes = "$operationalCount / ${realities.size} operational, $liveVerifiedCount live-verified"
             )
         )
 
         // 4. Mesh & Node Topology
-        val nodeCount = WastiNodeManager.getInstance().getAllNodes().size
+        val nodeManager = WastiNodeManager.getInstance()
+        val nodes = nodeManager.getAllNodes()
+        val nodeCount = nodes.size
+        val hasActiveNode = nodes.any { it.connectionState == NodeConnectionState.CONNECTED }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "WastiMeshTransport",
-                isOperational = true,
-                isLiveVerified = true,
-                state = ProductionReadinessState.TEST_VERIFIED,
-                notes = "$nodeCount active mesh nodes discovered"
+                isOperational = nodeCount > 0,
+                isLiveVerified = hasActiveNode,
+                state = if (hasActiveNode) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.TEST_VERIFIED,
+                notes = "$nodeCount mesh nodes registered (activeNode=$hasActiveNode)"
             )
         )
 
