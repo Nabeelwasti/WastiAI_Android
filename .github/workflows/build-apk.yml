@@ -48,10 +48,11 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Setup Gradle
+    - name: Setup Gradle 9.7.1
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '9.3.1'
+        gradle-version: '9.7.1'
+        allow-snapshot-wrappers: false
 
     - name: Make Gradle Wrapper Executable
       run: chmod +x gradlew
