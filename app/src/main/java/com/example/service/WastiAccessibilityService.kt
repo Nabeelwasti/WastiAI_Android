@@ -114,11 +114,12 @@ class WastiAccessibilityService : AccessibilityService() {
         if (commandReceiver == null) {
             commandReceiver = WastiCommandReceiver()
             val filter = IntentFilter(ACTION_EXECUTE_GESTURE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(commandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                registerReceiver(commandReceiver, filter)
-            }
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                commandReceiver,
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+            )
             Log.i(TAG, "WastiCommandReceiver IPC bridge registered for $ACTION_EXECUTE_GESTURE")
         }
     }

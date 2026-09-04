@@ -47,7 +47,7 @@ fun UniversalTaskTimelineStepper(
             if (activeTaskId == null || entry.taskId == activeTaskId) {
                 latestEvents.add(0, entry)
                 if (latestEvents.size > 20) {
-                    latestEvents.removeLast()
+                    latestEvents.removeAt(latestEvents.lastIndex)
                 }
             }
         }

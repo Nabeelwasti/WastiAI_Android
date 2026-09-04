@@ -1,5 +1,6 @@
 package com.example.data.agent.runtime
 
+import android.os.Build
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
@@ -102,10 +103,31 @@ class LocalAndroidProvider(
             stdoutThread.start()
             stderrThread.start()
 
-            completedInTime = process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS)
+            completedInTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS)
+            } else {
+                val checkInterval = 50L
+                var elapsed = 0L
+                var finished = false
+                while (elapsed < request.timeoutMs) {
+                    try {
+                        process.exitValue()
+                        finished = true
+                        break
+                    } catch (e: IllegalThreadStateException) {
+                        Thread.sleep(checkInterval)
+                        elapsed += checkInterval
+                    }
+                }
+                finished
+            }
 
             if (!completedInTime) {
-                process.destroyForcibly()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    process.destroyForcibly()
+                } else {
+                    process.destroy()
+                }
                 stdoutThread.join(500)
                 stderrThread.join(500)
 
@@ -141,7 +163,13 @@ class LocalAndroidProvider(
                 errorType = if (isSuccess) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
             )
         } catch (e: Exception) {
-            process?.destroyForcibly()
+            if (process != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    process.destroyForcibly()
+                } else {
+                    process.destroy()
+                }
+            }
             ExecutionResult(
                 stdout = "",
                 stderr = "EXECUTION_ERROR: ${e.message}",

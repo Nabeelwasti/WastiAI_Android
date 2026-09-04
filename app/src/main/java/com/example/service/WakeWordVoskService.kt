@@ -180,6 +180,16 @@ class WakeWordVoskService : Service() {
 
     private fun startAudioRecordBufferLoop() {
         serviceScope.launch {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    this@WakeWordVoskService,
+                    android.Manifest.permission.RECORD_AUDIO
+                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                Log.e(TAG, "RECORD_AUDIO permission not granted")
+                WakeWordVoskState.updateStatus("Error: Microphone permission required")
+                return@launch
+            }
+
             val minBufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,

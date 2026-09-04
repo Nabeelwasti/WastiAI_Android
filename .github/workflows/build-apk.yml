@@ -51,13 +51,31 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '9.7.1'
+        gradle-version: '9.3.1'
 
     - name: Make Gradle Wrapper Executable
       run: chmod +x gradlew
 
     - name: Accept Android SDK Licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
+      run: |
+        SDKMANAGER_BIN=""
+        if command -v sdkmanager >/dev/null 2>&1; then
+          SDKMANAGER_BIN=$(command -v sdkmanager)
+        elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+          SDKMANAGER_BIN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        elif [ -x "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
+          SDKMANAGER_BIN="$ANDROID_HOME/tools/bin/sdkmanager"
+        fi
+        if [ -n "$SDKMANAGER_BIN" ]; then
+          yes | "$SDKMANAGER_BIN" --licenses || true
+        fi
+        mkdir -p "$ANDROID_HOME/licenses"
+        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
+        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+        echo -e "\n601085b94c79f3b24e146dd3920d091007e92b34" > "$ANDROID_HOME/licenses/android-googletv-license"
+        echo -e "\n33b6a2b64920268e304a4ddb1216b3a777e9b41e" > "$ANDROID_HOME/licenses/google-gdk-license"
+        echo -e "\ne9acab5b5fbb560a72cfa4f23690f4086beab3ac" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
+        echo "Android SDK licenses accepted."
 
     - name: Decode Debug Keystore
       run: |

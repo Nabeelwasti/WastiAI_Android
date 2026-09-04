@@ -44,3 +44,14 @@
 -dontwarn androidx.room.paging.**
 -keep class com.example.data.db.** { *; }
 
+# Embedded HttpServer
+-dontwarn com.sun.net.httpserver.**
+
+# Vosk Speech Recognition
+-dontwarn org.vosk.**
+-keep class org.vosk.** { *; }
+
+# Kotlinx Serialization & Coroutines
+-dontwarn kotlinx.coroutines.**
+-keepattributes *Annotation*
+
