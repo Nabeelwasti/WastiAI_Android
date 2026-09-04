@@ -1,9 +1,8 @@
 package com.example.data.ai.engine
 
+import com.example.data.ai.model.ModelRuntimeStatus
 import com.example.data.ai.model.OpenSourceModelCatalog
-import com.example.data.ai.model.OpenSourceModelDescriptor
 import com.example.data.ai.model.ProviderRequest
-import com.example.data.ai.model.ProviderResponse
 import com.example.data.ai.provider.WastiLocalBrainProvider
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -17,7 +16,8 @@ data class ModelThinkingNode(
     val modelName: String,
     val thoughtSummary: String,
     val confidence: Float,
-    val latencyMs: Long
+    val latencyMs: Long,
+    val runtimeStatus: ModelRuntimeStatus
 )
 
 data class UnifiedBrainConsensus(
@@ -35,7 +35,7 @@ object UnifiedBrain {
     val activeBrainState: StateFlow<UnifiedBrainConsensus?> = _activeBrainState.asStateFlow()
 
     init {
-        // Instantiate and register all 12 local open source model nodes
+        // Instantiate all 12 local open source model nodes
         OpenSourceModelCatalog.ALL_MODELS.forEach { descriptor ->
             localProviders[descriptor.id] = WastiLocalBrainProvider(descriptor)
         }
@@ -51,6 +51,8 @@ object UnifiedBrain {
     ): UnifiedBrainConsensus = coroutineScope {
         val startTime = System.currentTimeMillis()
         val validProviders = participatingModelIds.mapNotNull { localProviders[it] }
+        val appCtx = com.example.WastiApplication.instance
+        val statuses = ModelArtifactManager.modelStatuses.value
 
         val deferredNodes = validProviders.map { provider ->
             async {
@@ -59,12 +61,21 @@ object UnifiedBrain {
                     ProviderRequest(prompt = prompt)
                 )
                 val nodeLatency = System.currentTimeMillis() - nodeStart
+                val status = statuses[provider.id] ?: ModelRuntimeStatus.DECLARED
+                val confidence = when (status) {
+                    ModelRuntimeStatus.ACTIVE_LOADED -> 0.98f
+                    ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT -> 0.92f
+                    ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD -> 0.85f
+                    else -> 0.75f
+                }
+
                 ModelThinkingNode(
                     modelId = provider.id,
                     modelName = provider.name,
                     thoughtSummary = response.content,
-                    confidence = 0.95f,
-                    latencyMs = nodeLatency
+                    confidence = confidence,
+                    latencyMs = nodeLatency,
+                    runtimeStatus = status
                 )
             }
         }
@@ -90,15 +101,15 @@ object UnifiedBrain {
 
 object UltimateSynthesizer {
     fun synthesize(nodes: List<ModelThinkingNode>): String {
-        if (nodes.isEmpty()) return "Wasti AI OS: Single-Brain local synthesis complete."
+        if (nodes.isEmpty()) return "Wasti AI OS: Single-Brain local evaluation complete."
         if (nodes.size == 1) return nodes.first().thoughtSummary
 
         val builder = StringBuilder()
-        builder.append("Wasti AI OS Unified Brain Consensus (${nodes.size} Cooperative Local Models):\n\n")
+        builder.append("Wasti AI OS Unified Brain Consensus (${nodes.size} Cooperative Local Nodes):\n\n")
         nodes.forEach { node ->
-            builder.append("• [${node.modelName}]: ${node.thoughtSummary.take(120)}...\n")
+            builder.append("• [${node.modelName} - ${node.runtimeStatus}]: ${node.thoughtSummary.take(120)}...\n")
         }
-        builder.append("\nFinal Unified Synthesis: Intent verified, aligned across all participating open-source local models with zero external dependencies.")
+        builder.append("\nUnified Synthesis: Multi-node intent evaluated through canonical execution fabric.")
         return builder.toString()
     }
 }

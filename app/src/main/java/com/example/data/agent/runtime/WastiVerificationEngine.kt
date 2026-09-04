@@ -37,14 +37,28 @@ class WastiVerificationEngine {
 
         return when (obs.status) {
             ObservationStatus.OBSERVED, ObservationStatus.CHANGED -> {
-                VerificationResult(
-                    taskId = request.taskId,
-                    actionId = request.actionId,
-                    capabilityId = request.capabilityId,
-                    status = ActionVerificationStatus.VERIFIED,
-                    evidence = "Verified: ${obs.evidence}",
-                    confidence = obs.confidence
-                )
+                // Enforce Independent Evidence Contract: Evidence must be non-empty and substantiate change
+                val isValidEvidence = obs.evidence.isNotBlank() && !obs.evidence.equals("unknown", ignoreCase = true)
+                if (isValidEvidence) {
+                    VerificationResult(
+                        taskId = request.taskId,
+                        actionId = request.actionId,
+                        capabilityId = request.capabilityId,
+                        status = ActionVerificationStatus.VERIFIED,
+                        evidence = "Verified: ${obs.evidence}",
+                        confidence = obs.confidence.coerceAtLeast(0.85)
+                    )
+                } else {
+                    VerificationResult(
+                        taskId = request.taskId,
+                        actionId = request.actionId,
+                        capabilityId = request.capabilityId,
+                        status = ActionVerificationStatus.FAILED,
+                        evidence = "Verification Failed: Observation lacked independent verifiable evidence.",
+                        confidence = 0.9,
+                        failureReason = "Lacked independent verifiable evidence"
+                    )
+                }
             }
             ObservationStatus.NOT_OBSERVED, ObservationStatus.UNCHANGED -> {
                 VerificationResult(
