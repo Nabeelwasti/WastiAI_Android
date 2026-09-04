@@ -70,6 +70,12 @@ object AIManager {
         healthMonitor.initializeProvider(deepSeek.id, deepSeek.name)
         healthMonitor.initializeProvider(openRouter.id, openRouter.name)
         healthMonitor.initializeProvider(offline.id, offline.name)
+
+        // Register all local open-source brain providers (100% Local / Free / Offline / Zero-API-Key)
+        com.example.data.ai.engine.UnifiedBrain.getAllLocalProviders().forEach { localProvider ->
+            capabilityRegistry.registerProvider(localProvider)
+            healthMonitor.initializeProvider(localProvider.id, localProvider.name)
+        }
     }
 
     suspend fun execute(

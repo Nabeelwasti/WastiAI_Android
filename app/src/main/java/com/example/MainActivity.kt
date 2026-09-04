@@ -116,6 +116,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
                 WastiNavDestination("chat", "AI Chat", Icons.AutoMirrored.Filled.Chat),
                 WastiNavDestination("capabilities", "Reality Matrix", Icons.Default.Checklist),
+                WastiNavDestination("brain", "Brain & Neural", Icons.Default.Hub),
                 WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
                 WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
                 WastiNavDestination("memory", "Memory", Icons.Default.Memory),
@@ -325,6 +326,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onSelectModel = { viewModel.setSelectedModel(it) },
                                 onOpenWakeWordSettings = { viewModel.selectTab("wakeword_settings") }
                             )
+                            "brain" -> BrainSimulationScreen()
                             "dev_assistant" -> com.example.ui.screens.DevAssistantScreen(
                                 activeCodeContext = activeCodeContext,
                                 onCodeContextChange = { viewModel.setActiveCodeContext(it) },
