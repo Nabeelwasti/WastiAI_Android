@@ -425,10 +425,7 @@ abstract class WastiDatabase : RoomDatabase() {
                     MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
                 )
                 // Safe migration principle: Protect human memory, learned skills, and execution audits.
-                // Destructive migration on downgrade is only permitted in debug builds.
-                if (com.example.BuildConfig.DEBUG) {
-                    builder.fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
-                }
+                // Strictly non-destructive persistence: Wasti One Memory architecture preserves tables and records across versions.
                 val instance = builder.build()
                 INSTANCE = instance
                 instance

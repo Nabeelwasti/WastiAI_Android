@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.assistant.sync.SyncWorker
 import com.example.data.core.AppStartupManager
+import com.example.data.core.AppStartupState
 import com.example.data.core.StartupStage
 import com.example.data.db.WastiDatabase
 import com.example.data.worker.WastiWorkManagerHelper
@@ -88,7 +89,7 @@ class WastiApplication : Application(), Configuration.Provider {
                     instance
                 } catch (e: Throwable) {
                     Log.e("WastiApplication", "Error initializing WastiDatabase", e)
-                    AppStartupManager.recordWarning(currentStage, "Database initialization warning: ${e.message}")
+                    AppStartupManager.recordCriticalFailure(currentStage, "Database initialization failed: ${e.message}")
                     null
                 }
                 AppStartupManager.recordStageCompletion(currentStage, System.currentTimeMillis() - tDb)
@@ -177,7 +178,16 @@ class WastiApplication : Application(), Configuration.Provider {
                 AppStartupManager.updateStageProgress(currentStage, "Wasti AI OS Core Ready", 1.0f)
                 delay(100) // Smooth transition feel
                 AppStartupManager.setReady()
-                Log.i("WastiApplication", "All core subsystems initialized concurrently & successfully. AppStartupManager set to Ready.")
+                when (val finalState = AppStartupManager.startupState.value) {
+                    is AppStartupState.Ready ->
+                        Log.i("WastiApplication", "All core subsystems initialized with full verification.")
+                    is AppStartupState.CoreReadyDegraded ->
+                        Log.w("WastiApplication", "Core ready in degraded mode (Degraded: ${finalState.degradedSubsystems.joinToString { it.name }}).")
+                    is AppStartupState.FatalError ->
+                        Log.e("WastiApplication", "Startup blocked due to critical subsystem failure: ${finalState.message}")
+                    else ->
+                        Log.d("WastiApplication", "Startup completed with state: ${finalState::class.simpleName}")
+                }
             } catch (e: Throwable) {
                 Log.e("WastiApplication", "Error during startup in stage [${currentStage.name}]", e)
                 if (currentStage.isCritical) {

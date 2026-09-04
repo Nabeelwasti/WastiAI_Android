@@ -17,8 +17,6 @@ object BiometricSecurityManager {
     private const val KEY_BIOMETRIC_LOGIN_ENABLED = "biometric_login_enabled"
     private const val KEY_DEV_MODE_UNLOCKED = "dev_mode_unlocked"
 
-    const val DEFAULT_SEED_PIN = "1014254789"
-
     private fun getPrefs(context: Context) = try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -35,9 +33,14 @@ object BiometricSecurityManager {
         context.getSharedPreferences(PREF_FILE_NAME, Context.MODE_PRIVATE)
     }
 
-    fun getPin(context: Context): String {
+    fun isPinConfigured(context: Context): Boolean {
         val prefs = getPrefs(context)
-        return prefs.getString(KEY_PIN, DEFAULT_SEED_PIN) ?: DEFAULT_SEED_PIN
+        return !prefs.getString(KEY_PIN, null).isNullOrBlank()
+    }
+
+    fun getPin(context: Context): String? {
+        val prefs = getPrefs(context)
+        return prefs.getString(KEY_PIN, null)
     }
 
     fun setPin(context: Context, newPin: String) {
@@ -45,7 +48,18 @@ object BiometricSecurityManager {
     }
 
     fun verifyPin(context: Context, inputPin: String): Boolean {
-        return inputPin == getPin(context)
+        val stored = getPin(context)
+        return if (stored != null) {
+            inputPin == stored
+        } else {
+            // If no PIN is yet configured, allow initial setup with 10-digit PIN
+            if (inputPin.length == 10 && inputPin.all { it.isDigit() }) {
+                setPin(context, inputPin)
+                true
+            } else {
+                false
+            }
+        }
     }
 
     fun isBiometricLoginEnabled(context: Context): Boolean {
@@ -81,10 +95,13 @@ object BiometricSecurityManager {
     ) {
         val canAuth = canAuthenticate(activity)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS && canAuth != BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
-            // Hardware doesn't support biometrics or device is emulator without enrolled biometrics
-            // Proceed with high-trust authorization pass-through for test environment / emulators
-            Log.i(TAG, "Biometrics hardware not fully enrolled (Code: $canAuth). Passing authorization for testing environment.")
-            onSuccess()
+            if (com.example.BuildConfig.DEBUG) {
+                // In Debug / Robolectric testing environments, permit graceful developer progression with audit log
+                Log.i(TAG, "Biometrics hardware not fully enrolled (Code: $canAuth). High-trust debug bypass allowed.")
+                onSuccess()
+            } else {
+                onError("Biometric or device credential authentication is not enrolled or available on this device.")
+            }
             return
         }
 
@@ -104,8 +121,12 @@ object BiometricSecurityManager {
                         errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE ||
                         errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT
                     ) {
-                        // Fallback authorization pass for testing/emulators
-                        onSuccess()
+                        if (com.example.BuildConfig.DEBUG) {
+                            // Fallback authorization pass for testing/emulators in Debug builds only
+                            onSuccess()
+                        } else {
+                            onError("Biometric authentication unavailable on this hardware.")
+                        }
                     } else {
                         onError(errString.toString())
                     }
@@ -129,8 +150,12 @@ object BiometricSecurityManager {
             biometricPrompt.authenticate(promptInfo)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch BiometricPrompt: ${e.message}", e)
-            // Fallback for emulator compatibility
-            onSuccess()
+            if (com.example.BuildConfig.DEBUG) {
+                // Fallback for emulator compatibility in debug builds only
+                onSuccess()
+            } else {
+                onError("Failed to initialize security verification: ${e.message}")
+            }
         }
     }
 }

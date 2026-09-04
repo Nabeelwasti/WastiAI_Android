@@ -43,24 +43,27 @@ object OperationsManager {
 
             val summaries = providers.map { provider ->
                 val health = healthMonitor?.getHealth(provider.id)
+                val statusName = health?.status?.name ?: "UNKNOWN"
+                val latency = health?.latencyMs?.toDouble() ?: 0.0
+                val successPct = health?.successRatePercentage?.toDouble() ?: if (health != null && health.totalRequests > 0) 0.0 else 0.0
                 ProviderHealthSummary(
                     providerId = provider.id,
                     name = provider.name,
-                    healthStatus = health?.status?.name ?: "HEALTHY",
-                    averageLatencyMs = health?.latencyMs?.toDouble() ?: 45.0,
-                    successRate = health?.successRatePercentage?.toDouble() ?: 100.0,
+                    healthStatus = statusName,
+                    averageLatencyMs = latency,
+                    successRate = successPct,
                     totalRequests = health?.totalRequests ?: 0L
                 )
             }
 
-            val usageTotal = try { tokenTracker?.getTotalUsage()?.totalTokens ?: 12450L } catch (e: Throwable) { 12450L }
-            val todayCost = try { costTracker?.getTodayCostUsd() ?: 0.0412 } catch (e: Throwable) { 0.0412 }
+            val usageTotal = try { tokenTracker?.getTotalUsage()?.totalTokens ?: 0L } catch (e: Throwable) { 0L }
+            val todayCost = try { costTracker?.getTodayCostUsd() ?: 0.0 } catch (e: Throwable) { 0.0 }
             val memStats = try { MemoryManager.getObservabilityStats() } catch (e: Throwable) { MemoryObservabilityStats() }
-            val voiceProvider = try { com.example.data.voice.VoiceManager.activeProviderId.value } catch (e: Throwable) { "gemini" }
-            val jobsCount = try { com.example.data.worker.BackgroundTaskManager.jobsStateFlow.value.size } catch (e: Throwable) { 3 }
-            val toolsCount = try { com.example.data.tool.ToolRegistry.getAllTools().size } catch (e: Throwable) { 12 }
-            val rulesCount = try { com.example.data.workflow.WorkflowEngine.rulesStateFlow.value.size } catch (e: Throwable) { 4 }
-            val scoresCount = try { com.example.data.evaluation.AIEvaluationEngine.qualityScoresFlow.value.size } catch (e: Throwable) { 4 }
+            val voiceProvider = try { com.example.data.voice.VoiceManager.activeProviderId.value } catch (e: Throwable) { "LOCAL_OFFLINE" }
+            val jobsCount = try { com.example.data.worker.BackgroundTaskManager.jobsStateFlow.value.size } catch (e: Throwable) { 0 }
+            val toolsCount = try { com.example.data.tool.ToolRegistry.getAllTools().size } catch (e: Throwable) { 0 }
+            val rulesCount = try { com.example.data.workflow.WorkflowEngine.rulesStateFlow.value.size } catch (e: Throwable) { 0 }
+            val scoresCount = try { com.example.data.evaluation.AIEvaluationEngine.qualityScoresFlow.value.size } catch (e: Throwable) { 0 }
 
             OperationsDashboardStats(
                 providerSummaries = summaries,

@@ -315,8 +315,10 @@ fun AccountHubScreen(
             },
             text = {
                 Column {
+                    val isConfigured = BiometricSecurityManager.isPinConfigured(context)
                     Text(
-                        text = "Biometric thumbprint verified! Enter your 10-digit Seed PIN to reveal Developer Mode:",
+                        text = if (isConfigured) "Biometric thumbprint verified! Enter your 10-digit Seed PIN to reveal Developer Mode:"
+                               else "Biometric thumbprint verified! Set your 10-digit Master Seed PIN for Developer Mode:",
                         fontSize = 12.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -324,7 +326,7 @@ fun AccountHubScreen(
                         value = enteredPin,
                         onValueChange = { enteredPin = it },
                         label = { Text("Seed PIN") },
-                        placeholder = { Text("Default: 1014254789") },
+                        placeholder = { Text("Enter 10-digit PIN") },
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier

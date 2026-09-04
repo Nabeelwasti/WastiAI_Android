@@ -57,7 +57,7 @@ jobs:
       run: chmod +x gradlew
 
     - name: Accept Android SDK Licenses
-      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses
 
     - name: Decode Debug Keystore
       run: |
@@ -90,7 +90,7 @@ jobs:
 
     - name: Verify Release Compilation Gate
       timeout-minutes: 15
-      run: ./gradlew compileReleaseKotlin --no-configuration-cache --no-build-cache --stacktrace
+      run: ./gradlew compileReleaseKotlin assembleRelease --no-configuration-cache --no-build-cache --stacktrace
 
     - name: Build Debug APK
       timeout-minutes: 15

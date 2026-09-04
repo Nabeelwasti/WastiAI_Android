@@ -169,8 +169,9 @@ app.post('/wakeword', async (req, res) => {
         const out = await firebaseHelper.sendPush(payload.token, { wakeword: JSON.stringify(payload.event || {}) });
         return res.json({ status: 'pushed', detail: out });
       }
+      return res.json({ status: 'accepted', detail: 'Firebase configured, awaiting device registration token.' });
     }
-    return res.json({ status: 'queued' });
+    return res.status(200).json({ status: 'accepted', detail: 'Local node received event. Durable push queue unconfigured.' });
   } catch (err) {
     console.error('wakeword dispatch failed', err.message);
     res.status(500).json({ error: 'wakeword failed', detail: err.message || String(err) });

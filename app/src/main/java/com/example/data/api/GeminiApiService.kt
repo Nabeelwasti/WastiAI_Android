@@ -496,7 +496,7 @@ object GeminiClient {
                 "Preparing post content and launching social media share controller, Sir."
             }
             lower.contains("screen") || lower.contains("read screen") || lower.contains("what is on my screen") -> {
-                "Scanning active Android screen elements and UI node tree, Sir.\n\n• Active Window: Mobile OS Controller\n• Screen Content: Header, Voice Controller, Command Input, System Bar\n• Status: All buttons and fields detected and ready for tap simulation."
+                "Offline Mode: Screen content inspection requires active Accessibility Service connection and visual OCR provider integration."
             }
             lower.contains("tap") || lower.contains("click") || lower.contains("touch") || lower.contains("press") -> {
                 "Offline Mode: Physical touch/tap execution requires the Accessibility service and active device controller connection."

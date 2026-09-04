@@ -412,8 +412,13 @@ object WastiDeviceController {
             )
         )
 
+        val appCtx = com.example.WastiApplication.instance
+        if (appCtx != null && apiKey.isNotBlank()) {
+            com.example.data.credential.CredentialRegistry.saveCredential("voice_provider_key_${cleanName.lowercase()}", apiKey, appCtx)
+        }
+
         db.settingDao().insertSetting(SettingEntity("active_voice_provider", cleanName))
-        db.settingDao().insertSetting(SettingEntity("voice_provider_key_${cleanName.lowercase()}", apiKey))
+        db.settingDao().insertSetting(SettingEntity("voice_provider_configured_${cleanName.lowercase()}", "true"))
         db.settingDao().insertSetting(SettingEntity("voice_provider_url_${cleanName.lowercase()}", endpointUrl))
         db.settingDao().insertSetting(SettingEntity("voice_provider_id_${cleanName.lowercase()}", voiceId))
 
@@ -449,9 +454,14 @@ object WastiDeviceController {
             )
         )
 
+        val appCtx = com.example.WastiApplication.instance
+        if (appCtx != null && apiKey.isNotBlank()) {
+            com.example.data.credential.CredentialRegistry.saveCredential("ai_key_${cleanName.lowercase()}", apiKey, appCtx)
+        }
+
         db.settingDao().insertSetting(SettingEntity("active_ai_provider", cleanName))
         db.settingDao().insertSetting(SettingEntity("active_ai_model", modelName))
-        db.settingDao().insertSetting(SettingEntity("ai_key_${cleanName.lowercase()}", apiKey))
+        db.settingDao().insertSetting(SettingEntity("ai_configured_${cleanName.lowercase()}", "true"))
         db.settingDao().insertSetting(SettingEntity("ai_url_${cleanName.lowercase()}", endpointUrl))
 
         db.systemLogDao().insertLog(

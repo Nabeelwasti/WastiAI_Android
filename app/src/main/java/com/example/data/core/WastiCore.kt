@@ -726,7 +726,7 @@ object WastiCore {
             "tap_element" -> {
                 val elementId = functionCall.args?.get("elementIdentifier") ?: ""
                 Log.d("WastiCore", "FunctionCall dispatched: tap_element -> $elementId")
-                updateProgress(ProgressStage.DISPATCHING, "Simulating tap on '$elementId'...")
+                updateProgress(ProgressStage.DISPATCHING, "Dispatching tap command on '$elementId'...")
                 val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
                     capabilityId = "device_control",
                     parameters = mapOf("action" to "simulate_tap", "targetElement" to elementId)

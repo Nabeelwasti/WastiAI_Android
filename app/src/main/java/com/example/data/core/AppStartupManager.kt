@@ -121,6 +121,18 @@ object AppStartupManager {
         WastiEventBus.tryEmit(WastiEvent.SystemAlert("WARNING", warningStr))
     }
 
+    fun recordCriticalFailure(stage: StartupStage, message: String) {
+        val errStr = "[${stage.displayName}] CRITICAL FAILURE: $message"
+        warningsList.add(errStr)
+        if (!failedCriticalStages.contains(stage)) {
+            failedCriticalStages.add(stage)
+        }
+        if (!degradedStages.contains(stage)) {
+            degradedStages.add(stage)
+        }
+        WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", errStr))
+    }
+
     fun setReady() {
         val totalMs = System.currentTimeMillis() - totalStartTime
         val diagnostic = StartupDiagnostic(

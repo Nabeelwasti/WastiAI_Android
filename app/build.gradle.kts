@@ -49,11 +49,19 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
+      if (file(keystorePath).exists()) {
+        signingConfig = signingConfigs.getByName("release")
+      } else {
+        val debugKs = file("${rootDir}/debug.keystore")
+        if (debugKs.exists() && signingConfigs.findByName("debugConfig") != null) {
+          signingConfig = signingConfigs.getByName("debugConfig")
+        }
+      }
     }
     debug {
       val debugKs = file("${rootDir}/debug.keystore")
-      if (debugKs.exists()) {
+      if (debugKs.exists() && signingConfigs.findByName("debugConfig") != null) {
         signingConfig = signingConfigs.getByName("debugConfig")
       }
     }
@@ -67,8 +75,10 @@ android {
     buildConfig = true
   }
   lint {
-    abortOnError = false
+    abortOnError = true
     checkReleaseBuilds = false
+    warningsAsErrors = false
+    ignoreTestSources = true
   }
 
   testOptions {
