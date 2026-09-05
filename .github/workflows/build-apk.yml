@@ -2,9 +2,10 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 concurrency:
@@ -12,173 +13,176 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: write
+      contents: read
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Validate Gradle Wrapper
-      uses: gradle/actions/wrapper-validation@v4
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
 
-    - name: Set up JDK 21
-      uses: actions/setup-java@v5
-      with:
-        java-version: '21'
-        distribution: 'temurin'
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: "21"
+          distribution: "temurin"
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
-      with:
-        cache-read-only: false
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
-    - name: Make Gradle Wrapper Executable
-      run: chmod +x gradlew
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
 
-    - name: Accept Android SDK Licenses
-      run: |
-        SDKMANAGER_BIN=""
-        if command -v sdkmanager >/dev/null 2>&1; then
-          SDKMANAGER_BIN=$(command -v sdkmanager)
-        elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-          SDKMANAGER_BIN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        elif [ -x "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
-          SDKMANAGER_BIN="$ANDROID_HOME/tools/bin/sdkmanager"
-        fi
-        if [ -n "$SDKMANAGER_BIN" ]; then
-          yes | "$SDKMANAGER_BIN" --licenses || true
-        fi
-        mkdir -p "$ANDROID_HOME/licenses"
-        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
-        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-        echo -e "\n601085b94c79f3b24e146dd3920d091007e92b34" > "$ANDROID_HOME/licenses/android-googletv-license"
-        echo -e "\n33b6a2b64920268e304a4ddb1216b3a777e9b41e" > "$ANDROID_HOME/licenses/google-gdk-license"
-        echo -e "\ne9acab5b5fbb560a72cfa4f23690f4086beab3ac" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
-        echo "Android SDK licenses accepted."
-
-    - name: Decode Debug Keystore
-      run: |
-        if [ -f "debug.keystore.base64" ]; then
-          base64 -d debug.keystore.base64 > debug.keystore
-          echo "Restored debug.keystore from base64"
-        fi
-
-    - name: Generate Safe .env File for APK Build
-      run: |
-        # Zero-Leak Secret Boundary:
-        # Start with .env.example placeholders so personal/backend tokens are NEVER baked into client APK DEX.
-        cp .env.example .env
-        # Safely inject client-side public identifiers if provided in repository secrets
-        if [ -n "${{ secrets.GOOGLE_WEB_CLIENT_ID }}" ]; then
-          sed -i "s|^GOOGLE_WEB_CLIENT_ID=.*|GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}|" .env
-        fi
-        if [ -n "${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}" ]; then
-          sed -i "s|^GOOGLE_ANDROID_CLIENT_ID=.*|GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}|" .env
-        fi
-        echo "Safely generated .env file for APK build."
-
-    - name: Run Unit Tests
-      timeout-minutes: 15
-      run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace
-
-    - name: Run Android Lint
-      timeout-minutes: 10
-      run: ./gradlew lintDebug --no-configuration-cache --no-build-cache --stacktrace
-
-    - name: Verify Release Compilation Gate
-      timeout-minutes: 15
-      run: ./gradlew compileReleaseKotlin assembleRelease --no-configuration-cache --no-build-cache --stacktrace
-
-    - name: Build Debug APK
-      timeout-minutes: 15
-      run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace
-
-    - name: Verify WastiApplication in Manifest and DEX
-      run: |
-        APK="app/build/outputs/apk/debug/app-debug.apk"
-        echo "Validating APK: $APK"
-        
-        # Verify AndroidManifest.xml exists in APK
-        unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in APK"; exit 1; }
-        
-        FOUND=0
-        for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
-          if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then
-            echo "SUCCESS: WastiApplication class descriptor verified in $DEX"
-            FOUND=1
-          elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
-            echo "INFO: WastiApplication reference found in $DEX"
-            FOUND=1
-          fi
-        done
-
-        if [ "$FOUND" -eq 0 ]; then
-          echo "ERROR: WastiApplication NOT FOUND in APK DEX files"
-          exit 1
-        fi
-        echo "SUCCESS: WastiApplication bytecode integrity verified."
-
-    - name: Security & Secret Boundary Verification Scan
-      run: |
-        APK="app/build/outputs/apk/debug/app-debug.apk"
-        echo "Running APK Secret Boundary Scan..."
-        # Verify that ignored private secrets are not packaged in raw plaintext
-        mkdir -p /tmp/apk_inspect
-        unzip -q "$APK" -d /tmp/apk_inspect
-        
-        # Comprehensive detection for leaked private keys, API secrets, and server tokens
-        PATTERNS=(
-          "MY_GOOGLE_ACCOUNT_PASSWORD" 
-          "GOOGLE_ACCOUNT_PASSWORD" 
-          "ghp_" 
-          "gho_" 
-          "xoxb-" 
-          "sk-ant-"
-          "AKIA[0-9A-Z]{16}"
-          "rk_live_"
-          "sk_live_"
-          "BEGIN PRIVATE KEY"
-          "BEGIN RSA PRIVATE KEY"
-          "BEGIN OPENSSH PRIVATE KEY"
-        )
-        for PATTERN in "${PATTERNS[@]}"; do
-          if grep -rEn "$PATTERN" /tmp/apk_inspect/; then
-            echo "ERROR: Forbidden secret pattern '$PATTERN' found inside APK!"
+      - name: Accept Android SDK Licenses
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v sdkmanager >/dev/null 2>&1 || {
+            echo "ERROR: sdkmanager is unavailable after Android SDK setup."
             exit 1
+          }
+          yes | sdkmanager --licenses >/dev/null
+          echo "Android SDK licenses accepted."
+
+      - name: Generate Safe .env File for APK Build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          if [ -n "${{ secrets.GOOGLE_WEB_CLIENT_ID }}" ]; then
+            sed -i "s|^GOOGLE_WEB_CLIENT_ID=.*|GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}|" .env
           fi
-        done
-        rm -rf /tmp/apk_inspect
-        echo "SUCCESS: Comprehensive APK secret boundary scan passed cleanly."
+          if [ -n "${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}" ]; then
+            sed -i "s|^GOOGLE_ANDROID_CLIENT_ID=.*|GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}|" .env
+          fi
+          echo "Generated build-time .env from non-secret placeholders/public identifiers only."
 
-    - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: WastiAI-Debug-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Run Unit Tests
+        timeout-minutes: 15
+        run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace
 
-    - name: Create or Update GitHub Release
-      if: github.event_name != 'pull_request'
-      uses: softprops/action-gh-release@v2
-      with:
-        files: app/build/outputs/apk/debug/app-debug.apk
-        tag_name: "v1.0.0"
-        name: "Wasti AI v1.0.0 (Latest APK)"
-        overwrite: true
-        make_latest: true
-        fail_on_unmatched_files: false
-        body: |
-          ### 📱 Wasti AI Latest Build
-          - **File:** `app-debug.apk`
-          - Download the `app-debug.apk` file below and open it on your Android phone to install!
-        generate_release_notes: false
-        token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run Debug Lint
+        timeout-minutes: 10
+        run: ./gradlew lintDebug --no-configuration-cache --no-build-cache --stacktrace
+
+      - name: Build Debug APK (PR validation)
+        if: github.event_name == 'pull_request'
+        timeout-minutes: 15
+        run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace
+
+      - name: Verify Production Signing Configuration
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64" || { echo "ERROR: RELEASE_KEYSTORE_BASE64 is not configured."; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "ERROR: RELEASE_STORE_PASSWORD is not configured."; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "ERROR: RELEASE_KEY_PASSWORD is not configured."; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "ERROR: RELEASE_KEY_ALIAS is not configured."; exit 1; }
+          echo "$KEYSTORE_B64" | base64 --decode > "$GITHUB_WORKSPACE/release.keystore"
+          test -s "$GITHUB_WORKSPACE/release.keystore" || { echo "ERROR: Decoded release keystore is empty."; exit 1; }
+          echo "Release signing material is present without printing secret values."
+
+      - name: Build Signed Release APK
+        if: github.event_name != 'pull_request'
+        timeout-minutes: 20
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        run: ./gradlew lintRelease assembleRelease --no-configuration-cache --no-build-cache --stacktrace
+
+      - name: Verify Release APK Structure
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK" || { echo "ERROR: Signed release APK missing or empty."; exit 1; }
+          unzip -Z1 "$APK" | grep -q '^AndroidManifest.xml$'
+          FOUND=0
+          for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
+            if unzip -p "$APK" "$DEX" | grep -a -q 'WastiApplication'; then
+              FOUND=1
+              break
+            fi
+          done
+          test "$FOUND" -eq 1 || { echo "ERROR: WastiApplication not found in release DEX."; exit 1; }
+          echo "Release APK structure and WastiApplication bytecode verified."
+
+      - name: Security & Secret Boundary Verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            APK="app/build/outputs/apk/debug/app-debug.apk"
+          else
+            APK="app/build/outputs/apk/release/app-release.apk"
+          fi
+          test -s "$APK"
+          mkdir -p /tmp/apk_inspect
+          trap 'rm -rf /tmp/apk_inspect' EXIT
+          unzip -q "$APK" -d /tmp/apk_inspect
+          PATTERNS=(
+            'MY_GOOGLE_ACCOUNT_PASSWORD'
+            'GOOGLE_ACCOUNT_PASSWORD'
+            'GMAIL_APP_PASSWORD'
+            'ghp_[A-Za-z0-9_]+'
+            'gho_[A-Za-z0-9_]+'
+            'xox[baprs]-[A-Za-z0-9-]+'
+            'sk-ant-[A-Za-z0-9_-]+'
+            'AKIA[0-9A-Z]{16}'
+            'rk_live_[A-Za-z0-9]+'
+            'sk_live_[A-Za-z0-9]+'
+            'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY'
+          )
+          for PATTERN in "${PATTERNS[@]}"; do
+            if grep -rEn "$PATTERN" /tmp/apk_inspect/ >/dev/null 2>&1; then
+              echo "ERROR: Forbidden secret pattern '$PATTERN' found in APK."
+              exit 1
+            fi
+          done
+          echo "APK secret-boundary scan passed."
+
+      - name: Upload Release APK Artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WastiAI-Release-APK
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload Debug APK Artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WastiAI-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release for Version Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/app-release.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
