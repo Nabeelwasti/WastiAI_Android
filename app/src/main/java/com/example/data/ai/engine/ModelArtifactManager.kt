@@ -1,8 +1,6 @@
 package com.example.data.ai.engine
 
-import android.app.ActivityManager
 import android.content.Context
-import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import com.example.data.ai.model.HardwareEnvironmentSpecs
@@ -24,38 +22,51 @@ object HardwareCapabilityDetector {
 
     fun detectHardwareEnvironment(context: Context?): HardwareEnvironmentSpecs {
         val rt = Runtime.getRuntime()
-        val totalMemoryMb = rt.totalMemory() / (1024 * 1024)
-        val freeMemoryMb = rt.freeMemory() / (1024 * 1024)
         val maxMemoryMb = rt.maxMemory() / (1024 * 1024)
+        val freeMemoryMb = rt.freeMemory() / (1024 * 1024)
 
-        var availableStorageMb = 2048L
-        try {
+        val availableStorageMb = runCatching {
             val stat = StatFs(Environment.getDataDirectory().path)
-            availableStorageMb = (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
-        } catch (_: Throwable) {}
+            (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
+        }.getOrDefault(0L)
 
-        val cores = Runtime.getRuntime().availableProcessors()
+        val cores = rt.availableProcessors()
         val isLowRam = maxMemoryMb < 512
+
+        // Do not infer NPU availability from Android API level. A real accelerator
+        // probe/provider is required before advertising NPU execution.
+        val hasNpuAcceleration = false
+
+        // This detector does not own battery/thermal state. Keep this conservative
+        // value until a real device-state probe is wired into the router.
+        val batteryOrThermalLimited = false
 
         return HardwareEnvironmentSpecs(
             totalRamMb = maxMemoryMb,
             availableRamMb = freeMemoryMb,
             availableStorageMb = availableStorageMb,
             cpuCores = cores,
-            hasNpuAcceleration = Build.VERSION.SDK_INT >= 29,
+            hasNpuAcceleration = hasNpuAcceleration,
             isLowRamDevice = isLowRam,
-            isBatteryLowOrThermalsThrottling = false
+            isBatteryLowOrThermalsThrottling = batteryOrThermalLimited
         )
     }
 
-    fun canRunModelLocally(manifest: ModelArtifactManifest, specs: HardwareEnvironmentSpecs): Pair<Boolean, String> {
+    fun canRunModelLocally(
+        manifest: ModelArtifactManifest,
+        specs: HardwareEnvironmentSpecs
+    ): Pair<Boolean, String> {
         if (specs.totalRamMb < manifest.minRamRequiredMb) {
-            return false to "Insufficient RAM: Requires ${manifest.minRamRequiredMb}MB, system provides ${specs.totalRamMb}MB"
+            return false to
+                "Insufficient RAM: requires ${manifest.minRamRequiredMb}MB, system provides ${specs.totalRamMb}MB"
         }
         if (specs.availableStorageMb < (manifest.byteSize / (1024 * 1024)) + 500) {
             return false to "Insufficient storage space for model weights."
         }
-        return true to "Hardware meets requirements for local neural inference."
+        if (specs.isBatteryLowOrThermalsThrottling) {
+            return false to "Device reports battery/thermal limits that prevent local model execution."
+        }
+        return true to "Hardware meets declared resource requirements; runtime compatibility must still be verified."
     }
 }
 
@@ -67,41 +78,40 @@ object ModelArtifactManager {
     private val manifests = mapOf(
         "wasti-smollm" to ModelArtifactManifest(
             modelId = "wasti-smollm",
-            canonicalFileName = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
-            expectedSha256 = "d2a6e9a7e3b12398fa90123efca45bc7890123456789abcdef0123456789abcd",
-            byteSize = 1048576000L, // ~1.0 GB
+            canonicalFileName = "smollm2-1.7b-instruct-q4_k_m.gguf",
+            expectedSha256 = "decd2598bc2c8ed08c19adc3c8fdd461ee19ed5708679d1c54ef54a5a30d4f33",
+            byteSize = 1055609536L,
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
-            license = "Apache 2.0",
-            minRamRequiredMb = 256,
-            requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR
+            license = "Apache-2.0",
+            minRamRequiredMb = 3072,
+            requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED
         ),
         "wasti-phi" to ModelArtifactManifest(
             modelId = "wasti-phi",
-            canonicalFileName = "Phi-3.5-mini-instruct-Q4_K_M.gguf",
-            expectedSha256 = "c3b8a1f7d9e45601ab23456fcde78901234567890abcdef01234567890abcdef",
-            byteSize = 2147483648L, // ~2.1 GB
+            canonicalFileName = "phi-3.5-mini-instruct-q4_k_m.gguf",
+            expectedSha256 = "9c547fc0b8ecc2ff64f11e3180e00f8ba0e823a56c591efd9f1773fe7537a526",
+            byteSize = 2393232384L,
             quantization = QuantizationType.Q4_K_M,
-            downloadUrl = "https://huggingface.co/microsoft/Phi-3.5-mini-instruct-gguf/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+            downloadUrl = "https://huggingface.co/itlwas/Phi-3.5-mini-instruct-Q4_K_M-GGUF/resolve/main/phi-3.5-mini-instruct-q4_k_m.gguf",
             license = "MIT",
-            minRamRequiredMb = 512,
+            minRamRequiredMb = 4096,
             requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED
         ),
         "wasti-qwen" to ModelArtifactManifest(
             modelId = "wasti-qwen",
-            canonicalFileName = "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
-            expectedSha256 = "e4f9b2a1c0d876543210fedcba9876543210fedcba9876543210fedcba987654",
-            byteSize = 1100000000L,
+            canonicalFileName = "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+            expectedSha256 = "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046",
+            byteSize = 1117320768L,
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
-            license = "Apache 2.0",
-            minRamRequiredMb = 384,
+            license = "Apache-2.0",
+            minRamRequiredMb = 3072,
             requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED
         )
     )
 
     init {
-        // Initialize truthful initial state for all catalog models
         val initialMap = mutableMapOf<String, ModelRuntimeStatus>()
         OpenSourceModelCatalog.ALL_MODELS.forEach { model ->
             initialMap[model.id] = if (manifests.containsKey(model.id)) {
@@ -117,7 +127,9 @@ object ModelArtifactManager {
 
     fun getModelFile(context: Context, modelId: String): File {
         val modelsDir = File(context.filesDir, "wasti_models")
-        if (!modelsDir.exists()) modelsDir.mkdirs()
+        if (!modelsDir.exists() && !modelsDir.mkdirs()) {
+            throw IllegalStateException("Unable to create local model directory")
+        }
         val manifest = manifests[modelId]
         val fileName = manifest?.canonicalFileName ?: "$modelId.gguf"
         return File(modelsDir, fileName)
@@ -125,26 +137,29 @@ object ModelArtifactManager {
 
     fun isWeightsPresent(context: Context, modelId: String): Boolean {
         val file = getModelFile(context, modelId)
-        return file.exists() && file.length() > 0
+        val manifest = manifests[modelId] ?: return false
+        return file.isFile() && file.length() == manifest.byteSize && file.length() > 0
     }
 
-    suspend fun verifyModelIntegrity(file: File, expectedSha256: String): Boolean = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext false
-        try {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val buffer = ByteArray(8192)
-            FileInputStream(file).use { fis ->
-                var read: Int
-                while (fis.read(buffer).also { read = it } != -1) {
-                    digest.update(buffer, 0, read)
+    suspend fun verifyModelIntegrity(file: File, expectedSha256: String): Boolean =
+        withContext(Dispatchers.IO) {
+            if (!file.isFile() || file.length() <= 0) return@withContext false
+            if (!expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) return@withContext false
+            try {
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(1024 * 1024)
+                FileInputStream(file).use { fis ->
+                    var read: Int
+                    while (fis.read(buffer).also { read = it } != -1) {
+                        if (read > 0) digest.update(buffer, 0, read)
+                    }
                 }
+                val calculated = digest.digest().joinToString("") { "%02x".format(it) }
+                calculated.equals(expectedSha256, ignoreCase = true)
+            } catch (_: Exception) {
+                false
             }
-            val calculated = digest.digest().joinToString("") { "%02x".format(it) }
-            calculated.equals(expectedSha256, ignoreCase = true)
-        } catch (_: Throwable) {
-            false
         }
-    }
 
     fun updateStatus(modelId: String, status: ModelRuntimeStatus) {
         val current = _modelStatuses.value.toMutableMap()
