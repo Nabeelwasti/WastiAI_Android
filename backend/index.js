@@ -59,6 +59,24 @@ const PORT = process.env.PORT || 8080;
 const GITHUB_PAT = process.env.BACKEND_GITHUB_PAT || process.env.BACKEND_GITHUB_CLASSIC || process.env.GITHUB_PAT || null;
 const octokit = GITHUB_PAT ? new Octokit({ auth: GITHUB_PAT }) : null;
 
+// Auth Middleware for sensitive endpoints
+function requireAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
+  const expectedSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
+
+  if (expectedSecret) {
+    let providedToken = tokenHeader;
+    if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
+      providedToken = authHeader.substring(7).trim();
+    }
+    if (!providedToken || providedToken !== expectedSecret) {
+      return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
+    }
+  }
+  next();
+}
+
 // Health check endpoint with subsystem status
 app.get('/health', (req, res) => {
   res.json({
@@ -67,11 +85,12 @@ app.get('/health', (req, res) => {
     githubConfigured: Boolean(octokit),
     brevoConfigured: Boolean(process.env.BREVO_API_KEY),
     stripeConfigured: Boolean(process.env.STRIPE_SECRET_KEY || process.env.BACKEND_STRIPE_SECRET),
-    firebaseConfigured: Boolean(process.env.FIREBASE_SA_BASE64 || process.env.FIREBASE_SA_PATH)
+    firebaseConfigured: Boolean(process.env.FIREBASE_SA_BASE64 || process.env.FIREBASE_SA_PATH),
+    authEnforced: Boolean(process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET)
   });
 });
 
-app.post('/llm', async (req, res) => {
+app.post('/llm', requireAuth, async (req, res) => {
   try {
     const { provider = 'openai', payload = {}, priority } = req.body;
     if (!payload || (typeof payload !== 'object' && typeof payload !== 'string')) {
@@ -87,13 +106,19 @@ app.post('/llm', async (req, res) => {
   }
 });
 
-app.post('/dev/patch', async (req, res) => {
+app.post('/dev/patch', requireAuth, async (req, res) => {
   try {
     if (!octokit) return res.status(503).json({ error: 'GitHub integration not configured on server' });
     const { owner, repo, base = 'main', title = 'Wasti Dev Patch', body = 'Automated patch', changes = [] } = req.body;
     if (!owner || !repo) return res.status(400).json({ error: 'owner and repo required' });
     if (!Array.isArray(changes) || changes.length === 0) {
       return res.status(400).json({ error: 'At least one file change required to create patch' });
+    }
+
+    // Validate repo ownership against optional allowlist
+    const allowedRepos = process.env.ALLOWED_GITHUB_REPOS ? process.env.ALLOWED_GITHUB_REPOS.split(',').map(r => r.trim().toLowerCase()) : null;
+    if (allowedRepos && !allowedRepos.includes(`${owner}/${repo}`.toLowerCase()) && !allowedRepos.includes(repo.toLowerCase())) {
+      return res.status(403).json({ error: 'Repository not in authorized allowlist for automated patches' });
     }
 
     const baseRef = `heads/${base}`;

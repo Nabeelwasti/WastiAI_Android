@@ -757,7 +757,16 @@ object CredentialRegistry {
                     val lower = entry.keyName.lowercase()
                     val dbValue = db.settingDao().getSettingValue(lower)
                         ?: db.settingDao().getSettingValue(entry.keyName)
-                    if (!dbValue.isNullOrBlank()) {
+                    if (!dbValue.isNullOrBlank() && !isPlaceholder(dbValue)) {
+                        // One-time legacy migration to EncryptedSharedPreferences
+                        val securePrefs = getSecureSharedPreferences(context)
+                        securePrefs.edit()
+                            .putString(lower, dbValue.trim())
+                            .putString(entry.keyName, dbValue.trim())
+                            .apply()
+                        // Immediate purge from Room plaintext
+                        db.settingDao().deleteSetting(lower)
+                        db.settingDao().deleteSetting(entry.keyName)
                         raw = dbValue
                     }
                 }
@@ -816,10 +825,10 @@ object CredentialRegistry {
                 .remove(keyName)
                 .apply()
 
+            // Purge any legacy plaintext secret from Room database
             val db = WastiDatabase.getDatabase(context)
-            db.settingDao().insertSetting(
-                com.example.data.db.SettingEntity(keyName.lowercase(), newValue.trim())
-            )
+            db.settingDao().deleteSetting(keyName.lowercase())
+            db.settingDao().deleteSetting(keyName)
 
             refreshAll(context)
         }

@@ -6,8 +6,13 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- Exclude sensitive keystores, encrypted prefs, tokens, and private databases from cloud backup -->
+    <exclude domain="sharedpref" path="wasti_secure_vault.xml"/>
+    <exclude domain="sharedpref" path="wasti_prefs.xml"/>
+    <exclude domain="sharedpref" path="wasti_secret_vault.xml"/>
+    <exclude domain="database" path="wasti_os_v2.db"/>
+    <exclude domain="database" path="wasti_os_v2.db-wal"/>
+    <exclude domain="database" path="wasti_os_v2.db-shm"/>
+    <exclude domain="file" path="wasti_models/"/>
+    <exclude domain="file" path="temp/"/>
 </full-backup-content>

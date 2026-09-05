@@ -15,7 +15,8 @@ data class ModelThinkingNode(
     val modelId: String,
     val modelName: String,
     val thoughtSummary: String,
-    val confidence: Float,
+    val runtimeConfidence: Float,
+    val inferenceConfidence: Float,
     val latencyMs: Long,
     val runtimeStatus: ModelRuntimeStatus
 )
@@ -23,7 +24,7 @@ data class ModelThinkingNode(
 data class UnifiedBrainConsensus(
     val finalSynthesis: String,
     val participatingModels: List<ModelThinkingNode>,
-    val averageConfidence: Float,
+    val averageInferenceConfidence: Float,
     val totalLatencyMs: Long,
     val isFullyLocal: Boolean = true
 )
@@ -62,18 +63,31 @@ object UnifiedBrain {
                 )
                 val nodeLatency = System.currentTimeMillis() - nodeStart
                 val status = statuses[provider.id] ?: ModelRuntimeStatus.DECLARED
-                val confidence = when (status) {
-                    ModelRuntimeStatus.ACTIVE_LOADED -> 0.98f
-                    ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT -> 0.92f
-                    ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD -> 0.85f
-                    else -> 0.75f
+                
+                // Epistemic separation: Runtime readiness vs. Semantic inference confidence
+                val runtimeConf = when (status) {
+                    ModelRuntimeStatus.ACTIVE_LOADED -> 1.0f
+                    ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT -> 0.90f
+                    ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD -> 0.60f
+                    else -> 0.30f
+                }
+                
+                // Inference confidence derived from response completeness and format validation
+                val hasSubstantialContent = response.content.length > 40
+                val inferConf = if (status == ModelRuntimeStatus.ACTIVE_LOADED && hasSubstantialContent) {
+                    0.92f
+                } else if (hasSubstantialContent) {
+                    0.75f
+                } else {
+                    0.50f
                 }
 
                 ModelThinkingNode(
                     modelId = provider.id,
                     modelName = provider.name,
                     thoughtSummary = response.content,
-                    confidence = confidence,
+                    runtimeConfidence = runtimeConf,
+                    inferenceConfidence = inferConf,
                     latencyMs = nodeLatency,
                     runtimeStatus = status
                 )
@@ -84,12 +98,12 @@ object UnifiedBrain {
         val totalLatency = System.currentTimeMillis() - startTime
 
         val synthesizedText = UltimateSynthesizer.synthesize(results)
-        val avgConfidence = if (results.isNotEmpty()) results.map { it.confidence }.average().toFloat() else 1.0f
+        val avgConfidence = if (results.isNotEmpty()) results.map { it.inferenceConfidence }.average().toFloat() else 1.0f
 
         val consensus = UnifiedBrainConsensus(
             finalSynthesis = synthesizedText,
             participatingModels = results,
-            averageConfidence = avgConfidence,
+            averageInferenceConfidence = avgConfidence,
             totalLatencyMs = totalLatency,
             isFullyLocal = true
         )

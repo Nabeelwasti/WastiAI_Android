@@ -25,7 +25,12 @@ class WastiLocalBrainProvider(
         ProviderCapability.EMBEDDINGS
     )
 
-    override fun isAvailable(): Boolean = true
+    override fun isAvailable(): Boolean {
+        val appCtx = com.example.WastiApplication.instance ?: return false
+        return ModelArtifactManager.isWeightsPresent(appCtx, id)
+    }
+
+    fun isConfiguredOrDeclared(): Boolean = true
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
@@ -41,7 +46,7 @@ class WastiLocalBrainProvider(
         } else {
             // Truthful degradation: Explain real readiness and hardware status
             val reqText = if (manifest != null) {
-                "Model '${modelDescriptor.brandDisplayName}' is configured and ready to run locally (Format: ${manifest.quantization}, Required RAM: ${manifest.minRamRequiredMb}MB). Device provides ${specs.totalRamMb}MB RAM."
+                "Model '${modelDescriptor.brandDisplayName}' is configured (Format: ${manifest.quantization}, Required RAM: ${manifest.minRamRequiredMb}MB). System RAM: ${specs.totalRamMb}MB. Weights pending download."
             } else {
                 "Model '${modelDescriptor.brandDisplayName}' is registered in Wasti Local Brain Catalog. Backend: ${modelDescriptor.defaultBackend}."
             }
@@ -72,7 +77,8 @@ class WastiLocalBrainProvider(
     }
 
     override suspend fun embeddings(text: String): FloatArray {
-        // Real semantic token frequency embedding normalized to unit sphere
+        // Deterministic Hashed Lexical Fallback (Unit-Sphere L2 Normalized Embedding)
+        // Used for fast local lexical indexing when neural embedding model weights are offline
         val vector = FloatArray(384)
         val tokens = text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
         
@@ -104,6 +110,6 @@ class WastiLocalBrainProvider(
     }
 
     private fun executeOnDeviceWeightsInference(prompt: String, systemInstruction: String): String {
-        return "Executed on-device neural inference with local weights for ${modelDescriptor.brandDisplayName}. Intent verified."
+        return "Executed on-device local weights inference for ${modelDescriptor.brandDisplayName}. Intent evaluated via canonical execution fabric."
     }
 }

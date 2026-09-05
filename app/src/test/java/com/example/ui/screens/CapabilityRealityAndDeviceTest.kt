@@ -300,12 +300,19 @@ class CapabilityRealityAndDeviceTest {
             assertEquals("SANDBOX_EXPERIMENTAL", learnedSkill!!.promotionTier)
             assertEquals("ACTIVE", learnedSkill.operationalStatus)
 
-            // Verify promotion
-            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, wasVerified = true)
-            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, wasVerified = true)
-            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, wasVerified = true)
-            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, wasVerified = true)
-            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, wasVerified = true)
+            // Verify promotion with structured evidence
+            val evidence = VerifiedExecutionEvidence(
+                evidenceSource = EvidenceSource.FILESYSTEM,
+                subject = "test_execution",
+                verifiedState = "VERIFIED",
+                confidence = 1.0,
+                observedAt = System.currentTimeMillis()
+            )
+            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
+            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
+            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
+            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
+            evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
 
             val activeSkills = evolutionEngine.getActiveLearnedSkills()
             assertTrue(activeSkills.any { it.skillId == learnedSkill.skillId })

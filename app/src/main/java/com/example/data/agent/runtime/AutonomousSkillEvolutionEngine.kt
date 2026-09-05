@@ -131,10 +131,11 @@ class AutonomousSkillEvolutionEngine(
     }
 
     /**
-     * Promotes a learned skill to higher tiers after repeated verified executions.
+     * Promotes a learned skill to higher tiers after repeated verified executions with structured evidence.
      */
-    suspend fun recordExecutionOutcome(skillId: String, wasVerified: Boolean) {
+    suspend fun recordExecutionOutcome(skillId: String, verifiedEvidence: VerifiedExecutionEvidence?) {
         val skill = learnedSkillDao.getSkillById(skillId) ?: return
+        val wasVerified = verifiedEvidence != null && verifiedEvidence.confidence >= 0.85
         if (wasVerified) {
             val newSuccess = skill.successCount + 1
             val newScore = (newSuccess.toFloat() / (newSuccess + skill.failureCount)).coerceIn(0.0f, 1.0f)

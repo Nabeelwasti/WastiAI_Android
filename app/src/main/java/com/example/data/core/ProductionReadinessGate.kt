@@ -51,13 +51,19 @@ object ProductionReadinessGate {
 
         // 1. Core Startup & OS Lifecycle
         val startupState = AppStartupManager.startupState.value
-        val startupOk = startupState is AppStartupState.Ready || startupState is AppStartupState.CoreReady
+        val startupOk = startupState is AppStartupState.Ready
+        val isDegraded = startupState is AppStartupState.CoreReadyDegraded
+        val startupAssessmentState = when {
+            startupOk -> ProductionReadinessState.RELEASE_VERIFIED
+            isDegraded -> ProductionReadinessState.TEST_VERIFIED
+            else -> ProductionReadinessState.NOT_READY
+        }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "AppStartupManager",
-                isOperational = startupOk,
-                isLiveVerified = true,
-                state = if (startupOk) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.NOT_READY,
+                isOperational = startupOk || isDegraded,
+                isLiveVerified = startupOk,
+                state = startupAssessmentState,
                 notes = "Startup State: ${startupState::class.simpleName}"
             )
         )
@@ -75,7 +81,7 @@ object ProductionReadinessGate {
                 isOperational = dbOk,
                 isLiveVerified = dbOk,
                 state = if (dbOk) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.NOT_READY,
-                notes = if (dbOk) "Database writable & active" else "Database inaccessible"
+                notes = if (dbOk) "Database writable & active (Schema v15)" else "Database inaccessible"
             )
         )
 
@@ -85,7 +91,7 @@ object ProductionReadinessGate {
         val operationalCount = realities.count { it.executionStatus == CapabilityExecutionStatus.OPERATIONAL }
         val liveVerifiedCount = realities.count { it.liveConnectionStatus == LiveConnectionStatus.VERIFIED }
         val hasRecentVerifiedExecution = ExecutionMemoryRecorder.getRecentExecutions(10).any { it.isSuccess == true && it.verificationStatus == "VERIFIED" }
-        val fabricLiveVerified = liveVerifiedCount > 0 || hasRecentVerifiedExecution
+        val fabricLiveVerified = operationalCount > 0 && (liveVerifiedCount > 0 || hasRecentVerifiedExecution)
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "UnifiedExecutionFabric",
@@ -96,7 +102,7 @@ object ProductionReadinessGate {
             )
         )
 
-        // 4. Mesh & Node Topology
+        // 4. Mesh & Node Topology (Optional Subsystem - isolated from blocking core release)
         val nodeManager = WastiNodeManager.getInstance()
         val nodes = nodeManager.getAllNodes()
         val nodeCount = nodes.size
@@ -104,31 +110,42 @@ object ProductionReadinessGate {
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "WastiMeshTransport",
-                isOperational = nodeCount > 0,
+                isOperational = true,
                 isLiveVerified = hasActiveNode,
                 state = if (hasActiveNode) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.TEST_VERIFIED,
                 notes = "$nodeCount mesh nodes registered (activeNode=$hasActiveNode)"
             )
         )
 
-        // 5. External Credentials & Integrations
+        // 5. External Credentials & Integrations - Gated per Capability
         val credStates = CredentialRegistry.credentialStates.value
-        val configuredCreds = credStates.count { it.status is CredentialStatus.Connected }
-        val hasKeys = credStates.count { it.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(it.rawValue) }
+        val connectedCreds = credStates.count { it.status is CredentialStatus.Connected }
+        val totalConfigured = credStates.count { it.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(it.rawValue) }
+        val hasGeminiOrCoreModel = credStates.any { 
+            (it.entry.keyName == "GEMINI_API_KEY" || it.entry.keyName == "OPENAI_API_KEY" || it.entry.keyName == "GROQ_API_KEY") && 
+            it.status is CredentialStatus.Connected 
+        }
+        val credState = when {
+            hasGeminiOrCoreModel && connectedCreds >= 3 -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED
+            hasGeminiOrCoreModel -> ProductionReadinessState.RELEASE_VERIFIED
+            totalConfigured > 0 -> ProductionReadinessState.TEST_VERIFIED
+            else -> ProductionReadinessState.DEVELOPMENT_READY
+        }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "CredentialRegistry",
                 isOperational = true,
-                isLiveVerified = configuredCreds > 0,
-                state = if (configuredCreds > 0) ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
-                notes = "$configuredCreds verified connected ($hasKeys configured with keys)"
+                isLiveVerified = hasGeminiOrCoreModel,
+                state = credState,
+                notes = "$connectedCreds verified connected ($totalConfigured configured keys, coreModelConnected=$hasGeminiOrCoreModel)"
             )
         )
 
         val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
+        val mandatoryChecksPassed = startupOk && dbOk && (operationalCount > 0)
         val overall = when {
-            checks.all { it.state == ProductionReadinessState.RELEASE_VERIFIED || it.state == ProductionReadinessState.PRODUCTION_READY } -> ProductionReadinessState.PRODUCTION_READY
-            checks.any { !it.isOperational } -> ProductionReadinessState.DEVELOPMENT_READY
+            !mandatoryChecksPassed -> ProductionReadinessState.NOT_READY
+            checks.all { it.state == ProductionReadinessState.RELEASE_VERIFIED || it.state == ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED || it.state == ProductionReadinessState.PRODUCTION_READY } -> ProductionReadinessState.PRODUCTION_READY
             checks.all { it.isOperational && it.isLiveVerified } -> ProductionReadinessState.RELEASE_VERIFIED
             else -> ProductionReadinessState.TEST_VERIFIED
         }

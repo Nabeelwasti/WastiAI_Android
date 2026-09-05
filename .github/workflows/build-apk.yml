@@ -148,16 +148,29 @@ jobs:
         mkdir -p /tmp/apk_inspect
         unzip -q "$APK" -d /tmp/apk_inspect
         
-        # Check if sensitive patterns like passwords or private tokens were baked in
-        PATTERNS=("MY_GOOGLE_ACCOUNT_PASSWORD" "GOOGLE_ACCOUNT_PASSWORD" "ghp_" "gho_" "xoxb-" "sk-ant-")
+        # Comprehensive detection for leaked private keys, API secrets, and server tokens
+        PATTERNS=(
+          "MY_GOOGLE_ACCOUNT_PASSWORD" 
+          "GOOGLE_ACCOUNT_PASSWORD" 
+          "ghp_" 
+          "gho_" 
+          "xoxb-" 
+          "sk-ant-"
+          "AKIA[0-9A-Z]{16}"
+          "rk_live_"
+          "sk_live_"
+          "BEGIN PRIVATE KEY"
+          "BEGIN RSA PRIVATE KEY"
+          "BEGIN OPENSSH PRIVATE KEY"
+        )
         for PATTERN in "${PATTERNS[@]}"; do
-          if grep -rn "$PATTERN" /tmp/apk_inspect/; then
+          if grep -rEn "$PATTERN" /tmp/apk_inspect/; then
             echo "ERROR: Forbidden secret pattern '$PATTERN' found inside APK!"
             exit 1
           fi
         done
         rm -rf /tmp/apk_inspect
-        echo "SUCCESS: APK secret boundary scan passed cleanly."
+        echo "SUCCESS: Comprehensive APK secret boundary scan passed cleanly."
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4

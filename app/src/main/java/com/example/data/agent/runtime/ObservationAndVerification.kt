@@ -111,3 +111,22 @@ data class TargetSelectionResult(
     val candidateCount: Int = 0,
     val details: String = ""
 )
+
+enum class EvidenceSource {
+    FILESYSTEM,
+    DATABASE_QUERY,
+    HTTP_CONTRACT,
+    PROCESS_TELEMETRY,
+    SYSTEM_SERVICE,
+    UI_TREE,
+    SENSOR_EVENT
+}
+
+data class VerifiedExecutionEvidence(
+    val evidenceSource: EvidenceSource,
+    val subject: String,
+    val verifiedState: String,
+    val checksumOrHash: String? = null,
+    val observedAt: Long = System.currentTimeMillis(),
+    val confidence: Double = 1.0
+)
