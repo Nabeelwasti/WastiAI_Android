@@ -15,12 +15,9 @@ import kotlinx.coroutines.flow.flow
 /**
  * Local open-weight provider boundary.
  *
- * This provider is available only when all three conditions are true:
- * 1. the model artifact exists,
- * 2. its integrity metadata is trusted and verification passes, and
- * 3. a real native inference backend is linked and loadable.
- *
- * It intentionally never substitutes deterministic text for neural inference.
+ * This provider is available only when the model artifact is present, integrity has been
+ * verified, and a real native inference backend is linked. It never substitutes deterministic
+ * text for neural inference.
  */
 class WastiLocalBrainProvider(
     val modelDescriptor: OpenSourceModelDescriptor
@@ -39,6 +36,7 @@ class WastiLocalBrainProvider(
         val manifest = ModelArtifactManager.getManifest(id) ?: return false
         if (!WastiLocalModelRuntime.isNativeInferenceBackendAvailable()) return false
         if (!ModelArtifactManager.isWeightsPresent(appCtx, id)) return false
+        if (manifest.expectedSha256.length != 64) return false
         return ModelArtifactManager.modelStatuses.value[id] == ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT ||
             ModelArtifactManager.modelStatuses.value[id] == ModelRuntimeStatus.ACTIVE_LOADED
     }
@@ -70,12 +68,10 @@ class WastiLocalBrainProvider(
         }
 
         ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.VERIFIED_INTEGRITY)
-        val runtime = WastiLocalModelRuntime(appCtx)
-        val content = runtime.executeInference(
+        val content = WastiLocalModelRuntime(appCtx).executeInference(
             modelId = id,
             prompt = request.prompt,
             systemInstruction = request.systemInstruction,
-            maxTokens = request.maxTokens,
             temperature = request.temperature
         )
         ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
