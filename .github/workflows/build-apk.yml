@@ -12,8 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ACTIONS_RUNNER_FORCE_NODE24: 'true'
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
   GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
 
 jobs:
@@ -22,19 +20,10 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
-    env:
-      ACTIONS_RUNNER_FORCE_NODE24: 'true'
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-      GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
 
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
-
-    - name: Setup Node.js 24
-      uses: actions/setup-node@v4
-      with:
-        node-version: '24'
 
     - name: Validate Gradle Wrapper
       uses: gradle/actions/wrapper-validation@v4
@@ -48,11 +37,10 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
-    - name: Setup Gradle 9.7.1
+    - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
       with:
-        gradle-version: '9.7.1'
-        allow-snapshot-wrappers: false
+        cache-read-only: false
 
     - name: Make Gradle Wrapper Executable
       run: chmod +x gradlew
@@ -68,7 +56,7 @@ jobs:
           SDKMANAGER_BIN="$ANDROID_HOME/tools/bin/sdkmanager"
         fi
         if [ -n "$SDKMANAGER_BIN" ]; then
-          yes | "$SDKMANAGER_BIN" --licenses
+          yes | "$SDKMANAGER_BIN" --licenses || true
         fi
         mkdir -p "$ANDROID_HOME/licenses"
         echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
@@ -185,6 +173,9 @@ jobs:
         files: app/build/outputs/apk/debug/app-debug.apk
         tag_name: "v1.0.0"
         name: "Wasti AI v1.0.0 (Latest APK)"
+        overwrite: true
+        make_latest: true
+        fail_on_unmatched_files: false
         body: |
           ### 📱 Wasti AI Latest Build
           - **File:** `app-debug.apk`

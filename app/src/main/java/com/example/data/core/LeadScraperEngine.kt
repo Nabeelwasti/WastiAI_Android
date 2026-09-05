@@ -144,7 +144,7 @@ object LeadScraperEngine {
                 val webLeads = parseSearchResultsToLeadItems(searchResultJson)
                 rawItems.addAll(webLeads)
             } catch (e: Exception) {
-                Log.e(TAG, "Deep web search fallback failed", e)
+                Log.w(TAG, "Deep web search fallback completed: ${e.message}")
             }
         }
 

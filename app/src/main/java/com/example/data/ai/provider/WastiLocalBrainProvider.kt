@@ -38,9 +38,9 @@ class WastiLocalBrainProvider(
         val specs = HardwareCapabilityDetector.detectHardwareEnvironment(appCtx)
         val manifest = ModelArtifactManager.getManifest(id)
 
-        val hasWeights = appCtx != null && ModelArtifactManager.isWeightsPresent(appCtx, id)
+        val hasWeights = appCtx?.let { ModelArtifactManager.isWeightsPresent(it, id) } ?: false
         
-        val content = if (hasWeights && appCtx != null) {
+        val content = if (appCtx != null && hasWeights) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
             val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
             runtime.executeInference(

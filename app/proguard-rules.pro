@@ -21,10 +21,23 @@
 #-renamesourcefileattribute SourceFile
 
 -keep class com.example.WastiApplication { *; }
+-keep class com.example.data.** { *; }
+-keep class com.example.domain.** { *; }
+-keep class com.example.ui.** { *; }
+
+# Security & Crypto
+-dontwarn androidx.security.crypto.**
+-keep class androidx.security.crypto.** { *; }
+-dontwarn androidx.biometric.**
+-keep class androidx.biometric.** { *; }
 
 # Retrofit & OkHttp
 -dontwarn retrofit2.**
 -keep class retrofit2.** { *; }
+-dontwarn okhttp3.**
+-keep class okhttp3.** { *; }
+-dontwarn okio.**
+-keep class okio.** { *; }
 -keepattributes Signature, InnerClasses, EnclosingMethod
 -keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
 
@@ -53,5 +66,10 @@
 
 # Kotlinx Serialization & Coroutines
 -dontwarn kotlinx.coroutines.**
+-dontwarn kotlinx.serialization.**
 -keepattributes *Annotation*
+-keepclassmembers class * {
+    @kotlinx.serialization.Serializable <fields>;
+    @kotlinx.serialization.SerialName <fields>;
+}
 
