@@ -152,6 +152,7 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
+  implementation(libs.firebase.analytics)
   implementation(libs.firebase.firestore)
 
   // Credential Manager & Auth dependencies for Google Drive & Sign-In:
