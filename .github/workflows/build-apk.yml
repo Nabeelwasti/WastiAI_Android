@@ -12,11 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
+  GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -XX:+HeapDumpOnOutOfMemoryError'
 
 jobs:
   validate:
-    name: Validate, Test & Lint
+    name: Validate, Test & Build APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -63,9 +63,34 @@ jobs:
           echo "Restored debug.keystore from base64"
         fi
 
-    - name: Generate Safe .env File for APK Build
+    - name: Ensure Dummy google-services.json if missing
       run: |
-        cp .env.example .env
+        if [ ! -f "app/google-services.json" ]; then
+          echo '{"project_info":{"project_number":"0","project_id":"wasti-ai","storage_bucket":"wasti.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.aistudio.wastios.k9v2pz"}},"oauth_client":[],"api_key":[{"current_key":"dummy"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}' > app/google-services.json
+          echo "Created dummy app/google-services.json"
+        fi
+
+    - name: Generate Safe .env and Configuration for APK Build
+      run: |
+        if [ -f ".env.example" ]; then
+          cp .env.example .env
+        else
+          touch .env
+        fi
+        for KEY in \
+          XAI_API_KEY GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY \
+          OPENROUTER_API_KEY GROQ_API_KEY ELEVENLABS_API_KEY CANVA_CLIENT_ID CANVA_CLIENT_SECRET \
+          WASTI_GIT_PAT WASTI_GIT_FINE_GRAINED_PAT BREVO_API_KEY BREVO_MCP_SERVER_API_KEY \
+          STRIPE_PUBLISHABLE_KEY STRIPE_SECRET_KEY STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN \
+          DRIVE_CLIENT_ID DRIVE_CLIENT_SECRET HUGGINGFACE_ACCESS_TOKEN UNSPLASH_APP_ID \
+          UNSPLASH_ACCESS_KEY UNSPLASH_SECRET_KEY DISCORD_BOT_ID DISCORD_BOT_KEY BYTEZ_API_KEY \
+          CLOUDFLARE_API_KEY NOTION_CONNECTION_ID HUBSPOT_CONNECTION_ID SLACK_DOMAIN \
+          ZAPIER_CONNECT_TOKEN ZAPIER_MCP_SHARE_LINK GOOGLE_WEB_CLIENT_ID GOOGLE_ANDROID_CLIENT_ID \
+          GMAIL_SENDER_EMAIL GMAIL_APP_PASSWORD; do
+          if ! grep -q "^$KEY=" .env; then
+            echo "$KEY=MY_${KEY}" >> .env
+          fi
+        done
         if [ -n "${{ secrets.GOOGLE_WEB_CLIENT_ID }}" ]; then
           sed -i "s|^GOOGLE_WEB_CLIENT_ID=.*|GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}|" .env
         fi
@@ -110,6 +135,7 @@ jobs:
         echo "SUCCESS: WastiApplication bytecode integrity verified."
 
     - name: Security & Secret Boundary Verification Scan
+      shell: bash
       run: |
         APK="app/build/outputs/apk/debug/app-debug.apk"
         echo "Running APK Secret Boundary Scan..."

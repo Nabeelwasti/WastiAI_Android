@@ -19,10 +19,13 @@ data class SubAgentDefinition(
     val id: String,
     val name: String,
     val role: AgentRole,
-    val description: String,
-    val capabilities: List<String>,
-    val systemPrompt: String,
-    val temperature: Float = 0.3f
+    val description: String = "",
+    val roleTitle: String = "",
+    val iconName: String = "Psychology",
+    val capabilities: List<String> = emptyList(),
+    val systemPrompt: String = "",
+    val temperature: Float = 0.3f,
+    val agentType: String = "Specialist"
 )
 
 data class AgentDelegation(
@@ -101,6 +104,7 @@ class SharedAgentContext(private val maxLogEntries: Int = 1_000) {
 /**
  * Default routing profiles. Capability names are routing metadata only;
  * [UnifiedExecutionFabric] remains the sole capability authority.
+ * This catalog serves as the single canonical brain and source of truth for agent routing.
  */
 object WastiSubAgentCatalog {
     val defaultSubAgents: List<SubAgentDefinition> = listOf(
@@ -109,81 +113,252 @@ object WastiSubAgentCatalog {
             name = "Executive Orchestrator",
             role = AgentRole.EXECUTIVE,
             description = "Goal decomposition, priority alignment, and multi-domain synthesis.",
-            capabilities = listOf("Executive Strategy", "Domain Orchestration", "Goal Decomposition"),
-            systemPrompt = "You are Wasti's Executive Orchestrator. Direct objectives and synthesize verified subtask outputs.",
-            temperature = 0.2f
+            roleTitle = "Executive Director & Orchestration Lead",
+            iconName = "Psychology",
+            capabilities = listOf("Executive Strategy", "Domain Orchestration", "Goal Decomposition", "Decision Synthesis", "Risk Assessment"),
+            systemPrompt = "You are Wasti's Executive Orchestrator. Direct objectives, synthesize verified subtask outputs, and deliver strategic direction.",
+            temperature = 0.2f,
+            agentType = "Executive"
         ),
         SubAgentDefinition(
             id = "wasti_research_agent",
             name = "Research Specialist",
             role = AgentRole.RESEARCH,
             description = "Source-backed research, factual verification, and knowledge synthesis.",
-            capabilities = listOf("search_web", "read_web_page", "fetch_url", "Fact Verification"),
-            systemPrompt = "You are Wasti's Research Specialist. Return factual findings with evidence and uncertainty.",
-            temperature = 0.2f
+            roleTitle = "Web & Knowledge Synthesizer",
+            iconName = "ManageSearch",
+            capabilities = listOf("search_web", "read_web_page", "fetch_url", "Fact Verification", "Data Synthesis", "Public Intelligence"),
+            systemPrompt = "You are Wasti's Research Specialist. Return factual findings with evidence, cross-checked sources, and uncertainty indicators.",
+            temperature = 0.2f,
+            agentType = "Research"
         ),
         SubAgentDefinition(
             id = "wasti_coding_agent",
             name = "Coding Architect",
             role = AgentRole.CODING,
             description = "Code changes, refactoring, integration, and architecture evolution.",
-            capabilities = listOf("create_file", "edit_file", "execute_code", "Kotlin", "Architecture"),
+            roleTitle = "Senior Software Architect & Developer",
+            iconName = "Code",
+            capabilities = listOf("create_file", "edit_file", "execute_code", "Kotlin", "Architecture", "Code Generation", "Bug Fixing", "Refactoring"),
             systemPrompt = "You are Wasti's Coding Architect. Produce small, maintainable, verified changes within workspace boundaries.",
-            temperature = 0.1f
+            temperature = 0.1f,
+            agentType = "Coding"
         ),
         SubAgentDefinition(
             id = "wasti_testing_agent",
             name = "Testing & Verification Specialist",
             role = AgentRole.TESTING,
             description = "Test discovery, execution, edge-case analysis, and verification.",
+            roleTitle = "Verification & Quality Assurance Inspector",
+            iconName = "FactCheck",
             capabilities = listOf("run_tests", "test_project", "Coverage Analysis", "Assertion Verification"),
             systemPrompt = "You are Wasti's Testing Specialist. Verify observable behaviour and report evidence, failures, and gaps.",
-            temperature = 0.1f
+            temperature = 0.1f,
+            agentType = "Testing"
         ),
         SubAgentDefinition(
             id = "wasti_debugging_agent",
             name = "Diagnostics & Debugging Specialist",
             role = AgentRole.DEBUGGING,
             description = "Failure diagnosis, regression isolation, and root-cause analysis.",
+            roleTitle = "Diagnostics & Root Cause Specialist",
+            iconName = "BugReport",
             capabilities = listOf("debug_project", "inspect_logs", "Stack Trace Analysis", "Root Cause Analysis"),
             systemPrompt = "You are Wasti's Debugging Specialist. Identify the smallest evidenced root cause before proposing a fix.",
-            temperature = 0.1f
+            temperature = 0.1f,
+            agentType = "Debugging"
         ),
         SubAgentDefinition(
             id = "wasti_security_agent",
             name = "Security & Policy Auditor",
             role = AgentRole.SECURITY,
             description = "Boundary enforcement, secret protection, and policy auditing.",
-            capabilities = listOf("wasti_sandbox", "Security Audit", "Credential Redaction", "Boundary Enforcement"),
+            roleTitle = "Cybersecurity & Credential Vault Manager",
+            iconName = "Security",
+            capabilities = listOf("wasti_sandbox", "Security Audit", "Credential Redaction", "Boundary Enforcement", "Credential Vault", "Biometric Authentication"),
             systemPrompt = "You are Wasti's Security Auditor. Enforce policy and protect credentials, data, and workspace boundaries.",
-            temperature = 0.0f
+            temperature = 0.0f,
+            agentType = "Security"
         ),
         SubAgentDefinition(
             id = "wasti_design_agent",
             name = "UI/UX & Design Specialist",
             role = AgentRole.DESIGN,
             description = "Accessible Material Design 3 interfaces and visual-system refinement.",
-            capabilities = listOf("UI/UX Design", "Material Design 3", "Accessibility", "Visual Hierarchy"),
-            systemPrompt = "You are Wasti's Design Specialist. Design clear, accessible, consistent interfaces.",
-            temperature = 0.4f
+            roleTitle = "UI/UX & Creative Director",
+            iconName = "Palette",
+            capabilities = listOf("UI/UX Design", "Material Design 3", "Accessibility", "Visual Hierarchy", "Color Systems", "Layout Polish"),
+            systemPrompt = "You are Wasti's Design Specialist. Design clear, accessible, consistent interfaces adhering to Material Design 3.",
+            temperature = 0.4f,
+            agentType = "Design"
         ),
         SubAgentDefinition(
             id = "wasti_data_agent",
             name = "Data & Storage Specialist",
             role = AgentRole.DATA,
             description = "Schema design, storage, migrations, and structured-data analysis.",
+            roleTitle = "Data Architect & Storage Specialist",
+            iconName = "Storage",
             capabilities = listOf("SQL", "database", "Data Modeling", "Schema Migration"),
             systemPrompt = "You are Wasti's Data Specialist. Preserve data integrity and make migrations reversible where possible.",
-            temperature = 0.2f
+            temperature = 0.2f,
+            agentType = "Data"
         ),
         SubAgentDefinition(
             id = "wasti_browser_agent",
             name = "Browser & Network Specialist",
             role = AgentRole.BROWSER_INTERNET,
             description = "Web inspection, network verification, and structured web extraction.",
+            roleTitle = "Web Protocol & Network Specialist",
+            iconName = "Language",
             capabilities = listOf("read_web_page", "search_web", "Network Inspection"),
             systemPrompt = "You are Wasti's Browser Specialist. Inspect web resources and return structured, attributable results.",
-            temperature = 0.2f
+            temperature = 0.2f,
+            agentType = "Browser"
+        ),
+        SubAgentDefinition(
+            id = "wasti_business_agent",
+            name = "Business Operations Specialist",
+            role = AgentRole.BUSINESS,
+            description = "Commercial model analysis, revenue tracking, and CRM operations.",
+            roleTitle = "Strategy, Revenue & Operations Analyst",
+            iconName = "TrendingUp",
+            capabilities = listOf("Market Analysis", "Stripe Draft Quotation", "Financial Modeling", "CRM Integration"),
+            systemPrompt = "You are Wasti's Business Operations Specialist. Analyze commercial models, unit economics, and CRM workflows.",
+            temperature = 0.3f,
+            agentType = "Business"
+        ),
+        SubAgentDefinition(
+            id = "wasti_writing_agent",
+            name = "Technical Writing Specialist",
+            role = AgentRole.WRITING,
+            description = "Technical documentation, executive briefings, and release notes.",
+            roleTitle = "Technical Writer & Content Strategist",
+            iconName = "EditNote",
+            capabilities = listOf("Technical Writing", "Copy Editing", "Documentation", "Content Strategy"),
+            systemPrompt = "You are Wasti's Writing Specialist. Author technical documentation and briefings with crisp hierarchy.",
+            temperature = 0.3f,
+            agentType = "Writing"
+        ),
+        SubAgentDefinition(
+            id = "wasti_study_agent",
+            name = "Learning & Study Specialist",
+            role = AgentRole.STUDY,
+            description = "Concept explanations, Feynman technique breakdowns, and learning pathways.",
+            roleTitle = "Personal Tutor & Learning Coach",
+            iconName = "School",
+            capabilities = listOf("Concept Explanation", "Active Recall", "Flashcards", "Exam Prep"),
+            systemPrompt = "You are Wasti's Study Specialist. Explain complex concepts using step-by-step active recall structures.",
+            temperature = 0.4f,
+            agentType = "Study"
+        ),
+        SubAgentDefinition(
+            id = "wasti_automation_agent",
+            name = "Workflow & Automation Specialist",
+            role = AgentRole.AUTOMATION,
+            description = "Multi-step integration pipelines, triggers, and webhook management.",
+            roleTitle = "Workflow & Integrations Engine",
+            iconName = "Extension",
+            capabilities = listOf("Workflow Automation", "Zapier MCP", "Trigger Pipelines", "Service Sync"),
+            systemPrompt = "You are Wasti's Automation Specialist. Design verified event-driven integration architectures.",
+            temperature = 0.2f,
+            agentType = "Automation"
+        ),
+        SubAgentDefinition(
+            id = "wasti_memory_agent",
+            name = "Long-Term Memory Curator",
+            role = AgentRole.MEMORY,
+            description = "Vector memory extraction, entity relation indexing, and context pruning.",
+            roleTitle = "Long-Term Memory Curator",
+            iconName = "Memory",
+            capabilities = listOf("Preference Extraction", "Fact Indexing", "Memory Pruning", "Context Retrieval"),
+            systemPrompt = "You are Wasti's Memory Curator. Extract and index verified facts into semantic long-term memory.",
+            temperature = 0.1f,
+            agentType = "Memory"
+        ),
+        SubAgentDefinition(
+            id = "wasti_planning_agent",
+            name = "Planning & Scheduling Specialist",
+            role = AgentRole.PLANNING,
+            description = "WBS task graphs, dependency resolution, and milestone schedules.",
+            roleTitle = "Project Manager & Scheduler",
+            iconName = "AccountTree",
+            capabilities = listOf("Task Breakdown", "Dependency Mapping", "Milestone Tracking", "Resource Planning"),
+            systemPrompt = "You are Wasti's Planning Specialist. Construct acyclic dependency plans and identify critical paths.",
+            temperature = 0.2f,
+            agentType = "Planning"
+        ),
+        SubAgentDefinition(
+            id = "wasti_vision_agent",
+            name = "Vision & Multimodal Specialist",
+            role = AgentRole.VISION,
+            description = "UI mockup analysis, OCR text extraction, and visual inspection.",
+            roleTitle = "Visual & Image Processing Specialist",
+            iconName = "Visibility",
+            capabilities = listOf("Image Analysis", "UI Mockup Parsing", "OCR Text Extraction", "Visual Inspection"),
+            systemPrompt = "You are Wasti's Vision Specialist. Inspect visual structures and extract verifiable layout properties.",
+            temperature = 0.2f,
+            agentType = "Vision"
+        ),
+        SubAgentDefinition(
+            id = "wasti_voice_agent",
+            name = "Voice & Speech Controller",
+            role = AgentRole.VOICE,
+            description = "Multilingual speech synthesis, voice session management, and audio streams.",
+            roleTitle = "Multilingual Speech & Conversation Controller",
+            iconName = "RecordVoiceOver",
+            capabilities = listOf("Speech Synthesis", "Voice Calls", "Multilingual Speech", "Real-Time Audio"),
+            systemPrompt = "You are Wasti's Voice Controller. Direct conversational audio synthesis with authentic language fidelity.",
+            temperature = 0.4f,
+            agentType = "Voice"
+        ),
+        SubAgentDefinition(
+            id = "wasti_file_agent",
+            name = "Document & Asset Specialist",
+            role = AgentRole.FILE,
+            description = "Workspace asset management, PDF/CSV parsing, and file indexing.",
+            roleTitle = "Document & Asset Management Engine",
+            iconName = "Folder",
+            capabilities = listOf("File Parsing", "Workspace Context", "Protected File Security", "Asset Indexing"),
+            systemPrompt = "You are Wasti's File Specialist. Manage workspace files within authorized directory boundaries.",
+            temperature = 0.1f,
+            agentType = "File"
+        ),
+        SubAgentDefinition(
+            id = "wasti_workflow_agent",
+            name = "Workflow & Pipeline Controller",
+            role = AgentRole.WORKFLOW,
+            description = "Multi-stage state machine transitions and audit verification.",
+            roleTitle = "State Machine & Process Pipeline Controller",
+            iconName = "AccountTree",
+            capabilities = listOf("State Machines", "Async Queues", "Audit Logging", "Rollback Execution"),
+            systemPrompt = "You are Wasti's Workflow Controller. Manage execution pipelines and ensure deterministic state rollback.",
+            temperature = 0.2f,
+            agentType = "Workflow"
+        ),
+        SubAgentDefinition(
+            id = "wasti_quality_review_agent",
+            name = "Quality Review & QA Specialist",
+            role = AgentRole.QUALITY_REVIEW,
+            description = "Static analysis, specification conformance, and output validation.",
+            roleTitle = "Verification & Quality Assurance Inspector",
+            iconName = "FactCheck",
+            capabilities = listOf("Quality Assurance", "Code Review", "Logical Verification", "Edge Case Testing"),
+            systemPrompt = "You are Wasti's Quality Review Specialist. Validate candidate outputs against verification contracts.",
+            temperature = 0.1f,
+            agentType = "Quality-Review"
+        ),
+        SubAgentDefinition(
+            id = "wasti_final_response_agent",
+            name = "Unified Response Formatter",
+            role = AgentRole.FINAL_RESPONSE,
+            description = "Unified response formatting and attribution gate.",
+            roleTitle = "Unified Response Formatter & Attribution Gate",
+            iconName = "AutoAwesome",
+            capabilities = listOf("Unified Branding", "Response Formatting", "Attribution Gate", "Output Polish"),
+            systemPrompt = "You are Wasti's Final Response Formatter. Format outputs cleanly under the single 'Wasti AI' identity.",
+            temperature = 0.3f,
+            agentType = "Final-Response"
         )
     )
 }

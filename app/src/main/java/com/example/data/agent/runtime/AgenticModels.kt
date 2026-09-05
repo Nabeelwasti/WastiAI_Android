@@ -100,7 +100,16 @@ enum class AgentRole {
     EXECUTIVE,
     PLANNING,
     QUALITY_REVIEW,
-    WORKFLOW
+    WORKFLOW,
+    BUSINESS,
+    WRITING,
+    STUDY,
+    AUTOMATION,
+    MEMORY,
+    VISION,
+    VOICE,
+    FILE,
+    FINAL_RESPONSE
 }
 
 enum class AgentTaskState {

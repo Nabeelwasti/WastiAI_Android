@@ -1,7 +1,7 @@
 package com.example.data.repository
 
 import android.util.Log
-import com.example.data.agent.MultiAgentRegistry
+import com.example.data.agent.runtime.WastiSubAgentCatalog
 import com.example.data.api.GeminiContent
 import com.example.data.api.GeminiPart
 import com.example.data.core.WastiCore
@@ -135,15 +135,15 @@ class WastiRepository(private val db: WastiDatabase) {
     }
 
     private suspend fun seedDefaultAgents() {
-        MultiAgentRegistry.defaultAgents.forEach { spec ->
+        WastiSubAgentCatalog.defaultSubAgents.forEach { spec ->
             db.agentDao().insertAgent(
                 AgentEntity(
                     id = spec.id,
                     name = spec.name,
-                    roleTitle = spec.roleTitle,
+                    roleTitle = if (spec.roleTitle.isNotBlank()) spec.roleTitle else spec.name,
                     iconName = spec.iconName,
                     systemInstruction = spec.systemPrompt,
-                    temperature = spec.defaultTemperature,
+                    temperature = spec.temperature,
                     capabilitiesCsv = spec.capabilities.joinToString(","),
                     status = "Active",
                     agentType = spec.agentType

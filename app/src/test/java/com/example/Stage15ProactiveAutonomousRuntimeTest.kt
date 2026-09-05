@@ -79,7 +79,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
 
         // Evaluate and run due tasks
         proactiveEngine.evaluateAndRunDueTasks()
-        delay(200)
+        proactiveEngine.awaitTaskCompletion(task.taskId)
 
         val updatedTask = proactiveEngine.getTask(task.taskId)
         assertNotNull(updatedTask)
@@ -102,7 +102,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
         // Force execution now
         task.scheduledAt = System.currentTimeMillis() - 100
         proactiveEngine.evaluateAndRunDueTasks()
-        delay(200)
+        proactiveEngine.awaitTaskCompletion(task.taskId)
 
         val updatedTask = proactiveEngine.getTask(task.taskId)
         assertNotNull(updatedTask)
@@ -284,7 +284,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
 
         // Evaluate and run
         proactiveEngine.evaluateAndRunDueTasks()
-        delay(300)
+        proactiveEngine.awaitTaskCompletion(task.taskId)
 
         val updatedTask = proactiveEngine.getTask(task.taskId)!!
         assertEquals(ProactiveTaskState.COMPLETED, updatedTask.state)
@@ -304,7 +304,8 @@ class Stage15ProactiveAutonomousRuntimeTest {
         )
 
         proactiveEngine.evaluateAndRunDueTasks()
-        delay(200)
+        proactiveEngine.awaitTaskCompletion(task.taskId)
+        delay(50)
 
         collectJob.cancel()
 

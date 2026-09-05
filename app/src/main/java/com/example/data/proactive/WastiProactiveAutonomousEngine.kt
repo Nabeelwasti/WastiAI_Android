@@ -766,6 +766,29 @@ class WastiProactiveAutonomousEngine(
         activeExecutionJobs[task.taskId] = job
     }
 
+    suspend fun awaitTaskCompletion(taskId: String, timeoutMs: Long = 5000L): Boolean {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            val job = activeExecutionJobs[taskId]
+            if (job == null || !job.isActive) {
+                return true
+            }
+            delay(50)
+        }
+        return false
+    }
+
+    suspend fun awaitAllActiveTasks(timeoutMs: Long = 5000L): Boolean {
+        val start = System.currentTimeMillis()
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            if (activeExecutionJobs.isEmpty()) {
+                return true
+            }
+            delay(50)
+        }
+        return false
+    }
+
     private fun handleEmergencyStopTriggered(reason: String) {
         _engineStateFlow.value = ProactiveEngineState.EMERGENCY_STOPPED
         for ((taskId, job) in activeExecutionJobs) {
