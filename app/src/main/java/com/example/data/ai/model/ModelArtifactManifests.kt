@@ -4,6 +4,7 @@ import java.io.File
 
 enum class ModelRuntimeStatus {
     DECLARED,                       // Model descriptor declared in catalog
+    PENDING_VERIFICATION,           // Model manifest or published checksum pending cryptographic verification
     AVAILABLE_PENDING_DOWNLOAD,     // Quantized weights downloadable from Hugging Face / GGUF hub
     DOWNLOADING,                    // Weight stream in progress
     VERIFIED_INTEGRITY,             // SHA-256 integrity check passed
@@ -29,7 +30,8 @@ data class ModelArtifactManifest(
     val downloadUrl: String,
     val license: String,
     val minRamRequiredMb: Int,
-    val requiredHardwareBackend: LocalExecutionBackend
+    val requiredHardwareBackend: LocalExecutionBackend,
+    val isChecksumVerifiedPublished: Boolean = false
 )
 
 data class HardwareEnvironmentSpecs(
@@ -41,3 +43,4 @@ data class HardwareEnvironmentSpecs(
     val isLowRamDevice: Boolean,
     val isBatteryLowOrThermalsThrottling: Boolean
 )
+

@@ -42,12 +42,7 @@ interface GroqApi {
 object GroqClient {
     private const val BASE_URL = "https://api.groq.com/"
     val defaultGroqKey: String
-        get() = try {
-            com.example.data.credential.CredentialRegistry.getRawValue("GROQ_API_KEY")
-                ?: com.example.BuildConfig.GROQ_API_KEY
-        } catch (e: Throwable) {
-            try { com.example.BuildConfig.GROQ_API_KEY } catch (t: Throwable) { "" }
-        }
+        get() = com.example.data.credential.CredentialRegistry.getRawValue("GROQ_API_KEY") ?: ""
 
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)

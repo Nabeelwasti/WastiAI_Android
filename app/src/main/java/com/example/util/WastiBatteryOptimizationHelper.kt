@@ -9,6 +9,12 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
 
+enum class BatteryOptimizationStatus {
+    IGNORING,
+    OPTIMIZED,
+    UNKNOWN
+}
+
 /**
  * Stage 10/16 Doze Shield: Utility helper for managing battery optimization / Doze mode exemptions
  * to keep Wasti AI OS background execution daemon resilient across aggressive OEM power managers.
@@ -18,20 +24,35 @@ object WastiBatteryOptimizationHelper {
     private const val TAG = "WastiBatteryHelper"
 
     /**
-     * Checks if the app is currently whitelisted / ignoring battery optimizations.
+     * Inspects the truthful battery optimization status of the application.
      */
-    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+    fun getBatteryOptimizationStatus(context: Context): BatteryOptimizationStatus {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                powerManager?.isIgnoringBatteryOptimizations(context.packageName) ?: true
+                if (powerManager != null) {
+                    if (powerManager.isIgnoringBatteryOptimizations(context.packageName)) {
+                        BatteryOptimizationStatus.IGNORING
+                    } else {
+                        BatteryOptimizationStatus.OPTIMIZED
+                    }
+                } else {
+                    BatteryOptimizationStatus.UNKNOWN
+                }
             } else {
-                true
+                BatteryOptimizationStatus.IGNORING
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error checking battery optimization status: ${e.message}")
-            true
+            BatteryOptimizationStatus.UNKNOWN
         }
+    }
+
+    /**
+     * Checks if the app is currently whitelisted / ignoring battery optimizations.
+     */
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        return getBatteryOptimizationStatus(context) == BatteryOptimizationStatus.IGNORING
     }
 
     /**
@@ -92,3 +113,4 @@ object WastiBatteryOptimizationHelper {
         }
     }
 }
+
