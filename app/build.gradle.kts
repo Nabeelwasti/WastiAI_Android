@@ -49,10 +49,9 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      if (file(keystorePath).exists()) {
-        signingConfig = signingConfigs.getByName("release")
-      }
+      // Production releases must be signed with the dedicated release key.
+      // Never silently fall back to debug or unsigned output.
+      signingConfig = signingConfigs.getByName("release")
     }
     debug {
       val debugKs = file("${rootDir}/debug.keystore")
@@ -70,8 +69,8 @@ android {
     buildConfig = true
   }
   lint {
-    abortOnError = false
-    checkReleaseBuilds = false
+    abortOnError = true
+    checkReleaseBuilds = true
     warningsAsErrors = false
     ignoreTestSources = true
   }
