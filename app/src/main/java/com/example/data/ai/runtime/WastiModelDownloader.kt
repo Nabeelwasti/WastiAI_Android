@@ -112,13 +112,37 @@ object WastiModelDownloader {
                 }
             }
 
-            // Verify Checksum
+            // Verify Exact Checksum (Reject synthetic/prefix/wildcard hashes)
             val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
-            val integrityPass = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true) || manifest.expectedSha256.startsWith("d2a6e9a7") // Allow template verification for test artifacts
+            val isExactMatch = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)
 
+            if (!isExactMatch) {
+                val mismatchMsg = "SHA-256 integrity verification failed for $modelId. Expected: ${manifest.expectedSha256}, Calculated: $calculatedSha"
+                Log.e(TAG, mismatchMsg)
+                if (tempFile.exists()) tempFile.delete()
+                updateProgress(
+                    ModelDownloadProgress(
+                        modelId = modelId,
+                        bytesDownloaded = downloadedBytes,
+                        totalBytes = totalBytes,
+                        progressFraction = 0.0f,
+                        statusText = "Integrity check failed: Checksum mismatch",
+                        isFailed = true,
+                        errorMessage = mismatchMsg
+                    )
+                )
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.FAILED_INITIALIZATION)
+                return@withContext false
+            }
+
+            // Atomic move only after successful cryptographic verification
             if (tempFile.exists()) {
                 if (targetFile.exists()) targetFile.delete()
-                tempFile.renameTo(targetFile)
+                val moved = tempFile.renameTo(targetFile)
+                if (!moved) {
+                    tempFile.copyTo(targetFile, overwrite = true)
+                    tempFile.delete()
+                }
             }
 
             updateProgress(
@@ -127,10 +151,11 @@ object WastiModelDownloader {
                     bytesDownloaded = downloadedBytes,
                     totalBytes = totalBytes,
                     progressFraction = 1.0f,
-                    statusText = "Model ready (Integrity verified)",
+                    statusText = "Model ready (Integrity verified SHA-256)",
                     isCompleted = true
                 )
             )
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.VERIFIED_INTEGRITY)
             ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT)
             true
         } catch (e: CancellationException) {

@@ -49,10 +49,7 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      if (file(keystorePath).exists()) {
-        signingConfig = signingConfigs.getByName("release")
-      }
+      signingConfig = signingConfigs.getByName("release")
     }
     debug {
       val debugKs = file("${rootDir}/debug.keystore")
@@ -70,10 +67,11 @@ android {
     buildConfig = true
   }
   lint {
-    abortOnError = false
-    checkReleaseBuilds = false
+    abortOnError = true
+    checkReleaseBuilds = true
     warningsAsErrors = false
     ignoreTestSources = true
+    disable += setOf("MissingTranslation", "ExtraTranslation")
   }
 
   testOptions {

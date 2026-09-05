@@ -7,10 +7,11 @@ import com.example.data.ai.model.OpenSourceModelDescriptor
 import com.example.data.ai.model.ProviderCapability
 import com.example.data.ai.model.ProviderRequest
 import com.example.data.ai.model.ProviderResponse
+import com.example.data.ai.runtime.WastiEmbeddingRuntime
+import com.example.data.ai.runtime.WastiLocalModelRuntime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlin.math.sqrt
 
 class WastiLocalBrainProvider(
     val modelDescriptor: OpenSourceModelDescriptor
@@ -21,13 +22,17 @@ class WastiLocalBrainProvider(
     override val capabilities: Set<ProviderCapability> = setOf(
         ProviderCapability.TEXT_GENERATION,
         ProviderCapability.STREAMING,
-        ProviderCapability.MULTI_TURN,
-        ProviderCapability.EMBEDDINGS
+        ProviderCapability.MULTI_TURN
     )
 
     override fun isAvailable(): Boolean {
         val appCtx = com.example.WastiApplication.instance ?: return false
-        return ModelArtifactManager.isWeightsPresent(appCtx, id)
+        val manifest = ModelArtifactManager.getManifest(id) ?: return false
+        val hasWeights = ModelArtifactManager.isWeightsPresent(appCtx, id)
+        if (!hasWeights) return false
+
+        val specs = HardwareCapabilityDetector.detectHardwareEnvironment(appCtx)
+        return specs.totalRamMb >= manifest.minRamRequiredMb
     }
 
     fun isConfiguredOrDeclared(): Boolean = true
@@ -42,20 +47,19 @@ class WastiLocalBrainProvider(
         
         val content = if (appCtx != null && hasWeights) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
-            val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
+            val runtime = WastiLocalModelRuntime(appCtx)
             runtime.executeInference(
                 modelId = id,
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction
             )
         } else {
-            // Truthful degradation: Explain real readiness and hardware status
             val reqText = if (manifest != null) {
-                "Model '${modelDescriptor.brandDisplayName}' is configured (Format: ${manifest.quantization}, Required RAM: ${manifest.minRamRequiredMb}MB). System RAM: ${specs.totalRamMb}MB. Weights pending download."
+                "Model '${modelDescriptor.brandDisplayName}' is declared in catalog (Format: ${manifest.quantization}, Min RAM: ${manifest.minRamRequiredMb}MB, System RAM: ${specs.totalRamMb}MB). Local weights are pending download via Model Manager."
             } else {
                 "Model '${modelDescriptor.brandDisplayName}' is registered in Wasti Local Brain Catalog. Backend: ${modelDescriptor.defaultBackend}."
             }
-            "Wasti AI Local Execution Core [${modelDescriptor.brandDisplayName}]:\n$reqText\n\nTask Goal: \"${request.prompt.take(120)}\"\nExecution Strategy: Evaluated via Wasti Unified Execution Fabric with zero external API key requirements."
+            "[LOCAL_INFERENCE_PENDING]: $reqText\nPrompt: \"${request.prompt.take(100)}\""
         }
 
         val latency = System.currentTimeMillis() - startTime
@@ -82,7 +86,6 @@ class WastiLocalBrainProvider(
     }
 
     override suspend fun embeddings(text: String): FloatArray {
-        // Native 384-dimensional dense semantic vector encoding with transformer projection
-        return com.example.data.ai.runtime.WastiEmbeddingRuntime.encode(text)
+        return WastiEmbeddingRuntime.encode(text)
     }
 }

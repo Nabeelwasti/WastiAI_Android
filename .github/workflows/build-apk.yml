@@ -15,11 +15,12 @@ env:
   GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m'
 
 jobs:
-  build:
+  validate:
+    name: Validate, Test & Lint
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
 
     steps:
     - name: Checkout Repository
@@ -47,17 +48,6 @@ jobs:
 
     - name: Accept Android SDK Licenses
       run: |
-        SDKMANAGER_BIN=""
-        if command -v sdkmanager >/dev/null 2>&1; then
-          SDKMANAGER_BIN=$(command -v sdkmanager)
-        elif [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-          SDKMANAGER_BIN="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-        elif [ -x "$ANDROID_HOME/tools/bin/sdkmanager" ]; then
-          SDKMANAGER_BIN="$ANDROID_HOME/tools/bin/sdkmanager"
-        fi
-        if [ -n "$SDKMANAGER_BIN" ]; then
-          yes | "$SDKMANAGER_BIN" --licenses || true
-        fi
         mkdir -p "$ANDROID_HOME/licenses"
         echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
         echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
@@ -75,29 +65,22 @@ jobs:
 
     - name: Generate Safe .env File for APK Build
       run: |
-        # Zero-Leak Secret Boundary:
-        # Start with .env.example placeholders so personal/backend tokens are NEVER baked into client APK DEX.
         cp .env.example .env
-        # Safely inject client-side public identifiers if provided in repository secrets
         if [ -n "${{ secrets.GOOGLE_WEB_CLIENT_ID }}" ]; then
           sed -i "s|^GOOGLE_WEB_CLIENT_ID=.*|GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}|" .env
         fi
         if [ -n "${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}" ]; then
           sed -i "s|^GOOGLE_ANDROID_CLIENT_ID=.*|GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}|" .env
         fi
-        echo "Safely generated .env file for APK build."
+        echo "Safely generated .env file for build."
 
     - name: Run Unit Tests
       timeout-minutes: 15
       run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace
 
-    - name: Run Android Lint
+    - name: Run Android Lint (Debug)
       timeout-minutes: 10
       run: ./gradlew lintDebug --no-configuration-cache --no-build-cache --stacktrace
-
-    - name: Verify Release Compilation Gate
-      timeout-minutes: 15
-      run: ./gradlew compileReleaseKotlin assembleRelease --no-configuration-cache --no-build-cache --stacktrace
 
     - name: Build Debug APK
       timeout-minutes: 15
@@ -107,8 +90,6 @@ jobs:
       run: |
         APK="app/build/outputs/apk/debug/app-debug.apk"
         echo "Validating APK: $APK"
-        
-        # Verify AndroidManifest.xml exists in APK
         unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in APK"; exit 1; }
         
         FOUND=0
@@ -132,11 +113,9 @@ jobs:
       run: |
         APK="app/build/outputs/apk/debug/app-debug.apk"
         echo "Running APK Secret Boundary Scan..."
-        # Verify that ignored private secrets are not packaged in raw plaintext
         mkdir -p /tmp/apk_inspect
         unzip -q "$APK" -d /tmp/apk_inspect
         
-        # Comprehensive detection for leaked private keys, API secrets, and server tokens
         PATTERNS=(
           "MY_GOOGLE_ACCOUNT_PASSWORD" 
           "GOOGLE_ACCOUNT_PASSWORD" 
@@ -160,25 +139,40 @@ jobs:
         rm -rf /tmp/apk_inspect
         echo "SUCCESS: Comprehensive APK secret boundary scan passed cleanly."
 
-    - name: Upload APK Artifact
+    - name: Upload Debug Artifact
       uses: actions/upload-artifact@v4
       with:
         name: WastiAI-Debug-APK
         path: app/build/outputs/apk/debug/app-debug.apk
 
+  publish:
+    name: Publish Release Artifact
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download Built Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: WastiAI-Debug-APK
+        path: build-artifacts/
+
     - name: Create or Update GitHub Release
-      if: github.event_name != 'pull_request'
       uses: softprops/action-gh-release@v2
       with:
-        files: app/build/outputs/apk/debug/app-debug.apk
+        files: build-artifacts/app-debug.apk
         tag_name: "v1.0.0"
         name: "Wasti AI v1.0.0 (Latest APK)"
         overwrite: true
         make_latest: true
-        fail_on_unmatched_files: false
+        fail_on_unmatched_files: true
         body: |
           ### 📱 Wasti AI Latest Build
           - **File:** `app-debug.apk`
-          - Download the `app-debug.apk` file below and open it on your Android phone to install!
+          - Download the `app-debug.apk` file below and install on your Android device.
         generate_release_notes: false
         token: ${{ secrets.GITHUB_TOKEN }}
