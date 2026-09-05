@@ -40,9 +40,14 @@ class WastiLocalBrainProvider(
 
         val hasWeights = appCtx != null && ModelArtifactManager.isWeightsPresent(appCtx, id)
         
-        val content = if (hasWeights) {
+        val content = if (hasWeights && appCtx != null) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
-            executeOnDeviceWeightsInference(request.prompt, request.systemInstruction)
+            val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
+            runtime.executeInference(
+                modelId = id,
+                prompt = request.prompt,
+                systemInstruction = request.systemInstruction
+            )
         } else {
             // Truthful degradation: Explain real readiness and hardware status
             val reqText = if (manifest != null) {
@@ -77,39 +82,7 @@ class WastiLocalBrainProvider(
     }
 
     override suspend fun embeddings(text: String): FloatArray {
-        // Deterministic Hashed Lexical Fallback (Unit-Sphere L2 Normalized Embedding)
-        // Used for fast local lexical indexing when neural embedding model weights are offline
-        val vector = FloatArray(384)
-        val tokens = text.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotBlank() }
-        
-        if (tokens.isEmpty()) {
-            vector[0] = 1.0f
-            return vector
-        }
-
-        tokens.forEachIndexed { index, token ->
-            val hash = token.hashCode()
-            val dim1 = (Math.abs(hash) % 384)
-            val dim2 = (Math.abs(hash * 31) % 384)
-            val weight = 1.0f / (1.0f + (index * 0.1f))
-            vector[dim1] += weight
-            vector[dim2] += (weight * 0.5f)
-        }
-
-        // L2 Normalization
-        var sumSquares = 0.0f
-        for (v in vector) sumSquares += (v * v)
-        val norm = sqrt(sumSquares)
-        if (norm > 0.0f) {
-            for (i in vector.indices) {
-                vector[i] /= norm
-            }
-        }
-
-        return vector
-    }
-
-    private fun executeOnDeviceWeightsInference(prompt: String, systemInstruction: String): String {
-        return "Executed on-device local weights inference for ${modelDescriptor.brandDisplayName}. Intent evaluated via canonical execution fabric."
+        // Native 384-dimensional dense semantic vector encoding with transformer projection
+        return com.example.data.ai.runtime.WastiEmbeddingRuntime.encode(text)
     }
 }

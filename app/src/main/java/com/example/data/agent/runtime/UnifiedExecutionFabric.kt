@@ -1749,5 +1749,40 @@ class UnifiedExecutionFabric(
         } else if (result.status == UnifiedExecutionStatus.FAILED || result.status == UnifiedExecutionStatus.VERIFICATION_FAILED) {
             eventBus?.emit(AgentEvent.ToolFailed(taskId, request.capabilityId, result.error ?: "Unknown error"))
         }
+
+        // Cryptographic Provenance Recording
+        try {
+            val evidenceSource = when {
+                request.capabilityId.contains("file") -> EvidenceSource.FILESYSTEM
+                request.capabilityId.contains("db") || request.capabilityId.contains("memory") -> EvidenceSource.DATABASE_QUERY
+                request.capabilityId.contains("http") || request.capabilityId.contains("search") || request.capabilityId.contains("api") -> EvidenceSource.HTTP_CONTRACT
+                request.capabilityId.contains("device") || request.capabilityId.contains("ui") -> EvidenceSource.UI_TREE
+                request.capabilityId.contains("sensor") -> EvidenceSource.SENSOR_EVENT
+                else -> EvidenceSource.PROCESS_TELEMETRY
+            }
+
+            val structuredEvidence = if (result.status == UnifiedExecutionStatus.VERIFIED || result.verificationStatus == UnifiedVerificationStatus.VERIFIED) {
+                VerifiedExecutionEvidence(
+                    evidenceSource = evidenceSource,
+                    subject = request.capabilityId,
+                    verifiedState = result.verificationEvidence ?: "Execution verified via canonical fabric",
+                    confidence = 0.95,
+                    observedAt = result.completedAt
+                )
+            } else null
+
+            ExecutionProvenanceLedger.recordExecution(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                providerId = result.executor,
+                modelId = result.providerOrModel,
+                inputContent = request.parameters.toString(),
+                outputContent = result.output,
+                evidence = structuredEvidence
+            )
+        } catch (_: Throwable) {
+            // Ensure provenance logging does not interrupt execution
+        }
     }
 }
