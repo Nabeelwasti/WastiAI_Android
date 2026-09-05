@@ -652,7 +652,7 @@ class WastiProactiveAutonomousEngine(
 
                 // 3. Execution through Canonical OS Runtime
                 task.state = ProactiveTaskState.RUNNING
-                persistTaskAsync(task)
+                persistTask(task)
                 broadcastTaskUpdate(task, "TASK_RUNNING")
 
                 val runtime = WastiOSRuntime.getInstance(context)
@@ -667,12 +667,10 @@ class WastiProactiveAutonomousEngine(
                     is CommandSubmissionResult.Accepted -> {
                         task.state = ProactiveTaskState.EXECUTED
                         task.verificationEvidence = "Dispatched and running via WastiOSRuntime (Command: ${submissionResult.commandId})"
-                        persistTaskAsync(task)
                         broadcastTaskUpdate(task, "TASK_EXECUTED")
                         
                         // Observe completion
                         task.state = ProactiveTaskState.OBSERVED
-                        persistTaskAsync(task)
                         broadcastTaskUpdate(task, "TASK_OBSERVED")
 
                         task.state = ProactiveTaskState.VERIFIED
@@ -683,16 +681,13 @@ class WastiProactiveAutonomousEngine(
                     }
                     is CommandSubmissionResult.ImmediateSuccess -> {
                         task.state = ProactiveTaskState.EXECUTED
-                        persistTaskAsync(task)
                         broadcastTaskUpdate(task, "TASK_EXECUTED")
 
                         task.state = ProactiveTaskState.OBSERVED
                         task.verificationEvidence = submissionResult.verificationEvidence ?: "Output: ${submissionResult.output.take(100)}"
-                        persistTaskAsync(task)
                         broadcastTaskUpdate(task, "TASK_OBSERVED")
 
                         task.state = ProactiveTaskState.VERIFIED
-                        persistTaskAsync(task)
                         broadcastTaskUpdate(task, "TASK_VERIFIED")
 
                         task.state = ProactiveTaskState.COMPLETED
@@ -705,7 +700,16 @@ class WastiProactiveAutonomousEngine(
                     }
                 }
 
-                persistTaskAsync(task)
+                // Handle recurring reschedule
+                if (task.intervalMs > 0) {
+                    task.state = ProactiveTaskState.SCHEDULED
+                    task.scheduledAt = System.currentTimeMillis() + task.intervalMs
+                    task.retryCount = 0
+                    task.nextRetryAt = 0L
+                    Log.i(TAG, "Recurring task ${task.title} rescheduled for next run in ${task.intervalMs}ms")
+                }
+
+                persistTask(task)
 
                 eventBus.emit(
                     AgentEvent.ProactiveTaskCompleted(
@@ -716,20 +720,10 @@ class WastiProactiveAutonomousEngine(
                 )
 
                 broadcastTaskUpdate(task, "TASK_COMPLETED")
-
-                // Handle recurring reschedule
-                if (task.intervalMs > 0) {
-                    task.state = ProactiveTaskState.SCHEDULED
-                    task.scheduledAt = System.currentTimeMillis() + task.intervalMs
-                    task.retryCount = 0
-                    task.nextRetryAt = 0L
-                    persistTaskAsync(task)
-                    Log.i(TAG, "Recurring task ${task.title} rescheduled for next run in ${task.intervalMs}ms")
-                }
             } catch (e: CancellationException) {
                 task.state = ProactiveTaskState.CANCELLED
                 task.lastError = "Task execution cancelled"
-                persistTaskAsync(task)
+                persistTask(task)
                 broadcastTaskUpdate(task, "TASK_CANCELLED")
             } catch (e: Exception) {
                 val errMsg = e.message ?: "Unknown execution error"
@@ -740,7 +734,7 @@ class WastiProactiveAutonomousEngine(
                     task.nextRetryAt = System.currentTimeMillis() + (task.retryCount * 5000L)
                     task.state = ProactiveTaskState.SCHEDULED
                     task.lastError = "$errMsg (Retry ${task.retryCount}/${task.maxRetries})"
-                    persistTaskAsync(task)
+                    persistTask(task)
 
                     eventBus.emit(
                         AgentEvent.ProactiveTaskFailed(
@@ -753,7 +747,7 @@ class WastiProactiveAutonomousEngine(
                     task.state = ProactiveTaskState.FAILED
                     task.lastError = errMsg
                     task.leaseOwnerNode = null
-                    persistTaskAsync(task)
+                    persistTask(task)
 
                     eventBus.emit(
                         AgentEvent.ProactiveTaskFailed(
@@ -763,14 +757,12 @@ class WastiProactiveAutonomousEngine(
                         )
                     )
                 }
-
                 broadcastTaskUpdate(task, "TASK_FAILED")
             } finally {
                 activeExecutionJobs.remove(task.taskId)
                 updateTasksFlow()
             }
         }
-
         activeExecutionJobs[task.taskId] = job
     }
 
@@ -945,6 +937,17 @@ class WastiProactiveAutonomousEngine(
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to synchronously persist proactive task ${task.taskId}: ${e.message}")
+        }
+    }
+
+    private suspend fun persistTask(task: ProactiveAutonomousTask) {
+        val dao = effectiveDao ?: return
+        withContext(Dispatchers.IO) {
+            try {
+                dao.insertTask(task.toEntity())
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist proactive task ${task.taskId}: ${e.message}")
+            }
         }
     }
 

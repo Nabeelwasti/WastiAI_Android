@@ -175,7 +175,7 @@ class WastiLocalModelRuntime(
         val manifest = ModelArtifactManager.getManifest(modelId)
 
         if (!modelFile.exists() || modelFile.length() == 0L) {
-            return@withContext "[LOCAL_MODEL_UNAVAILABLE]: Model weights for '$modelId' are not downloaded on device. Please initiate download via Model Manager."
+            return@withContext "[LOCAL_MODEL_UNAVAILABLE]: Model weights for '$modelId' are not present locally on device. Download required via Model Manager."
         }
 
         val header = parseGgufHeader(modelFile)
