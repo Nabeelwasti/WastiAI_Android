@@ -2,42 +2,33 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Network, audio, and assistant interaction. Runtime permission handling is required where applicable. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-
-    <!-- Foreground services for the visible wake-word and overlay experiences. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-
-    <!-- Calendar and reminder features. Exact alarms require user-granted special access on supported Android versions. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.SET_ALARM" />
-
-    <!-- Biometrics -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
-
-    <!-- Bluetooth & Nearby Devices -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
-
-    <!-- System & Assistant Features -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
+    <uses-permission android:name="android.permission.READ_SYNC_STATS" />
 
-    <!-- Queries for Intent Resolving & App Launching -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -51,11 +42,6 @@
             <data android:scheme="https" />
         </intent>
     </queries>
-
-    <!-- Sync Settings -->
-    <uses-permission android:name="android.permission.READ_SYNC_SETTINGS" />
-    <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS" />
-    <uses-permission android:name="android.permission.READ_SYNC_STATS" />
 
     <application
         android:name="com.example.WastiApplication"
@@ -80,7 +66,6 @@
             </intent-filter>
         </activity>
 
-        <!-- System-owned binding only; the accessibility service is not app-callable. -->
         <service
             android:name="com.example.service.WastiAccessibilityService"
             android:exported="true"
@@ -93,7 +78,6 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Visible user-controlled overlay; specialUse subtype is required for Android 14+ review. -->
         <service
             android:name="com.example.service.WastiFloatingService"
             android:enabled="true"
@@ -104,14 +88,12 @@
                 android:value="User-initiated Wasti assistant overlay and floating action bubble." />
         </service>
 
-        <!-- Microphone foreground service for the opt-in offline wake-word experience. -->
         <service
             android:name="com.example.service.WakeWordVoskService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
 
-        <!-- Autonomous background execution daemon & local server host -->
         <service
             android:name="com.example.service.WastiForegroundExecutionService"
             android:enabled="true"
@@ -122,7 +104,6 @@
                 android:value="Autonomous agent loop execution, background workflows, and local embedded server host." />
         </service>
 
-        <!-- Boot receiver for reboot recovery and persistent scheduling -->
         <receiver
             android:name="com.example.assistant.BootReceiver"
             android:enabled="true"
@@ -132,17 +113,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Disable default WorkManagerInitializer for on-demand initialization via Configuration.Provider -->
-        <provider
-            android:name="androidx.startup.InitializationProvider"
-            android:authorities="${applicationId}.androidx-startup"
-            android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.WorkManagerInitializer"
-                android:value="androidx.startup"
-                tools:node="remove" />
-        </provider>
     </application>
 
 </manifest>

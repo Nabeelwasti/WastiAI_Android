@@ -1,8 +1,6 @@
 package com.example.data.ai.engine
 
-import android.app.ActivityManager
 import android.content.Context
-import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import com.example.data.ai.model.HardwareEnvironmentSpecs
@@ -23,40 +21,49 @@ import java.security.MessageDigest
 object HardwareCapabilityDetector {
 
     fun detectHardwareEnvironment(context: Context?): HardwareEnvironmentSpecs {
-        val rt = Runtime.getRuntime()
-        val totalMemoryMb = rt.totalMemory() / (1024 * 1024)
-        val freeMemoryMb = rt.freeMemory() / (1024 * 1024)
-        val maxMemoryMb = rt.maxMemory() / (1024 * 1024)
+        val runtime = Runtime.getRuntime()
+        val maxMemoryMb = runtime.maxMemory() / (1024 * 1024)
+        val freeMemoryMb = runtime.freeMemory() / (1024 * 1024)
 
         var availableStorageMb = 2048L
         try {
             val stat = StatFs(Environment.getDataDirectory().path)
             availableStorageMb = (stat.availableBlocksLong * stat.blockSizeLong) / (1024 * 1024)
-        } catch (_: Throwable) {}
-
-        val cores = Runtime.getRuntime().availableProcessors()
-        val isLowRam = maxMemoryMb < 512
+        } catch (_: Throwable) {
+            // Unknown storage is represented conservatively; callers must not treat it as verified.
+        }
 
         return HardwareEnvironmentSpecs(
             totalRamMb = maxMemoryMb,
             availableRamMb = freeMemoryMb,
             availableStorageMb = availableStorageMb,
-            cpuCores = cores,
-            hasNpuAcceleration = Build.VERSION.SDK_INT >= 29,
-            isLowRamDevice = isLowRam,
+            cpuCores = runtime.availableProcessors(),
+            // API level alone does not prove that an NPU is exposed to this app/runtime.
+            hasNpuAcceleration = false,
+            isLowRamDevice = maxMemoryMb < 512,
+            // Thermal/battery state must be sampled by the execution layer at run time.
             isBatteryLowOrThermalsThrottling = false
         )
     }
 
-    fun canRunModelLocally(manifest: ModelArtifactManifest, specs: HardwareEnvironmentSpecs): Pair<Boolean, String> {
+    fun canRunModelLocally(
+        manifest: ModelArtifactManifest,
+        specs: HardwareEnvironmentSpecs
+    ): Pair<Boolean, String> {
         if (specs.totalRamMb < manifest.minRamRequiredMb) {
-            return false to "Insufficient RAM: Requires ${manifest.minRamRequiredMb}MB, system provides ${specs.totalRamMb}MB"
+            return false to "Insufficient RAM: requires ${manifest.minRamRequiredMb}MB, runtime exposes ${specs.totalRamMb}MB"
         }
         if (specs.availableStorageMb < (manifest.byteSize / (1024 * 1024)) + 500) {
             return false to "Insufficient storage space for model weights."
         }
-        return true to "Hardware meets requirements for local neural inference."
+        if (!isTrustedSha256(manifest.expectedSha256)) {
+            return false to "Model artifact checksum is not independently verified."
+        }
+        return true to "Declared hardware requirements and integrity metadata are satisfied."
     }
+
+    private fun isTrustedSha256(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
 }
 
 object ModelArtifactManager {
@@ -68,8 +75,8 @@ object ModelArtifactManager {
         "wasti-smollm" to ModelArtifactManifest(
             modelId = "wasti-smollm",
             canonicalFileName = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf",
-            expectedSha256 = "d2a6e9a7e3b12398fa90123efca45bc7890123456789abcdef0123456789abcd",
-            byteSize = 1048576000L, // ~1.0 GB
+            expectedSha256 = "",
+            byteSize = 1048576000L,
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
             license = "Apache 2.0",
@@ -79,8 +86,8 @@ object ModelArtifactManager {
         "wasti-phi" to ModelArtifactManifest(
             modelId = "wasti-phi",
             canonicalFileName = "Phi-3.5-mini-instruct-Q4_K_M.gguf",
-            expectedSha256 = "c3b8a1f7d9e45601ab23456fcde78901234567890abcdef01234567890abcdef",
-            byteSize = 2147483648L, // ~2.1 GB
+            expectedSha256 = "",
+            byteSize = 2147483648L,
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/microsoft/Phi-3.5-mini-instruct-gguf/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
             license = "MIT",
@@ -90,7 +97,7 @@ object ModelArtifactManager {
         "wasti-qwen" to ModelArtifactManifest(
             modelId = "wasti-qwen",
             canonicalFileName = "Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf",
-            expectedSha256 = "e4f9b2a1c0d876543210fedcba9876543210fedcba9876543210fedcba987654",
+            expectedSha256 = "",
             byteSize = 1100000000L,
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
@@ -101,10 +108,10 @@ object ModelArtifactManager {
     )
 
     init {
-        // Initialize truthful initial state for all catalog models
         val initialMap = mutableMapOf<String, ModelRuntimeStatus>()
         OpenSourceModelCatalog.ALL_MODELS.forEach { model ->
-            initialMap[model.id] = if (manifests.containsKey(model.id)) {
+            val manifest = manifests[model.id]
+            initialMap[model.id] = if (manifest != null && isTrustedSha256(manifest.expectedSha256)) {
                 ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD
             } else {
                 ModelRuntimeStatus.DECLARED
@@ -118,24 +125,23 @@ object ModelArtifactManager {
     fun getModelFile(context: Context, modelId: String): File {
         val modelsDir = File(context.filesDir, "wasti_models")
         if (!modelsDir.exists()) modelsDir.mkdirs()
-        val manifest = manifests[modelId]
-        val fileName = manifest?.canonicalFileName ?: "$modelId.gguf"
+        val fileName = manifests[modelId]?.canonicalFileName ?: "$modelId.gguf"
         return File(modelsDir, fileName)
     }
 
     fun isWeightsPresent(context: Context, modelId: String): Boolean {
         val file = getModelFile(context, modelId)
-        return file.exists() && file.length() > 0
+        return file.isFile && file.length() > 0L
     }
 
     suspend fun verifyModelIntegrity(file: File, expectedSha256: String): Boolean = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext false
+        if (!file.isFile || !isTrustedSha256(expectedSha256)) return@withContext false
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             val buffer = ByteArray(8192)
-            FileInputStream(file).use { fis ->
+            FileInputStream(file).use { input ->
                 var read: Int
-                while (fis.read(buffer).also { read = it } != -1) {
+                while (input.read(buffer).also { read = it } != -1) {
                     digest.update(buffer, 0, read)
                 }
             }
@@ -151,4 +157,7 @@ object ModelArtifactManager {
         current[modelId] = status
         _modelStatuses.value = current
     }
+
+    private fun isTrustedSha256(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
 }

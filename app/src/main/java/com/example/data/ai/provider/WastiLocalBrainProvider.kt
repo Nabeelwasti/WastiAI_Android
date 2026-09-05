@@ -7,11 +7,18 @@ import com.example.data.ai.model.OpenSourceModelDescriptor
 import com.example.data.ai.model.ProviderCapability
 import com.example.data.ai.model.ProviderRequest
 import com.example.data.ai.model.ProviderResponse
+import com.example.data.ai.runtime.WastiLocalModelRuntime
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlin.math.sqrt
 
+/**
+ * Local open-weight provider boundary.
+ *
+ * This provider is available only when the model artifact is present, integrity has been
+ * verified, and a real native inference backend is linked. It never substitutes deterministic
+ * text for neural inference.
+ */
 class WastiLocalBrainProvider(
     val modelDescriptor: OpenSourceModelDescriptor
 ) : AIProvider {
@@ -21,13 +28,17 @@ class WastiLocalBrainProvider(
     override val capabilities: Set<ProviderCapability> = setOf(
         ProviderCapability.TEXT_GENERATION,
         ProviderCapability.STREAMING,
-        ProviderCapability.MULTI_TURN,
-        ProviderCapability.EMBEDDINGS
+        ProviderCapability.MULTI_TURN
     )
 
     override fun isAvailable(): Boolean {
         val appCtx = com.example.WastiApplication.instance ?: return false
-        return ModelArtifactManager.isWeightsPresent(appCtx, id)
+        val manifest = ModelArtifactManager.getManifest(id) ?: return false
+        if (!WastiLocalModelRuntime.isNativeInferenceBackendAvailable()) return false
+        if (!ModelArtifactManager.isWeightsPresent(appCtx, id)) return false
+        if (manifest.expectedSha256.length != 64) return false
+        return ModelArtifactManager.modelStatuses.value[id] == ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT ||
+            ModelArtifactManager.modelStatuses.value[id] == ModelRuntimeStatus.ACTIVE_LOADED
     }
 
     fun isConfiguredOrDeclared(): Boolean = true
@@ -35,30 +46,35 @@ class WastiLocalBrainProvider(
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
         val appCtx = com.example.WastiApplication.instance
-        val specs = HardwareCapabilityDetector.detectHardwareEnvironment(appCtx)
+            ?: throw IllegalStateException("Wasti application context is unavailable")
         val manifest = ModelArtifactManager.getManifest(id)
+            ?: throw IllegalStateException("No local model manifest registered for '$id'")
 
-        val hasWeights = appCtx?.let { ModelArtifactManager.isWeightsPresent(it, id) } ?: false
-        
-        val content = if (appCtx != null && hasWeights) {
-            ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
-            val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
-            runtime.executeInference(
-                modelId = id,
-                prompt = request.prompt,
-                systemInstruction = request.systemInstruction
+        val specs = HardwareCapabilityDetector.detectHardwareEnvironment(appCtx)
+        val (hardwareReady, hardwareReason) = HardwareCapabilityDetector.canRunModelLocally(manifest, specs)
+        if (!hardwareReady) {
+            throw IllegalStateException("Local model '$id' is not executable: $hardwareReason")
+        }
+        if (!WastiLocalModelRuntime.isNativeInferenceBackendAvailable()) {
+            throw UnsupportedOperationException(
+                "Native local inference backend is not linked. GGUF presence alone is not neural inference."
             )
-        } else {
-            // Truthful degradation: Explain real readiness and hardware status
-            val reqText = if (manifest != null) {
-                "Model '${modelDescriptor.brandDisplayName}' is configured (Format: ${manifest.quantization}, Required RAM: ${manifest.minRamRequiredMb}MB). System RAM: ${specs.totalRamMb}MB. Weights pending download."
-            } else {
-                "Model '${modelDescriptor.brandDisplayName}' is registered in Wasti Local Brain Catalog. Backend: ${modelDescriptor.defaultBackend}."
-            }
-            "Wasti AI Local Execution Core [${modelDescriptor.brandDisplayName}]:\n$reqText\n\nTask Goal: \"${request.prompt.take(120)}\"\nExecution Strategy: Evaluated via Wasti Unified Execution Fabric with zero external API key requirements."
         }
 
-        val latency = System.currentTimeMillis() - startTime
+        val modelFile = ModelArtifactManager.getModelFile(appCtx, id)
+        if (!ModelArtifactManager.verifyModelIntegrity(modelFile, manifest.expectedSha256)) {
+            ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.FAILED_INITIALIZATION)
+            throw SecurityException("Local model '$id' failed integrity verification")
+        }
+
+        ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.VERIFIED_INTEGRITY)
+        val content = WastiLocalModelRuntime(appCtx).executeInference(
+            modelId = id,
+            prompt = request.prompt,
+            systemInstruction = request.systemInstruction,
+            temperature = request.temperature
+        )
+        ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
 
         return ProviderResponse(
             content = content,
@@ -67,22 +83,24 @@ class WastiLocalBrainProvider(
             modelUsed = defaultModel,
             promptTokens = request.prompt.length / 4,
             completionTokens = content.length / 4,
-            latencyMs = latency,
+            latencyMs = System.currentTimeMillis() - startTime,
             costUsd = 0.0
         )
     }
 
     override suspend fun stream(request: ProviderRequest): Flow<String> = flow {
         val response = generate(request)
-        val tokens = response.content.split(" ")
-        for (token in tokens) {
-            emit("$token ")
-            delay(15)
-        }
+        response.content.split(Regex("(?<=\\s)"))
+            .filter { it.isNotEmpty() }
+            .forEach {
+                emit(it)
+                delay(15)
+            }
     }
 
     override suspend fun embeddings(text: String): FloatArray {
-        // Native 384-dimensional dense semantic vector encoding with transformer projection
-        return com.example.data.ai.runtime.WastiEmbeddingRuntime.encode(text)
+        throw UnsupportedOperationException(
+            "Semantic embeddings are unavailable until a real local embedding model is linked."
+        )
     }
 }

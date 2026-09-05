@@ -1,15 +1,13 @@
 package com.example.data.ai.model
 
-import java.io.File
-
 enum class ModelRuntimeStatus {
-    DECLARED,                       // Model descriptor declared in catalog
-    AVAILABLE_PENDING_DOWNLOAD,     // Quantized weights downloadable from Hugging Face / GGUF hub
-    DOWNLOADING,                    // Weight stream in progress
-    VERIFIED_INTEGRITY,             // SHA-256 integrity check passed
-    LOCAL_WEIGHTS_PRESENT,          // GGUF / ONNX artifact stored in app private storage
-    ACTIVE_LOADED,                  // Loaded into memory / active inference session
-    FAILED_INITIALIZATION           // Insufficient RAM or incompatible hardware
+    DECLARED,
+    AVAILABLE_PENDING_DOWNLOAD,
+    DOWNLOADING,
+    VERIFIED_INTEGRITY,
+    LOCAL_WEIGHTS_PRESENT,
+    ACTIVE_LOADED,
+    FAILED_INITIALIZATION
 }
 
 enum class QuantizationType {
@@ -23,6 +21,7 @@ enum class QuantizationType {
 data class ModelArtifactManifest(
     val modelId: String,
     val canonicalFileName: String,
+    /** Empty until the exact upstream artifact digest has been independently verified. */
     val expectedSha256: String,
     val byteSize: Long,
     val quantization: QuantizationType,

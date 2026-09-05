@@ -41,6 +41,24 @@ object WastiModelDownloader {
         val targetFile = ModelArtifactManager.getModelFile(context, modelId)
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.downloading")
 
+        if (!isTrustedSha256(manifest.expectedSha256)) {
+            val error = "Model '$modelId' has no trusted SHA-256 checksum; refusing download without integrity metadata."
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.DECLARED)
+            updateProgress(
+                ModelDownloadProgress(
+                    modelId = modelId,
+                    bytesDownloaded = 0L,
+                    totalBytes = manifest.byteSize,
+                    progressFraction = 0.0f,
+                    statusText = "Download blocked: checksum required",
+                    isFailed = true,
+                    errorMessage = error
+                )
+            )
+            Log.e(TAG, error)
+            return@withContext false
+        }
+
         updateProgress(
             ModelDownloadProgress(
                 modelId = modelId,
@@ -59,11 +77,13 @@ object WastiModelDownloader {
             connection.connectTimeout = 15000
             connection.readTimeout = 30000
             connection.requestMethod = "GET"
+            connection.instanceFollowRedirects = true
 
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
                 val errorMsg = "HTTP error $responseCode while downloading model."
                 Log.e(TAG, errorMsg)
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
                 updateProgress(
                     ModelDownloadProgress(
                         modelId = modelId,
@@ -75,7 +95,6 @@ object WastiModelDownloader {
                         errorMessage = errorMsg
                     )
                 )
-                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
                 return@withContext false
             }
 
@@ -85,79 +104,118 @@ object WastiModelDownloader {
 
             connection.inputStream.use { input ->
                 FileOutputStream(tempFile).use { output ->
-                    val buffer = ByteArray(32768)
-                    var bytesRead: Int
-                    var lastUpdate = System.currentTimeMillis()
-
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var lastUpdate = 0L
+                    while (true) {
+                        val bytesRead = input.read(buffer)
+                        if (bytesRead < 0) break
+                        if (bytesRead == 0) continue
                         output.write(buffer, 0, bytesRead)
                         digest.update(buffer, 0, bytesRead)
                         downloadedBytes += bytesRead
 
                         val now = System.currentTimeMillis()
                         if (now - lastUpdate > 300) {
-                            val fraction = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0.0f
+                            val fraction = if (totalBytes > 0) {
+                                (downloadedBytes.toDouble() / totalBytes.toDouble()).toFloat().coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            }
                             updateProgress(
                                 ModelDownloadProgress(
                                     modelId = modelId,
                                     bytesDownloaded = downloadedBytes,
                                     totalBytes = totalBytes,
                                     progressFraction = fraction,
-                                    statusText = "Downloading: ${(fraction * 100).toInt()}% (${downloadedBytes / (1024 * 1024)}MB / ${totalBytes / (1024 * 1024)}MB)"
+                                    statusText = "Downloading: ${(fraction * 100).toInt()}%"
                                 )
                             )
                             lastUpdate = now
                         }
                     }
+                    output.fd.sync()
                 }
             }
 
-            // Verify Checksum
             val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
-            val integrityPass = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true) || manifest.expectedSha256.startsWith("d2a6e9a7") // Allow template verification for test artifacts
-
-            if (tempFile.exists()) {
-                if (targetFile.exists()) targetFile.delete()
-                tempFile.renameTo(targetFile)
+            if (!calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)) {
+                val error = "Integrity verification failed for '$modelId': downloaded SHA-256 does not match manifest."
+                Log.e(TAG, "$error expected=${manifest.expectedSha256} actual=$calculatedSha")
+                tempFile.delete()
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
+                updateProgress(
+                    ModelDownloadProgress(
+                        modelId = modelId,
+                        bytesDownloaded = downloadedBytes,
+                        totalBytes = totalBytes,
+                        progressFraction = 0.0f,
+                        statusText = "Download rejected: integrity failure",
+                        isFailed = true,
+                        errorMessage = error
+                    )
+                )
+                return@withContext false
             }
 
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.VERIFIED_INTEGRITY)
+            if (!tempFile.renameTo(targetFile)) {
+                val error = "Integrity verified but final model-file installation failed."
+                tempFile.delete()
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
+                updateProgress(
+                    ModelDownloadProgress(
+                        modelId = modelId,
+                        bytesDownloaded = downloadedBytes,
+                        totalBytes = totalBytes,
+                        progressFraction = 0.0f,
+                        statusText = "Install failed",
+                        isFailed = true,
+                        errorMessage = error
+                    )
+                )
+                return@withContext false
+            }
+
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT)
             updateProgress(
                 ModelDownloadProgress(
                     modelId = modelId,
                     bytesDownloaded = downloadedBytes,
                     totalBytes = totalBytes,
                     progressFraction = 1.0f,
-                    statusText = "Model ready (Integrity verified)",
+                    statusText = "Model downloaded and integrity verified",
                     isCompleted = true
                 )
             )
-            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT)
             true
         } catch (e: CancellationException) {
             Log.i(TAG, "Download cancelled for $modelId")
-            if (tempFile.exists()) tempFile.delete()
+            tempFile.delete()
             ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
             false
         } catch (e: Exception) {
             Log.e(TAG, "Download error for $modelId", e)
-            if (tempFile.exists()) tempFile.delete()
+            tempFile.delete()
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
             updateProgress(
                 ModelDownloadProgress(
                     modelId = modelId,
                     bytesDownloaded = 0L,
                     totalBytes = manifest.byteSize,
                     progressFraction = 0.0f,
-                    statusText = "Download failed: ${e.message}",
+                    statusText = "Download failed",
                     isFailed = true,
                     errorMessage = e.message
                 )
             )
-            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
             false
         } finally {
             connection?.disconnect()
         }
     }
+
+    private fun isTrustedSha256(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
 
     private fun updateProgress(progress: ModelDownloadProgress) {
         val current = _downloadProgressMap.value.toMutableMap()
