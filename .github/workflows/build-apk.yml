@@ -84,45 +84,13 @@ jobs:
       env:
         FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
       run: |
-        if [ -n "$FIREBASE_CONFIG_SECRET" ]; then
-          echo "Writing provided FIREBASE_GOOGLE_SERVICES_JSON secret to app/google-services.json..."
-          # Safely write to app/google-services.json without echoing to logs
-          printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
-        else
-          echo "NOTICE: Secret 'FIREBASE_GOOGLE_SERVICES_JSON' is not present in this run environment."
-          echo "Generating safe, non-functional build-time google-services.json stub for canonical package 'com.aistudio.wastios.k9v2pz' to allow Gradle compilation and testing to proceed cleanly."
-          cat << 'EOF' > app/google-services.json
-{
-  "project_info": {
-    "project_number": "000000000000",
-    "project_id": "wasti-ai-ci-stub",
-    "storage_bucket": "wasti-ai-ci-stub.appspot.com"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
-        "android_client_info": {
-          "package_name": "com.aistudio.wastios.k9v2pz"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyCiBuildStubKeyForTestingOnly00"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
-}
-EOF
+        if [ -z "$FIREBASE_CONFIG_SECRET" ]; then
+          echo "ERROR: Required GitHub Secret 'FIREBASE_GOOGLE_SERVICES_JSON' is missing or empty! Authentic Google Services configuration is required."
+          exit 1
         fi
+
+        # Safely write authentic Google Services configuration to app/google-services.json without echoing to logs
+        printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
 
         # Validate JSON format, project info, and package name without printing secrets
         python3 - << 'PYEOF'
@@ -139,10 +107,8 @@ EOF
         project_id = project_info.get("project_id", "")
         project_number = project_info.get("project_number", "")
 
-        is_ci_stub = "stub" in project_id.lower()
-
-        if not is_ci_stub and "wasti-ai" not in project_id:
-            print(f"ERROR: Expected Firebase project containing 'wasti-ai', found '{project_id}'.")
+        if "wasti-ai" not in project_id:
+            print(f"ERROR: Expected authentic Firebase project containing 'wasti-ai', found '{project_id}'.")
             sys.exit(1)
 
         clients = data.get("client", [])
@@ -158,10 +124,7 @@ EOF
             print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
             sys.exit(1)
 
-        if is_ci_stub:
-            print(f"SUCCESS: Validated safe CI build stub for package(s): {matching_pkgs} (project: '{project_id}').")
-        else:
-            print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing package(s): {matching_pkgs}.")
+        print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing canonical package(s): {matching_pkgs}.")
         PYEOF
 
     - name: Generate Safe .env and Configuration for APK Build
