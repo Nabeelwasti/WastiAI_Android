@@ -38,6 +38,20 @@ jobs:
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v4
+      with:
+        accept-android-sdk-licenses: true
+
+    - name: Accept Android SDK Licenses
+      run: |
+        mkdir -p "$ANDROID_HOME/licenses"
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses 2>/dev/null || yes | "$ANDROID_HOME/tools/bin/sdkmanager" --licenses 2>/dev/null || yes | sdkmanager --licenses 2>/dev/null || true
+        echo -e "8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
+        echo -e "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+        echo -e "601085b94c79f3b24e146dd3920d091007e92b34\n0dce45676d31a37a373783b352b085870b207574" > "$ANDROID_HOME/licenses/android-googletv-license"
+        echo -e "33b6a2b64920268e304a4ddb1216b3a777e9b41e" > "$ANDROID_HOME/licenses/google-gdk-license"
+        echo -e "e9acab5b5fbb560a72cfa4f23690f4086beab3ac" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
+        echo -e "859f317696f67ef3d7f30a50a5560e7834b43903" > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
+        echo "Android SDK licenses accepted."
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v6
@@ -46,16 +60,6 @@ jobs:
 
     - name: Make Gradle Wrapper Executable
       run: chmod +x gradlew
-
-    - name: Accept Android SDK Licenses
-      run: |
-        mkdir -p "$ANDROID_HOME/licenses"
-        echo -e "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
-        echo -e "\n84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
-        echo -e "\n601085b94c79f3b24e146dd3920d091007e92b34" > "$ANDROID_HOME/licenses/android-googletv-license"
-        echo -e "\n33b6a2b64920268e304a4ddb1216b3a777e9b41e" > "$ANDROID_HOME/licenses/google-gdk-license"
-        echo -e "\ne9acab5b5fbb560a72cfa4f23690f4086beab3ac" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
-        echo "Android SDK licenses accepted."
 
     - name: Decode Debug Keystore
       run: |
