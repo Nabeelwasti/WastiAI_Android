@@ -28,7 +28,7 @@ object BackendClient {
                 }
                 client.newCall(reqBuilder.build()).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.e("BackendClient", "LLM call failed: ${'$'}{resp.code}")
+                        Log.e("BackendClient", "LLM call failed: ${resp.code}")
                         return@withContext null
                     }
                     return@withContext resp.body?.string()
@@ -44,7 +44,7 @@ object BackendClient {
         return withContext(Dispatchers.IO) {
             try {
                 val url = "$baseUrl/dev/patch"
-                val payload = "{\"owner\":\"${'$'}owner\",\"repo\":\"${'$'}repo\",\"title\":\"${'$'}title\",\"body\":${bodyJson},\"changes\":${changesJson}}"
+                val payload = "{\"owner\":\"$owner\",\"repo\":\"$repo\",\"title\":\"$title\",\"body\":$bodyJson,\"changes\":$changesJson}"
                 val body: RequestBody = payload.toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
                 val reqBuilder = Request.Builder().url(url).post(body)
                 if (!authToken.isNullOrBlank()) {
@@ -53,7 +53,7 @@ object BackendClient {
                 }
                 client.newCall(reqBuilder.build()).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.e("BackendClient", "dev/patch failed: ${'$'}{resp.code}")
+                        Log.e("BackendClient", "dev/patch failed: ${resp.code}")
                         return@withContext null
                     }
                     return@withContext resp.body?.string()
@@ -79,7 +79,7 @@ object BackendClient {
                 }
                 client.newCall(reqBuilder.build()).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.e("BackendClient", "wakeword failed: ${'$'}{resp.code}")
+                        Log.e("BackendClient", "wakeword failed: ${resp.code}")
                         return@withContext null
                     }
                     return@withContext resp.body?.string()
@@ -107,7 +107,7 @@ object BackendClient {
                 }
                 client.newCall(reqBuilder.build()).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.e("BackendClient", "email/send failed: ${'$'}{resp.code}")
+                        Log.e("BackendClient", "email/send failed: ${resp.code}")
                         return@withContext null
                     }
                     return@withContext resp.body?.string()

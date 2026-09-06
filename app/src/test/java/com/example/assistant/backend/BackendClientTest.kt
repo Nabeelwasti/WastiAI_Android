@@ -6,8 +6,13 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.net.InetSocketAddress
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class BackendClientTest {
 
     private lateinit var server: HttpServer
@@ -41,7 +46,7 @@ class BackendClientTest {
                 else -> "{\"error\":\"not found\"}"
             }
 
-            val statusCode = if (exchange.requestURI.path == "/error") 500 else 200
+            val statusCode = if (exchange.requestURI.path.contains("error")) 500 else 200
             val bytes = responseBody.toByteArray()
             exchange.responseHeaders.add("Content-Type", "application/json")
             exchange.sendResponseHeaders(statusCode, bytes.size.toLong())
