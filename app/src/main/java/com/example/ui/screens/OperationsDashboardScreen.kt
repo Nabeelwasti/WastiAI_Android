@@ -1392,6 +1392,12 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
     var expandedPitch by remember { mutableStateOf(false) }
     var offsetX by remember { mutableFloatStateOf(0f) }
 
+    val fullText = "${lead.title}\n${lead.description}"
+    val clientPhone = LeadRadarRepository.extractPhone(fullText)
+    val clientEmail = if (lead.clientEmail.isNotBlank() && lead.clientEmail != "Pending Discovery") lead.clientEmail else LeadRadarRepository.extractEmail(fullText)
+    val clientCompany = LeadRadarRepository.extractCompanyName(lead.title, lead.description)
+    val clientLinkedIn = LeadRadarRepository.extractLinkedInUrl(fullText)
+
     val cardOffsetAnim by animateFloatAsState(
         targetValue = offsetX,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
@@ -1513,61 +1519,147 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                 }
             }
 
+            // Discovered Client Contact Credentials
+            if (clientEmail != "Pending Discovery" || clientPhone != "Pending Discovery" || clientCompany != "Pending Discovery" || clientLinkedIn.isNotBlank()) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("🎯 Client Outreach Credentials:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        if (clientCompany != "Pending Discovery") {
+                            Text("🏢 Company: $clientCompany", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (clientEmail != "Pending Discovery") {
+                            Text("📧 Email: $clientEmail", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (clientPhone != "Pending Discovery") {
+                            Text("📞 Phone/WA: $clientPhone", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (clientLinkedIn.isNotBlank()) {
+                            Text("🔗 LinkedIn: $clientLinkedIn", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
             // 1-Tap Client Outreach Toolbar & CRM Action
-            Row(
+            Text("⚡ 1-Tap Client Dispatch:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Button(
-                    onClick = { LeadRadarRepository.dispatchViaWhatsApp(context, lead.draftedPitch) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                // WhatsApp Button -> To Client's WhatsApp
+                item {
+                    Button(
+                        onClick = { LeadRadarRepository.dispatchWhatsAppDirect(context, clientPhone, lead.draftedPitch) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
 
-                Button(
-                    onClick = { LeadRadarRepository.dispatchViaEmail(context, "Proposal: ${lead.title}", lead.draftedPitch, lead.clientEmail) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Email Pitch", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                // Email Button -> To Client's Email
+                item {
+                    Button(
+                        onClick = { LeadRadarRepository.dispatchEmailDirect(context, clientEmail, "Proposal: ${lead.title}", lead.draftedPitch) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
 
-                FilledTonalButton(
-                    onClick = { LeadRadarRepository.ingestToCrm(lead) },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add to CRM", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = { expandedPitch = !expandedPitch },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Text(if (expandedPitch) "Hide Pitch" else "Pitch", fontSize = 10.sp)
-                }
-
-                if (lead.link.startsWith("http")) {
+                // Call Button -> To Client's Phone
+                item {
                     OutlinedButton(
-                        onClick = { LeadRadarRepository.dispatchWebsiteDirect(context, lead.link) },
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        onClick = { LeadRadarRepository.dispatchCallDirect(context, clientPhone) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Call", fontSize = 10.sp)
+                    }
+                }
+
+                // SMS Button -> To Client's Phone
+                item {
+                    OutlinedButton(
+                        onClick = { LeadRadarRepository.dispatchSmsDirect(context, clientPhone, lead.draftedPitch) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("SMS", fontSize = 10.sp)
+                    }
+                }
+
+                // LinkedIn Button -> To Client's / Company's LinkedIn Profile
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            LeadRadarRepository.dispatchLinkedInDirect(
+                                context = context,
+                                clientOrCompany = clientCompany.ifBlank { lead.title.take(30) },
+                                existingUrl = clientLinkedIn
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                         modifier = Modifier.height(30.dp)
                     ) {
                         Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text("Web", fontSize = 10.sp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("LinkedIn", fontSize = 10.sp)
+                    }
+                }
+
+                // Web Button -> To Client's Job Listing / Website
+                if (lead.link.startsWith("http")) {
+                    item {
+                        OutlinedButton(
+                            onClick = { LeadRadarRepository.dispatchWebsiteDirect(context, lead.link) },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Web", fontSize = 10.sp)
+                        }
+                    }
+                }
+
+                // Add to CRM Button
+                item {
+                    FilledTonalButton(
+                        onClick = { LeadRadarRepository.ingestToCrm(lead) },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Add to CRM", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Pitch Preview Toggle
+                item {
+                    OutlinedButton(
+                        onClick = { expandedPitch = !expandedPitch },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text(if (expandedPitch) "Hide Pitch" else "Pitch", fontSize = 10.sp)
                     }
                 }
             }
@@ -1810,12 +1902,14 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                 }
             }
 
-            // Contact Info Details
+            // Target Client Contact Info Details
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("🎯 Target Client Credentials:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("Client/Company: ${prospect.clientName}${if (prospect.companyName.isNotBlank() && prospect.companyName != "Pending Discovery") " (${prospect.companyName})" else ""}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                 Text("Email: ${if (displayEmail.isNotBlank()) displayEmail else "Pending Discovery"}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Phone/WhatsApp: ${if (displayWhatsapp.isNotBlank()) displayWhatsapp else "Pending Discovery"}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (displayWebsite.isNotBlank() && displayWebsite != "Pending Discovery") {
-                    Text("Website: $displayWebsite", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                    Text("Website/LinkedIn: $displayWebsite", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                 }
             }
 
@@ -1835,96 +1929,127 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                 }
             }
 
-            // One-Tap Action Hub
-            Text("⚡ One-Tap Action Hub:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Row(
+            // One-Tap Client Action Hub
+            Text("⚡ One-Tap Client Dispatch:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // WhatsApp Button
-                Button(
-                    onClick = {
-                        com.example.data.core.LeadRadarRepository.dispatchWhatsAppDirect(
-                            context = context,
-                            whatsappNumber = displayWhatsapp,
-                            message = displayPitch
-                        )
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                // WhatsApp Button -> Directly to client's WhatsApp
+                item {
+                    Button(
+                        onClick = {
+                            com.example.data.core.LeadRadarRepository.dispatchWhatsAppDirect(
+                                context = context,
+                                whatsappNumber = displayWhatsapp,
+                                message = displayPitch
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
 
-                // Email Button
-                Button(
-                    onClick = {
-                        com.example.data.core.LeadRadarRepository.dispatchEmailDirect(
-                            context = context,
-                            recipientEmail = displayEmail,
-                            subject = "Proposal: ${prospect.opportunityNature}",
-                            body = displayPitch
-                        )
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                // Email Button -> Directly to client's email
+                item {
+                    Button(
+                        onClick = {
+                            com.example.data.core.LeadRadarRepository.dispatchEmailDirect(
+                                context = context,
+                                recipientEmail = displayEmail,
+                                subject = "Proposal: ${prospect.opportunityNature}",
+                                body = displayPitch
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
 
-                // Call Button
-                OutlinedButton(
-                    onClick = {
-                        com.example.data.core.LeadRadarRepository.dispatchCallDirect(
-                            context = context,
-                            phone = prospect.phone
-                        )
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Call", fontSize = 10.sp)
+                // Call Button -> Directly to client's phone
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            com.example.data.core.LeadRadarRepository.dispatchCallDirect(
+                                context = context,
+                                phone = prospect.phone
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Call", fontSize = 10.sp)
+                    }
                 }
 
-                // SMS / Direct Message Button
-                OutlinedButton(
-                    onClick = {
-                        com.example.data.core.LeadRadarRepository.dispatchSmsDirect(
-                            context = context,
-                            phone = prospect.phone,
-                            message = displayPitch
-                        )
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("SMS", fontSize = 10.sp)
+                // SMS / Direct Message Button -> Directly to client's phone
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            com.example.data.core.LeadRadarRepository.dispatchSmsDirect(
+                                context = context,
+                                phone = prospect.phone,
+                                message = displayPitch
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("SMS", fontSize = 10.sp)
+                    }
                 }
 
-                // Website Button
-                OutlinedButton(
-                    onClick = {
-                        com.example.data.core.LeadRadarRepository.dispatchWebsiteDirect(
-                            context = context,
-                            websiteUrl = displayWebsite
-                        )
-                    },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                    modifier = Modifier.height(30.dp)
-                ) {
-                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Web", fontSize = 10.sp)
+                // LinkedIn Button -> To client / company LinkedIn profile or search
+                item {
+                    OutlinedButton(
+                        onClick = {
+                            com.example.data.core.LeadRadarRepository.dispatchLinkedInDirect(
+                                context = context,
+                                clientOrCompany = prospect.companyName.ifBlank { prospect.clientName },
+                                existingUrl = displayWebsite
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("LinkedIn", fontSize = 10.sp)
+                    }
+                }
+
+                // Website Button -> Directly to client's website
+                if (displayWebsite.isNotBlank() && displayWebsite != "Pending Discovery") {
+                    item {
+                        OutlinedButton(
+                            onClick = {
+                                com.example.data.core.LeadRadarRepository.dispatchWebsiteDirect(
+                                    context = context,
+                                    websiteUrl = displayWebsite
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Web", fontSize = 10.sp)
+                        }
+                    }
                 }
             }
 

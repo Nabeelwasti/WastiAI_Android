@@ -106,6 +106,12 @@ object LeadRadarRepository {
         return match?.groupValues?.get(1)?.trim() ?: "Pending Discovery"
     }
 
+    fun extractLinkedInUrl(sourceText: String): String {
+        val linkedInRegex = Regex("https?://([a-zA-Z0-9]+\\.)?linkedin\\.com/(in|company)/[A-Za-z0-9_.-]+")
+        val match = linkedInRegex.find(sourceText)
+        return match?.value?.trim() ?: ""
+    }
+
     suspend fun enrichLeadWithGeminiAndSearch(
         context: Context,
         lead: LeadItemEntity
@@ -120,6 +126,11 @@ object LeadRadarRepository {
         var websiteUrl = if (lead.link.startsWith("http")) lead.link else "Pending Discovery"
         var opportunityNature = lead.category.ifBlank { "Creative & Technical Solutions" }
         var aiDraftedMessage = lead.draftedPitch
+
+        val linkedInFromText = extractLinkedInUrl(fullText)
+        if (linkedInFromText.isNotBlank() && (websiteUrl == "Pending Discovery" || !websiteUrl.contains("linkedin.com", ignoreCase = true))) {
+            websiteUrl = linkedInFromText
+        }
 
         // Step 1: Gemini Intelligence Analysis
         try {
@@ -211,6 +222,10 @@ object LeadRadarRepository {
                     if (foundPhone != "Pending Discovery") {
                         phone = foundPhone
                     }
+                }
+                val foundLinkedIn = extractLinkedInUrl(searchResultJson)
+                if (foundLinkedIn.isNotBlank() && (websiteUrl == "Pending Discovery" || !websiteUrl.contains("linkedin.com", ignoreCase = true))) {
+                    websiteUrl = foundLinkedIn
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Google search contact discovery failed: ${e.message}")
@@ -428,10 +443,21 @@ object LeadRadarRepository {
         )
     }
 
+    fun formatForWhatsApp(phone: String): String {
+        var clean = phone.replace(Regex("[^0-9]"), "")
+        if (clean.startsWith("00")) {
+            clean = clean.substring(2)
+        }
+        if (clean.startsWith("03") && clean.length == 11) {
+            clean = "92" + clean.substring(1)
+        }
+        return clean
+    }
+
     fun dispatchWhatsAppDirect(context: Context, whatsappNumber: String, message: String) {
-        val cleanNum = whatsappNumber.replace(Regex("[^0-9+]"), "")
+        val cleanNum = formatForWhatsApp(whatsappNumber)
         val encodedMsg = Uri.encode(message)
-        val uriStr = if (cleanNum.isNotBlank() && cleanNum != "Pending Discovery") {
+        val uriStr = if (cleanNum.isNotBlank() && whatsappNumber != "Pending Discovery" && cleanNum.length >= 7) {
             "https://wa.me/$cleanNum?text=$encodedMsg"
         } else {
             "https://wa.me/?text=$encodedMsg"
@@ -494,6 +520,27 @@ object LeadRadarRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Error launching SMS Intent", e)
             dispatchViaWhatsApp(context, message)
+        }
+    }
+
+    fun dispatchLinkedInDirect(context: Context, clientOrCompany: String, existingUrl: String = "") {
+        val targetUrl = when {
+            existingUrl.contains("linkedin.com", ignoreCase = true) -> existingUrl
+            clientOrCompany.isNotBlank() && clientOrCompany != "Pending Discovery" -> {
+                val cleanName = clientOrCompany.replace(Regex("(?i)company:"), "").trim()
+                val encoded = Uri.encode(cleanName)
+                "https://www.linkedin.com/search/results/all/?keywords=$encoded"
+            }
+            else -> "https://www.linkedin.com"
+        }
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error launching LinkedIn Intent", e)
+            Toast.makeText(context, "Unable to open LinkedIn", Toast.LENGTH_SHORT).show()
         }
     }
 
