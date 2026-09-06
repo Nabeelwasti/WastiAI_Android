@@ -15,6 +15,9 @@
 .cxx
 local.properties
 .env
+*.env
+!.env.example
+node_modules/
 debug.keystore
 debug.keystore.base64
 .build-outputs/

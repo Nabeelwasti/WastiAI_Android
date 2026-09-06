@@ -1,14 +1,25 @@
 // Orchestrator: attempts to fulfill an LLM request using available providers in order,
 // and falls back to local or web-based approaches when possible.
 
-require('dotenv').config();
-const axios = require('axios');
+try {
+  require('dotenv').config();
+} catch (e) {
+  // dotenv optional in production environments where process.env is injected
+}
+
+let axios = null;
+try {
+  axios = require('axios');
+} catch (e) {
+  // axios not installed
+}
 
 const OPENAI_KEY = process.env.BACKEND_OPENAI_KEY || process.env.OPENAI_API_KEY || null;
 const GEMINI_KEY = process.env.BACKEND_GEMINI_KEY || null;
 const GROQ_KEY = process.env.BACKEND_GROQ_VOICE || null;
 
 async function callOpenAI(payload) {
+  if (!axios) throw new Error('Axios client is not installed on server');
   if (!OPENAI_KEY) throw new Error('OpenAI key not configured');
   const res = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` }
@@ -17,6 +28,7 @@ async function callOpenAI(payload) {
 }
 
 async function callGemini(payload) {
+  if (!axios) throw new Error('Axios client is not installed on server');
   if (!GEMINI_KEY) throw new Error('Gemini key not configured');
   const model = payload.model || 'gemini-2.5-flash';
   // Map standard OpenAI chat messages or prompt to Gemini content format
@@ -42,6 +54,7 @@ async function callGemini(payload) {
 
 async function callLocalLLM(payload) {
   // If you run a local LLM server (e.g., llama.cpp webui, local-replicate, or other), point to it here.
+  if (!axios) throw new Error('Axios client is not installed on server');
   if (!process.env.LOCAL_LLM_URL) throw new Error('Local LLM URL not configured');
   const res = await axios.post(process.env.LOCAL_LLM_URL, payload, { timeout: 600000 });
   return res.data;

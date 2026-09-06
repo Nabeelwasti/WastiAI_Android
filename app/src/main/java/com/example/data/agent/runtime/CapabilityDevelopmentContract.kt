@@ -45,7 +45,7 @@ interface CapabilityDevelopmentContract {
     suspend fun promoteCapability(capabilityId: String): Boolean
 }
 
-// TODO: unused — evaluate for removal or wiring in
+// Active implementation: wired into WastiServiceLocator
 class WastiCapabilityDevelopmentEngine(
     private val workspaceManager: WorkspaceManager,
     private val executionRouter: ExecutionProviderRouter

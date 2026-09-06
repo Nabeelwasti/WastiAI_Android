@@ -147,6 +147,12 @@ jobs:
         fi
         echo "Safely generated .env file for build."
 
+    - name: Run Backend Syntax & Security Validation Tests
+      run: |
+        node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js
+        node --test backend/test_backend.js
+        echo "SUCCESS: Backend syntax and security tests verified."
+
     - name: Run Unit Tests
       timeout-minutes: 15
       run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace

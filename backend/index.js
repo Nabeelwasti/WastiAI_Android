@@ -1,5 +1,8 @@
-// Wasti AI OS Backend Orchestrator Service
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch (e) {
+  // dotenv optional when process.env is injected by deployment runtime
+}
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -52,6 +55,26 @@ app.use((req, res, next) => {
   next();
 });
 
+// Stripe webhook raw body handling with strict cryptographic signature verification
+// NOTE: Must be mounted BEFORE global bodyParser.json() to preserve raw Buffer for signature verification
+app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const sig = req.headers['stripe-signature'];
+    let event;
+    try {
+      event = stripeHelper.constructEvent(req.body, sig);
+    } catch (err) {
+      console.error('stripe webhook verification rejected:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    console.log('Verified Stripe event received:', event.type);
+    return res.json({ received: true, eventType: event.type });
+  } catch (err) {
+    console.error('stripe webhook handler error:', err.message);
+    res.status(500).send('Internal server error');
+  }
+});
+
 // JSON Body Parser for standard endpoints
 app.use(bodyParser.json({ limit: '2mb' }));
 
@@ -59,24 +82,23 @@ const PORT = process.env.PORT || 8080;
 const GITHUB_PAT = process.env.BACKEND_GITHUB_PAT || process.env.BACKEND_GITHUB_CLASSIC || process.env.GITHUB_PAT || null;
 const octokit = GITHUB_PAT ? new Octokit({ auth: GITHUB_PAT }) : null;
 
-// Auth Middleware for sensitive endpoints
+// Auth Middleware for sensitive endpoints (strictly fail-closed)
 function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
   const expectedSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
 
   if (!expectedSecret) {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(503).json({ error: 'Backend authentication secret not configured. Access blocked.' });
-    }
-  } else {
-    let providedToken = tokenHeader;
-    if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
-      providedToken = authHeader.substring(7).trim();
-    }
-    if (!providedToken || providedToken !== expectedSecret) {
-      return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
-    }
+    console.error('CRITICAL: Backend authentication secret not configured (WASTI_BACKEND_AUTH_SECRET / BACKEND_API_SECRET). Failing closed.');
+    return res.status(503).json({ error: 'Backend authentication secret not configured on server. Access blocked.' });
+  }
+
+  let providedToken = tokenHeader;
+  if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
+    providedToken = authHeader.substring(7).trim();
+  }
+  if (!providedToken || providedToken !== expectedSecret) {
+    return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
   }
   next();
 }
@@ -125,6 +147,28 @@ app.post('/dev/patch', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Repository not in authorized allowlist for automated patches' });
     }
 
+    // Validate base branch against allowlist to prevent unauthorized branch tampering
+    const allowedBranches = (process.env.ALLOWED_PATCH_BRANCHES || 'main,master,develop')
+      .split(',')
+      .map(b => b.trim())
+      .filter(Boolean);
+    if (!allowedBranches.includes(base)) {
+      return res.status(400).json({ error: `Base branch '${base}' is not allowed for automated patches` });
+    }
+
+    // Validate file paths against directory traversal
+    for (const c of changes) {
+      if (!c.path || typeof c.path !== 'string') {
+        return res.status(400).json({ error: 'Invalid change: path must be a non-empty string' });
+      }
+      if (c.path.includes('..') || c.path.startsWith('/') || c.path.startsWith('\\') || c.path.includes('\0')) {
+        return res.status(400).json({ error: `Security violation: Path traversal or absolute path detected: ${c.path}` });
+      }
+      if (typeof c.content !== 'string') {
+        return res.status(400).json({ error: `Invalid content for file ${c.path}` });
+      }
+    }
+
     const baseRef = `heads/${base}`;
     const mainRef = await octokit.git.getRef({ owner, repo, ref: baseRef });
     const baseSha = mainRef.data.object.sha;
@@ -149,14 +193,22 @@ app.post('/dev/patch', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/email/send', async (req, res) => {
+app.post('/email/send', requireAuth, async (req, res) => {
   try {
     const { to, subject, html, from } = req.body;
     if (!to || !subject || !html) return res.status(400).json({ error: 'to, subject, html required' });
     
-    // Require approval token header for safety
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(to)) {
+      return res.status(400).json({ error: 'Invalid recipient email address format' });
+    }
+
+    // Require approval token header for safety - fail closed if not configured
     const approval = req.headers['x-approval-token'];
-    if (!approval || !process.env.OUTREACH_APPROVAL_TOKEN || approval !== process.env.OUTREACH_APPROVAL_TOKEN) {
+    if (!process.env.OUTREACH_APPROVAL_TOKEN) {
+      return res.status(503).json({ error: 'Outreach approval token not configured on server' });
+    }
+    if (!approval || approval !== process.env.OUTREACH_APPROVAL_TOKEN) {
       return res.status(403).json({ error: 'Email sending requires a verified approval token' });
     }
     const out = await brevo.sendEmail({ toEmail: to, toName: to, subject, htmlContent: html, fromEmail: from?.email, fromName: from?.name });
@@ -167,27 +219,7 @@ app.post('/email/send', async (req, res) => {
   }
 });
 
-// Stripe webhook raw body handling with strict cryptographic signature verification
-const rawBodySaver = bodyParser.raw({ type: 'application/json' });
-app.post('/stripe/webhook', rawBodySaver, async (req, res) => {
-  try {
-    const sig = req.headers['stripe-signature'];
-    let event;
-    try {
-      event = stripeHelper.constructEvent(req.body, sig);
-    } catch (err) {
-      console.error('stripe webhook verification rejected:', err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-    console.log('Verified Stripe event received:', event.type);
-    return res.json({ received: true, eventType: event.type });
-  } catch (err) {
-    console.error('stripe webhook handler error:', err.message);
-    res.status(500).send('Internal server error');
-  }
-});
-
-app.post('/wakeword', async (req, res) => {
+app.post('/wakeword', requireAuth, async (req, res) => {
   try {
     const payload = req.body;
     if (!payload || typeof payload !== 'object') {
