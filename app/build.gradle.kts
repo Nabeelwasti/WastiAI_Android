@@ -25,13 +25,23 @@ android {
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+  val releaseStorePassword = System.getenv("STORE_PASSWORD")
+  val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+  val releaseKeyAlias = System.getenv("KEY_ALIAS") ?: "upload"
+  val releaseSigningReady = !releaseKeystorePath.isNullOrBlank() &&
+      !releaseStorePassword.isNullOrBlank() &&
+      !releaseKeyPassword.isNullOrBlank() &&
+      file(releaseKeystorePath).exists()
+
   signingConfigs {
-    create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH") ?: "${rootDir}/my-upload-key.jks"
-      storeFile = file(keystorePath)
-      storePassword = System.getenv("STORE_PASSWORD")
-      keyAlias = "upload"
-      keyPassword = System.getenv("KEY_PASSWORD")
+    if (releaseSigningReady) {
+      create("release") {
+        storeFile = file(releaseKeystorePath)
+        storePassword = releaseStorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
     }
     val debugKs = file("${rootDir}/debug.keystore")
     if (debugKs.exists()) {
@@ -49,7 +59,9 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      signingConfig = signingConfigs.getByName("release")
+      if (releaseSigningReady) {
+        signingConfig = signingConfigs.getByName("release")
+      }
     }
     debug {
       val debugKs = file("${rootDir}/debug.keystore")
@@ -104,13 +116,29 @@ java {
   }
 }
 
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+  doFirst {
+    val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("STORE_PASSWORD")
+    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+    val ready = !releaseKeystorePath.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank() &&
+        file(releaseKeystorePath).exists()
+    if (!ready) {
+      throw GradleException(
+        "Production release signing is not configured. Set KEYSTORE_PATH, STORE_PASSWORD, and KEY_PASSWORD and provide the keystore before assembling or bundling release."
+      )
+    }
+  }
+}
+
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
 // to match the convention used in Web projects.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("sdk.dir")
-  ignoreList.add("GOOGLE_ACCOUNT_PASSWORD")
   ignoreList.add("GMAIL_APP_PASSWORD")
   ignoreList.add("WASTI_GIT_PAT")
   ignoreList.add("WASTI_GIT_FINE_GRAINED_PAT")

@@ -642,6 +642,18 @@ object CredentialRegistry {
 
     fun getRawValue(keyName: String): String? = getRawValue(keyName, null)
 
+    fun getActiveConfiguredSecrets(context: Context? = null): List<String> {
+        val targetCtx = context ?: appContext
+        val secrets = mutableListOf<String>()
+        ALL_CREDENTIALS.forEach { entry ->
+            val v = getRawValue(entry.keyName, targetCtx)
+            if (!v.isNullOrBlank() && !isPlaceholder(v)) {
+                secrets.add(v.trim())
+            }
+        }
+        return secrets
+    }
+
     suspend fun ingestBuildConfigKeysToVault(context: Context) {
         withContext(Dispatchers.IO) {
             val securePrefs = getSecureSharedPreferences(context)

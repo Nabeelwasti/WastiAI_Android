@@ -55,6 +55,12 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         assertEquals("ABC", decoded)
     }
 
+    /**
+     * Truthful Scope: Verifies the mathematical properties of WastiEmbeddingRuntime's
+     * deterministic subword trigonometric harmonic projection (dimension = 384, cosine ranking heuristic).
+     * This test passes on deterministic math; it does NOT prove a neural transformer embedding model
+     * (e.g. MiniLM) is loaded or executing on device.
+     */
     @Test
     fun testWastiEmbeddingRuntimeDimensionAndCosineSimilarity() {
         val vec1 = WastiEmbeddingRuntime.encode("Setup wifi network and router IP")
@@ -131,6 +137,11 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         assertTrue(taskEntries.all { it.isVerified })
     }
 
+    /**
+     * Truthful Scope: Verifies fail-closed behavior when model weights are missing on-device.
+     * Confirms the runtime truthfully returns an unavailable message and refuses to simulate
+     * or fabricate pseudo-logits. This test does NOT prove neural inference with real weights.
+     */
     @Test
     fun testWastiLocalModelRuntimeInferenceWithoutWeights() {
         runBlocking {
@@ -143,6 +154,12 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         }
     }
 
+    /**
+     * Truthful Scope: Verifies low-level binary parsing of the GGUF container format header
+     * (magic bytes, version, tensor count, metadata KV count).
+     * This test validates byte-stream parsing only; it does NOT prove neural tensor computation,
+     * weight execution, or token generation.
+     */
     @Test
     fun testWastiLocalModelRuntimeGgufHeaderParser() {
         runBlocking {

@@ -7,6 +7,9 @@
 -->
 <full-backup-content>
     <!-- Exclude sensitive keystores, encrypted prefs, tokens, and private databases from cloud backup -->
+    <exclude domain="sharedpref" path="wasti_secure_prefs.xml"/>
+    <exclude domain="sharedpref" path="wasti_security_prefs.xml"/>
+    <exclude domain="sharedpref" path="wasti_chat_drafts_secure.xml"/>
     <exclude domain="sharedpref" path="wasti_secure_vault.xml"/>
     <exclude domain="sharedpref" path="wasti_prefs.xml"/>
     <exclude domain="sharedpref" path="wasti_secret_vault.xml"/>

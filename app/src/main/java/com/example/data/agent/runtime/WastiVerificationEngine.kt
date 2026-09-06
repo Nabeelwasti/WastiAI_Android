@@ -38,15 +38,24 @@ class WastiVerificationEngine {
         return when (obs.status) {
             ObservationStatus.OBSERVED, ObservationStatus.CHANGED -> {
                 // Enforce Independent Evidence Contract: Evidence must be non-empty and substantiate change
-                val isValidEvidence = obs.evidence.isNotBlank() && !obs.evidence.equals("unknown", ignoreCase = true)
-                if (isValidEvidence) {
+                val trimmedEvidence = obs.evidence.trim()
+                val isGenericClaim = trimmedEvidence.equals("unknown", ignoreCase = true) ||
+                    trimmedEvidence.equals("true", ignoreCase = true) ||
+                    trimmedEvidence.equals("success", ignoreCase = true) ||
+                    trimmedEvidence.equals("ok", ignoreCase = true) ||
+                    trimmedEvidence.equals("done", ignoreCase = true) ||
+                    trimmedEvidence.equals("passed", ignoreCase = true) ||
+                    trimmedEvidence.length < 5
+
+                if (trimmedEvidence.isNotBlank() && !isGenericClaim) {
+                    val verifiedConfidence = if (obs.confidence > 0.0) obs.confidence else 0.85
                     VerificationResult(
                         taskId = request.taskId,
                         actionId = request.actionId,
                         capabilityId = request.capabilityId,
                         status = ActionVerificationStatus.VERIFIED,
-                        evidence = "Verified: ${obs.evidence}",
-                        confidence = obs.confidence.coerceAtLeast(0.85)
+                        evidence = "Verified: $trimmedEvidence",
+                        confidence = verifiedConfidence
                     )
                 } else {
                     VerificationResult(
@@ -54,9 +63,9 @@ class WastiVerificationEngine {
                         actionId = request.actionId,
                         capabilityId = request.capabilityId,
                         status = ActionVerificationStatus.FAILED,
-                        evidence = "Verification Failed: Observation lacked independent verifiable evidence.",
+                        evidence = "Verification Failed: Observation lacked independent structured verifiable evidence.",
                         confidence = 0.9,
-                        failureReason = "Lacked independent verifiable evidence"
+                        failureReason = "Lacked independent structured verifiable evidence"
                     )
                 }
             }

@@ -121,8 +121,13 @@ class WastiLocalTokenizer(
 }
 
 /**
- * On-device neural inference runtime executing GGUF / quantized models natively.
+ * On-device local model runtime managing GGUF model artifact validation and native inference dispatch.
  * Strictly adheres to Wasti Zero-Fabrication Law: Never generates pseudo-logits or artificial responses.
+ *
+ * NOTE: GGUF header parsing and file validation verify binary integrity and metadata on-device.
+ * Full neural token generation requires the native llama.cpp shared library (libllama.so) and downloaded
+ * model weights. When native libraries or weights are absent, this runtime truthfully reports unavailable
+ * states and refuses to simulate tensor execution.
  */
 class WastiLocalModelRuntime(
     val context: Context

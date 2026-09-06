@@ -33,6 +33,9 @@ object WastiModelDownloader {
     private val _downloadProgressMap = MutableStateFlow<Map<String, ModelDownloadProgress>>(emptyMap())
     val downloadProgressMap: StateFlow<Map<String, ModelDownloadProgress>> = _downloadProgressMap.asStateFlow()
 
+    private fun isTrustedSha256(value: String): Boolean =
+        value.length == 64 && value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
+
     suspend fun downloadModel(
         context: Context,
         manifest: ModelArtifactManifest
@@ -40,6 +43,24 @@ object WastiModelDownloader {
         val modelId = manifest.modelId
         val targetFile = ModelArtifactManager.getModelFile(context, modelId)
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.downloading")
+
+        if (!isTrustedSha256(manifest.expectedSha256)) {
+            val errorMsg = "Model '$modelId' does not have a verified, published SHA-256 checksum in catalog. Download blocked for security."
+            Log.w(TAG, errorMsg)
+            updateProgress(
+                ModelDownloadProgress(
+                    modelId = modelId,
+                    bytesDownloaded = 0L,
+                    totalBytes = manifest.byteSize,
+                    progressFraction = 0.0f,
+                    statusText = "Download blocked: Unverified checksum",
+                    isFailed = true,
+                    errorMessage = errorMsg
+                )
+            )
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.PENDING_VERIFICATION)
+            return@withContext false
+        }
 
         updateProgress(
             ModelDownloadProgress(

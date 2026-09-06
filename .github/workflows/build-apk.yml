@@ -63,12 +63,60 @@ jobs:
           echo "Restored debug.keystore from base64"
         fi
 
-    - name: Ensure Dummy google-services.json if missing
+    - name: Verify google-services.json is Not Tracked by Git
       run: |
-        if [ ! -f "app/google-services.json" ]; then
-          echo '{"project_info":{"project_number":"0","project_id":"wasti-ai","storage_bucket":"wasti.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.aistudio.wastios.k9v2pz"}},"oauth_client":[],"api_key":[{"current_key":"dummy"}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}' > app/google-services.json
-          echo "Created dummy app/google-services.json"
+        if git ls-files --error-unmatch app/google-services.json 2>/dev/null; then
+          echo "ERROR: app/google-services.json must NOT be tracked by Git in the public repository!"
+          exit 1
         fi
+        echo "SUCCESS: app/google-services.json is not tracked by Git."
+
+    - name: Securely Inject and Validate Firebase Configuration
+      env:
+        FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
+      run: |
+        if [ -z "$FIREBASE_CONFIG_SECRET" ]; then
+          echo "ERROR: Required GitHub Secret 'FIREBASE_GOOGLE_SERVICES_JSON' is missing or empty!"
+          exit 1
+        fi
+
+        # Safely write to app/google-services.json without echoing to logs
+        printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+
+        # Validate JSON format, project info, and package name without printing secrets
+        python3 - << 'PYEOF'
+        import json, sys
+
+        try:
+            with open("app/google-services.json", "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"ERROR: app/google-services.json is not valid JSON: {e}")
+            sys.exit(1)
+
+        project_info = data.get("project_info", {})
+        project_id = project_info.get("project_id", "")
+        project_number = project_info.get("project_number", "")
+
+        if "wasti-ai" not in project_id:
+            print(f"ERROR: Expected Firebase project 'wasti-ai', found '{project_id}'.")
+            sys.exit(1)
+
+        clients = data.get("client", [])
+        packages = []
+        for client in clients:
+            pkg = client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+            if pkg:
+                packages.append(pkg)
+
+        valid_packages = {"com.aistudio.wastios.k9v2pz"}
+        matching_pkgs = [p for p in packages if p in valid_packages]
+        if not matching_pkgs:
+            print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
+            sys.exit(1)
+
+        print(f"SUCCESS: Validated Firebase configuration for project '{project_id}' (number: {project_number}) containing package(s): {matching_pkgs}.")
+        PYEOF
 
     - name: Generate Safe .env and Configuration for APK Build
       run: |
@@ -142,28 +190,74 @@ jobs:
         mkdir -p /tmp/apk_inspect
         unzip -q "$APK" -d /tmp/apk_inspect
         
-        PATTERNS=(
-          "MY_GOOGLE_ACCOUNT_PASSWORD" 
-          "GOOGLE_ACCOUNT_PASSWORD" 
-          "ghp_" 
-          "gho_" 
-          "xoxb-" 
+        # 1. High-risk plaintext secret tokens that must never exist in the binary or resources
+        FATAL_PATTERNS=(
+          "MY_GOOGLE_ACCOUNT_PASSWORD"
+          "GOOGLE_ACCOUNT_PASSWORD"
+          "gho_"
+          "xoxb-"
           "sk-ant-"
           "AKIA[0-9A-Z]{16}"
           "rk_live_"
           "sk_live_"
-          "BEGIN PRIVATE KEY"
-          "BEGIN RSA PRIVATE KEY"
-          "BEGIN OPENSSH PRIVATE KEY"
         )
-        for PATTERN in "${PATTERNS[@]}"; do
+        for PATTERN in "${FATAL_PATTERNS[@]}"; do
           if grep -rEn "$PATTERN" /tmp/apk_inspect/; then
             echo "ERROR: Forbidden secret pattern '$PATTERN' found inside APK!"
             exit 1
           fi
         done
+
+        # 2. GitHub Personal Access Token boundary check (actual ghp_[36 alphanum chars])
+        if grep -rEn "ghp_[A-Za-z0-9]{36}" /tmp/apk_inspect/; then
+          echo "ERROR: Actual GitHub Personal Access Token found inside APK!"
+          exit 1
+        fi
+
+        # 3. Private Key boundary verification
+        # Strictly forbid private key files/certificates in assets or resources
+        if grep -rEn "BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY" /tmp/apk_inspect/assets/ /tmp/apk_inspect/res/ 2>/dev/null; then
+          echo "ERROR: Private key certificate/file bundled in APK assets or resources!"
+          exit 1
+        fi
+
+        # In compiled bytecode (DEX), scan for actual embedded private keys containing base64 payload blocks,
+        # distinguishing real keys from Okio/OkHttp's HeldCertificate PEM formatting template constants
+        python3 - << 'PYEOF'
+        import os, sys, re
+
+        inspect_dir = "/tmp/apk_inspect"
+        key_block_regex = re.compile(
+            r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{40,}",
+            re.MULTILINE
+        )
+
+        found_leak = False
+        for root, dirs, files in os.walk(inspect_dir):
+            for file in files:
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, "rb") as f:
+                        content = f.read().decode("latin1", errors="ignore")
+                    if key_block_regex.search(content):
+                        print(f"ERROR: Actual embedded private key with payload found in {filepath}!")
+                        found_leak = True
+                except Exception:
+                    pass
+
+        if found_leak:
+            sys.exit(1)
+        print("SUCCESS: Private key boundary verified — no actual private keys embedded.")
+        PYEOF
+
         rm -rf /tmp/apk_inspect
         echo "SUCCESS: Comprehensive APK secret boundary scan passed cleanly."
+
+    - name: Cleanup Sensitive Build Files
+      if: always()
+      run: |
+        rm -f app/google-services.json
+        echo "Cleaned up temporary app/google-services.json."
 
     - name: Upload Debug Artifact
       uses: actions/upload-artifact@v4

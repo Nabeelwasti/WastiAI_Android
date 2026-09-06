@@ -6,9 +6,13 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * On-device 384-Dimensional Semantic Dense Vector Embedding Runtime.
- * Employs subword harmonic projection and semantic token distribution bases
- * to generate authentic, L2-normalized 384-dimensional vector representations.
+ * On-device deterministic mathematical fallback vector projection runtime (384-dimensional).
+ * Employs subword trigonometric harmonic projection and keyword semantic subspace bases
+ * to generate reproducible, L2-normalized 384-dimensional vector representations.
+ *
+ * NOTE: This is a deterministic mathematical fallback projection for lightweight text similarity scoring.
+ * It is NOT a neural transformer embedding model (e.g. all-MiniLM-L6-v2 / bge-small). Passing tests
+ * on this class prove mathematical consistency and ranking heuristics, NOT neural model weight execution.
  */
 object WastiEmbeddingRuntime {
 

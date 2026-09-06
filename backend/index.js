@@ -65,7 +65,11 @@ function requireAuth(req, res, next) {
   const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
   const expectedSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
 
-  if (expectedSecret) {
+  if (!expectedSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      return res.status(503).json({ error: 'Backend authentication secret not configured. Access blocked.' });
+    }
+  } else {
     let providedToken = tokenHeader;
     if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
       providedToken = authHeader.substring(7).trim();

@@ -30,20 +30,14 @@ object ZeroTrustSentinelEngine {
         "curl http://attacker"
     )
 
-    // Construct secret pattern detection prefixes dynamically at runtime to prevent
-    // false positives in static binary DEX scanners looking for plaintext credential fragments.
-    private fun getGitHubPatPrefix(): String = String(charArrayOf('g', 'h', 'p', '_'))
-    private fun getGoogleApiKeyPrefix(): String = String(charArrayOf('A', 'I', 'z', 'a', 'S', 'y'))
-    private fun getOpenAiTokenPrefix(): String = String(charArrayOf('s', 'k', '-', 'p', 'r', 'o', 'j', '-'))
-
-    private val githubPatRegex by lazy {
-        Regex("${getGitHubPatPrefix()}[A-Za-z0-9]{36}")
-    }
     private val googleApiKeyRegex by lazy {
-        Regex("${getGoogleApiKeyPrefix()}[A-Za-z0-9_-]{33}")
+        Regex("AIzaSy[A-Za-z0-9_-]{33}")
     }
     private val openAiTokenRegex by lazy {
-        Regex("${getOpenAiTokenPrefix()}[A-Za-z0-9_-]{48}")
+        Regex("sk-[A-Za-z0-9_-]{32,}")
+    }
+    private val githubPatRegex by lazy {
+        Regex("ghp_[A-Za-z0-9]{36}")
     }
 
     fun inspectInputPrompt(rawPrompt: String): SecurityInspectionResult {
@@ -71,20 +65,36 @@ object ZeroTrustSentinelEngine {
     }
 
     fun inspectModelOutputForExfiltration(output: String): SecurityInspectionResult {
-        // Check for leaked private tokens or keys dynamically
-        val hasGoogleKey = output.contains(getGoogleApiKeyPrefix(), ignoreCase = false)
-        val hasOpenAiKey = output.contains(getOpenAiTokenPrefix(), ignoreCase = false)
-        val hasGitHubPat = output.contains(getGitHubPatPrefix(), ignoreCase = false)
+        var sanitized = output
+        var threatDetected = false
 
-        val containsSecretPattern = hasGoogleKey || hasOpenAiKey || hasGitHubPat
+        // 1. Redact any active credentials registered in CredentialRegistry
+        try {
+            val activeSecrets = com.example.data.credential.CredentialRegistry.getActiveConfiguredSecrets()
+            for (secret in activeSecrets) {
+                if (secret.length >= 8 && sanitized.contains(secret)) {
+                    sanitized = sanitized.replace(secret, "[REDACTED_CREDENTIAL]")
+                    threatDetected = true
+                }
+            }
+        } catch (_: Throwable) {}
 
-        if (containsSecretPattern) {
+        // 2. Redact common model API key patterns if present in model output
+        if (googleApiKeyRegex.containsMatchIn(sanitized)) {
+            sanitized = googleApiKeyRegex.replace(sanitized, "[REDACTED_API_KEY]")
+            threatDetected = true
+        }
+        if (openAiTokenRegex.containsMatchIn(sanitized)) {
+            sanitized = openAiTokenRegex.replace(sanitized, "[REDACTED_TOKEN]")
+            threatDetected = true
+        }
+        if (githubPatRegex.containsMatchIn(sanitized)) {
+            sanitized = githubPatRegex.replace(sanitized, "[REDACTED_GITHUB_PAT]")
+            threatDetected = true
+        }
+
+        if (threatDetected) {
             _blockedThreatCount.value += 1
-            val sanitized = output
-                .replace(googleApiKeyRegex, "[REDACTED_API_KEY]")
-                .replace(openAiTokenRegex, "[REDACTED_TOKEN]")
-                .replace(githubPatRegex, "[REDACTED_GITHUB_PAT]")
-
             return SecurityInspectionResult(
                 isClean = false,
                 threatCategory = "DATA_EXFILTRATION",
