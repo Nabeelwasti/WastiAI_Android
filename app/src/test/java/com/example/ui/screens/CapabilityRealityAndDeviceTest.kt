@@ -323,33 +323,28 @@ class CapabilityRealityAndDeviceTest {
     fun testAutonomousSkillEvolutionEngineRejectsMockEvidence() = runBlocking {
         val database = com.example.data.db.WastiDatabase.getDatabase(context)
         val evolutionEngine = AutonomousSkillEvolutionEngine(context, database = database)
-        val plan = PlannedCapabilityGraph(
-            taskId = "task_reject_mock",
-            goal = "Attempt evolution with mock evidence",
-            nodes = listOf(
-                ExecutionNode(
-                    nodeId = "n1",
-                    capabilityId = "device_control",
-                    action = "click",
-                    parameters = mapOf("target" to "btn")
-                )
-            )
-        )
+        val plan = CapabilityPlanner(registry).createPlan("Attempt evolution with mock evidence")
         val audits = listOf(
             ExecutionAuditEntity(
-                auditId = "audit_mock",
+                auditId = "audit_mock_1",
                 taskId = "task_reject_mock",
-                goal = "Mock test",
-                planJson = "{}",
-                executionHistoryJson = "[]",
-                verificationReportJson = "{}",
-                totalLatencyMs = 10L,
-                wasSuccessful = true,
-                finalStatus = "COMPLETED",
-                timestamp = System.currentTimeMillis()
+                userGoal = "Attempt evolution with mock evidence",
+                capabilityId = "wasm_sandbox",
+                actionName = "execute",
+                executionDestination = "LOCAL_WASM_SANDBOX",
+                status = "COMPLETED",
+                verificationStatus = "VERIFIED",
+                verificationEvidence = "WASM compute verified",
+                error = null,
+                executionDurationMs = 10L
             )
         )
-        val learnedSkill = evolutionEngine.learnFromExecution("task_reject_mock", "Attempt evolution with mock evidence", plan, audits)
+        val learnedSkill = evolutionEngine.learnFromExecution(
+            originatingTaskId = "task_reject_mock",
+            userGoal = "Attempt evolution with mock evidence",
+            planGraph = plan,
+            executionAudits = audits
+        )
         assertNotNull(learnedSkill)
         val mockEvidence = VerifiedExecutionEvidence(
             evidenceSource = EvidenceSource.FILESYSTEM,
