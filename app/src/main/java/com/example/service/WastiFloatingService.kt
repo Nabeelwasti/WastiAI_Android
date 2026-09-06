@@ -5,6 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -13,9 +15,11 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
 import android.os.PowerManager
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -28,29 +32,37 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
+import com.example.data.conversation.RoomIdentity
+import com.example.data.conversation.UniversalConversationFabric
+import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiCore
+import com.example.data.core.WastiOSRuntime
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.device.WastiDeviceController
 import com.example.data.voice.provider.AndroidSpeechToTextProvider
 import com.example.data.voice.provider.STTResult
 import com.example.data.voice.provider.STTState
+import com.example.util.WastiSpeechSanitizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * Task 39C: Text & Voice Floating Bubble UI (System Alert Window Service)
  * Overlay floating action bubble accessible over any application.
- * When tapped, expands to reveal both Voice (Microphone Button) and Text (EditText + Send Button)
- * input capabilities to execute commands via WastiCore and WastiDeviceController in the background.
+ * When tapped, expands to reveal Voice (Microphone Button), Text (EditText + Send Button),
+ * Scrollable AI Response Card with Copy/Speak/Clear actions, and Screen Context Suggestions.
  */
 class WastiFloatingService : Service() {
 
@@ -108,9 +120,16 @@ class WastiFloatingService : Service() {
     private var statusTextView: TextView? = null
     private var expandedStatusTextView: TextView? = null
     private var commandEditText: EditText? = null
+    private var responseTextLabel: TextView? = null
+    private var speakerToggleBtn: TextView? = null
 
     private lateinit var windowParams: WindowManager.LayoutParams
     private val sttProvider = AndroidSpeechToTextProvider()
+
+    private var textToSpeech: TextToSpeech? = null
+    private var isTtsReady = false
+    private var isTtsEnabled = true
+    private var lastDisplayedResponse: String? = null
 
     private var isListeningState = false
     private var isExpanded = false
@@ -144,9 +163,12 @@ class WastiFloatingService : Service() {
             startForeground(NOTIFICATION_ID, buildForegroundNotification())
         }
 
+        initTextToSpeech()
         setupFloatingView()
         observeSTTState()
         observeToolProgress()
+        observeRuntimeContext()
+        observeFabricEvents()
 
         logSystemEvent("INFO", "Wasti Floating Action Service initialized and overlay attached.")
     }
@@ -159,6 +181,13 @@ class WastiFloatingService : Service() {
         super.onDestroy()
         isRunning = false
         sttProvider.destroy()
+        stopSpeech()
+        try {
+            textToSpeech?.shutdown()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error shutting down TextToSpeech", e)
+        }
+        textToSpeech = null
         serviceScope.cancel()
 
         try {
@@ -182,6 +211,42 @@ class WastiFloatingService : Service() {
         floatingContainer = null
 
         logSystemEvent("WARN", "Wasti Floating Action Service stopped.")
+    }
+
+    private fun initTextToSpeech() {
+        try {
+            textToSpeech = TextToSpeech(applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    isTtsReady = true
+                    textToSpeech?.language = Locale.US
+                } else {
+                    Log.w(TAG, "TTS init returned status code: $status")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to initialize TextToSpeech in WastiFloatingService", e)
+        }
+    }
+
+    private fun speakText(text: String) {
+        if (!isTtsEnabled || !isTtsReady || textToSpeech == null) return
+        val sanitized = WastiSpeechSanitizer.sanitizeForSpeech(text)
+        if (sanitized.isBlank()) return
+        try {
+            val params = Bundle()
+            val utteranceId = "wasti_bubble_${System.currentTimeMillis()}"
+            textToSpeech?.speak(sanitized.take(600), TextToSpeech.QUEUE_FLUSH, params, utteranceId)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error speaking text in WastiFloatingService", e)
+        }
+    }
+
+    private fun stopSpeech() {
+        try {
+            textToSpeech?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping TextToSpeech playback", e)
+        }
     }
 
     private fun createNotificationChannel() {
@@ -307,6 +372,31 @@ class WastiFloatingService : Service() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
+        speakerToggleBtn = TextView(this).apply {
+            text = if (isTtsEnabled) "🔊" else "🔇"
+            setTextColor(Color.parseColor("#A6ADC8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dpToPx(4)
+            }
+            setOnClickListener {
+                isTtsEnabled = !isTtsEnabled
+                text = if (isTtsEnabled) "🔊" else "🔇"
+                if (!isTtsEnabled) {
+                    stopSpeech()
+                }
+                Toast.makeText(
+                    applicationContext,
+                    if (isTtsEnabled) "Speech response enabled" else "Speech response muted",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
         val closeBtn = TextView(this).apply {
             text = "✕"
             setTextColor(Color.parseColor("#94A3B8"))
@@ -320,7 +410,132 @@ class WastiFloatingService : Service() {
 
         headerRow.addView(voiceMicBtn)
         headerRow.addView(expandedStatusTextView)
+        headerRow.addView(speakerToggleBtn)
         headerRow.addView(closeBtn)
+
+        // -------------------------------------------------------------
+        // Response Display Box (Scrollable Output + Action Buttons)
+        // -------------------------------------------------------------
+        val responseCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpToPx(10), dpToPx(8), dpToPx(10), dpToPx(8))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#11111B"),
+                strokeColor = Color.parseColor("#313244"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(10)
+            )
+        }
+
+        responseTextLabel = TextView(this).apply {
+            text = "Ready. Tap the mic or type a command to run."
+            setTextColor(Color.parseColor("#CDD6F4"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+            setTextIsSelectable(true)
+            setLineSpacing(dpToPx(2).toFloat(), 1.1f)
+        }
+
+        val responseActionsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(6)
+            }
+        }
+
+        val copyActionBtn = TextView(this).apply {
+            text = "📋 Copy"
+            setTextColor(Color.parseColor("#A6ADC8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#1E1E2E"),
+                strokeColor = Color.parseColor("#45475A"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(6)
+            )
+            setOnClickListener {
+                val content = responseTextLabel?.text?.toString() ?: ""
+                if (content.isNotBlank()) {
+                    copyToClipboard(content)
+                }
+            }
+        }
+
+        val replayActionBtn = TextView(this).apply {
+            text = "🔊 Speak"
+            setTextColor(Color.parseColor("#A6ADC8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dpToPx(6)
+            }
+            background = createCardBackground(
+                fillColor = Color.parseColor("#1E1E2E"),
+                strokeColor = Color.parseColor("#45475A"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(6)
+            )
+            setOnClickListener {
+                val content = responseTextLabel?.text?.toString() ?: ""
+                if (content.isNotBlank()) {
+                    speakText(content)
+                }
+            }
+        }
+
+        val clearActionBtn = TextView(this).apply {
+            text = "🧹 Clear"
+            setTextColor(Color.parseColor("#A6ADC8"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setPadding(dpToPx(8), dpToPx(4), dpToPx(8), dpToPx(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginStart = dpToPx(6)
+            }
+            background = createCardBackground(
+                fillColor = Color.parseColor("#1E1E2E"),
+                strokeColor = Color.parseColor("#45475A"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(6)
+            )
+            setOnClickListener {
+                responseTextLabel?.text = "Ready. Tap the mic or type a command to run."
+                lastDisplayedResponse = null
+                stopSpeech()
+                expandedStatusTextView?.text = "Wasti AI Assistant"
+            }
+        }
+
+        responseActionsRow.addView(copyActionBtn)
+        responseActionsRow.addView(replayActionBtn)
+        responseActionsRow.addView(clearActionBtn)
+
+        responseCard.addView(responseTextLabel)
+        responseCard.addView(responseActionsRow)
+
+        val responseScrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dpToPx(140)
+            ).apply {
+                bottomMargin = dpToPx(8)
+            }
+            isFillViewport = true
+            setOnTouchListener { v, _ ->
+                v.parent?.requestDisallowInterceptTouchEvent(true)
+                false
+            }
+        }
+        responseScrollView.addView(responseCard)
 
         // Input Row (EditText + Send Button)
         val inputRow = LinearLayout(this).apply {
@@ -333,7 +548,7 @@ class WastiFloatingService : Service() {
         }
 
         commandEditText = EditText(this).apply {
-            hint = "Type command..."
+            hint = "Ask or command Wasti AI..."
             setHintTextColor(Color.parseColor("#64748B"))
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
@@ -371,24 +586,32 @@ class WastiFloatingService : Service() {
         inputRow.addView(commandEditText)
         inputRow.addView(sendButton)
 
+        // Quick Action Chips Row
+        val actionChipsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dpToPx(8)
+            }
+        }
+
         val suggestionBtn = TextView(this).apply {
-            text = "✨ AI Screen Suggestions"
+            text = "✨ Screen Suggestions"
             setTextColor(Color.parseColor("#818CF8"))
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setPadding(dpToPx(10), dpToPx(6), dpToPx(10), dpToPx(6))
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
             background = createCardBackground(
                 fillColor = Color.parseColor("#313244"),
                 strokeColor = Color.parseColor("#818CF8"),
                 strokeWidthPx = dpToPx(1),
                 radiusPx = dpToPx(8)
             )
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                topMargin = dpToPx(8)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dpToPx(6)
             }
             setOnClickListener {
                 expandedStatusTextView?.text = "Scraping screen suggestions..."
@@ -401,9 +624,32 @@ class WastiFloatingService : Service() {
             }
         }
 
+        val statusQuickBtn = TextView(this).apply {
+            text = "📊 System Status"
+            setTextColor(Color.parseColor("#A6E3A1"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setPadding(dpToPx(8), dpToPx(6), dpToPx(8), dpToPx(6))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#313244"),
+                strokeColor = Color.parseColor("#A6E3A1"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(8)
+            )
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                sendTypedCommand("Query system telemetry, active nodes, and AI brain status")
+            }
+        }
+
+        actionChipsRow.addView(suggestionBtn)
+        actionChipsRow.addView(statusQuickBtn)
+
         expandedView?.addView(headerRow)
+        expandedView?.addView(responseScrollView)
         expandedView?.addView(inputRow)
-        expandedView?.addView(suggestionBtn)
+        expandedView?.addView(actionChipsRow)
 
         floatingContainer?.addView(collapsedView)
         floatingContainer?.addView(expandedView)
@@ -497,7 +743,7 @@ class WastiFloatingService : Service() {
 
         // Remove FLAG_NOT_FOCUSABLE so the soft keyboard and EditText can obtain touch focus
         windowParams.flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        windowParams.width = dpToPx(290)
+        windowParams.width = dpToPx(320)
 
         try {
             windowManager.updateViewLayout(floatingContainer, windowParams)
@@ -538,6 +784,86 @@ class WastiFloatingService : Service() {
         }
     }
 
+    private fun observeRuntimeContext() {
+        serviceScope.launch {
+            try {
+                val runtime = WastiOSRuntime.getInstance(applicationContext)
+                runtime.activeContext.collectLatest { ctx ->
+                    if (ctx.isBusy) {
+                        statusTextView?.text = "🧠 Thinking..."
+                        expandedStatusTextView?.text = ctx.progressMessage.take(45)
+                    } else if (!ctx.lastResultSummary.isNullOrBlank()) {
+                        val summary = ctx.lastResultSummary ?: ""
+                        if (summary != lastDisplayedResponse && summary.isNotBlank()) {
+                            handleExecutionCompleted(summary)
+                        }
+                    } else if (!ctx.lastError.isNullOrBlank()) {
+                        val err = ctx.lastError ?: ""
+                        if (err != lastDisplayedResponse && err.isNotBlank()) {
+                            lastDisplayedResponse = err
+                            responseTextLabel?.text = "❌ $err"
+                            expandedStatusTextView?.text = "Execution Error"
+                            statusTextView?.text = "❌ Error"
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error observing runtime context in WastiFloatingService", e)
+            }
+        }
+    }
+
+    private fun observeFabricEvents() {
+        serviceScope.launch {
+            try {
+                val fabric = UniversalConversationFabric.getInstance(applicationContext)
+                fabric.fabricEvents.collectLatest { event ->
+                    if (event.executionPhase == "TASK_COMPLETED" || event.severity == "SUCCESS") {
+                        val cleanSummary = event.message.removePrefix("Task completed: ").trim()
+                        if (cleanSummary.isNotBlank() && cleanSummary != lastDisplayedResponse) {
+                            handleExecutionCompleted(cleanSummary)
+                        }
+                    } else if (event.executionPhase == "TASK_FAILED" || event.severity == "ERROR") {
+                        val err = event.message
+                        if (err.isNotBlank() && err != lastDisplayedResponse) {
+                            lastDisplayedResponse = err
+                            withContext(Dispatchers.Main) {
+                                responseTextLabel?.text = "❌ $err"
+                                expandedStatusTextView?.text = "Task Failed"
+                                statusTextView?.text = "❌ Error"
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error observing fabric events in WastiFloatingService", e)
+            }
+        }
+    }
+
+    private fun handleExecutionCompleted(summary: String) {
+        serviceScope.launch(Dispatchers.Main) {
+            if (summary.isNotBlank() && summary != lastDisplayedResponse) {
+                lastDisplayedResponse = summary
+                responseTextLabel?.text = summary
+                expandedStatusTextView?.text = "✅ Complete"
+                statusTextView?.text = "✅ AI Ready"
+                speakText(summary)
+            }
+        }
+    }
+
+    private fun copyToClipboard(content: String) {
+        try {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            val clip = ClipData.newPlainText("Wasti AI Response", content)
+            clipboard?.setPrimaryClip(clip)
+            Toast.makeText(this, "Copied response to clipboard", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying to clipboard", e)
+        }
+    }
+
     private fun toggleVoiceListening() {
         if (isListeningState) {
             sttProvider.stopListening()
@@ -567,19 +893,15 @@ class WastiFloatingService : Service() {
         if (command.isBlank()) return
 
         commandEditText?.setText("")
-        expandedStatusTextView?.text = "Sending command..."
-        Toast.makeText(this, "Wasti Command Sent: \"$command\"", Toast.LENGTH_SHORT).show()
+        expandedStatusTextView?.text = "🧠 Reasoning..."
+        responseTextLabel?.text = "⏳ Processing command:\n\"$command\"..."
+        statusTextView?.text = "🧠 Thinking..."
 
         logSystemEvent("INFO", "Floating Typed Command Sent: '$command'")
 
         serviceScope.launch(Dispatchers.IO) {
             executeCommand(command)
         }
-
-        expandedView?.postDelayed({
-            expandedStatusTextView?.text = "Wasti AI Assistant"
-            collapseOverlay()
-        }, 2000)
     }
 
     private fun handleSpeechResult(result: STTResult) {
@@ -593,18 +915,15 @@ class WastiFloatingService : Service() {
         val transcript = result.transcript.trim()
         if (transcript.isNotBlank()) {
             updateBubbleUi(isListening = false, labelText = "Command: '$transcript'")
-            Toast.makeText(this, "Wasti Voice Command: \"$transcript\"", Toast.LENGTH_SHORT).show()
+            expandedStatusTextView?.text = "🧠 Reasoning..."
+            responseTextLabel?.text = "⏳ Processing voice command:\n\"$transcript\"..."
+            statusTextView?.text = "🧠 Thinking..."
 
             logSystemEvent("INFO", "Floating Voice Command Received: '$transcript'")
 
             serviceScope.launch(Dispatchers.IO) {
                 executeCommand(transcript)
             }
-
-            expandedView?.postDelayed({
-                updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant")
-                collapseOverlay()
-            }, 3000)
         } else {
             val errorMsg = result.errorMsg ?: "No speech recognized"
             updateBubbleUi(isListening = false, labelText = "Retry Voice")
@@ -612,22 +931,47 @@ class WastiFloatingService : Service() {
 
             expandedView?.postDelayed({
                 updateBubbleUi(isListening = false, labelText = "Wasti AI Assistant")
-            }, 2000)
+            }, 2500)
         }
     }
 
     private suspend fun executeCommand(command: String) {
         try {
-            val result = com.example.data.conversation.UniversalConversationFabric.getInstance(applicationContext).submitTask(
+            val result = UniversalConversationFabric.getInstance(applicationContext).submitTask(
                 prompt = command,
-                originRoom = com.example.data.conversation.RoomIdentity.FLOATING_BUBBLE.roomId,
+                originRoom = RoomIdentity.FLOATING_BUBBLE.roomId,
                 executionMode = com.example.data.agent.runtime.ExecutionMode.AUTONOMOUS,
                 targetAgentId = "ceo_agent"
             )
             logSystemEvent("INFO", "Floating Command Dispatched via UniversalConversationFabric: $command -> $result")
+
+            when (result) {
+                is CommandSubmissionResult.ImmediateSuccess -> {
+                    handleExecutionCompleted(result.output)
+                }
+                is CommandSubmissionResult.Rejected -> {
+                    val errorMsg = "Command rejected: ${result.reason}"
+                    withContext(Dispatchers.Main) {
+                        responseTextLabel?.text = "❌ $errorMsg"
+                        expandedStatusTextView?.text = "Rejected"
+                        statusTextView?.text = "❌ Rejected"
+                        speakText(errorMsg)
+                    }
+                }
+                is CommandSubmissionResult.Accepted -> {
+                    // Task successfully accepted into execution loop; updates handled by observers
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error executing floating command via UniversalConversationFabric", e)
             logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
+            withContext(Dispatchers.Main) {
+                val errorMsg = e.message ?: "Unknown error"
+                responseTextLabel?.text = "❌ Execution Error: $errorMsg"
+                expandedStatusTextView?.text = "Error"
+                statusTextView?.text = "❌ Error"
+                speakText("Error: $errorMsg")
+            }
         }
     }
 

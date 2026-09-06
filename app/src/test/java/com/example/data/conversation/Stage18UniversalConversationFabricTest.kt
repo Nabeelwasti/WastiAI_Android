@@ -248,4 +248,37 @@ class Stage18UniversalConversationFabricTest {
         assertTrue(snapshot.availableActions.contains("REJECT"))
         assertTrue(snapshot.availableActions.contains("EMERGENCY_STOP"))
     }
+
+    @Test
+    fun testFloatingBubbleTaskSubmissionAndAssistantHistoryRecording() = runTest {
+        val prompt = "Turn on wifi and check device battery"
+        val submission = fabric.submitTask(
+            prompt = prompt,
+            originRoom = RoomIdentity.FLOATING_BUBBLE.roomId
+        )
+        assertNotNull(submission)
+        assertTrue(submission !is CommandSubmissionResult.Rejected)
+
+        val ctx = fabric.activeContext.value
+        assertEquals("FLOATING_BUBBLE", ctx.currentRoom)
+        assertEquals(prompt, ctx.lastUserInteraction)
+        assertEquals(1, ctx.conversationHistory.size)
+        assertEquals("user", ctx.conversationHistory.first().role)
+
+        // Simulate agent task completion event
+        eventBus.emit(
+            AgentEvent.TaskCompleted(
+                taskId = TaskId(ctx.taskId ?: "task_1"),
+                agentId = "ceo_agent",
+                summary = "Wifi activated and battery is at 85%"
+            )
+        )
+
+        // Yield to allow event bus collection
+        kotlinx.coroutines.delay(100)
+
+        val updatedCtx = fabric.activeContext.value
+        assertEquals(ConversationExecutionState.COMPLETED, updatedCtx.activeExecutionState)
+        assertTrue(updatedCtx.conversationHistory.any { it.role == "assistant" && it.content.contains("Wifi activated") })
+    }
 }

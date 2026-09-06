@@ -616,6 +616,7 @@ class UniversalConversationFabric(
             }
             is AgentEvent.TaskCompleted -> {
                 updateExecutionState(ConversationExecutionState.COMPLETED, "TASK_COMPLETED", conversationId = convId)
+                recordMessage("assistant", event.summary, current.currentRoom, convId)
                 emitFabricEvent(
                     convId, taskId, current.currentRoom, "TASK_COMPLETED",
                     "Task completed: ${event.summary}",
