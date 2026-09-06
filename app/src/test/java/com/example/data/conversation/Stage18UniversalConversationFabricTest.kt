@@ -269,7 +269,6 @@ class Stage18UniversalConversationFabricTest {
         eventBus.emit(
             AgentEvent.TaskCompleted(
                 taskId = TaskId(ctx.taskId ?: "task_1"),
-                agentId = "ceo_agent",
                 summary = "Wifi activated and battery is at 85%"
             )
         )

@@ -215,7 +215,7 @@ object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.Remot
                             stdout = parsed.optString("stdout", ""),
                             stderr = parsed.optString("stderr", ""),
                             exitCode = parsed.optInt("exitCode", 0),
-                            compileOutput = parsed.optString("compileOutput", null)
+                            compileOutput = if (parsed.has("compileOutput") && !parsed.isNull("compileOutput")) parsed.optString("compileOutput") else null
                         )
                     } catch (_: Exception) {
                         RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
