@@ -3,6 +3,7 @@ package com.example.data.agent.runtime
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -31,7 +32,6 @@ class Stage7WastiNativeDevEnvironmentTest {
     private lateinit var sandbox: WastiSandbox
     private lateinit var fabric: UnifiedExecutionFabric
     private lateinit var observationEngine: WastiObservationEngine
-    private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
     fun setUp() {
@@ -144,7 +144,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 3. Build & Test Manager Lifecycle Tests
     @Test
-    fun testBuildAndTestManagerExecution() = runTest(testDispatcher) {
+    fun testBuildAndTestManagerExecution() = runBlocking {
         // Create project first
         projectManager.createManagedProject("web_dashboard", "WEB_MARKUP", "static_page")
 
@@ -193,7 +193,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 4. Wasti Sandbox Security & Confinement Tests
     @Test
-    fun testSandboxPathEscapeBlocked() = runTest(testDispatcher) {
+    fun testSandboxPathEscapeBlocked() = runBlocking {
         val res = sandbox.executeInSandbox(
             SandboxExecutionRequest(
                 command = "sh",
@@ -209,7 +209,7 @@ class Stage7WastiNativeDevEnvironmentTest {
 
     // 5. Unified Execution Fabric Routing Tests
     @Test
-    fun testFabricRoutingDevCapabilities() = runTest(testDispatcher) {
+    fun testFabricRoutingDevCapabilities() = runBlocking {
         // Managed Project Creation via Fabric
         val createReq = UnifiedExecutionRequest(
             taskId = "task_create_proj",
