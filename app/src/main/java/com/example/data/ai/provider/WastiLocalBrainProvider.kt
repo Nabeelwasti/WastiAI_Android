@@ -26,11 +26,21 @@ class WastiLocalBrainProvider(
     )
 
     override fun isAvailable(): Boolean {
-        // 100% available: Genuine local zero-API-key open source brain node
+        // Local brain provider is declared and operational via fallback domain synthesizer or local weights
         return true
     }
 
+    val isNeuralWeightsPresent: Boolean
+        get() {
+            val appCtx = com.example.WastiApplication.instance ?: return false
+            return ModelArtifactManager.isWeightsPresent(appCtx, id)
+        }
+
+    val isNeuralInferenceActive: Boolean
+        get() = isNeuralWeightsPresent && com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
+
     fun isConfiguredOrDeclared(): Boolean = true
+
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
@@ -149,8 +159,8 @@ class WastiLocalBrainProvider(
                     appendLine("$brandHeader$skillContext")
                     appendLine("### Strategic Execution Breakdown")
                     appendLine("• Objective: ${prompt.trim()}")
-                    appendLine("• Reasoning Steps: Multi-node consensus evaluation across 12 local open source brains.")
-                    appendLine("• Confidence Rating: 0.96 (High Determinism)")
+                    appendLine("• Mode: Deterministic Domain Knowledge Synthesis (Heuristic Fallback)")
+                    appendLine("• Distillation: Grounded in local verified distilled knowledge base")
                     appendLine("• Recommendation: Proceed with autonomous verified execution.")
                 }
             }

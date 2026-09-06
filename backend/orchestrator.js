@@ -19,8 +19,8 @@ const GEMINI_KEY = process.env.BACKEND_GEMINI_KEY || null;
 const GROQ_KEY = process.env.BACKEND_GROQ_VOICE || null;
 
 async function callOpenAI(payload) {
-  if (!axios) throw new Error('Axios client is not installed on server');
   if (!OPENAI_KEY) throw new Error('OpenAI key not configured');
+  if (!axios) throw new Error('Axios client is not installed on server');
   const res = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
     headers: { Authorization: `Bearer ${OPENAI_KEY}` }
   });
@@ -28,8 +28,8 @@ async function callOpenAI(payload) {
 }
 
 async function callGemini(payload) {
-  if (!axios) throw new Error('Axios client is not installed on server');
   if (!GEMINI_KEY) throw new Error('Gemini key not configured');
+  if (!axios) throw new Error('Axios client is not installed on server');
   const model = payload.model || 'gemini-2.5-flash';
   // Map standard OpenAI chat messages or prompt to Gemini content format
   let contents = [];
@@ -54,13 +54,37 @@ async function callGemini(payload) {
 
 async function callLocalLLM(payload) {
   // If you run a local LLM server (e.g., llama.cpp webui, local-replicate, or other), point to it here.
-  if (!axios) throw new Error('Axios client is not installed on server');
   if (!process.env.LOCAL_LLM_URL) throw new Error('Local LLM URL not configured');
+  if (!axios) throw new Error('Axios client is not installed on server');
   const res = await axios.post(process.env.LOCAL_LLM_URL, payload, { timeout: 600000 });
   return res.data;
 }
 
+async function callEmbeddings(texts, model = 'text-embedding-3-small') {
+  if (!OPENAI_KEY) throw new Error('OpenAI key not configured for embeddings');
+  if (!axios) throw new Error('Axios client is not installed on server');
+
+  const res = await axios.post('https://api.openai.com/v1/embeddings', {
+    input: texts,
+    model
+  }, {
+    headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+    timeout: 30000
+  });
+  return res.data;
+}
+
+function getConfiguredProviders() {
+  const providers = [];
+  if (OPENAI_KEY) providers.push('openai');
+  if (GEMINI_KEY) providers.push('gemini');
+  if (process.env.LOCAL_LLM_URL) providers.push('local');
+  return providers;
+}
+
 module.exports = {
+  getConfiguredProviders,
+  callEmbeddings,
   callProviders: async function (payload, priority = ['openai','gemini','local']) {
     // priority is an array of provider keys to try in order
     const errors = [];
@@ -86,3 +110,4 @@ module.exports = {
     return { provider: null, error: 'All providers failed', errors };
   }
 };
+

@@ -5,6 +5,12 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+enum class EmbeddingEngineType {
+    NEURAL_TRANSFORMER_ON_DEVICE,
+    CLOUD_API_NEURAL,
+    DETERMINISTIC_MATHEMATICAL_FALLBACK
+}
+
 /**
  * On-device deterministic mathematical fallback vector projection runtime (384-dimensional).
  * Employs subword trigonometric harmonic projection and keyword semantic subspace bases
@@ -18,6 +24,10 @@ object WastiEmbeddingRuntime {
 
     private const val TAG = "WastiEmbeddingRuntime"
     const val EMBEDDING_DIM = 384
+
+    val engineType: EmbeddingEngineType = EmbeddingEngineType.DETERMINISTIC_MATHEMATICAL_FALLBACK
+    const val isNeuralEmbedding: Boolean = false
+
 
     // Semantic category basis vectors across orthogonal semantic subspaces
     private val SEMANTIC_DOMAINS = mapOf(

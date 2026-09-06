@@ -55,6 +55,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// In-memory replay / idempotency cache for Stripe events (24-hour TTL)
+const processedStripeEvents = new Map();
+const STRIPE_EVENT_TTL_MS = 24 * 60 * 60 * 1000;
+
 // Stripe webhook raw body handling with strict cryptographic signature verification
 // NOTE: Must be mounted BEFORE global bodyParser.json() to preserve raw Buffer for signature verification
 app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
@@ -67,6 +71,20 @@ app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async 
       console.error('stripe webhook verification rejected:', err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
+
+    if (event && event.id) {
+      const now = Date.now();
+      if (processedStripeEvents.size > 5000) {
+        for (const [id, ts] of processedStripeEvents.entries()) {
+          if (now - ts > STRIPE_EVENT_TTL_MS) processedStripeEvents.delete(id);
+        }
+      }
+      if (processedStripeEvents.has(event.id)) {
+        return res.json({ received: true, eventType: event.type, duplicate: true });
+      }
+      processedStripeEvents.set(event.id, now);
+    }
+
     console.log('Verified Stripe event received:', event.type);
     return res.json({ received: true, eventType: event.type });
   } catch (err) {
@@ -74,6 +92,7 @@ app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async 
     res.status(500).send('Internal server error');
   }
 });
+
 
 // JSON Body Parser for standard endpoints
 app.use(bodyParser.json({ limit: '2mb' }));
@@ -219,6 +238,10 @@ app.post('/email/send', requireAuth, async (req, res) => {
   }
 });
 
+// Bounded in-memory queue for wakeword event buffering when cloud push queue is offline
+const inMemoryWakewordQueue = [];
+const MAX_WAKEWORD_QUEUE_SIZE = 100;
+
 app.post('/wakeword', requireAuth, async (req, res) => {
   try {
     const payload = req.body;
@@ -230,9 +253,18 @@ app.post('/wakeword', requireAuth, async (req, res) => {
         const out = await firebaseHelper.sendPush(payload.token, { wakeword: JSON.stringify(payload.event || {}) });
         return res.json({ status: 'pushed', detail: out });
       }
-      return res.json({ status: 'accepted', detail: 'Firebase configured, awaiting device registration token.' });
+      return res.status(202).json({ status: 'AWAITING_DEVICE_TOKEN', detail: 'Firebase configured, awaiting device registration token.' });
     }
-    return res.status(200).json({ status: 'accepted', detail: 'Local node received event. Durable push queue unconfigured.' });
+    if (inMemoryWakewordQueue.length >= MAX_WAKEWORD_QUEUE_SIZE) {
+      inMemoryWakewordQueue.shift();
+    }
+    inMemoryWakewordQueue.push({ event: payload.event || {}, receivedAt: Date.now() });
+    return res.status(202).json({
+      status: 'QUEUED_IN_MEMORY',
+      durable: false,
+      queueDepth: inMemoryWakewordQueue.length,
+      detail: 'Event buffered in process memory. Durable cloud push queue unconfigured.'
+    });
   } catch (err) {
     console.error('wakeword dispatch failed', err.message);
     res.status(500).json({ error: 'wakeword failed', detail: err.message || String(err) });
@@ -256,7 +288,7 @@ app.post('/compute/offload', requireAuth, async (req, res) => {
       });
     }
 
-    if (!payload || typeof payload !== 'object') {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       return res.status(400).json({ error: 'Payload must be a valid JSON object' });
     }
 
@@ -265,41 +297,136 @@ app.post('/compute/offload', requireAuth, async (req, res) => {
 
     switch (taskType) {
       case 'MULTI_MODEL_CONSENSUS': {
-        const prompt = payload.prompt || 'General task consensus';
-        const models = payload.models || ['wasti-llama', 'wasti-qwen', 'wasti-deepseek', 'wasti-mistral'];
+        const prompt = payload.prompt;
+        if (!prompt || typeof prompt !== 'string') {
+          return res.status(400).json({ error: 'payload.prompt string required for MULTI_MODEL_CONSENSUS' });
+        }
+        const configuredProviders = orchestrator.getConfiguredProviders();
+        if (configuredProviders.length < 2) {
+          return res.status(503).json({
+            success: false,
+            taskType,
+            error: 'CAPABILITY_UNAVAILABLE',
+            reason: 'Genuine cloud multi-model consensus requires at least two configured LLM provider credentials (e.g. OpenAI and Gemini). Currently configured: ' + (configuredProviders.join(', ') || 'none')
+          });
+        }
+        const promises = configuredProviders.map(p =>
+          orchestrator.callProviders({ prompt }, [p])
+        );
+        const settled = await Promise.allSettled(promises);
+        const outputs = [];
+        for (let i = 0; i < configuredProviders.length; i++) {
+          const s = settled[i];
+          outputs.push({
+            provider: configuredProviders[i],
+            status: s.status,
+            output: s.status === 'fulfilled' ? s.value : { error: s.reason?.message || String(s.reason) }
+          });
+        }
         resultData = {
-          consensusSummary: `Cloud Multi-Model Consensus: Evaluated across ${models.length} model streams in cloud runtime.`,
-          participatingModels: models,
-          verifiedPrompt: prompt.substring(0, 120),
-          tier: 'CLOUD_OFFLOAD_HIGH_PERFORMANCE'
+          participatingProviders: configuredProviders,
+          streamResults: outputs,
+          status: 'CONSENSUS_EVALUATED'
         };
         break;
       }
       case 'BATCH_EMBEDDINGS': {
         const texts = Array.isArray(payload.texts) ? payload.texts : [];
-        resultData = {
-          processedCount: texts.length,
-          dimension: 384,
-          status: 'PROCESSED_IN_CLOUD'
-        };
+        if (texts.length === 0) {
+          return res.status(400).json({ error: 'payload.texts must be a non-empty array of strings' });
+        }
+        const hasOpenAI = Boolean(process.env.BACKEND_OPENAI_KEY || process.env.OPENAI_API_KEY);
+        if (!hasOpenAI) {
+          return res.status(503).json({
+            success: false,
+            taskType,
+            error: 'CAPABILITY_UNAVAILABLE',
+            reason: 'No cloud neural embedding provider credentials configured on backend server.'
+          });
+        }
+        try {
+          const embData = await orchestrator.callEmbeddings(texts);
+          resultData = {
+            processedCount: texts.length,
+            model: embData.model || 'text-embedding-3-small',
+            data: embData.data,
+            usage: embData.usage,
+            status: 'EMBEDDINGS_GENERATED'
+          };
+        } catch (embErr) {
+          return res.status(502).json({
+            success: false,
+            taskType,
+            error: 'EMBEDDING_PROVIDER_ERROR',
+            detail: embErr.message
+          });
+        }
         break;
       }
       case 'CODE_COMPILATION_AND_ANALYSIS': {
-        const code = payload.code || '';
+        const code = payload.code;
+        const language = (payload.language || 'javascript').toLowerCase();
+        if (typeof code !== 'string') {
+          return res.status(400).json({ error: 'payload.code must be a string' });
+        }
+        if (language === 'javascript' || language === 'js') {
+          const vm = require('vm');
+          try {
+            new vm.Script(code);
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: true,
+              diagnostics: [],
+              status: 'SYNTAX_VERIFIED'
+            };
+          } catch (syntaxErr) {
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: false,
+              diagnostics: [{ line: syntaxErr.lineNumber || 1, message: syntaxErr.message }],
+              status: 'SYNTAX_ERROR'
+            };
+          }
+        } else {
+          return res.status(501).json({
+            success: false,
+            taskType,
+            error: 'NOT_IMPLEMENTED',
+            reason: `Cloud compilation sandbox for language '${language}' is not implemented in Node.js runtime.`
+          });
+        }
+        break;
+      }
+      case 'HEAVY_FILE_TRANSFORM': {
+        const content = payload.content;
+        if (typeof content !== 'string') {
+          return res.status(400).json({ error: 'payload.content must be a string' });
+        }
+        const crypto = require('crypto');
+        const hash = crypto.createHash('sha256').update(content).digest('hex');
         resultData = {
-          codeLengthBytes: code.length,
-          syntaxValid: true,
-          diagnostics: [],
-          status: 'VERIFIED_IN_CLOUD_SANDBOX'
+          transformedSizeBytes: Buffer.byteLength(content, 'utf-8'),
+          sha256: hash,
+          status: 'TRANSFORMED'
+        };
+        break;
+      }
+      case 'SYSTEM_DIAGNOSTICS': {
+        const mem = process.memoryUsage();
+        resultData = {
+          uptimeSec: Math.floor(process.uptime()),
+          nodeVersion: process.version,
+          memoryRssBytes: mem.rss,
+          memoryHeapUsedBytes: mem.heapUsed,
+          cpuUsage: process.cpuUsage(),
+          status: 'DIAGNOSTICS_CAPTURED'
         };
         break;
       }
       default: {
-        resultData = {
-          status: 'COMPLETED',
-          detail: `Task ${taskType} processed in background cloud environment.`
-        };
-        break;
+        return res.status(400).json({ error: 'Unsupported taskType' });
       }
     }
 
@@ -316,6 +443,7 @@ app.post('/compute/offload', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'compute/offload failed', detail: err.message || String(err) });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`Wasti AI OS Backend listening securely on port ${PORT}`);

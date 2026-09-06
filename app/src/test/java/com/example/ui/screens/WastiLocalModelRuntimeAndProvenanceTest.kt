@@ -92,6 +92,15 @@ class WastiLocalModelRuntimeAndProvenanceTest {
     }
 
     @Test
+    fun testWastiEmbeddingRuntimeZeroFabricationTypeAssertion() {
+        assertFalse(WastiEmbeddingRuntime.isNeuralEmbedding)
+        assertEquals(
+            EmbeddingEngineType.DETERMINISTIC_MATHEMATICAL_FALLBACK,
+            WastiEmbeddingRuntime.engineType
+        )
+    }
+
+    @Test
     fun testExecutionProvenanceLedgerHashChainingAndIntegrity() {
         val evidence1 = VerifiedExecutionEvidence(
             evidenceSource = EvidenceSource.FILESYSTEM,

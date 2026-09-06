@@ -75,7 +75,7 @@ class WastiApplication : Application(), Configuration.Provider {
                     com.example.data.credential.CredentialRegistry.seedDefaultCredentialsIfMissing(this@WastiApplication)
                 } catch (e: Throwable) {
                     Log.e("WastiApplication", "Error setting CredentialRegistry appContext", e)
-                    AppStartupManager.recordWarning(currentStage, "Failed to initialize CredentialRegistry context: ${e.message}")
+                    AppStartupManager.recordCriticalFailure(currentStage, "Failed to initialize CredentialRegistry context: ${e.message}")
                 }
                 AppStartupManager.recordStageCompletion(currentStage, System.currentTimeMillis() - t1)
 
@@ -100,8 +100,13 @@ class WastiApplication : Application(), Configuration.Provider {
                 kotlinx.coroutines.coroutineScope {
                     val aiJob = async(Dispatchers.IO) {
                         val t = System.currentTimeMillis()
-                        val providers = com.example.data.ai.AIManager.capabilityRegistry.getAllProviders()
-                        Log.d("WastiApplication", "AIManager initialized with ${providers.size} providers")
+                        try {
+                            val providers = com.example.data.ai.AIManager.capabilityRegistry.getAllProviders()
+                            Log.d("WastiApplication", "AIManager initialized with ${providers.size} providers")
+                        } catch (e: Throwable) {
+                            Log.e("WastiApplication", "Error initializing AIManager", e)
+                            AppStartupManager.recordCriticalFailure(StartupStage.AI_ENGINE, "AIManager initialization failed: ${e.message}")
+                        }
                         AppStartupManager.recordStageCompletion(StartupStage.AI_ENGINE, System.currentTimeMillis() - t)
                     }
 

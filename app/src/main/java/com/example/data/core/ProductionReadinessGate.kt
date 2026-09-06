@@ -28,6 +28,28 @@ enum class ProductionReadinessState {
     PRODUCTION_READY
 }
 
+/**
+ * Canonical 11-Stage Progressive Capability Lifecycle State.
+ * Strictly prevents capability state inflation without verifiable evidence.
+ */
+enum class CapabilityLifecycleState {
+    DECLARED,
+    CONFIGURED,
+    AVAILABLE,
+    AUTHENTICATED,
+    EXECUTABLE,
+    STARTED,
+    COMPLETED,
+    OBSERVED,
+    VERIFIED,
+    TRUSTED,
+    LEARNED;
+
+    fun canTransitionTo(next: CapabilityLifecycleState): Boolean {
+        return next.ordinal == this.ordinal + 1 || next == this
+    }
+}
+
 data class SubsystemReadinessCheck(
     val subsystemName: String,
     val isOperational: Boolean,
@@ -154,11 +176,56 @@ object ProductionReadinessGate {
             )
         )
 
+        // 7. Local Neural Inference Runtime Check
+        val nativeLlamaAvailable = try {
+            com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
+        } catch (_: Throwable) {
+            false
+        }
+        val smolLmPresent = try {
+            com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, "wasti-smollm")
+        } catch (_: Throwable) {
+            false
+        }
+        val localNeuralReady = nativeLlamaAvailable && smolLmPresent
+        checks.add(
+            SubsystemReadinessCheck(
+                subsystemName = "LocalNeuralInferenceEngine",
+                isOperational = nativeLlamaAvailable || smolLmPresent,
+                isLiveVerified = localNeuralReady,
+                state = if (localNeuralReady) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = if (localNeuralReady) "Native llama.cpp engine & GGUF weights active"
+                        else "Native llama.cpp library (.so) or model weights pending device installation"
+            )
+        )
+
+        // 8. Cloud Offload & Backend Bridge Check
+        val backendSecretConfigured = try {
+            !CredentialRegistry.getRawValue("WASTI_BACKEND_AUTH_SECRET", context).isNullOrBlank()
+        } catch (_: Throwable) {
+            false
+        }
+        checks.add(
+            SubsystemReadinessCheck(
+                subsystemName = "CloudBackendOffload",
+                isOperational = true,
+                isLiveVerified = backendSecretConfigured,
+                state = if (backendSecretConfigured) ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = if (backendSecretConfigured) "Backend auth token configured" else "Backend auth secret not configured"
+            )
+        )
+
         val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
         val mandatoryChecksPassed = startupOk && dbOk && (operationalCount > 0)
+
+        // Zero-Fabrication Rule: PRODUCTION_READY can NEVER be claimed until native neural runtime,
+        // live external integrations, and device validation are all verified simultaneously.
+        val canBeProductionReady = localNeuralReady && mandatoryChecksPassed &&
+            checks.all { it.state == ProductionReadinessState.RELEASE_VERIFIED || it.state == ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED || it.state == ProductionReadinessState.PRODUCTION_READY }
+
         val overall = when {
             !mandatoryChecksPassed -> ProductionReadinessState.NOT_READY
-            checks.all { it.state == ProductionReadinessState.RELEASE_VERIFIED || it.state == ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED || it.state == ProductionReadinessState.PRODUCTION_READY } -> ProductionReadinessState.PRODUCTION_READY
+            canBeProductionReady -> ProductionReadinessState.PRODUCTION_READY
             checks.all { it.isOperational && it.isLiveVerified } -> ProductionReadinessState.RELEASE_VERIFIED
             else -> ProductionReadinessState.TEST_VERIFIED
         }
@@ -171,3 +238,4 @@ object ProductionReadinessGate {
         )
     }
 }
+

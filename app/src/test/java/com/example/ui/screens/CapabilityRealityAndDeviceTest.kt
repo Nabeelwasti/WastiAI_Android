@@ -320,6 +320,52 @@ class CapabilityRealityAndDeviceTest {
     }
 
     @Test
+    fun testAutonomousSkillEvolutionEngineRejectsMockEvidence() = runBlocking {
+        val database = com.example.data.db.WastiDatabase.getDatabase(context)
+        val evolutionEngine = AutonomousSkillEvolutionEngine(context, database = database)
+        val plan = PlannedCapabilityGraph(
+            taskId = "task_reject_mock",
+            goal = "Attempt evolution with mock evidence",
+            nodes = listOf(
+                ExecutionNode(
+                    nodeId = "n1",
+                    capabilityId = "device_control",
+                    action = "click",
+                    parameters = mapOf("target" to "btn")
+                )
+            )
+        )
+        val audits = listOf(
+            ExecutionAuditEntity(
+                auditId = "audit_mock",
+                taskId = "task_reject_mock",
+                goal = "Mock test",
+                planJson = "{}",
+                executionHistoryJson = "[]",
+                verificationReportJson = "{}",
+                totalLatencyMs = 10L,
+                wasSuccessful = true,
+                finalStatus = "COMPLETED",
+                timestamp = System.currentTimeMillis()
+            )
+        )
+        val learnedSkill = evolutionEngine.learnFromExecution("task_reject_mock", "Attempt evolution with mock evidence", plan, audits)
+        assertNotNull(learnedSkill)
+        val mockEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.FILESYSTEM,
+            subject = "mock_evidence_test",
+            verifiedState = "synthetic_result",
+            confidence = 1.0
+        )
+        evolutionEngine.recordExecutionOutcome(learnedSkill!!.skillId, verifiedEvidence = mockEvidence)
+        val updated = database.learnedSkillDao().getSkillById(learnedSkill.skillId)
+        assertNotNull(updated)
+        // Mock evidence is rejected by zero-fabrication filter: records failure, not success
+        assertEquals(1, updated!!.failureCount)
+        assertEquals(0, updated.successCount)
+    }
+
+    @Test
     fun testUniversalAutonomousExecutionLoopExecution() {
         runBlocking {
             val loop = UniversalAutonomousExecutionLoop(context)

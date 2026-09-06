@@ -131,11 +131,34 @@ class AutonomousSkillEvolutionEngine(
     }
 
     /**
-     * Promotes a learned skill to higher tiers after repeated verified executions with structured evidence.
+     * Promotes a learned skill to higher tiers after repeated verified executions with canonical verification.
+     * Consumes canonical VerificationResult from WastiVerificationEngine and rejects synthetic/mock evidence.
+     */
+    suspend fun recordExecutionOutcome(skillId: String, verificationResult: VerificationResult) {
+        val skill = learnedSkillDao.getSkillById(skillId) ?: return
+        val isTrulyVerified = verificationResult.status == ActionVerificationStatus.VERIFIED &&
+            verificationResult.confidence >= 0.85 &&
+            verificationResult.evidence.isNotBlank() &&
+            !isSyntheticOrMock(verificationResult.evidence)
+        applyExecutionOutcome(skill, isTrulyVerified)
+    }
+
+    /**
+     * Overload supporting verified execution evidence while strictly rejecting synthetic/mock evidence.
      */
     suspend fun recordExecutionOutcome(skillId: String, verifiedEvidence: VerifiedExecutionEvidence?) {
         val skill = learnedSkillDao.getSkillById(skillId) ?: return
-        val wasVerified = verifiedEvidence != null && verifiedEvidence.confidence >= 0.85
+        val isTrulyVerified = verifiedEvidence != null &&
+            verifiedEvidence.confidence >= 0.85 &&
+            verifiedEvidence.subject.isNotBlank() &&
+            verifiedEvidence.verifiedState.isNotBlank() &&
+            !isSyntheticOrMock(verifiedEvidence.subject) &&
+            !isSyntheticOrMock(verifiedEvidence.verifiedState)
+        applyExecutionOutcome(skill, isTrulyVerified)
+    }
+
+    private suspend fun applyExecutionOutcome(skill: LearnedSkillEntity, wasVerified: Boolean) {
+        val skillId = skill.skillId
         if (wasVerified) {
             val newSuccess = skill.successCount + 1
             val newScore = (newSuccess.toFloat() / (newSuccess + skill.failureCount)).coerceIn(0.0f, 1.0f)
@@ -157,6 +180,16 @@ class AutonomousSkillEvolutionEngine(
             }
         }
     }
+
+    private fun isSyntheticOrMock(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.contains("synthetic") ||
+            lower.contains("mock_evidence") ||
+            lower.contains("fake_evidence") ||
+            lower.contains("dummy_evidence") ||
+            lower.contains("unverified_stub")
+    }
+
 
     private fun generateSkillName(goal: String): String {
         val clean = goal.replace(Regex("[^a-zA-Z0-9 ]"), "").trim()
