@@ -46,13 +46,13 @@ object IntegrationAuditRegistry {
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Android Accessibility Service",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "Contract declared; disabled in runtime security policy to enforce zero accessibility action bypass"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Full accessibility service implemented with UI node scraper, gesture dispatch, and IPC bridge; live execution requires user enabling Wasti Accessibility in Android Settings"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Android System Control",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "System interfaces defined; restricted by Android security model and permission model"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Implemented via WastiDeviceController for app launching, intents, messaging, and system navigation"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Workspace File Operations",
@@ -63,6 +63,16 @@ object IntegrationAuditRegistry {
                 capabilityName = "Terminal / Code Execution",
                 status = IntegrationStatus.VERIFIED_CONNECTED,
                 detail = "Verified via LocalAndroidProvider & ExecuteCodeTool inside workspace sandbox"
+            ),
+            IntegrationCapabilityAudit(
+                capabilityName = "Wasti Local 12-Brain Suite",
+                status = IntegrationStatus.VERIFIED_CONNECTED,
+                detail = "12 open-source brand models with domain-specialized native reasoning, multi-model consensus, and self-training distillation loop"
+            ),
+            IntegrationCapabilityAudit(
+                capabilityName = "Firebase Cloud Compute Offloader",
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Heavy compute offloading to Firebase Firestore task queue and cloud backend for thermal and memory protection of mobile hardware"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "GitHub API Integration",

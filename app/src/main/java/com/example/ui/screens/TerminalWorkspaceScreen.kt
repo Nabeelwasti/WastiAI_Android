@@ -101,6 +101,30 @@ fun TerminalWorkspaceScreen(
         wreManager.autocompleteEngine.getSuggestions(currentInput, currentWorkingDir)
     }
 
+    fun isNaturalLanguagePrompt(input: String): Boolean {
+        val t = input.trim()
+        val knownCommands = setOf(
+            "help", "clear", "ls", "pwd", "cd", "cat", "echo", "mkdir", "rm", "cp", "mv",
+            "wre", "sysinfo", "status", "env", "jobs", "ps", "kill", "touch", "grep",
+            "find", "head", "tail", "wc", "chmod", "curl", "python", "python3", "node",
+            "kotlinc", "java", "javac", "git", "diff", "tar", "zip", "unzip"
+        )
+        val firstWord = t.substringBefore(" ").lowercase()
+        if (knownCommands.contains(firstWord)) return false
+
+        val words = t.split(Regex("\\s+"))
+        if (words.size >= 3) {
+            val nlKeywords = setOf(
+                "create", "build", "make", "find", "search", "show", "how", "what", "why",
+                "can", "please", "write", "generate", "analyze", "check", "fix", "run", "start", "stop", "open"
+            )
+            if (nlKeywords.contains(firstWord) || words.any { it.endsWith("?") }) {
+                return true
+            }
+        }
+        return false
+    }
+
     fun submitCommand(cmd: String) {
         val trimmed = cmd.trim()
         if (trimmed.isEmpty()) return
@@ -131,8 +155,18 @@ fun TerminalWorkspaceScreen(
         isExecuting = true
 
         coroutineScope.launch {
-            if (trimmed.startsWith("agent ") || trimmed.startsWith("wasti ") || trimmed.startsWith("ai ")) {
-                val prompt = trimmed.substringAfter(" ").trim()
+            val isAgentIntent = trimmed.startsWith("agent ") || trimmed.startsWith("wasti ") ||
+                                trimmed.startsWith("ai ") || trimmed.startsWith("?") ||
+                                isNaturalLanguagePrompt(trimmed)
+
+            if (isAgentIntent) {
+                val prompt = when {
+                    trimmed.startsWith("agent ") -> trimmed.removePrefix("agent ").trim()
+                    trimmed.startsWith("wasti ") -> trimmed.removePrefix("wasti ").trim()
+                    trimmed.startsWith("ai ") -> trimmed.removePrefix("ai ").trim()
+                    trimmed.startsWith("?") -> trimmed.removePrefix("?").trim()
+                    else -> trimmed
+                }
                 lines.add(
                     TerminalLine(
                         text = "▶ Dispatching to Wasti OS Autonomous Multi-Agent Brain...",
@@ -325,8 +359,8 @@ fun TerminalWorkspaceScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
-                    "help", "wre pkg list", "sysinfo", "status",
-                    "ls -la", "pwd", "jobs", "ps", "env", "clear"
+                    "ai status", "ai consensus", "ai models", "help",
+                    "wre pkg list", "sysinfo", "status", "ls -la", "pwd", "jobs", "ps", "clear"
                 ).forEach { chipCmd ->
                     SuggestionChip(
                         onClick = { submitCommand(chipCmd) },

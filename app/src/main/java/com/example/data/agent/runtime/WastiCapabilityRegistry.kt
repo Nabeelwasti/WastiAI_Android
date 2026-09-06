@@ -21,9 +21,15 @@ class WastiCapabilityRegistry : CapabilityRegistry {
     private val enabledCapabilities = ConcurrentHashMap<String, Boolean>()
 
     init {
-        // Stage 2 defaults: FILES and CODING enabled, others disabled by default
+        // Canonical operational defaults for Wasti AI OS
         enabledCapabilities[WastiCapability.FILES.capabilityName] = true
         enabledCapabilities[WastiCapability.CODING.capabilityName] = true
+        enabledCapabilities[WastiCapability.TERMINAL.capabilityName] = true
+        enabledCapabilities[WastiCapability.AUTOMATION.capabilityName] = true
+        enabledCapabilities[WastiCapability.ANDROID_CONTROL.capabilityName] = true
+        enabledCapabilities[WastiCapability.RESEARCH.capabilityName] = true
+        enabledCapabilities[WastiCapability.WEB.capabilityName] = true
+        enabledCapabilities[WastiCapability.CLOUD.capabilityName] = true
     }
 
     override fun getSupportedCapabilities(): List<String> {
@@ -37,7 +43,8 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         val reality = UnifiedExecutionFabric.instance.realityRegistry.getCapabilityReality(capabilityName)
         return reality.executionStatus == CapabilityExecutionStatus.OPERATIONAL &&
                 (reality.realityState == CapabilityRealityState.NATIVE ||
-                 reality.realityState == CapabilityRealityState.LIVE_CONNECTED)
+                 reality.realityState == CapabilityRealityState.LIVE_CONNECTED ||
+                 reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED)
     }
 
     fun setCapabilityEnabled(capabilityName: String, enabled: Boolean) {

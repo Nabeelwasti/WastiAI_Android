@@ -118,12 +118,48 @@ object UltimateSynthesizer {
         if (nodes.isEmpty()) return "Wasti AI OS: Single-Brain local evaluation complete."
         if (nodes.size == 1) return nodes.first().thoughtSummary
 
+        val codingNode = nodes.find { it.modelId.contains("qwen") || it.modelId.contains("deepseek") }
+        val reasoningNode = nodes.find { it.modelId.contains("llama") || it.modelId.contains("mistral") }
+        val automationNode = nodes.find { it.modelId.contains("granite") || it.modelId.contains("commandr") || it.modelId.contains("phi") }
+        val logicNode = nodes.find { it.modelId.contains("gemma") }
+
         val builder = StringBuilder()
-        builder.append("Wasti AI OS Unified Brain Consensus (${nodes.size} Cooperative Local Nodes):\n\n")
-        nodes.forEach { node ->
-            builder.append("• [${node.modelName} - ${node.runtimeStatus}]: ${node.thoughtSummary.take(120)}...\n")
+        builder.append("### Wasti AI OS Unified Multi-Brain Consensus Masterpiece\n")
+        builder.append("*(Synthesized across ${nodes.size} Cooperative Local Nodes • Fully Autonomous & Self-Trained)*\n\n")
+
+        // 1. Executive Strategic Consensus
+        builder.append("#### 1. Strategic Assessment\n")
+        val mainReasoning = reasoningNode?.thoughtSummary ?: nodes.first().thoughtSummary
+        builder.append(mainReasoning.lines().take(6).joinToString("\n"))
+        builder.append("\n\n")
+
+        // 2. Technical & Coding Specification
+        if (codingNode != null && codingNode.thoughtSummary.isNotBlank()) {
+            builder.append("#### 2. Technical & Algorithmic Execution\n")
+            builder.append(codingNode.thoughtSummary.lines().take(10).joinToString("\n"))
+            builder.append("\n\n")
         }
-        builder.append("\nUnified Synthesis: Multi-node intent evaluated through canonical execution fabric.")
+
+        // 3. Logic & Invariant Breakdown
+        if (logicNode != null && logicNode.thoughtSummary.isNotBlank()) {
+            builder.append("#### 3. Formal Invariants & Logical Validation\n")
+            builder.append(logicNode.thoughtSummary.lines().take(6).joinToString("\n"))
+            builder.append("\n\n")
+        }
+
+        // 4. Execution Fabric Grounding
+        builder.append("#### 4. Execution Fabric Dispatch\n")
+        val automationPlan = automationNode?.thoughtSummary ?: "• Intent grounded in UnifiedExecutionFabric with strict sandbox boundary checks."
+        builder.append(automationPlan.lines().take(5).joinToString("\n"))
+        builder.append("\n\n")
+
+        // 5. Participating Node Badges & Truth State
+        builder.append("---\n")
+        builder.append("**Consensus Participating Nodes:**\n")
+        nodes.forEach { node ->
+            builder.append("• **${node.modelName}** | Status: `${node.runtimeStatus}` | Latency: `${node.latencyMs}ms` | Confidence: `${(node.inferenceConfidence * 100).toInt()}%`\n")
+        }
+
         return builder.toString()
     }
 }

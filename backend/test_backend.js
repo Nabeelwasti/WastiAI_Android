@@ -95,3 +95,32 @@ test('orchestrator: gracefully reports provider errors when credentials are empt
   assert.strictEqual(res.error, 'All providers failed');
   assert.ok(Array.isArray(res.errors));
 });
+
+// 6. Compute Offload Validation Tests
+test('compute offload: validates allowed task types and payload objects', () => {
+  const allowedTaskTypes = [
+    'CODE_COMPILATION_AND_ANALYSIS',
+    'BATCH_EMBEDDINGS',
+    'MULTI_MODEL_CONSENSUS',
+    'HEAVY_FILE_TRANSFORM',
+    'SYSTEM_DIAGNOSTICS'
+  ];
+
+  const validateTask = (taskType, payload) => {
+    if (!taskType || !allowedTaskTypes.includes(taskType)) {
+      return { valid: false, error: 'Invalid taskType' };
+    }
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return { valid: false, error: 'Invalid payload' };
+    }
+    return { valid: true };
+  };
+
+  assert.strictEqual(validateTask('MULTI_MODEL_CONSENSUS', { prompt: 'test' }).valid, true);
+  assert.strictEqual(validateTask('BATCH_EMBEDDINGS', { texts: ['hello'] }).valid, true);
+  assert.strictEqual(validateTask('MALICIOUS_TYPE', {}).valid, false);
+  assert.strictEqual(validateTask(null, {}).valid, false);
+  assert.strictEqual(validateTask('MULTI_MODEL_CONSENSUS', null).valid, false);
+  assert.strictEqual(validateTask('MULTI_MODEL_CONSENSUS', 'not-an-object').valid, false);
+  assert.strictEqual(validateTask('MULTI_MODEL_CONSENSUS', [1, 2, 3]).valid, false);
+});

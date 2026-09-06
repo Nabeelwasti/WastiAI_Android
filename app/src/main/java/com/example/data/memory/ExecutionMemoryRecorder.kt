@@ -137,6 +137,19 @@ object ExecutionMemoryRecorder {
                 importanceScore = importance
             )
             Log.d(TAG, "Recorded execution graph for task ${record.taskId} with outcome: $outcomeStr")
+
+            // Self-Training Feedback Loop: Distill verified successes into reusable learned skills
+            if (record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED || record.isSuccess == true) {
+                try {
+                    com.example.data.ai.engine.SelfTrainingKnowledgeDistillationEngine.recordVerifiedInteractionAndDistill(
+                        taskPrompt = record.goal,
+                        successfulExecutionEvidence = record.verificationEvidence ?: "Verified execution evidence",
+                        winningModelId = record.selectedNode
+                    )
+                } catch (distillErr: Exception) {
+                    Log.w(TAG, "Self-training knowledge distillation skipped: ${distillErr.message}")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to persist execution record to MemoryManager", e)
         }
