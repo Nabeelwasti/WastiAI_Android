@@ -1,7 +1,15 @@
 package com.example.data.agent.runtime
 
+import com.example.data.credential.CredentialRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * Stage 3 Task 3: Remote Sandbox Code Execution Provider.
@@ -9,9 +17,9 @@ import kotlinx.coroutines.withContext
  * Does NOT hard-code credentials or endpoints into core runtime.
  */
 class RemoteSandboxCodeExecutionProvider(
-    private val endpointUrlSupplier: () -> String? = { null },
-    private val apiKeySupplier: () -> String? = { null },
-    private val httpClientAdapter: RemoteSandboxHttpClient? = null
+    private val endpointUrlSupplier: () -> String? = { CredentialRegistry.getRawValue("REMOTE_SANDBOX_URL") ?: CredentialRegistry.getRawValue("JUDGE0_URL") },
+    private val apiKeySupplier: () -> String? = { CredentialRegistry.getRawValue("REMOTE_SANDBOX_API_KEY") ?: CredentialRegistry.getRawValue("JUDGE0_API_KEY") },
+    private val httpClientAdapter: RemoteSandboxHttpClient? = DefaultRemoteSandboxHttpClient
 ) : CodeExecutionProvider {
 
     interface RemoteSandboxHttpClient {
@@ -158,6 +166,85 @@ class RemoteSandboxCodeExecutionProvider(
                 executionTimeMs = System.currentTimeMillis() - startTime,
                 status = ExecutionStatus(isSuccess = false, message = "NETWORK_ERROR: ${e.message}"),
                 errorType = ExecutionErrorType.NETWORK
+            )
+        }
+    }
+}
+
+/**
+ * Production OkHttp-based implementation for remote code execution sandboxes.
+ */
+object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.RemoteSandboxHttpClient {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    override suspend fun postExecutionRequest(
+        endpoint: String,
+        apiKey: String?,
+        request: ExecutionRequest
+    ): RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse = withContext(Dispatchers.IO) {
+        try {
+            val json = JSONObject().apply {
+                put("executable", request.executable)
+                put("arguments", JSONArray(request.arguments))
+                put("workingDirectory", request.workingDirectory)
+                put("language", request.language ?: "")
+                put("timeoutMs", request.timeoutMs)
+                val envObj = JSONObject()
+                request.environment.forEach { (k, v) -> envObj.put(k, v) }
+                put("environment", envObj)
+            }
+            val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+            val reqBuilder = Request.Builder().url(endpoint).post(body)
+            if (!apiKey.isNullOrBlank()) {
+                reqBuilder.header("Authorization", "Bearer $apiKey")
+                reqBuilder.header("x-api-key", apiKey)
+            }
+            client.newCall(reqBuilder.build()).execute().use { resp ->
+                val respBody = resp.body?.string().orEmpty()
+                val isAuthFailed = resp.code == 401 || resp.code == 403
+                val isQuota = resp.code == 429
+                val isServiceDown = resp.code >= 500
+                if (resp.isSuccessful) {
+                    try {
+                        val parsed = JSONObject(respBody)
+                        RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                            statusCode = resp.code,
+                            stdout = parsed.optString("stdout", ""),
+                            stderr = parsed.optString("stderr", ""),
+                            exitCode = parsed.optInt("exitCode", 0),
+                            compileOutput = parsed.optString("compileOutput", null)
+                        )
+                    } catch (_: Exception) {
+                        RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                            statusCode = resp.code,
+                            stdout = respBody,
+                            exitCode = 0
+                        )
+                    }
+                } else {
+                    RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                        statusCode = resp.code,
+                        stderr = respBody,
+                        isAuthFailed = isAuthFailed,
+                        isQuotaExhausted = isQuota,
+                        isServiceUnavailable = isServiceDown
+                    )
+                }
+            }
+        } catch (e: java.net.SocketTimeoutException) {
+            RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                statusCode = 408,
+                isTimedOut = true,
+                stderr = "Socket timeout connecting to remote sandbox"
+            )
+        } catch (e: Exception) {
+            RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                statusCode = 500,
+                isServiceUnavailable = true,
+                stderr = "Remote sandbox HTTP error: ${e.message}"
             )
         }
     }

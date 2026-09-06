@@ -10,6 +10,7 @@ import com.example.data.ai.engine.StreamingEngine
 import com.example.data.ai.engine.TokenUsageTracker
 import com.example.data.ai.engine.ToolCallingEngine
 import com.example.data.ai.model.ProviderCapability
+import com.example.data.ai.model.ToolCallDefinition
 import com.example.data.ai.model.ProviderHealth
 import com.example.data.ai.model.ProviderRequest
 import com.example.data.ai.model.ProviderResponse
@@ -76,6 +77,9 @@ object AIManager {
             capabilityRegistry.registerProvider(localProvider)
             healthMonitor.initializeProvider(localProvider.id, localProvider.name)
         }
+
+        // Register core tools into ToolCallingEngine for LLM tool invocation
+        registerCoreToolsInCallingEngine()
     }
 
     suspend fun execute(
@@ -142,4 +146,99 @@ object AIManager {
     fun getUsageState(): StateFlow<Map<String, UsageStats>> = tokenUsageTracker.usageFlow
 
     fun getDailyCostState(): StateFlow<Double> = costTracker.dailyCostFlow
+
+    private fun registerCoreToolsInCallingEngine() {
+        for (tool in com.example.data.tool.ToolRegistry.getAllTools()) {
+            toolCallingEngine.registerTool(
+                ToolCallDefinition(
+                    name = tool.id,
+                    description = tool.description,
+                    parametersJsonSchema = tool.parametersJsonSchema
+                )
+            ) { paramsJson ->
+                val paramsMap = try {
+                    val obj = org.json.JSONObject(paramsJson)
+                    val map = mutableMapOf<String, Any>()
+                    obj.keys().forEach { k -> map[k] = obj.get(k) }
+                    map
+                } catch (_: Exception) {
+                    emptyMap<String, Any>()
+                }
+                com.example.data.tool.ToolRegistry.executeTool(tool.id, paramsMap)
+            }
+        }
+
+        // Core workspace file and execution tools routed through UnifiedExecutionFabric
+        toolCallingEngine.registerTool(
+            ToolCallDefinition(
+                name = "read_file",
+                description = "Reads utf-8 text file content safely within the workspace boundary.",
+                parametersJsonSchema = """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"""
+            )
+        ) { paramsJson ->
+            val path = try { org.json.JSONObject(paramsJson).optString("path", "") } catch (_: Exception) { "" }
+            val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                capabilityId = "read_file",
+                parameters = mapOf("path" to path)
+            )
+            com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req).output
+        }
+
+        toolCallingEngine.registerTool(
+            ToolCallDefinition(
+                name = "write_file",
+                description = "Writes utf-8 text content to a file safely within the workspace boundary.",
+                parametersJsonSchema = """{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}"""
+            )
+        ) { paramsJson ->
+            val (path, content) = try {
+                val obj = org.json.JSONObject(paramsJson)
+                Pair(obj.optString("path", ""), obj.optString("content", ""))
+            } catch (_: Exception) {
+                Pair("", "")
+            }
+            val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                capabilityId = "write_file",
+                parameters = mapOf("path" to path, "content" to content)
+            )
+            com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req).output
+        }
+
+        toolCallingEngine.registerTool(
+            ToolCallDefinition(
+                name = "list_files",
+                description = "Lists files and subdirectories in a workspace path safely.",
+                parametersJsonSchema = """{"type":"object","properties":{"path":{"type":"string"}},"required":[]}"""
+            )
+        ) { paramsJson ->
+            val path = try { org.json.JSONObject(paramsJson).optString("path", ".") } catch (_: Exception) { "." }
+            val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                capabilityId = "list_files",
+                parameters = mapOf("path" to path)
+            )
+            com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req).output
+        }
+
+        toolCallingEngine.registerTool(
+            ToolCallDefinition(
+                name = "execute_code",
+                description = "Executes structured code/binaries through sandboxed execution within workspace boundaries.",
+                parametersJsonSchema = """{"type":"object","properties":{"executable":{"type":"string"},"arguments":{"type":"array","items":{"type":"string"}},"workingDirectory":{"type":"string"},"language":{"type":"string"}},"required":["executable"]}"""
+            )
+        ) { paramsJson ->
+            val paramsMap = try {
+                val obj = org.json.JSONObject(paramsJson)
+                val map = mutableMapOf<String, Any>()
+                obj.keys().forEach { k -> map[k] = obj.get(k) }
+                map
+            } catch (_: Exception) {
+                emptyMap<String, Any>()
+            }
+            val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                capabilityId = "execute_code",
+                parameters = paramsMap
+            )
+            com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req).output
+        }
+    }
 }

@@ -66,23 +66,23 @@ object IntegrationAuditRegistry {
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "GitHub API Integration",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "Data structures declared; live repo mutations disabled in runtime policy"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Backend client and patch endpoints implemented; live repository mutations require runtime GITHUB_TOKEN"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Web Scraping / Search",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "Search contract declared; requires external network endpoint configuration"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Implemented via WebSearchEngine (Google Search & DuckDuckGo APIs); live query requires internet connection"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Deep Research Engine",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "Research workflow contract defined; live web crawling not connected in unit runtime"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "Deep research synthesis engine implemented with evidence citation analysis; live execution requires network connectivity"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Cloud Sync / Deployment",
-                status = IntegrationStatus.CONTRACT_ONLY,
-                detail = "Cloud contract defined; automatic production deployment disabled in Stage 4"
+                status = IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED,
+                detail = "CloudSyncManager and SyncWorker background sync implemented; automatic live deployment requires cloud backend credentials"
             ),
             IntegrationCapabilityAudit(
                 capabilityName = "Automation Engine",

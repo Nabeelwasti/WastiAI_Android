@@ -34,5 +34,18 @@ class WastiServiceLocatorTest {
         assertNotNull(WastiServiceLocator.capabilityDevelopmentEngine)
         assertNotNull(WastiServiceLocator.skillEvolutionEngine)
         assertNotNull(WastiServiceLocator.integrationAuditRegistry)
+        assertNotNull(WastiServiceLocator.toolRegistry)
+        assertNotNull(WastiServiceLocator.agentModelProvider)
+        assertNotNull(WastiServiceLocator.planner)
+        assertNotNull(WastiServiceLocator.errorAnalyzer)
+
+        // Verify registered safe tools in toolRegistry
+        assertNotNull(WastiServiceLocator.toolRegistry.get("read_file"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("write_file"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("list_files"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("file_exists"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("create_directory"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("patch_file"))
+        assertNotNull(WastiServiceLocator.toolRegistry.get("execute_code"))
     }
 }

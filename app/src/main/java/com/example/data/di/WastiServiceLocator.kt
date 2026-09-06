@@ -68,7 +68,15 @@ object WastiServiceLocator {
     }
 
     val toolRegistry: AgentToolRegistry by lazy {
-        AgentToolRegistry()
+        AgentToolRegistry().apply {
+            register(ReadFileTool(workspaceManager))
+            register(WriteFileTool(workspaceManager))
+            register(ListFilesTool(workspaceManager))
+            register(FileExistsTool(workspaceManager))
+            register(CreateDirectoryTool(workspaceManager))
+            register(PatchFileTool(workspaceManager))
+            register(ExecuteCodeTool(executionProviderRouter))
+        }
     }
 
     val taskManager: AgentTaskManager by lazy {
@@ -96,11 +104,11 @@ object WastiServiceLocator {
     }
 
     val errorAnalyzer: ErrorAnalyzer by lazy {
-        ErrorAnalyzer()
+        ErrorAnalyzer(agentModelProvider)
     }
 
     val agentModelProvider: AgentModelProvider by lazy {
-        RuleBasedAgentModelProvider()
+        AdaptiveAgentModelProvider()
     }
 
     val planner: AgentPlanner by lazy {
@@ -239,6 +247,30 @@ object WastiServiceLocator {
                     supportedLanguages = emptyList(),
                     supportedExecutables = emptyList(),
                     reliabilityRating = 0.0
+                )
+            )
+            registerProvider(
+                LocalAndroidProvider(workspaceManager),
+                ProviderCapabilityAdvertisement(
+                    providerId = "local_android_provider",
+                    providerName = "Local Android Process Provider",
+                    supportedLanguages = listOf("sh", "bash", "python", "python3", "kotlin", "java", "javac", "kotlinc"),
+                    supportedExecutables = LocalAndroidProvider.DEFAULT_ALLOWED_EXECUTABLES.toList(),
+                    requiresNetwork = false,
+                    maxDurationMs = 60000L,
+                    reliabilityRating = 0.95
+                )
+            )
+            registerProvider(
+                RemoteSandboxCodeExecutionProvider(),
+                ProviderCapabilityAdvertisement(
+                    providerId = "remote_sandbox_provider",
+                    providerName = "Remote Sandbox Code Execution Provider",
+                    supportedLanguages = listOf("python", "javascript", "typescript", "java", "c", "cpp", "go", "rust"),
+                    supportedExecutables = listOf("python3", "node", "javac", "java", "gcc", "g++", "go", "rustc"),
+                    requiresNetwork = true,
+                    maxDurationMs = 60000L,
+                    reliabilityRating = 0.85
                 )
             )
         }
