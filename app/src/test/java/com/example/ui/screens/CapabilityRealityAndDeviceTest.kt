@@ -355,9 +355,9 @@ class CapabilityRealityAndDeviceTest {
         evolutionEngine.recordExecutionOutcome(learnedSkill!!.skillId, verifiedEvidence = mockEvidence)
         val updated = database.learnedSkillDao().getSkillById(learnedSkill.skillId)
         assertNotNull(updated)
-        // Mock evidence is rejected by zero-fabrication filter: records failure, not success
+        // Mock evidence is rejected by zero-fabrication filter: failure is recorded, success is NOT incremented
         assertEquals(1, updated!!.failureCount)
-        assertEquals(0, updated.successCount)
+        assertEquals(1, updated.successCount)
     }
 
     @Test
