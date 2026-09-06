@@ -81,7 +81,7 @@ fun OperationsDashboardScreen() {
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Telemetry & Health", "Lead Radar & CRM", "Invoices & Ledger", "Background Maintenance", "AI Quality Scores", "Tools & Workflows")
 
-    var customKeywordInput by remember { mutableStateOf("Video Editing & Graphic Design") }
+    var customKeywordInput by remember { mutableStateOf("Creative, Digital & Technical Services") }
     var isScanningLeads by remember { mutableStateOf(false) }
     var selectedKanbanFilter by remember { mutableStateOf<LeadStatus?>(null) }
     var selectedCrmStageFilter by remember { mutableStateOf<String?>(null) }
@@ -501,6 +501,42 @@ fun OperationsDashboardScreen() {
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
+                                }
+                            }
+
+                            Text("Agency Service Lanes:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val serviceLanes = listOf(
+                                    "All Services" to "Creative, Digital & Technical Services",
+                                    "Branding & Design" to "Graphic Design & Branding",
+                                    "Visuals & 3D" to "Advanced Visuals & Motion Graphics",
+                                    "Web & Apps" to "Web & App Solutions",
+                                    "AI Automation" to "AI Integration & Automation",
+                                    "SEO & Growth" to "Digital Presence & SEO",
+                                    "Copywriting" to "Professional Copywriting & Content Creation",
+                                    "B2B Outreach" to "Corporate Outreach & B2B Campaigns",
+                                    "DMCA Protection" to "DMCA Content Protection",
+                                    "Screen Printing" to "Screen Printing & Production Design"
+                                )
+                                items(serviceLanes) { (laneLabel, queryVal) ->
+                                    FilterChip(
+                                        selected = customKeywordInput == queryVal,
+                                        onClick = {
+                                            customKeywordInput = queryVal
+                                            if (!isScanningLeads) {
+                                                isScanningLeads = true
+                                                coroutineScope.launch {
+                                                    LeadRadarRepository.scanAndEvaluateLeads(context, queryVal)
+                                                    isScanningLeads = false
+                                                }
+                                            }
+                                        },
+                                        label = { Text(laneLabel, fontSize = 10.sp) },
+                                        modifier = Modifier.height(28.dp)
+                                    )
                                 }
                             }
 
@@ -1521,6 +1557,18 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                 ) {
                     Text(if (expandedPitch) "Hide Pitch" else "Pitch", fontSize = 10.sp)
                 }
+
+                if (lead.link.startsWith("http")) {
+                    OutlinedButton(
+                        onClick = { LeadRadarRepository.dispatchWebsiteDirect(context, lead.link) },
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Web", fontSize = 10.sp)
+                    }
+                }
             }
 
             if (expandedPitch && lead.draftedPitch.isNotBlank()) {
@@ -1843,6 +1891,23 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Call", fontSize = 10.sp)
+                }
+
+                // SMS / Direct Message Button
+                OutlinedButton(
+                    onClick = {
+                        com.example.data.core.LeadRadarRepository.dispatchSmsDirect(
+                            context = context,
+                            phone = prospect.phone,
+                            message = displayPitch
+                        )
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("SMS", fontSize = 10.sp)
                 }
 
                 // Website Button

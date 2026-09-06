@@ -139,7 +139,7 @@ object LeadScraperEngine {
         if (rawItems.isEmpty()) {
             Log.i(TAG, "RSS fetch returned 0 items. Intercepting flow and searching live web for leads...")
             try {
-                val searchQuery = "latest freelance jobs for graphic design video editing"
+                val searchQuery = if (query.isNotBlank()) "latest freelance jobs for $query" else "latest freelance jobs for graphic design web development ai automation"
                 val searchResultJson = com.example.data.ops.WebSearchEngine.search(searchQuery, context)
                 val webLeads = parseSearchResultsToLeadItems(searchResultJson)
                 rawItems.addAll(webLeads)
@@ -198,14 +198,27 @@ object LeadScraperEngine {
         val textLower = jobPostText.lowercase()
 
         val matchedSkills = skillMatrix.services.filter { skill ->
-            val keywords = when (skill) {
-                "Graphic Design" -> listOf("graphic", "design", "logo", "brand", "visual", "photoshop", "illustrator", "banner", "poster")
-                "Video Editing" -> listOf("video", "edit", "editor", "reel", "youtube", "premiere", "after effects", "clip", "montage")
-                "AutoCAD" -> listOf("autocad", "cad", "2d", "3d", "architectural", "drafting", "floor plan", "dwg")
-                "CorelDRAW" -> listOf("coreldraw", "corel", "vector", "print", "cdr")
-                "Canva" -> listOf("canva", "social media", "template", "post", "infographic")
-                "DMCA Takedowns" -> listOf("dmca", "takedown", "copyright", "infringement", "protection", "removal", "piracy")
-                "AI Automation" -> listOf("ai", "automation", "python", "gpt", "workflow", "bot", "script", "llm", "agent")
+            val keywords = when {
+                skill.contains("Graphic", ignoreCase = true) || skill.contains("Branding", ignoreCase = true) || skill.contains("Canva", ignoreCase = true) || skill.contains("Corel", ignoreCase = true) ->
+                    listOf("graphic", "design", "logo", "brand", "visual", "photoshop", "illustrator", "banner", "poster", "signboard", "menu", "stationery", "canva", "coreldraw", "vector")
+                skill.contains("Advanced Visuals", ignoreCase = true) || skill.contains("Motion", ignoreCase = true) || skill.contains("Video", ignoreCase = true) || skill.contains("AutoCAD", ignoreCase = true) || skill.contains("CAD", ignoreCase = true) ->
+                    listOf("2d", "3d", "motion", "video", "photo", "edit", "editor", "portrait", "architectural", "rendering", "modeling", "reel", "after effects", "premiere", "blender", "clip", "montage", "autocad", "cad", "dwg")
+                skill.contains("Screen Printing", ignoreCase = true) || skill.contains("Production", ignoreCase = true) || skill.contains("Print", ignoreCase = true) ->
+                    listOf("screen print", "printing", "production", "pre-press", "apparel", "merchandise", "artwork", "t-shirt")
+                skill.contains("Web", ignoreCase = true) || skill.contains("App", ignoreCase = true) || skill.contains("Software", ignoreCase = true) ->
+                    listOf("web", "website", "app", "portal", "attendance", "software", "development", "frontend", "backend", "react", "wordpress", "mobile", "full stack", "fullstack")
+                skill.contains("AI", ignoreCase = true) || skill.contains("Automation", ignoreCase = true) ->
+                    listOf("ai", "automation", "assistant", "detection", "bot", "workflow", "gpt", "llm", "agent", "python", "zapier", "n8n")
+                skill.contains("Digital Presence", ignoreCase = true) || skill.contains("SEO", ignoreCase = true) || skill.contains("Marketing", ignoreCase = true) ->
+                    listOf("seo", "social media", "marketing", "consulting", "ranking", "traffic", "ads", "google ads", "meta")
+                skill.contains("Copywriting", ignoreCase = true) || skill.contains("Content", ignoreCase = true) || skill.contains("Writing", ignoreCase = true) || skill.contains("Lyrics", ignoreCase = true) ->
+                    listOf("copywriting", "content", "ebook", "e-book", "poetry", "lyrics", "writing", "article", "newsletter", "script")
+                skill.contains("Corporate Outreach", ignoreCase = true) || skill.contains("B2B", ignoreCase = true) ->
+                    listOf("outreach", "cold email", "b2b", "procurement", "campaign", "lead generation", "sales")
+                skill.contains("DMCA", ignoreCase = true) || skill.contains("Protection", ignoreCase = true) || skill.contains("Takedown", ignoreCase = true) ->
+                    listOf("dmca", "copyright", "takedown", "infringement", "stolen content", "protection", "removal", "piracy")
+                skill.contains("Instructional", ignoreCase = true) || skill.contains("File", ignoreCase = true) || skill.contains("Academic", ignoreCase = true) ->
+                    listOf("instructional", "academic", "file management", "curriculum", "training", "course")
                 else -> listOf(skill.lowercase())
             }
             keywords.any { textLower.contains(it) }
@@ -237,7 +250,8 @@ object LeadScraperEngine {
             I am ready to start immediately. Let's discuss your project requirements in detail!
 
             Sincerely,
-            Wasti AI Lead Radar Specialist
+            ${skillMatrix.ownerName}
+            ${skillMatrix.ownerTitle}
         """.trimIndent()
 
         return LeadEvaluationResult(

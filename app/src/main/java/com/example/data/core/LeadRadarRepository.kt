@@ -118,13 +118,14 @@ object LeadRadarRepository {
         var country = "Pending Discovery"
         var region = "Pending Discovery"
         var websiteUrl = if (lead.link.startsWith("http")) lead.link else "Pending Discovery"
-        var opportunityNature = lead.category.ifBlank { "Video Editing" }
+        var opportunityNature = lead.category.ifBlank { "Creative & Technical Solutions" }
         var aiDraftedMessage = lead.draftedPitch
 
         // Step 1: Gemini Intelligence Analysis
         try {
             val geminiPrompt = """
                 Analyze this lead/prospect information and extract detailed CRM fields in raw JSON format.
+                Agency Owner: Syed Nabeel Wasti (Creative, Digital & Technical Solutions Specialist)
                 Lead Title: "${lead.title}"
                 Lead Description: "${lead.description}"
                 Link: "${lead.link}"
@@ -137,13 +138,13 @@ object LeadRadarRepository {
                 - email (String, valid email address or "Pending Discovery")
                 - phone (String, valid phone number or "Pending Discovery")
                 - websiteUrl (String, website URL or "Pending Discovery")
-                - opportunityNature (String, e.g. "Video Editing", "Graphic Design", "AI Automation")
-                - aiDraftedMessage (String, a personalized 2-sentence high-converting client outreach pitch)
+                - opportunityNature (String, e.g. "Graphic Design & Branding", "Web & App Solutions", "AI Integration & Automation", "Advanced Visuals", "DMCA Protection")
+                - aiDraftedMessage (String, a personalized 2-sentence high-converting client outreach pitch tailored to their needs and signed off by Syed Nabeel Wasti)
             """.trimIndent()
 
             val aiResp = com.example.data.ai.AIManager.execute(
                 prompt = geminiPrompt,
-                systemInstruction = "You are a CRM Data Intelligence Agent. Return ONLY valid JSON."
+                systemInstruction = "You are a CRM Data Intelligence Agent for Syed Nabeel Wasti's agency. Return ONLY valid JSON."
             )
 
             if (!aiResp.isError && aiResp.content.isNotBlank()) {
@@ -285,7 +286,7 @@ object LeadRadarRepository {
                         whatsappNumber = extractedPhone,
                         websiteUrl = if (lead.link.startsWith("http")) lead.link else "Pending Discovery",
                         leadSource = "Web Scraper",
-                        opportunityNature = lead.category.ifBlank { "Video Editing" },
+                        opportunityNature = lead.category.ifBlank { "Creative & Technical Solutions" },
                         status = "NEW",
                         aiDraftedMessage = lead.draftedPitch,
                         title = lead.title,
@@ -471,6 +472,25 @@ object LeadRadarRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Error launching Call Intent", e)
             Toast.makeText(context, "Unable to launch dialer", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun dispatchSmsDirect(context: Context, phone: String, message: String) {
+        val cleanPhone = phone.replace(Regex("[^0-9+]"), "")
+        val uriStr = if (cleanPhone.isNotBlank() && cleanPhone != "Pending Discovery") {
+            "smsto:$cleanPhone"
+        } else {
+            "smsto:"
+        }
+        try {
+            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse(uriStr)).apply {
+                putExtra("sms_body", message)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error launching SMS Intent", e)
+            dispatchViaWhatsApp(context, message)
         }
     }
 
