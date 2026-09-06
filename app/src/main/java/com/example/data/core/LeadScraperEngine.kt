@@ -235,24 +235,46 @@ object LeadScraperEngine {
         val primaryService = matchedSkills.firstOrNull() ?: skillMatrix.services.first()
         val skillsStr = if (matchedSkills.isNotEmpty()) matchedSkills.joinToString(", ") else skillMatrix.formatSkillSummary()
 
-        val pitch = """
-            Respected Hiring Client,
+        val isUrdu = jobPostText.any { it in '\u0600'..'\u06FF' }
+        val pitch = if (isUrdu) {
+            """
+                محترم کلائنٹ،
 
-            I came across your job request ("${jobPostText.take(90)}...") and I am exceptionally equipped to deliver this with top-tier professional precision.
+                میں نے آپ کی ضرورت ("${jobPostText.take(90)}...") دیکھی۔ میں ${skillMatrix.agencyName} کے پلیٹ فارم سے آپ کے اس کام کو بہترین اور منافع بخش حقیقت میں بدلنے کے لیے مکمل طور پر تیار ہوں۔
 
-            As an experienced specialist in $skillsStr, I bring end-to-end expertise in $primaryService, fast delivery timelines, and polished execution.
+                میری اہم خدمات:
+                • $skillsStr
+                • تیز رفتار، معیاری اور خودکار ڈیلیوری
+                • کام اور بزنس آئیڈیا پر مفت مشورہ (Free Consultation)
 
-            Why Choose My Services:
-            • Direct Mastery: ${skillMatrix.services.take(4).joinToString(", ")}.
-            • Complete End-to-End Workflow & Rapid Turnarounds.
-            • 100% Client Satisfaction & Revisions Guarantee.
+                رابطہ کریں:
+                👤 ${skillMatrix.ownerName}
+                🏢 ${skillMatrix.agencyName}
+                📞 کال / واٹس ایپ: ${skillMatrix.ownerPhone} (${skillMatrix.ownerPhoneInternational})
+                📧 ای میل: ${skillMatrix.ownerEmail}
+            """.trimIndent()
+        } else {
+            """
+                Respected Hiring Client,
 
-            I am ready to start immediately. Let's discuss your project requirements in detail!
+                I came across your job request ("${jobPostText.take(90)}...") and am exceptionally equipped to deliver this with top-tier professional precision.
 
-            Sincerely,
-            ${skillMatrix.ownerName}
-            ${skillMatrix.ownerTitle}
-        """.trimIndent()
+                Through ${skillMatrix.agencyName}, I bring specialized expertise in $skillsStr, rapid delivery timelines, and guaranteed polish.
+
+                Why Choose ${skillMatrix.agencyName}:
+                • Direct Mastery: ${skillMatrix.services.take(4).joinToString(", ")}.
+                • Complete End-to-End Execution & Automated Workflows.
+                • 100% Free Project Scoping & Consultation.
+
+                I am ready to start immediately. Let's discuss your project goals!
+
+                Sincerely,
+                ${skillMatrix.ownerName}
+                ${skillMatrix.agencyName}
+                📞 Call/WhatsApp: ${skillMatrix.ownerPhoneInternational} (${skillMatrix.ownerPhone})
+                📧 Email: ${skillMatrix.ownerEmail}
+            """.trimIndent()
+        }
 
         return LeadEvaluationResult(
             matchScore = baseScore,

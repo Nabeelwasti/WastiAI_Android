@@ -468,7 +468,8 @@ fun OperationsDashboardScreen() {
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("Custom Client Scraping Profile", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("ThriveBridge Growth Solutions — Lead Radar", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Syed Nabeel Wasti • Call/WA: 0306 7370864 • wastinabeel99@gmail.com", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),

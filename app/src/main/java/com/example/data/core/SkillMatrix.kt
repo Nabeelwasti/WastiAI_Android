@@ -7,8 +7,15 @@ package com.example.data.core
  */
 data class SkillMatrix(
     val ownerName: String = "Syed Nabeel Wasti",
+    val agencyName: String = "ThriveBridge Growth Solutions",
     val ownerTitle: String = "Creative, Digital & Technical Solutions Specialist",
+    val ownerPhone: String = "03067370864",
+    val ownerPhoneInternational: String = "+923067370864",
+    val ownerEmail: String = "wastinabeel99@gmail.com",
+    val targetMarkets: List<String> = listOf("Global", "USA", "UAE", "Pakistan"),
+    val freeConsultationOffer: String = "Consultation is 100% free. Contact anytime to discuss business growth, workflows, or project roadmaps.",
     val description: String = "Extensive suite of creative, digital, and technical services bridging high-end design, advanced AI integration, and practical corporate solutions.",
+    val urduDescription: String = "آپ کے کاروبار کو بڑھانے کے لیے ہر قسم کی ڈیجیٹل اور کریئیٹو سروسز۔ تھرائیو برج گروتھ سولیوشنز (سید نبیل واسطی)",
     val services: List<String> = listOf(
         "Graphic Design & Branding",
         "Advanced Visuals & Motion Graphics",
