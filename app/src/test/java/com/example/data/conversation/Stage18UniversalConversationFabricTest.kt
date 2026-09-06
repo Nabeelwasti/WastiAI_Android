@@ -273,8 +273,12 @@ class Stage18UniversalConversationFabricTest {
             )
         )
 
-        // Yield to allow event bus collection
-        kotlinx.coroutines.delay(100)
+        // Await background collection on Dispatchers.Default
+        val start = System.currentTimeMillis()
+        while (fabric.activeContext.value.activeExecutionState != ConversationExecutionState.COMPLETED && System.currentTimeMillis() - start < 4000L) {
+            kotlinx.coroutines.delay(50)
+            Thread.sleep(25)
+        }
 
         val updatedCtx = fabric.activeContext.value
         assertEquals(ConversationExecutionState.COMPLETED, updatedCtx.activeExecutionState)
