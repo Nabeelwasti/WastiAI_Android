@@ -53,6 +53,7 @@ class LeadSyncWorker(
                     ExistingPeriodicWorkPolicy.KEEP,
                     syncRequest
                 )
+                WastiWorkManagerLifecycleTracker.recordWorkEnqueued(WORK_NAME, "LeadSyncWorker", isPeriodic = true)
                 Log.i(TAG, "Lead & Stripe Invoice periodic WorkManager worker scheduled successfully.")
                 true
             } catch (e: Exception) {
@@ -63,6 +64,7 @@ class LeadSyncWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        WastiWorkManagerLifecycleTracker.recordWorkStarted(WORK_NAME, "LeadSyncWorker", runAttemptCount)
         try {
             Log.d(TAG, "Starting background LeadSyncWorker execution...")
             val context = applicationContext
@@ -88,9 +90,21 @@ class LeadSyncWorker(
             val StripeSyncedInvoices = ClientInvoiceManager.syncPaymentsWithStripe(context)
             Log.d(TAG, "Stripe payment sync completed. Updated $StripeSyncedInvoices invoices.")
 
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "LeadSyncWorker",
+                true,
+                "Processed ${evaluatedLeads.size} leads, synced $StripeSyncedInvoices invoices"
+            )
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error executing LeadSyncWorker background task", e)
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "LeadSyncWorker",
+                false,
+                "Exception: ${e.message}"
+            )
             Result.retry()
         }
     }

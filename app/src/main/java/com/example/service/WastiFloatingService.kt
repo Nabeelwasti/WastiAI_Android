@@ -152,15 +152,40 @@ class WastiFloatingService : Service() {
         }
 
         createNotificationChannel()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val serviceType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildForegroundNotification(),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            } else {
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildForegroundNotification(),
                 0
-            }
-            startForeground(NOTIFICATION_ID, buildForegroundNotification(), serviceType)
+            )
         } else {
             startForeground(NOTIFICATION_ID, buildForegroundNotification())
+        }
+
+        // [P0-37] Overlay Permission Verification
+        if (!com.example.assistant.PermissionManager.canDrawOverlays(this)) {
+            Log.w(TAG, "SYSTEM_ALERT_WINDOW (overlay) permission not granted. Stopping WastiFloatingService.")
+            stopSelf()
+            return
+        }
+
+        // [P0-37] Emergency Stop Integration
+        com.example.data.agent.runtime.WastiEmergencyStopController.registerScope(serviceScope)
+        serviceScope.launch {
+            com.example.data.agent.runtime.WastiEmergencyStopController.stopStateFlow.collectLatest { snap ->
+                if (snap.isStopped) {
+                    Log.w(TAG, "Emergency stop active in WastiFloatingService: hiding overlay")
+                    withContext(Dispatchers.Main) {
+                        floatingContainer?.visibility = View.GONE
+                    }
+                }
+            }
         }
 
         initTextToSpeech()

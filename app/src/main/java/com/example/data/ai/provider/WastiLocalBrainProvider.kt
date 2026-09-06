@@ -13,6 +13,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+/**
+ * Explicit Progressive Runtime States for Local Brain Providers.
+ * Prevents heuristic fallback from masquerading as verified neural inference.
+ */
+enum class LocalBrainRuntimeState {
+    DECLARED,
+    CONFIGURED,
+    MODEL_PRESENT,
+    NATIVE_RUNTIME_PRESENT,
+    EXECUTABLE_NEURAL,
+    VERIFIED_NEURAL_INFERENCE,
+    HEURISTIC_NON_NEURAL_FALLBACK
+}
+
 class WastiLocalBrainProvider(
     val modelDescriptor: OpenSourceModelDescriptor
 ) : AIProvider {
@@ -25,9 +39,12 @@ class WastiLocalBrainProvider(
         ProviderCapability.MULTI_TURN
     )
 
+    /**
+     * Truthful availability: returns true ONLY when genuine neural execution is active.
+     * Heuristic fallback availability is exposed separately via [isHeuristicFallbackAvailable].
+     */
     override fun isAvailable(): Boolean {
-        // Local brain provider is declared and operational via fallback domain synthesizer or local weights
-        return true
+        return isNeuralInferenceActive
     }
 
     val isNeuralWeightsPresent: Boolean
@@ -36,8 +53,29 @@ class WastiLocalBrainProvider(
             return ModelArtifactManager.isWeightsPresent(appCtx, id)
         }
 
+    val isNativeRuntimePresent: Boolean
+        get() = com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
+
     val isNeuralInferenceActive: Boolean
-        get() = isNeuralWeightsPresent && com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
+        get() = isNeuralWeightsPresent && isNativeRuntimePresent
+
+    /**
+     * Explicit indicator for deterministic domain heuristic fallback.
+     * Classified as HEURISTIC / NON_NEURAL and cannot satisfy neural production gates.
+     */
+    fun isHeuristicFallbackAvailable(): Boolean = true
+
+    fun getRuntimeState(): LocalBrainRuntimeState {
+        val appCtx = com.example.WastiApplication.instance
+        val hasWeights = appCtx?.let { ModelArtifactManager.isWeightsPresent(it, id) } ?: false
+        val hasNative = com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
+        return when {
+            hasWeights && hasNative -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+            hasWeights -> LocalBrainRuntimeState.MODEL_PRESENT
+            hasNative -> LocalBrainRuntimeState.NATIVE_RUNTIME_PRESENT
+            else -> LocalBrainRuntimeState.HEURISTIC_NON_NEURAL_FALLBACK
+        }
+    }
 
     fun isConfiguredOrDeclared(): Boolean = true
 
@@ -45,34 +83,40 @@ class WastiLocalBrainProvider(
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
         val appCtx = com.example.WastiApplication.instance
-        val hasWeights = appCtx?.let { ModelArtifactManager.isWeightsPresent(it, id) } ?: false
 
-        val content = if (appCtx != null && hasWeights) {
+        val (content, isRealNeural) = if (appCtx != null && isNeuralInferenceActive) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
-            val runtime = WastiLocalModelRuntime(appCtx)
-            runtime.executeInference(
+            val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
+            val result = runtime.executeInferenceDetailed(
                 modelId = id,
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction
             )
+            if (result.status == com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS) {
+                result.output to true
+            } else {
+                executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false
+            }
         } else {
-            // Specialized Native Domain Inference Engine (zero external API keys needed)
-            executeDomainSpecializedInference(request.prompt, request.systemInstruction)
+            // Explicitly classify as HEURISTIC / NON-NEURAL fallback
+            executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false
         }
 
         val latency = System.currentTimeMillis() - startTime
+        val modelLabel = if (isRealNeural) defaultModel else "$defaultModel [HEURISTIC_NON_NEURAL]"
 
         return ProviderResponse(
             content = content,
             providerId = id,
             providerName = name,
-            modelUsed = defaultModel,
+            modelUsed = modelLabel,
             promptTokens = request.prompt.length / 4,
             completionTokens = content.length / 4,
             latencyMs = latency,
             costUsd = 0.0
         )
     }
+
 
     private fun executeDomainSpecializedInference(prompt: String, systemInstruction: String): String {
         val matchingSkills = com.example.data.ai.engine.SelfTrainingKnowledgeDistillationEngine.findMatchingSkills(prompt)
@@ -99,7 +143,7 @@ class WastiLocalBrainProvider(
                     appendLine("// Task: ${prompt.trim()}")
                     appendLine("// Evaluated by: ${modelDescriptor.brandDisplayName}")
                     appendLine("Target Capability: CODING | Sandbox: WRE Native Execution")
-                    appendLine("Verification Status: TEST_VERIFIED")
+                    appendLine("Verification Status: UNVERIFIED_HEURISTIC (Requires WastiVerificationEngine execution)")
                     appendLine("```")
                 }
             }
@@ -108,8 +152,8 @@ class WastiLocalBrainProvider(
                     appendLine("$brandHeader$skillContext")
                     appendLine("### Formal Logic & Invariant Analysis")
                     appendLine("• Input Proposition: \"${prompt.take(100)}\"")
-                    appendLine("• Verification Constraints: Satisfiable within bounded domain.")
-                    appendLine("• Deductive Conclusion: Proposition evaluated with mathematical determinism.")
+                    appendLine("• Constraints: Evaluated within heuristic logical domain.")
+                    appendLine("• Deductive Conclusion: Proposition parsed via deterministic heuristics; awaits formal proof.")
                 }
             }
             com.example.data.ai.model.ModelSpecialization.SYSTEM_AUTOMATION -> {
@@ -118,16 +162,16 @@ class WastiLocalBrainProvider(
                     appendLine("### Autonomous Execution Flow")
                     appendLine("1. Intended Action: Parse user intent from prompt.")
                     appendLine("2. Target Destination: Unified Execution Fabric (Local Android Node).")
-                    appendLine("3. Safety Invariants: Workspace containment verified, emergency stop armed.")
-                    appendLine("4. Execution Ready: Dispatching to native capability router.")
+                    appendLine("3. Safety Invariants: Workspace containment policy enforced, emergency stop armed.")
+                    appendLine("4. Execution Stage: Formatted for dispatch to native capability router pending safety verification.")
                 }
             }
             com.example.data.ai.model.ModelSpecialization.LIGHTWEIGHT_EDGE_EXECUTION -> {
                 buildString {
                     appendLine("$brandHeader$skillContext")
-                    appendLine("• Instant Edge Parse: Intent extracted in 1ms.")
-                    appendLine("• Action Directive: Processed locally without cloud round-trip.")
-                    appendLine("• Execution State: READY.")
+                    appendLine("• Instant Edge Parse: Intent extracted locally.")
+                    appendLine("• Action Directive: Processed via local heuristic rule without cloud round-trip.")
+                    appendLine("• Inference State: HEURISTIC_PARSED.")
                 }
             }
             com.example.data.ai.model.ModelSpecialization.RESEARCH_SYNTHESIS -> {
@@ -135,8 +179,8 @@ class WastiLocalBrainProvider(
                     appendLine("$brandHeader$skillContext")
                     appendLine("### Research & Knowledge Synthesis")
                     appendLine("• Query Subject: \"${prompt.take(90)}\"")
-                    appendLine("• Evidence Correlation: Analyzed across local knowledge base and system reality.")
-                    appendLine("• Key Finding: System is fully operational and grounded in verified runtime facts.")
+                    appendLine("• Evidence Correlation: Analyzed across local knowledge base.")
+                    appendLine("• Synthesis Summary: Synthesized from local domain models; pending execution verification.")
                 }
             }
             com.example.data.ai.model.ModelSpecialization.MULTILINGUAL_TRANSLATION -> {
@@ -151,7 +195,7 @@ class WastiLocalBrainProvider(
                     appendLine("$brandHeader$skillContext")
                     appendLine("Greetings, Sir. I have evaluated your request through Wasti's native intelligence core.")
                     appendLine("Your objective: \"${prompt.trim()}\"")
-                    appendLine("The system is prepared to execute this across our unified reality fabric.")
+                    appendLine("Awaiting verified dispatch instructions across the unified execution fabric.")
                 }
             }
             com.example.data.ai.model.ModelSpecialization.GENERAL_REASONING -> {
@@ -160,8 +204,8 @@ class WastiLocalBrainProvider(
                     appendLine("### Strategic Execution Breakdown")
                     appendLine("• Objective: ${prompt.trim()}")
                     appendLine("• Mode: Deterministic Domain Knowledge Synthesis (Heuristic Fallback)")
-                    appendLine("• Distillation: Grounded in local verified distilled knowledge base")
-                    appendLine("• Recommendation: Proceed with autonomous verified execution.")
+                    appendLine("• Distillation: Grounded in local distilled knowledge base")
+                    appendLine("• Recommendation: Subject action to canonical verification before committing side effects.")
                 }
             }
         }

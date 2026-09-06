@@ -44,6 +44,29 @@ class WastiApplication : Application(), Configuration.Provider {
         com.example.data.di.WastiServiceLocator.init(this)
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
+        // [P0-34] Register Emergency Stop cancellation hooks for WorkManager & Foreground Services
+        try {
+            val stopController = com.example.data.di.WastiServiceLocator.emergencyStopController
+            stopController.registerWorkManagerCancellation { reason ->
+                try {
+                    WastiWorkManagerHelper.getWorkManager(this)?.cancelAllWork()
+                    Log.w("WastiApplication", "Emergency stop triggered ($reason): Cancelled all WorkManager tasks.")
+                } catch (e: Throwable) {
+                    Log.e("WastiApplication", "Error cancelling WorkManager on emergency stop", e)
+                }
+            }
+            stopController.registerCancellationHook("WastiForegroundExecutionService") { reason ->
+                try {
+                    com.example.service.WastiForegroundExecutionService.stopDaemon(this)
+                    Log.w("WastiApplication", "Emergency stop triggered ($reason): Stopped foreground execution daemon.")
+                } catch (e: Throwable) {
+                    Log.e("WastiApplication", "Error stopping foreground service on emergency stop", e)
+                }
+            }
+        } catch (e: Throwable) {
+            Log.e("WastiApplication", "Error registering emergency stop hooks", e)
+        }
+
         try {
             com.google.firebase.FirebaseApp.initializeApp(this)
         } catch (e: Throwable) {

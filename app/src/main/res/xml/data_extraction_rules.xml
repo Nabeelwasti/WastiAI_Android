@@ -5,12 +5,18 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Disallow cloud backup of root sandbox, shared prefs, databases, and heavy model weights -->
+        <exclude domain="root" path="."/>
+        <exclude domain="sharedpref" path="."/>
         <exclude domain="sharedpref" path="wasti_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="wasti_security_prefs.xml"/>
         <exclude domain="sharedpref" path="wasti_chat_drafts_secure.xml"/>
         <exclude domain="sharedpref" path="wasti_secure_vault.xml"/>
         <exclude domain="sharedpref" path="wasti_prefs.xml"/>
         <exclude domain="sharedpref" path="wasti_secret_vault.xml"/>
+        <exclude domain="sharedpref" path="wasti_client_invoices.xml"/>
+        <exclude domain="sharedpref" path="wasti_startup_prefs.xml"/>
+        <exclude domain="database" path="."/>
         <exclude domain="database" path="wasti_os_database"/>
         <exclude domain="database" path="wasti_os_database-wal"/>
         <exclude domain="database" path="wasti_os_database-shm"/>
@@ -18,18 +24,35 @@
         <exclude domain="database" path="wasti_os_v2.db-wal"/>
         <exclude domain="database" path="wasti_os_v2.db-shm"/>
         <exclude domain="file" path="wasti_models/"/>
+        <exclude domain="file" path="models/"/>
+        <exclude domain="file" path="weights/"/>
+        <exclude domain="file" path="vosk-model/"/>
+        <exclude domain="file" path="embedding_models/"/>
+        <exclude domain="file" path="backups/"/>
         <exclude domain="file" path="temp/"/>
     </cloud-backup>
     <device-transfer>
+        <!-- Disallow transfer of encrypted prefs, databases, and model weights across devices without fresh auth -->
+        <exclude domain="sharedpref" path="."/>
         <exclude domain="sharedpref" path="wasti_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="wasti_security_prefs.xml"/>
         <exclude domain="sharedpref" path="wasti_chat_drafts_secure.xml"/>
         <exclude domain="sharedpref" path="wasti_secure_vault.xml"/>
         <exclude domain="sharedpref" path="wasti_secret_vault.xml"/>
+        <exclude domain="sharedpref" path="wasti_client_invoices.xml"/>
+        <exclude domain="database" path="."/>
         <exclude domain="database" path="wasti_os_database"/>
         <exclude domain="database" path="wasti_os_database-wal"/>
         <exclude domain="database" path="wasti_os_database-shm"/>
         <exclude domain="database" path="wasti_os_v2.db"/>
+        <exclude domain="database" path="wasti_os_v2.db-wal"/>
+        <exclude domain="database" path="wasti_os_v2.db-shm"/>
         <exclude domain="file" path="wasti_models/"/>
+        <exclude domain="file" path="models/"/>
+        <exclude domain="file" path="weights/"/>
+        <exclude domain="file" path="vosk-model/"/>
+        <exclude domain="file" path="embedding_models/"/>
+        <exclude domain="file" path="backups/"/>
+        <exclude domain="file" path="temp/"/>
     </device-transfer>
 </data-extraction-rules>

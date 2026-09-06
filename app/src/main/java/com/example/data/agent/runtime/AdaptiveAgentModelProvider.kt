@@ -20,7 +20,8 @@ class AdaptiveAgentModelProvider(
         val availableProviders = AIManager.capabilityRegistry.getAvailableProviders()
         val onlineProvider = availableProviders.firstOrNull { it.id != "offline" && it.isAvailable() }
         if (onlineProvider == null) {
-            return fallback.generatePlan(goal, availableCapabilities)
+            val plan = fallback.generatePlan(goal, availableCapabilities)
+            return plan.copy(isFallback = true, fallbackReason = "No online AI providers available; downgraded to rule-based planner")
         }
 
         return try {
@@ -51,12 +52,28 @@ class AdaptiveAgentModelProvider(
             )
 
             if (response.isError || response.content.isBlank()) {
-                return fallback.generatePlan(goal, availableCapabilities)
+                val plan = fallback.generatePlan(goal, availableCapabilities)
+                return plan.copy(
+                    isFallback = true,
+                    fallbackReason = "Online AI provider '${onlineProvider.name}' failed (${response.errorMessage ?: "Empty content"}); downgraded to rule-based planner"
+                )
             }
 
-            parsePlanResponse(response.content, goal) ?: fallback.generatePlan(goal, availableCapabilities)
-        } catch (_: Throwable) {
-            fallback.generatePlan(goal, availableCapabilities)
+            parsePlanResponse(response.content, goal, onlineProvider.name) ?: run {
+                val plan = fallback.generatePlan(goal, availableCapabilities)
+                plan.copy(
+                    isFallback = true,
+                    fallbackReason = "Failed to parse JSON plan from '${onlineProvider.name}'; downgraded to rule-based planner"
+                )
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val plan = fallback.generatePlan(goal, availableCapabilities)
+            plan.copy(
+                isFallback = true,
+                fallbackReason = "Exception from online planner: ${e.message}; downgraded to rule-based planner"
+            )
         }
     }
 
@@ -64,7 +81,8 @@ class AdaptiveAgentModelProvider(
         val availableProviders = AIManager.capabilityRegistry.getAvailableProviders()
         val onlineProvider = availableProviders.firstOrNull { it.id != "offline" && it.isAvailable() }
         if (onlineProvider == null) {
-            return fallback.analyzeError(errorOutput, context)
+            val diag = fallback.analyzeError(errorOutput, context)
+            return diag.copy(isFallback = true, fallbackReason = "No online AI providers available; downgraded to rule-based diagnostics")
         }
 
         return try {
@@ -90,12 +108,28 @@ class AdaptiveAgentModelProvider(
             )
 
             if (response.isError || response.content.isBlank()) {
-                return fallback.analyzeError(errorOutput, context)
+                val diag = fallback.analyzeError(errorOutput, context)
+                return diag.copy(
+                    isFallback = true,
+                    fallbackReason = "Online AI provider '${onlineProvider.name}' failed (${response.errorMessage ?: "Empty content"}); downgraded to rule-based diagnostics"
+                )
             }
 
-            parseDiagnosticResponse(response.content, errorOutput) ?: fallback.analyzeError(errorOutput, context)
-        } catch (_: Throwable) {
-            fallback.analyzeError(errorOutput, context)
+            parseDiagnosticResponse(response.content, errorOutput) ?: run {
+                val diag = fallback.analyzeError(errorOutput, context)
+                diag.copy(
+                    isFallback = true,
+                    fallbackReason = "Failed to parse JSON diagnostics from '${onlineProvider.name}'; downgraded to rule-based diagnostics"
+                )
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val diag = fallback.analyzeError(errorOutput, context)
+            diag.copy(
+                isFallback = true,
+                fallbackReason = "Exception from online diagnostics: ${e.message}; downgraded to rule-based diagnostics"
+            )
         }
     }
 
@@ -103,7 +137,8 @@ class AdaptiveAgentModelProvider(
         val availableProviders = AIManager.capabilityRegistry.getAvailableProviders()
         val onlineProvider = availableProviders.firstOrNull { it.id != "offline" && it.isAvailable() }
         if (onlineProvider == null) {
-            return fallback.proposeCorrection(diagnostic, context)
+            val corr = fallback.proposeCorrection(diagnostic, context)
+            return corr.copy(isFallback = true, fallbackReason = "No online AI providers available; downgraded to rule-based correction")
         }
 
         return try {
@@ -132,16 +167,32 @@ class AdaptiveAgentModelProvider(
             )
 
             if (response.isError || response.content.isBlank()) {
-                return fallback.proposeCorrection(diagnostic, context)
+                val corr = fallback.proposeCorrection(diagnostic, context)
+                return corr.copy(
+                    isFallback = true,
+                    fallbackReason = "Online AI provider '${onlineProvider.name}' failed (${response.errorMessage ?: "Empty content"}); downgraded to rule-based correction"
+                )
             }
 
-            parseCorrectionResponse(response.content) ?: fallback.proposeCorrection(diagnostic, context)
-        } catch (_: Throwable) {
-            fallback.proposeCorrection(diagnostic, context)
+            parseCorrectionResponse(response.content) ?: run {
+                val corr = fallback.proposeCorrection(diagnostic, context)
+                corr.copy(
+                    isFallback = true,
+                    fallbackReason = "Failed to parse JSON correction from '${onlineProvider.name}'; downgraded to rule-based correction"
+                )
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val corr = fallback.proposeCorrection(diagnostic, context)
+            corr.copy(
+                isFallback = true,
+                fallbackReason = "Exception from online correction: ${e.message}; downgraded to rule-based correction"
+            )
         }
     }
 
-    private fun parsePlanResponse(jsonStr: String, goal: String): ModelPlanResponse? {
+    internal fun parsePlanResponse(jsonStr: String, goal: String, providerSource: String = "AI_ONLINE"): ModelPlanResponse? {
         return try {
             val clean = cleanJson(jsonStr)
             val obj = JSONObject(clean)
@@ -161,14 +212,20 @@ class AdaptiveAgentModelProvider(
                 }
             }
             if (stepsList.isNotEmpty()) {
-                ModelPlanResponse(rawReasoning = reasoning, steps = stepsList, isValid = true)
+                ModelPlanResponse(
+                    rawReasoning = reasoning,
+                    steps = stepsList,
+                    isValid = true,
+                    isNeuralModel = true,
+                    providerSource = providerSource
+                )
             } else null
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun parseDiagnosticResponse(jsonStr: String, errorOutput: String): ModelDiagnosticResponse? {
+    internal fun parseDiagnosticResponse(jsonStr: String, errorOutput: String): ModelDiagnosticResponse? {
         return try {
             val clean = cleanJson(jsonStr)
             val obj = JSONObject(clean)

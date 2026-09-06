@@ -14,13 +14,22 @@ object WastiRiskModel {
     )
 
     private val SENSITIVE_CONFIG_FILES = listOf(
-        "build.gradle", "build.gradle.kts", "androidmanifest.xml", "settings.gradle", "settings.gradle.kts", ".env"
+        "build.gradle", "build.gradle.kts", "androidmanifest.xml", "settings.gradle", "settings.gradle.kts",
+        "proguard-rules.pro", ".env"
+    )
+
+    private val SENSITIVE_COMPONENTS = listOf(
+        "security/", "credential/", "ProductionReadinessGate", "PermissionManager",
+        "WastiEmergencyStopController", "ZeroTrustSentinelEngine", "SelfModificationSafetyEngine",
+        ".github/workflows", "WastiDatabase", "WastiCore", "MainActivity"
     )
 
     fun isProtectedPath(targetPath: String?): Boolean {
-        val lowerPath = targetPath?.lowercase().orEmpty()
+        if (targetPath.isNullOrBlank()) return false
+        val lowerPath = targetPath.replace("\\", "/").lowercase()
         return SENSITIVE_KEYWORDS.any { lowerPath.contains(it) } ||
-                SENSITIVE_CONFIG_FILES.any { lowerPath.endsWith(it) }
+                SENSITIVE_CONFIG_FILES.any { lowerPath.endsWith(it) || lowerPath.contains("/$it") } ||
+                SENSITIVE_COMPONENTS.any { lowerPath.contains(it.lowercase()) }
     }
 
     fun evaluateRisk(

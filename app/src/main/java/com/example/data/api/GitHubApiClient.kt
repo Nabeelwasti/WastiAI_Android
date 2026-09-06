@@ -29,7 +29,7 @@ object GitHubApiClient {
     suspend fun getRecentRepositories(): List<GitHubRepoItem> = withContext(Dispatchers.IO) {
         val pat = CredentialRegistry.getRawValue("WASTI_GIT_FINE_GRAINED_PAT")
             ?: CredentialRegistry.getRawValue("WASTI_GIT_PAT")
-        if (pat.isNullOrBlank()) return@withContext emptyList()
+        if (pat.isNullOrBlank() || CredentialRegistry.isPlaceholder(pat)) return@withContext emptyList()
 
         val request = Request.Builder()
             .url("$BASE_URL/user/repos?sort=updated&per_page=5")
@@ -41,7 +41,7 @@ object GitHubApiClient {
         try {
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
-                val json = response.body?.string() ?: ""
+                val json = response.body?.string().orEmpty()
                 val adapter = moshi.adapter<List<GitHubRepoItem>>(
                     com.squareup.moshi.Types.newParameterizedType(List::class.java, GitHubRepoItem::class.java)
                 )
@@ -50,6 +50,7 @@ object GitHubApiClient {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             emptyList()
         }
     }

@@ -21,13 +21,28 @@ class DeepSeekProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
-        return !key.isNullOrBlank() && key != "MY_DEEPSEEK_API_KEY"
+        return !key.isNullOrBlank() && !CredentialRegistry.isPlaceholder(key)
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
+        val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY")
+        if (key.isNullOrBlank() || CredentialRegistry.isPlaceholder(key)) {
+            return ProviderResponse(
+                content = "",
+                providerId = id,
+                providerName = name,
+                modelUsed = defaultModel,
+                promptTokens = 0,
+                completionTokens = 0,
+                totalTokens = 0,
+                latencyMs = System.currentTimeMillis() - startTime,
+                costUsd = 0.0,
+                success = false,
+                errorMessage = "DeepSeek provider is unavailable: DEEPSEEK_API_KEY is not configured or contains placeholder."
+            )
+        }
         return try {
-            val key = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY").orEmpty()
             val output = DeepSeekClient.generateText(
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction,

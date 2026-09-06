@@ -8,11 +8,26 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Stage 21: Canonical Wasti WASM Sandboxed Runtime Engine.
- * 
- * Provides an isolated, platform-independent WebAssembly execution sandbox
- * for executing untrusted tools, algorithmic transformations, text processing,
- * and data manipulation without compromising host OS security.
+ *
+ * [P0-43] WASM-TRUTH: Truthful classification of WASM sandbox execution.
+ * Explicitly exposes engine capabilities (JVM micro-interpreter for integer MVP subset)
+ * and never falsely claims full native WASI capability when native engines are absent.
  */
+
+enum class WasmEngineType {
+    NATIVE_WASI_ENGINE,       // Native runtime (Wasmtime, Wasmer, Wasm3 JNI)
+    JVM_MICRO_INTERPRETER,    // Lightweight JVM stack interpreter for WASM integer MVP
+    UNAVAILABLE               // No engine available
+}
+
+data class WasmEngineCapability(
+    val engineType: WasmEngineType = WasmEngineType.JVM_MICRO_INTERPRETER,
+    val isNativeEngineAvailable: Boolean = false,
+    val isMicroInterpreterAvailable: Boolean = true,
+    val supportsWasi: Boolean = false,
+    val supportedOpcodeFamilies: List<String> = listOf("i32_arithmetic", "i32_comparison", "i64_const", "control_flow_basic"),
+    val description: String = "Experimental JVM WebAssembly MVP micro-interpreter (integer arithmetic subset; no native WASI runtime present)"
+)
 
 data class WasmModule(
     val id: String,
@@ -20,7 +35,8 @@ data class WasmModule(
     val version: Int,
     val exportedFunctions: List<String>,
     val memoryPages: Int,
-    val rawBytes: ByteArray
+    val rawBytes: ByteArray,
+    val functionOffsets: Map<String, Int> = emptyMap()
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -70,6 +86,19 @@ class WastiWasmRuntime {
         }
     }
 
+    val engineType: WasmEngineType = WasmEngineType.JVM_MICRO_INTERPRETER
+    val isNativeWasmAvailable: Boolean = false
+    val isMicroInterpreterAvailable: Boolean = true
+
+    fun getEngineCapability(): WasmEngineCapability = WasmEngineCapability(
+        engineType = engineType,
+        isNativeEngineAvailable = isNativeWasmAvailable,
+        isMicroInterpreterAvailable = isMicroInterpreterAvailable,
+        supportsWasi = false,
+        supportedOpcodeFamilies = listOf("i32_arithmetic", "i32_comparison", "i64_const", "control_flow_basic"),
+        description = "Experimental JVM WebAssembly MVP micro-interpreter (integer arithmetic subset; no native WASI runtime present)"
+    )
+
     private val loadedModules = ConcurrentHashMap<String, WasmModule>()
     private var totalExecutions: Long = 0L
     private var totalFuelUsed: Long = 0L
@@ -92,8 +121,10 @@ class WastiWasmRuntime {
             }
         }
 
-        // Parse exports and memory requests
+        // Parse exports, memory requests, and function code sections
         val exports = mutableListOf<String>()
+        val exportFuncMap = mutableListOf<Pair<String, Int>>()
+        val functionCodeStarts = mutableListOf<Int>()
         var memoryPages = 1
 
         try {
@@ -131,10 +162,35 @@ class WastiWasmRuntime {
                                 if (expOffset + nameLen <= sectionEnd) {
                                     val name = String(bytecode, expOffset, nameLen, Charsets.UTF_8)
                                     exports.add(name)
-                                    expOffset += nameLen + 1 // skip export kind
-                                    val (_, idxBytes) = readVarUint32(bytecode, expOffset)
+                                    expOffset += nameLen
+                                    val exportKind = if (expOffset < sectionEnd) bytecode[expOffset].toInt() and 0xFF else 0
+                                    expOffset += 1
+                                    val (fIdx, idxBytes) = readVarUint32(bytecode, expOffset)
                                     expOffset += idxBytes
+                                    if (exportKind == 0) {
+                                        exportFuncMap.add(Pair(name, fIdx))
+                                    }
                                 }
+                            }
+                        }
+                    }
+                    10 -> { // Code Section
+                        if (offset < sectionEnd) {
+                            var codeOffset = offset
+                            val (funcCount, fcBytes) = readVarUint32(bytecode, codeOffset)
+                            codeOffset += fcBytes
+                            for (i in 0 until funcCount.coerceAtMost(100)) {
+                                if (codeOffset >= sectionEnd) break
+                                val (bodySize, bsBytes) = readVarUint32(bytecode, codeOffset)
+                                val bodyStart = codeOffset + bsBytes
+                                val (localCount, lcBytes) = readVarUint32(bytecode, bodyStart)
+                                var localsOffset = bodyStart + lcBytes
+                                for (l in 0 until localCount.coerceAtMost(50)) {
+                                    val (_, lCountBytes) = readVarUint32(bytecode, localsOffset)
+                                    localsOffset += lCountBytes + 1
+                                }
+                                functionCodeStarts.add(localsOffset)
+                                codeOffset = bodyStart + bodySize
                             }
                         }
                     }
@@ -150,13 +206,25 @@ class WastiWasmRuntime {
             exports.add("run")
         }
 
+        val functionOffsets = mutableMapOf<String, Int>()
+        for ((name, fIdx) in exportFuncMap) {
+            if (fIdx < functionCodeStarts.size) {
+                functionOffsets[name] = functionCodeStarts[fIdx]
+            }
+        }
+        if (functionOffsets.isEmpty() && functionCodeStarts.isNotEmpty()) {
+            functionOffsets["main"] = functionCodeStarts[0]
+            functionOffsets["run"] = functionCodeStarts[0]
+        }
+
         val module = WasmModule(
             id = moduleId,
             name = moduleName,
             version = 1,
             exportedFunctions = exports,
             memoryPages = memoryPages,
-            rawBytes = bytecode
+            rawBytes = bytecode,
+            functionOffsets = functionOffsets
         )
 
         loadedModules[moduleId] = module
@@ -195,8 +263,11 @@ class WastiWasmRuntime {
         }
 
         try {
-            // Sandboxed Interpreter Simulation
-            var pc = 8
+            val startPc = module.functionOffsets[functionName]
+                ?: module.functionOffsets["main"]
+                ?: module.functionOffsets.values.firstOrNull()
+                ?: 8
+            var pc = startPc
             val bytes = module.rawBytes
 
             while (pc < bytes.size && fuel < fuelLimit) {
@@ -207,6 +278,7 @@ class WastiWasmRuntime {
                 when (opcode) {
                     0x00 -> { /* nop */ }
                     0x01 -> { /* block */ }
+                    0x0B -> { /* end */ break }
                     0x0F -> { /* return */ break }
                     0x1A -> { /* drop */ if (stack.isNotEmpty()) stack.pop() }
                     0x41 -> { // i32.const
@@ -240,6 +312,12 @@ class WastiWasmRuntime {
                         val divisor = if (b.toInt() == 0) 1 else b.toInt()
                         stack.push((a.toInt() / divisor).toLong())
                     }
+                    0x6F -> { // i32.rem_s
+                        val b = stack.popOrNull() ?: 1L
+                        val a = stack.popOrNull() ?: 0L
+                        val divisor = if (b.toInt() == 0) 1 else b.toInt()
+                        stack.push((a.toInt() % divisor).toLong())
+                    }
                     0x71 -> { // i32.and
                         val b = stack.popOrNull() ?: 0L
                         val a = stack.popOrNull() ?: 0L
@@ -256,7 +334,7 @@ class WastiWasmRuntime {
                         stack.push((a.toInt() xor b.toInt()).toLong())
                     }
                     else -> {
-                        // Advance safely through unmodeled bytecode
+                        logW(TAG, "Unmodeled WASM opcode 0x${opcode.toString(16)} encountered; skipping instruction.")
                     }
                 }
             }
@@ -293,37 +371,164 @@ class WastiWasmRuntime {
 
     /**
      * Executes a sandboxed tool expression or algorithmic transformation.
+     * Evaluates integer arithmetic expressions directly on the WASM stack interpreter.
+     * Truthfully fails closed for non-arithmetic script languages that require a full native WASI runtime.
      */
     fun runSandboxedScript(toolName: String, expression: String, params: Map<String, String>): WasmExecutionResult {
-        val synthModuleId = "synth_${toolName.lowercase().replace(" ", "_")}"
-        
-        // Generate valid synthetic WASM module bytecode header + nop + return
-        val syntheticBytecode = byteArrayOf(
-            0x00, 0x61, 0x73, 0x6D, // magic
-            0x01, 0x00, 0x00, 0x00, // version 1
-            0x01, 0x04, 0x01, 0x60, 0x00, 0x00, // Type section: func () -> ()
-            0x03, 0x02, 0x01, 0x00, // Function section
-            0x07, 0x08, 0x01, 0x04, 0x6D, 0x61, 0x69, 0x6E, 0x00, 0x00, // Export "main"
-            0x0A, 0x06, 0x01, 0x04, 0x00, 0x41, 0x2A, 0x0F // Code: i32.const 42, return
-        )
+        val expr = expression.trim().ifEmpty {
+            params["expression"]?.trim() ?: params["code"]?.trim() ?: ""
+        }
 
-        loadModule(synthModuleId, toolName, syntheticBytecode)
+        val parsedArithmetic = parseArithmeticExpression(expr)
+        if (parsedArithmetic == null) {
+            return WasmExecutionResult(
+                isSuccess = false,
+                returnValue = null,
+                stringOutput = null,
+                executionTimeMs = 0,
+                fuelConsumed = 0,
+                memoryBytesUsed = 0,
+                diagnosticMessage = "Unsupported WASM execution: WastiWasmRuntime is a lightweight JVM micro-interpreter (integer arithmetic subset). General-purpose script execution and host OS calls require a full native WASI runtime engine (e.g. Wasmtime/Wasm3) which is not installed."
+            )
+        }
+
+        val (op1, op, op2) = parsedArithmetic
+        val synthModuleId = "synth_${toolName.lowercase().replace(" ", "_")}"
+        val bytecode = generateArithmeticModuleBytecode(op1, op, op2)
+
+        val loadRes = loadModule(synthModuleId, toolName, bytecode)
+        if (loadRes.isFailure) {
+            return WasmExecutionResult(
+                isSuccess = false,
+                returnValue = null,
+                stringOutput = null,
+                executionTimeMs = 0,
+                fuelConsumed = 0,
+                memoryBytesUsed = 0,
+                diagnosticMessage = "Failed to load generated WASM bytecode: ${loadRes.exceptionOrNull()?.message}"
+            )
+        }
+
         val res = executeFunction(synthModuleId, "main")
-        
         return res.copy(
-            stringOutput = "Sandboxed WASM Tool '$toolName' computed result: ${res.returnValue ?: 42} (params: $params)"
+            stringOutput = "Sandboxed WASM Tool '$toolName' computed result: ${res.returnValue} (expression: $expr)"
         )
     }
 
     fun getRuntimeStatus(): Map<String, Any> {
         return mapOf(
+            "engineType" to engineType.name,
+            "isNativeEngineAvailable" to isNativeWasmAvailable,
+            "isMicroInterpreterAvailable" to isMicroInterpreterAvailable,
+            "supportsWasi" to false,
             "loadedModulesCount" to loadedModules.size,
             "totalExecutions" to totalExecutions,
             "totalFuelUsed" to totalFuelUsed,
             "maxAllowedPages" to MAX_ALLOWED_PAGES,
             "pageSizeBytes" to PAGE_SIZE_BYTES,
-            "status" to "OPERATIONAL"
+            "status" to "EXPERIMENTAL_MICRO_INTERPRETER"
         )
+    }
+
+    private fun parseArithmeticExpression(expr: String): Triple<Int, Char?, Int?>? {
+        val trimmed = expr.trim()
+        if (trimmed.isEmpty()) return null
+
+        trimmed.toIntOrNull()?.let {
+            return Triple(it, null, null)
+        }
+
+        val operators = listOf('+', '-', '*', '/', '%')
+        for (op in operators) {
+            val parts = trimmed.split(op)
+            if (parts.size == 2) {
+                val left = parts[0].trim().toIntOrNull()
+                val right = parts[1].trim().toIntOrNull()
+                if (left != null && right != null) {
+                    return Triple(left, op, right)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun generateArithmeticModuleBytecode(op1: Int, op: Char?, op2: Int?): ByteArray {
+        val bodyBytes = mutableListOf<Byte>()
+        bodyBytes.add(0x00.toByte()) // 0 local declarations
+
+        // op1
+        bodyBytes.add(0x41.toByte()) // i32.const
+        for (b in encodeSignedLeb128(op1)) bodyBytes.add(b)
+
+        if (op != null && op2 != null) {
+            // op2
+            bodyBytes.add(0x41.toByte()) // i32.const
+            for (b in encodeSignedLeb128(op2)) bodyBytes.add(b)
+
+            // operator
+            when (op) {
+                '+' -> bodyBytes.add(0x6A.toByte()) // i32.add
+                '-' -> bodyBytes.add(0x6B.toByte()) // i32.sub
+                '*' -> bodyBytes.add(0x6C.toByte()) // i32.mul
+                '/' -> bodyBytes.add(0x6D.toByte()) // i32.div_s
+                '%' -> bodyBytes.add(0x6F.toByte()) // i32.rem_s
+            }
+        }
+
+        bodyBytes.add(0x0F.toByte()) // return
+        bodyBytes.add(0x0B.toByte()) // end
+
+        val codeSecBody = mutableListOf<Byte>()
+        codeSecBody.add(0x01.toByte()) // 1 function body
+        for (b in encodeSignedLeb128(bodyBytes.size)) codeSecBody.add(b)
+        codeSecBody.addAll(bodyBytes)
+
+        val out = mutableListOf<Byte>()
+        // Magic + Version
+        out.addAll(listOf(0x00.toByte(), 0x61.toByte(), 0x73.toByte(), 0x6D.toByte()))
+        out.addAll(listOf(0x01.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()))
+
+        // Type Section: 1 func type () -> (i32)
+        out.add(0x01.toByte())
+        val typeSec = byteArrayOf(0x01, 0x60, 0x00, 0x01, 0x7F)
+        for (b in encodeSignedLeb128(typeSec.size)) out.add(b)
+        out.addAll(typeSec.toList())
+
+        // Function Section: 1 func, type 0
+        out.add(0x03.toByte())
+        val funcSec = byteArrayOf(0x01, 0x00)
+        for (b in encodeSignedLeb128(funcSec.size)) out.add(b)
+        out.addAll(funcSec.toList())
+
+        // Export Section: 1 export "main" func 0
+        out.add(0x07.toByte())
+        val expSec = byteArrayOf(0x01, 0x04, 0x6D, 0x61, 0x69, 0x6E, 0x00, 0x00)
+        for (b in encodeSignedLeb128(expSec.size)) out.add(b)
+        out.addAll(expSec.toList())
+
+        // Code Section
+        out.add(0x0A.toByte())
+        for (b in encodeSignedLeb128(codeSecBody.size)) out.add(b)
+        out.addAll(codeSecBody)
+
+        return out.toByteArray()
+    }
+
+    private fun encodeSignedLeb128(value: Int): ByteArray {
+        var v = value
+        val bytes = mutableListOf<Byte>()
+        var more = true
+        while (more) {
+            var byte = (v and 0x7F).toByte()
+            v = v shr 7
+            if ((v == 0 && (byte.toInt() and 0x40) == 0) || (v == -1 && (byte.toInt() and 0x40) != 0)) {
+                more = false
+            } else {
+                byte = (byte.toInt() or 0x80).toByte()
+            }
+            bytes.add(byte)
+        }
+        return bytes.toByteArray()
     }
 
     private fun java.util.ArrayDeque<Long>.popOrNull(): Long? = if (isNotEmpty()) pop() else null

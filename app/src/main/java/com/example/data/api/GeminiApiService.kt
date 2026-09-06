@@ -64,7 +64,7 @@ object GeminiClient {
 
         val combinedSystemPrompt = "$systemInstruction\n\nSTRICT LANGUAGE MATCHING MANDATE: You MUST reply in the EXACT SAME language, dialect, and script used by the user in their prompt. If the user prompts in English, reply strictly in English. If the user prompts in Urdu script (اردو), reply in Urdu script. If the user prompts in Roman Urdu, reply in Roman Urdu. If the user prompts in Spanish, French, Punjabi, German, Hindi, or any other language, reply in that exact language. NEVER default to Roman Urdu or any other language unless the user specifically wrote in that language.\n\n$overrideDirective"
 
-        if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
+        if (apiKey.isNullOrBlank() || com.example.data.credential.CredentialRegistry.isPlaceholder(apiKey)) {
             throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
         }
 
@@ -294,6 +294,7 @@ object GeminiClient {
                     return@withContext text!!
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
                 lastException = e
                 if (request.tools != null) {
                     try {
@@ -303,7 +304,8 @@ object GeminiClient {
                         if (!text2.isNullClassOrBlank()) {
                             return@withContext text2!!
                         }
-                    } catch (_: Exception) {
+                    } catch (e2: Exception) {
+                        if (e2 is kotlinx.coroutines.CancellationException) throw e2
                         // Continue failover
                     }
                 }
@@ -322,7 +324,7 @@ object GeminiClient {
         val apiKey = if (!customApiKey.isNullOrBlank()) customApiKey
         else com.example.data.credential.CredentialRegistry.getRawValue("GEMINI_API_KEY")
 
-        if (apiKey.isNullOrBlank() || apiKey == "MY_GEMINI_API_KEY") {
+        if (apiKey.isNullOrBlank() || com.example.data.credential.CredentialRegistry.isPlaceholder(apiKey)) {
             throw IllegalStateException("Gemini API Key is not configured in Wasti Secret Vault.")
         }
 

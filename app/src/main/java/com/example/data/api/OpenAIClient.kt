@@ -97,6 +97,7 @@ for (model in candidateModels) {
             return@withContext output
         }
     } catch (e: Exception) {
+        if (e is kotlinx.coroutines.CancellationException) throw e
         lastError = e.message ?: e.toString()
     }
 }

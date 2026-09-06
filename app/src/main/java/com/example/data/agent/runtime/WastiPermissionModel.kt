@@ -10,6 +10,8 @@ class WastiPermissionModel(
     private var autoApproveBiometricForTesting: Boolean = false
 ) : PermissionModel {
 
+    private val capabilityConsentMap = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
     fun setAutoApproveControlledForTesting(autoApprove: Boolean) {
         autoApproveControlledForTesting = autoApprove
     }
@@ -18,11 +20,31 @@ class WastiPermissionModel(
         autoApproveBiometricForTesting = autoApprove
     }
 
+    /* ---------------------------------------------------------------------- */
+    /* [P0-36] & [P0-48] PERMISSION-TRUTH: Unified Capability Consent Store   */
+    /* ---------------------------------------------------------------------- */
+
+    fun setCapabilityConsent(capabilityName: String, consented: Boolean) {
+        capabilityConsentMap[capabilityName] = consented
+        com.example.assistant.PermissionManager.setUserConsent(capabilityName, consented)
+    }
+
+    fun hasCapabilityConsent(capabilityName: String): Boolean {
+        return capabilityConsentMap[capabilityName]
+            ?: com.example.assistant.PermissionManager.hasUserConsent(capabilityName)
+    }
+
+    fun revokeAllConsents() {
+        capabilityConsentMap.clear()
+        com.example.assistant.PermissionManager.clearUserConsents()
+    }
+
     override suspend fun requestUserApproval(
         actionSummary: String,
         permissionLevel: PermissionLevel
     ): Boolean {
-        return autoApproveControlledForTesting
+        if (autoApproveControlledForTesting) return true
+        return hasCapabilityConsent(actionSummary)
     }
 
     override suspend fun requestBiometricApproval(
@@ -32,3 +54,4 @@ class WastiPermissionModel(
         return autoApproveBiometricForTesting
     }
 }
+

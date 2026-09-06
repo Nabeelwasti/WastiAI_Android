@@ -20,14 +20,29 @@ class GroqProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("GROQ_API_KEY")
-        return !key.isNullOrBlank() && key != "MY_GROQ_API_KEY"
+        return !key.isNullOrBlank() && !CredentialRegistry.isPlaceholder(key)
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
+        val model = request.modelName ?: defaultModel
+        val key = CredentialRegistry.getRawValue("GROQ_API_KEY")
+        if (key.isNullOrBlank() || CredentialRegistry.isPlaceholder(key)) {
+            return ProviderResponse(
+                content = "",
+                providerId = id,
+                providerName = name,
+                modelUsed = model,
+                promptTokens = 0,
+                completionTokens = 0,
+                totalTokens = 0,
+                latencyMs = System.currentTimeMillis() - startTime,
+                costUsd = 0.0,
+                success = false,
+                errorMessage = "Groq provider is unavailable: GROQ_API_KEY is not configured or contains placeholder."
+            )
+        }
         return try {
-            val key = CredentialRegistry.getRawValue("GROQ_API_KEY")
-            val model = request.modelName ?: defaultModel
             val output = GroqClient.generateText(
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction,

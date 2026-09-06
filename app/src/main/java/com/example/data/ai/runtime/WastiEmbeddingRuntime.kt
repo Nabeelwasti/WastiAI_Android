@@ -11,6 +11,13 @@ enum class EmbeddingEngineType {
     DETERMINISTIC_MATHEMATICAL_FALLBACK
 }
 
+data class EmbeddingResult(
+    val vector: FloatArray,
+    val isNeural: Boolean = false,
+    val engineType: EmbeddingEngineType = EmbeddingEngineType.DETERMINISTIC_MATHEMATICAL_FALLBACK,
+    val modelIdentifier: String = "wasti-deterministic-harmonic-v1 [NON_NEURAL]"
+)
+
 /**
  * On-device deterministic mathematical fallback vector projection runtime (384-dimensional).
  * Employs subword trigonometric harmonic projection and keyword semantic subspace bases
@@ -85,6 +92,15 @@ object WastiEmbeddingRuntime {
 
         // 3. L2 Normalization to unit hypersphere
         return l2Normalize(vector)
+    }
+
+    fun encodeDetailed(text: String): EmbeddingResult {
+        return EmbeddingResult(
+            vector = encode(text),
+            isNeural = false,
+            engineType = engineType,
+            modelIdentifier = "wasti-deterministic-harmonic-384 [NON_NEURAL_FALLBACK]"
+        )
     }
 
     /**

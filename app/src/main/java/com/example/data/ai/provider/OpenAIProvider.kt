@@ -21,14 +21,27 @@ class OpenAIProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("OPENAI_API_KEY")
-        return !key.isNullOrBlank() && key != "MY_OPENAI_API_KEY"
+        return !key.isNullOrBlank() && !CredentialRegistry.isPlaceholder(key)
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
+        val model = request.modelName ?: defaultModel
+        val key = CredentialRegistry.getRawValue("OPENAI_API_KEY")
+        if (key.isNullOrBlank() || CredentialRegistry.isPlaceholder(key)) {
+            return ProviderResponse(
+                content = "",
+                providerId = id,
+                providerName = name,
+                modelName = model,
+                tokensUsed = 0,
+                latencyMs = System.currentTimeMillis() - startTime,
+                costUsd = 0.0,
+                success = false,
+                errorMessage = "OpenAI provider is unavailable: OPENAI_API_KEY is not configured or contains placeholder."
+            )
+        }
         return try {
-            val key = CredentialRegistry.getRawValue("OPENAI_API_KEY").orEmpty()
-            val model = request.modelName ?: defaultModel
             val output = OpenAIClient.generateText(
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction,

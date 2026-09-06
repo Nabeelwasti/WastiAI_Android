@@ -1,7 +1,10 @@
 package com.example.data.ai.engine
 
-import com.example.data.ai.model.OpenSourceModelCatalog
+import com.example.data.agent.runtime.ActionVerificationStatus
+import com.example.data.agent.runtime.VerificationResult
+import com.example.data.agent.runtime.VerifiedExecutionEvidence
 import com.example.data.ai.model.ModelSpecialization
+import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.memory.MemoryManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,17 +26,78 @@ data class DistilledKnowledgeArtifact(
  * Stage 10+: Self-Training Knowledge Distillation Engine.
  * Automatically distills successful verified executions into modular learned skills,
  * cross-trains the 12 local open-source models, and persists distilled capabilities into MemoryManager.
+ * Strictly gated on canonical verification: rejects mock, synthetic, or unverified claims.
  */
 object SelfTrainingKnowledgeDistillationEngine {
 
     private val _distilledArtifacts = MutableStateFlow<List<DistilledKnowledgeArtifact>>(emptyList())
     val distilledArtifacts: StateFlow<List<DistilledKnowledgeArtifact>> = _distilledArtifacts.asStateFlow()
 
+    fun isSyntheticOrMock(text: String): Boolean {
+        val lower = text.lowercase()
+        return lower.contains("synthetic") ||
+            lower.contains("mock_evidence") ||
+            lower.contains("mock") ||
+            lower.contains("fake_evidence") ||
+            lower.contains("fake") ||
+            lower.contains("dummy_evidence") ||
+            lower.contains("dummy") ||
+            lower.contains("unverified_stub") ||
+            lower.contains("unverified")
+    }
+
+    suspend fun recordVerifiedInteractionAndDistill(
+        taskPrompt: String,
+        verificationResult: VerificationResult,
+        winningModelId: String
+    ): DistilledKnowledgeArtifact? {
+        if (verificationResult.status != ActionVerificationStatus.VERIFIED ||
+            verificationResult.confidence < 0.85 ||
+            verificationResult.evidence.isBlank() ||
+            isSyntheticOrMock(verificationResult.evidence)
+        ) {
+            return null
+        }
+        return recordVerifiedInteractionAndDistill(
+            taskPrompt = taskPrompt,
+            successfulExecutionEvidence = verificationResult.evidence,
+            winningModelId = winningModelId
+        )
+    }
+
+    suspend fun recordVerifiedInteractionAndDistill(
+        taskPrompt: String,
+        verifiedEvidence: VerifiedExecutionEvidence,
+        winningModelId: String
+    ): DistilledKnowledgeArtifact? {
+        if (verifiedEvidence.confidence < 0.85 ||
+            verifiedEvidence.subject.isBlank() ||
+            verifiedEvidence.verifiedState.isBlank() ||
+            isSyntheticOrMock(verifiedEvidence.subject) ||
+            isSyntheticOrMock(verifiedEvidence.verifiedState)
+        ) {
+            return null
+        }
+        val evidenceStr = "${verifiedEvidence.subject} -> ${verifiedEvidence.verifiedState}"
+        return recordVerifiedInteractionAndDistill(
+            taskPrompt = taskPrompt,
+            successfulExecutionEvidence = evidenceStr,
+            winningModelId = winningModelId
+        )
+    }
+
     suspend fun recordVerifiedInteractionAndDistill(
         taskPrompt: String,
         successfulExecutionEvidence: String,
         winningModelId: String
-    ): DistilledKnowledgeArtifact {
+    ): DistilledKnowledgeArtifact? {
+        if (taskPrompt.isBlank() ||
+            successfulExecutionEvidence.isBlank() ||
+            isSyntheticOrMock(successfulExecutionEvidence)
+        ) {
+            return null
+        }
+
         val model = OpenSourceModelCatalog.getModelById(winningModelId)
         val spec = model?.primarySpecialization ?: ModelSpecialization.GENERAL_REASONING
 

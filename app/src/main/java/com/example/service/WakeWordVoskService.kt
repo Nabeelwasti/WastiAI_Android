@@ -99,6 +99,7 @@ class WakeWordVoskService : Service() {
         }
 
         startForegroundServiceNotification()
+        com.example.data.agent.runtime.WastiEmergencyStopController.registerScope(serviceScope)
         initializeVoskAndStartListening()
     }
 
@@ -133,15 +134,35 @@ class WakeWordVoskService : Service() {
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                )
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed starting foreground service with microphone type", e)
-                startForeground(NOTIFICATION_ID, notification)
+            val hasMicPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            if (hasMicPermission) {
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed starting foreground service with microphone type", e)
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        startForeground(NOTIFICATION_ID, notification)
+                    } else {
+                        stopSelf()
+                        return
+                    }
+                }
+            } else {
+                Log.w(TAG, "RECORD_AUDIO permission missing before starting microphone foreground service.")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    stopSelf()
+                    return
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             }
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -180,13 +201,11 @@ class WakeWordVoskService : Service() {
 
     private fun startAudioRecordBufferLoop() {
         serviceScope.launch {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(
-                    this@WakeWordVoskService,
-                    android.Manifest.permission.RECORD_AUDIO
-                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!com.example.assistant.PermissionManager.hasUserConsent("RECORD_AUDIO") ||
+                !com.example.assistant.PermissionManager.hasRecordAudio(this@WakeWordVoskService)
             ) {
-                Log.e(TAG, "RECORD_AUDIO permission not granted")
-                WakeWordVoskState.updateStatus("Error: Microphone permission required")
+                Log.e(TAG, "RECORD_AUDIO permission or user consent not granted")
+                WakeWordVoskState.updateStatus("Error: Microphone permission and user consent required")
                 return@launch
             }
 
@@ -223,6 +242,13 @@ class WakeWordVoskService : Service() {
 
                 val buffer = ByteArray(minBufferSize)
                 while (isListening && coroutineContext.isActive) {
+                    // [P0-37] Fail-closed Emergency Stop Check
+                    if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+                        Log.w(TAG, "Emergency stop active: aborting microphone listening loop")
+                        WakeWordVoskState.updateStatus("Paused • Emergency Stop Active")
+                        break
+                    }
+
                     val read = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                     if (read > 0) {
                         voskRecognizer?.let { recognizer ->

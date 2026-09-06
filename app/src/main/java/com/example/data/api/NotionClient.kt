@@ -19,7 +19,7 @@ object NotionClient {
 
     suspend fun getBotUserMe(): String = withContext(Dispatchers.IO) {
         val notionToken = CredentialRegistry.getRawValue("NOTION_CONNECTION_ID")
-        if (notionToken.isNullOrBlank()) return@withContext "Not Configured"
+        if (notionToken.isNullOrBlank() || CredentialRegistry.isPlaceholder(notionToken)) return@withContext "Not Configured"
 
         val request = Request.Builder()
             .url("$BASE_URL/users/me")
@@ -36,6 +36,7 @@ object NotionClient {
                 "Notion Auth Status: HTTP ${response.code}"
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             "Error: ${e.message}"
         }
     }

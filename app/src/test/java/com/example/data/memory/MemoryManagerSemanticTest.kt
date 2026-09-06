@@ -5,9 +5,16 @@ import com.example.data.memory.model.EmbeddingVector
 import com.example.data.memory.storage.VectorIndex
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
 
+@TestCategory(
+    tier = TestTier.UNIT,
+    description = "JVM unit test of VectorIndex and deterministic harmonic embedding fallback"
+)
 class MemoryManagerSemanticTest {
 
     @Test
@@ -18,6 +25,12 @@ class MemoryManagerSemanticTest {
         val vec1 = embeddingService.generateEmbedding("Kotlin coroutines and flow architecture")
         val vec2 = embeddingService.generateEmbedding("Kotlin coroutines asynchronous programming")
         val vec3 = embeddingService.generateEmbedding("Chocolate cake baking recipe with eggs and sugar")
+
+        // Truthful Provenance: Assert deterministic fallback is explicitly tagged and not neural
+        assertFalse(vec1.isNeuralEmbedding)
+        assertEquals("DETERMINISTIC_MATHEMATICAL_FALLBACK", vec1.engineType)
+        assertTrue(vec1.modelName.contains("NON_NEURAL_FALLBACK"))
+        assertEquals(384, vec1.vectorLength)
 
         index.indexVector("doc_1", vec1, "{\"title\":\"Kotlin Coroutines\"}")
         index.indexVector("doc_2", vec2, "{\"title\":\"Asynchronous Kotlin\"}")

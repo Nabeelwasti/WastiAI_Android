@@ -17,6 +17,10 @@ class RetryManager(
         for (attempt in 0..maxRetries) {
             try {
                 return block()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: VirtualMachineError) {
+                throw e
             } catch (e: Throwable) {
                 lastException = e
                 if (attempt < maxRetries && isRetryable(e)) {

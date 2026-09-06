@@ -68,16 +68,31 @@ object DriveSyncEngine {
         _syncStatus.value = DriveSyncStatus.Idle
     }
 
+    fun isSensitiveKey(key: String): Boolean {
+        val upper = key.trim().uppercase()
+        val sensitivePatterns = listOf("KEY", "SECRET", "TOKEN", "PASSWORD", "AUTH", "CREDENTIAL", "BEARER", "PRIVATE")
+        return sensitivePatterns.any { upper.contains(it) }
+    }
+
+    fun isSensitiveMemory(memory: MemoryEntity): Boolean {
+        val cat = memory.category.trim().uppercase()
+        val key = memory.key.trim().uppercase()
+        val sensitiveCategories = setOf("SECRET", "CREDENTIAL", "CREDENTIALS", "PASSWORD", "AUTH", "TOKEN", "API_KEY", "VAULT", "KEY")
+        if (cat in sensitiveCategories) return true
+        return isSensitiveKey(key)
+    }
+
     /**
      * Serializes Room database records into a structured JSON string.
+     * Excludes private credentials, keystores, and secret settings from export.
      */
     suspend fun exportDatabaseToJson(context: Context): String = withContext(Dispatchers.IO) {
         val db = WastiDatabase.getDatabase(context)
 
         val conversations = db.conversationDao().getAllConversationsSync()
         val messages = db.messageDao().getAllMessagesSync()
-        val memories = db.memoryDao().getAllMemoriesSync()
-        val settings = db.settingDao().getAllSettingsSync()
+        val memories = db.memoryDao().getAllMemoriesSync().filterNot { isSensitiveMemory(it) }
+        val settings = db.settingDao().getAllSettingsSync().filterNot { isSensitiveKey(it.key) }
         val agents = db.agentDao().getAllAgentsSync()
         val tasks = db.taskDao().getAllTasksSync()
 
@@ -398,17 +413,19 @@ object DriveSyncEngine {
                 root.optJSONArray("memories")?.let { arr ->
                     for (i in 0 until arr.length()) {
                         val obj = arr.getJSONObject(i)
-                        db.memoryDao().insertMemory(
-                            MemoryEntity(
-                                id = obj.getString("id"),
-                                key = obj.getString("key"),
-                                category = obj.optString("category", "General"),
-                                value = obj.getString("value"),
-                                importanceScore = obj.optDouble("importanceScore", 0.9).toFloat(),
-                                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                                sourceMessageId = obj.optString("sourceMessageId", "")
-                            )
+                        val candidate = MemoryEntity(
+                            id = obj.getString("id"),
+                            key = obj.getString("key"),
+                            category = obj.optString("category", "General"),
+                            value = obj.getString("value"),
+                            importanceScore = obj.optDouble("importanceScore", 0.9).toFloat(),
+                            timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                            sourceMessageId = obj.optString("sourceMessageId", "")
                         )
+                        if (isSensitiveMemory(candidate)) {
+                            continue
+                        }
+                        db.memoryDao().insertMemory(candidate)
                     }
                 }
 

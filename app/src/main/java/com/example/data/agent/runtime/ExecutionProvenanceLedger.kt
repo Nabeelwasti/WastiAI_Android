@@ -32,7 +32,7 @@ data class ProvenanceEntry(
  */
 object ExecutionProvenanceLedger {
     private const val TAG = "ExecutionProvenanceLedger"
-    private const val GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
+    const val GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
 
     private val _entries = MutableStateFlow<List<ProvenanceEntry>>(emptyList())
     val entries: StateFlow<List<ProvenanceEntry>> = _entries.asStateFlow()
@@ -91,6 +91,30 @@ object ExecutionProvenanceLedger {
         return _entries.value.filter { it.taskId == taskId }
     }
 
+    fun getLatestEntry(): ProvenanceEntry? {
+        return _entries.value.lastOrNull()
+    }
+
+    fun count(): Int {
+        return _entries.value.size
+    }
+
+    @Synchronized
+    fun resetForTesting() {
+        _entries.value = emptyList()
+    }
+
+    @Synchronized
+    fun injectTamperedEntryForTesting(tamperedEntry: ProvenanceEntry) {
+        _entries.value = _entries.value + tamperedEntry
+    }
+
+    fun verifyEntry(entryId: String): Boolean {
+        val entry = _entries.value.find { it.entryId == entryId } ?: return false
+        val payload = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
+        return hashString(payload) == entry.entryHash
+    }
+
     fun verifyLedgerIntegrity(): Boolean {
         val list = _entries.value
         if (list.isEmpty()) return true
@@ -112,7 +136,32 @@ object ExecutionProvenanceLedger {
         return true
     }
 
-    private fun hashString(input: String): String {
+    fun exportLedgerAuditJson(): String {
+        val array = org.json.JSONArray()
+        for (e in _entries.value) {
+            val obj = org.json.JSONObject().apply {
+                put("entryId", e.entryId)
+                put("taskId", e.taskId)
+                put("actionId", e.actionId)
+                put("capabilityId", e.capabilityId)
+                put("providerId", e.providerId)
+                put("modelId", e.modelId ?: "")
+                put("inputHash", e.inputHash)
+                put("outputHash", e.outputHash)
+                put("evidenceSource", e.evidenceSource.name)
+                put("evidenceSummary", e.evidenceSummary)
+                put("verificationStatus", e.verificationStatus)
+                put("isVerified", e.isVerified)
+                put("timestamp", e.timestamp)
+                put("previousEntryHash", e.previousEntryHash)
+                put("entryHash", e.entryHash)
+            }
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    fun hashString(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }

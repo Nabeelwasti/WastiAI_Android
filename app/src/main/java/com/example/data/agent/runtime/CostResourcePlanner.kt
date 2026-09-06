@@ -66,7 +66,7 @@ class CostResourcePlanner(
             isLowPower && taskComplexity == RiskLevel.HIGH -> {
                 ExecutionDestination.CLOUD_API_PROVIDER to "Low battery ($batteryPct); offloading complex inference to cloud to conserve device power."
             }
-            taskComplexity == RiskLevel.LOW || estimatedPayloadBytes < 50_000 -> {
+            (taskComplexity == RiskLevel.LOW || estimatedPayloadBytes < 50_000) && com.example.data.sandbox.WastiWasmRuntime.instance.isNativeWasmAvailable -> {
                 ExecutionDestination.LOCAL_WASM_SANDBOX to "Low complexity task suitable for instant local zero-overhead WASM sandbox execution."
             }
             else -> {

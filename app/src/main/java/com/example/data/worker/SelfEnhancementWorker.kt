@@ -55,6 +55,7 @@ class SelfEnhancementWorker(
                     ExistingPeriodicWorkPolicy.KEEP,
                     request
                 )
+                WastiWorkManagerLifecycleTracker.recordWorkEnqueued(WORK_NAME, "SelfEnhancementWorker", isPeriodic = true)
                 Log.i(TAG, "SelfEnhancementWorker scheduled successfully for 24h interval.")
                 true
             } catch (e: Exception) {
@@ -65,6 +66,7 @@ class SelfEnhancementWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        WastiWorkManagerLifecycleTracker.recordWorkStarted(WORK_NAME, "SelfEnhancementWorker", runAttemptCount)
         try {
             Log.d(TAG, "Starting 24h SelfEnhancementWorker analysis...")
             val context = applicationContext
@@ -138,9 +140,21 @@ class SelfEnhancementWorker(
             WastiRootController.submitSkillMatrixProposal(proposal)
             Log.i(TAG, "SelfEnhancementWorker completed successfully. Proposal submitted to WastiRootController.")
 
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "SelfEnhancementWorker",
+                true,
+                "Submitted SkillMatrix proposal with ${proposedServices.size} services"
+            )
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error executing SelfEnhancementWorker AI analysis", e)
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "SelfEnhancementWorker",
+                false,
+                "Exception: ${e.message}"
+            )
             Result.retry()
         }
     }

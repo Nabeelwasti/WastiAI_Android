@@ -19,7 +19,8 @@ object ZapierClient {
     suspend fun triggerZapierAutomation(actionName: String, paramsJson: String): Boolean = withContext(Dispatchers.IO) {
         val token = CredentialRegistry.getRawValue("ZAPIER_CONNECT_TOKEN").orEmpty()
         val shareLink = CredentialRegistry.getRawValue("ZAPIER_MCP_SHARE_LINK").orEmpty()
-        if (token.isBlank() && shareLink.isBlank()) return@withContext false
+        if ((token.isBlank() || CredentialRegistry.isPlaceholder(token)) &&
+            (shareLink.isBlank() || CredentialRegistry.isPlaceholder(shareLink))) return@withContext false
 
         val targetUrl = if (shareLink.startsWith("http")) shareLink else "https://nla.zapier.com/api/v1/dynamic/executed-action/"
 
@@ -34,6 +35,7 @@ object ZapierClient {
             val response = client.newCall(request).execute()
             response.isSuccessful || response.code in 200..299
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             false
         }
     }

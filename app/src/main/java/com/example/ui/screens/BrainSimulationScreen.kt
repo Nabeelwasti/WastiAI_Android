@@ -30,7 +30,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.engine.UnifiedBrain
+import com.example.data.ai.model.ModelRuntimeStatus
 import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.core.BciSignalProcessor
 import com.example.data.core.BciSourceType
@@ -44,6 +46,7 @@ import kotlinx.coroutines.launch
 fun BrainSimulationScreen() {
     val coroutineScope = rememberCoroutineScope()
     val consensusState by UnifiedBrain.activeBrainState.collectAsState()
+    val modelStatuses by ModelArtifactManager.modelStatuses.collectAsState()
     val envState by EnvironmentalRealityEngine.currentEnvironment.collectAsState()
     val bioState by BiologicalTelemetryInterface.telemetryStream.collectAsState()
     val neuralState by NeuralEmulationEngine.emulationActivity.collectAsState()
@@ -572,6 +575,36 @@ fun BrainSimulationScreen() {
                     }
 
                     items(OpenSourceModelCatalog.ALL_MODELS) { model ->
+                        val status = modelStatuses[model.id] ?: ModelRuntimeStatus.DECLARED
+                        val (statusIcon, statusTint, statusDesc) = when (status) {
+                            ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT,
+                            ModelRuntimeStatus.ACTIVE_LOADED -> Triple(
+                                Icons.Default.CheckCircle,
+                                Color(0xFF2E7D32),
+                                "Weights Present & Ready"
+                            )
+                            ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD -> Triple(
+                                Icons.Default.Info,
+                                Color(0xFF0288D1),
+                                "Weights Downloadable"
+                            )
+                            ModelRuntimeStatus.PENDING_VERIFICATION -> Triple(
+                                Icons.Default.Info,
+                                Color(0xFFF57C00),
+                                "Pending Checksum Verification"
+                            )
+                            ModelRuntimeStatus.DOWNLOADING -> Triple(
+                                Icons.Default.Refresh,
+                                Color(0xFF7B1FA2),
+                                "Downloading Weights..."
+                            )
+                            else -> Triple(
+                                Icons.Default.Info,
+                                Color.Gray,
+                                "Remote / Mesh Only"
+                            )
+                        }
+
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
@@ -600,11 +633,16 @@ fun BrainSimulationScreen() {
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Text(
+                                        text = "Status: $statusDesc",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = statusTint
+                                    )
                                 }
                                 Icon(
-                                    imageVector = Icons.Default.CheckCircle,
-                                    contentDescription = "Active & Offline Ready",
-                                    tint = Color(0xFF2E7D32),
+                                    imageVector = statusIcon,
+                                    contentDescription = statusDesc,
+                                    tint = statusTint,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }

@@ -37,8 +37,14 @@ data class ExecutionRequest(
     val workingDirectory: String = "home/wasti",
     val environment: Map<String, String> = emptyMap(),
     val timeoutMs: Long? = 30000L,
-    val permissions: Set<ExecutionPermission> = setOf(ExecutionPermission.FILE_READ, ExecutionPermission.FILE_WRITE),
-    val initiatedBy: String = "user"
+    val permissions: Set<ExecutionPermission> = setOf(
+        ExecutionPermission.FILE_READ,
+        ExecutionPermission.FILE_WRITE,
+        ExecutionPermission.PROCESS_EXECUTION,
+        ExecutionPermission.SCRIPT_EXECUTION
+    ),
+    val initiatedBy: String = "user",
+    val adminAuthToken: String? = null
 )
 
 data class ExecutionResult(

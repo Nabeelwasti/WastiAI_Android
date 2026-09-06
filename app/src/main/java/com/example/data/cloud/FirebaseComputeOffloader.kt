@@ -57,29 +57,9 @@ object FirebaseComputeOffloader {
 
     private const val TAG = "FirebaseComputeOffload"
 
-    private fun getFirestore(): FirebaseFirestore? {
-        return try {
-            val app = try {
-                com.google.firebase.FirebaseApp.getInstance()
-            } catch (_: Throwable) {
-                val ctx = com.example.WastiApplication.instance?.applicationContext
-                if (ctx != null) {
-                    try {
-                        com.google.firebase.FirebaseApp.initializeApp(ctx)
-                    } catch (_: Throwable) {
-                        null
-                    }
-                } else null
-            }
-            if (app != null) {
-                FirebaseFirestore.getInstance(app)
-            } else {
-                null
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "Firestore instance unavailable for compute offload: ${e.message}")
-            null
-        }
+    private fun getFirestore(context: Context? = null): FirebaseFirestore? {
+        val ctx = context ?: com.example.WastiApplication.instance?.applicationContext
+        return WastiFirebaseIntegrity.getSafeFirestore(ctx)
     }
 
     /**
@@ -144,33 +124,137 @@ object FirebaseComputeOffloader {
             if (firestoreOutcome != null) return@withContext firestoreOutcome
         }
 
-        // 2. Safe Local Throttled Fallback (Protects device from crash)
-        val localOutput = executeSafeLocalThrottled(task)
+        // 2. Try Cloud Backend HTTP endpoint (/compute/offload)
+        val httpOutcome = executeCloudBackendHttp(task)
+        if (httpOutcome != null) {
+            return@withContext httpOutcome.copy(durationMs = System.currentTimeMillis() - startTime)
+        }
+
+        // 3. Safe Local Throttled Fallback (Genuine local bounded computation)
+        val (isSuccess, localOutput) = executeSafeLocalThrottled(context, task)
         val duration = System.currentTimeMillis() - startTime
 
         ComputeTaskOutcome(
             taskId = task.taskId,
-            success = true,
+            success = isSuccess,
             executionTier = ComputeExecutionTier.LOCAL_THROTTLED_SAFE,
             output = localOutput,
+            error = if (!isSuccess) localOutput else null,
             durationMs = duration
         )
     }
 
-    private fun executeSafeLocalThrottled(task: ComputeTaskRequest): String {
-        return when (task.type) {
-            ComputeTaskType.MULTI_MODEL_CONSENSUS -> {
-                "Local Throttled Safe Consensus: Evaluated with bounded CPU/RAM footprint."
+    private suspend fun executeCloudBackendHttp(task: ComputeTaskRequest): ComputeTaskOutcome? {
+        val backendUrl = System.getenv("WASTI_BACKEND_URL") ?: return null
+        val trimmed = backendUrl.trim().trimEnd('/')
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            Log.w(TAG, "Invalid WASTI_BACKEND_URL: '$backendUrl'")
+            return null
+        }
+        return try {
+            val url = java.net.URL("$trimmed/compute/offload")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            val authToken = System.getenv("WASTI_SERVER_SECRET") ?: System.getenv("WASTI_ADMIN_TOKEN")
+            if (authToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
             }
-            ComputeTaskType.BATCH_EMBEDDINGS -> {
-                "Local Throttled Safe Embedding: Computed batch within safe memory limits."
+            conn.doOutput = true
+            conn.connectTimeout = 10000
+            conn.readTimeout = task.timeoutMs.toInt().coerceAtMost(30000)
+
+            val body = JSONObject().apply {
+                put("taskType", task.type.name)
+                put("payload", JSONObject(task.payload))
+            }.toString()
+
+            conn.outputStream.use { it.write(body.toByteArray()) }
+
+            val code = conn.responseCode
+            if (code in 200..299) {
+                val responseText = conn.inputStream.bufferedReader().use { it.readText() }
+                ComputeTaskOutcome(
+                    taskId = task.taskId,
+                    success = true,
+                    executionTier = ComputeExecutionTier.CLOUD_BACKEND_HTTP,
+                    output = responseText
+                )
+            } else {
+                Log.w(TAG, "Backend HTTP compute offload returned HTTP $code")
+                null
             }
-            ComputeTaskType.CODE_COMPILATION_AND_ANALYSIS -> {
-                "Local Throttled Safe Code Analysis: Verified syntax within sandboxed boundaries."
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            Log.w(TAG, "Backend HTTP compute offload failed: ${e.message}")
+            null
+        }
+    }
+
+    private suspend fun executeSafeLocalThrottled(context: Context?, task: ComputeTaskRequest): Pair<Boolean, String> {
+        return try {
+            when (task.type) {
+                ComputeTaskType.MULTI_MODEL_CONSENSUS -> {
+                    val prompt = task.payload["prompt"] as? String
+                    if (prompt.isNullOrBlank()) {
+                        return false to "Missing or empty prompt for MULTI_MODEL_CONSENSUS."
+                    }
+                    val consensus = com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt)
+                    true to "Consensus Evaluated (${consensus.consensusType.name}): ${consensus.finalSynthesizedText}"
+                }
+                ComputeTaskType.BATCH_EMBEDDINGS -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val texts = (task.payload["texts"] as? List<String>) ?: emptyList()
+                    if (texts.isEmpty()) {
+                        return false to "Missing or empty texts list for BATCH_EMBEDDINGS."
+                    }
+                    val results = texts.map { text ->
+                        val res = com.example.data.ai.runtime.WastiEmbeddingRuntime.encodeDetailed(text)
+                        mapOf(
+                            "text" to text,
+                            "dimension" to res.vector.size,
+                            "isNeural" to res.isNeural,
+                            "model" to res.modelIdentifier
+                        )
+                    }
+                    true to "Computed batch of ${results.size} deterministic fallback embeddings (384-dim)."
+                }
+                ComputeTaskType.HEAVY_FILE_TRANSFORM -> {
+                    val content = task.payload["content"] as? String
+                    if (content == null) {
+                        return false to "Missing content for HEAVY_FILE_TRANSFORM."
+                    }
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    val hash = digest.digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
+                    true to "Transformed content (${content.length} chars). SHA-256: $hash"
+                }
+                ComputeTaskType.CODE_COMPILATION_AND_ANALYSIS -> {
+                    val code = task.payload["code"] as? String
+                    if (code == null) {
+                        return false to "Missing code for CODE_COMPILATION_AND_ANALYSIS."
+                    }
+                    val stack = mutableListOf<Char>()
+                    var valid = true
+                    for (c in code) {
+                        when (c) {
+                            '{', '(', '[' -> stack.add(c)
+                            '}' -> if (stack.isEmpty() || stack.removeAt(stack.size - 1) != '{') valid = false
+                            ')' -> if (stack.isEmpty() || stack.removeAt(stack.size - 1) != '(') valid = false
+                            ']' -> if (stack.isEmpty() || stack.removeAt(stack.size - 1) != '[') valid = false
+                        }
+                        if (!valid) break
+                    }
+                    if (valid && stack.isNotEmpty()) valid = false
+                    true to if (valid) "Syntax check passed: balanced brackets/parentheses across ${code.length} chars."
+                    else "Syntax error: unbalanced brackets or parentheses detected in local analysis."
+                }
+                ComputeTaskType.SYSTEM_DIAGNOSTICS -> {
+                    val specs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
+                    true to "Diagnostics: RAM=${specs.totalRamMb}MB, Cores=${specs.cpuCores}, Storage=${specs.availableStorageMb}MB, Accelerator=${specs.acceleratorStatus.name}"
+                }
             }
-            else -> {
-                "Local Throttled Execution: Completed safely within device thermal envelope."
-            }
+        } catch (e: Exception) {
+            false to "Local execution failed: ${e.message}"
         }
     }
 

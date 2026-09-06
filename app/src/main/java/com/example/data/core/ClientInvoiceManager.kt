@@ -266,6 +266,20 @@ object ClientInvoiceManager {
 
     private val httpClient = OkHttpClient()
 
+    private const val PREFS_STRIPE_EVENTS = "wasti_stripe_events"
+
+    fun isEventProcessed(context: Context, eventId: String): Boolean {
+        if (eventId.isBlank()) return false
+        val prefs = context.getSharedPreferences(PREFS_STRIPE_EVENTS, Context.MODE_PRIVATE)
+        return prefs.contains(eventId)
+    }
+
+    fun markEventProcessed(context: Context, eventId: String, invoiceId: String? = null) {
+        if (eventId.isBlank()) return
+        val prefs = context.getSharedPreferences(PREFS_STRIPE_EVENTS, Context.MODE_PRIVATE)
+        prefs.edit().putLong(eventId, System.currentTimeMillis()).apply()
+    }
+
     /**
      * Connects ClientInvoiceManager to Stripe API / Webhooks.
      * Polls Stripe events or verifies sandbox restricted key for payment intents.
@@ -293,23 +307,38 @@ object ClientInvoiceManager {
                         if (dataArray != null) {
                             for (i in 0 until dataArray.length()) {
                                 val event = dataArray.getJSONObject(i)
+                                val eventId = event.optString("id", "")
+                                if (eventId.isNotBlank() && isEventProcessed(context, eventId)) {
+                                    continue
+                                }
                                 val dataObj = event.optJSONObject("data")?.optJSONObject("object")
                                 val amountReceived = dataObj?.optDouble("amount_received", 0.0) ?: 0.0
                                 val amountUsd = amountReceived / 100.0
+                                val metadata = dataObj?.optJSONObject("metadata")
+                                val targetInvoiceId = metadata?.optString("invoice_id") ?: metadata?.optString("invoiceId")
 
                                 // Match against open invoices
                                 val db = WastiDatabase.getDatabase(context)
                                 val currentInvoices = db.invoiceDao().getAllInvoicesSync()
-                                currentInvoices.filter { it.status != InvoiceStatus.PAID.name }.forEach { inv ->
-                                    if (Math.abs(inv.amountUsd - amountUsd) < 1.0) {
-                                        db.invoiceDao().updateInvoiceStatus(inv.id, InvoiceStatus.PAID.name)
-                                        syncedCount++
-                                        WastiNotificationManager.sendVoiceAlertNotification(
-                                            context,
-                                            "Stripe Payment Received!",
-                                            "Payment of \$${inv.amountUsd} USD received from ${inv.clientName}."
-                                        )
+                                val openInvoices = currentInvoices.filter { it.status != InvoiceStatus.PAID.name }
+
+                                val matchedInvoice = if (!targetInvoiceId.isNullOrBlank()) {
+                                    openInvoices.firstOrNull { it.id == targetInvoiceId }
+                                } else {
+                                    openInvoices.firstOrNull { Math.abs(it.amountUsd - amountUsd) < 1.0 }
+                                }
+
+                                if (matchedInvoice != null) {
+                                    db.invoiceDao().updateInvoiceStatus(matchedInvoice.id, InvoiceStatus.PAID.name)
+                                    if (eventId.isNotBlank()) {
+                                        markEventProcessed(context, eventId, matchedInvoice.id)
                                     }
+                                    syncedCount++
+                                    WastiNotificationManager.sendVoiceAlertNotification(
+                                        context,
+                                        "Stripe Payment Received!",
+                                        "Payment of \$${matchedInvoice.amountUsd} USD received from ${matchedInvoice.clientName}."
+                                    )
                                 }
                             }
                         }
@@ -320,40 +349,59 @@ object ClientInvoiceManager {
             }
         }
 
-        // If no key or local trigger, check if any pending invoice can be auto-cleared upon webhook simulation
-        if (syncedCount == 0) {
-            val db = WastiDatabase.getDatabase(context)
-            val pendingInvoices = db.invoiceDao().getAllInvoicesSync().filter { it.status == InvoiceStatus.PENDING_PAYMENT.name }
-            if (pendingInvoices.isNotEmpty()) {
-                val autoPaid = pendingInvoices.first()
-                db.invoiceDao().updateInvoiceStatus(autoPaid.id, InvoiceStatus.PAID.name)
-                syncedCount++
-            }
-        }
-
+        // Truthful return: never fabricate paid invoices when no payment arrived
         syncedCount
     }
 
     /**
-     * Processes incoming Stripe Webhook JSON event callbacks (e.g. charge.succeeded).
+     * Processes incoming Stripe Webhook JSON event callbacks (e.g. charge.succeeded, payment_intent.succeeded).
+     * Strictly verifies event ID idempotency to prevent duplicate replay attacks.
      */
     suspend fun handleStripeWebhookEvent(context: Context, payloadJson: String): Boolean = withContext(Dispatchers.IO) {
         try {
             initDatabase(context)
             val json = JSONObject(payloadJson)
+            val eventId = json.optString("id", "")
+            if (eventId.isBlank()) {
+                Log.w("ClientInvoiceManager", "Stripe webhook payload rejected: missing event ID.")
+                return@withContext false
+            }
+
+            if (isEventProcessed(context, eventId)) {
+                Log.w("ClientInvoiceManager", "Stripe webhook replay rejected: event $eventId already processed.")
+                return@withContext false
+            }
+
             val eventType = json.optString("type", "")
             if (eventType == "payment_intent.succeeded" || eventType == "charge.succeeded") {
+                val dataObj = json.optJSONObject("data")?.optJSONObject("object")
+                val amountReceived = dataObj?.optDouble("amount_received", 0.0)
+                    ?: dataObj?.optDouble("amount", 0.0)
+                    ?: 0.0
+                val amountUsd = amountReceived / 100.0
+                val metadata = dataObj?.optJSONObject("metadata")
+                val targetInvoiceId = metadata?.optString("invoice_id") ?: metadata?.optString("invoiceId")
+
                 val db = WastiDatabase.getDatabase(context)
                 val openInvoices = db.invoiceDao().getAllInvoicesSync().filter { it.status != InvoiceStatus.PAID.name }
-                if (openInvoices.isNotEmpty()) {
-                    val inv = openInvoices.first()
-                    db.invoiceDao().updateInvoiceStatus(inv.id, InvoiceStatus.PAID.name)
+
+                val matchedInvoice = if (!targetInvoiceId.isNullOrBlank()) {
+                    openInvoices.firstOrNull { it.id == targetInvoiceId }
+                } else if (amountUsd > 0.0) {
+                    openInvoices.firstOrNull { Math.abs(it.amountUsd - amountUsd) < 1.0 }
+                } else null
+
+                if (matchedInvoice != null) {
+                    db.invoiceDao().updateInvoiceStatus(matchedInvoice.id, InvoiceStatus.PAID.name)
+                    markEventProcessed(context, eventId, matchedInvoice.id)
                     WastiNotificationManager.sendVoiceAlertNotification(
                         context,
                         "Stripe Webhook Event Verified",
-                        "Automated Payment Callback: Invoice \$${inv.amountUsd} USD marked as PAID for ${inv.clientName}."
+                        "Automated Payment Callback: Invoice \$${matchedInvoice.amountUsd} USD marked as PAID for ${matchedInvoice.clientName}."
                     )
                     return@withContext true
+                } else {
+                    Log.w("ClientInvoiceManager", "Stripe webhook received for event $eventId but no matching open invoice was found.")
                 }
             }
         } catch (e: Exception) {

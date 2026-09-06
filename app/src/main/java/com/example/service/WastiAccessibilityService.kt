@@ -18,6 +18,9 @@ import com.example.data.agent.runtime.TargetSelectionResult
 import com.example.data.agent.runtime.TargetSelectionStatus
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
+import com.example.assistant.PermissionManager
+import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.device.DeviceControlEvidenceTracker
 import com.example.data.persistence.DraftPersistenceManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +67,20 @@ class WastiAccessibilityService : AccessibilityService() {
             if (action == ACTION_EXECUTE_GESTURE) {
                 val actionType = intent.getStringExtra("actionType") ?: "TAP"
                 Log.i(TAG, "WastiCommandReceiver received IPC gesture command: actionType=$actionType")
+
+                // [P0-37] Fail-closed Emergency Stop check
+                if (WastiEmergencyStopController.isEmergencyStopped) {
+                    Log.w(TAG, "WastiCommandReceiver rejecting action $actionType: Emergency stop is active")
+                    DeviceControlEvidenceTracker.recordAction(actionType, "IPC_COMMAND", false, "ABORTED_EMERGENCY_STOP")
+                    return
+                }
+
+                // [P0-37] Explicit User Consent Guard
+                if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+                    Log.w(TAG, "WastiCommandReceiver rejecting action $actionType: User consent not granted for device control")
+                    DeviceControlEvidenceTracker.recordAction(actionType, "IPC_COMMAND", false, "BLOCKED_NO_CONSENT")
+                    return
+                }
 
                 when (actionType.uppercase()) {
                     "TAP", "CLICK_COORD" -> {
@@ -439,6 +456,20 @@ class WastiAccessibilityService : AccessibilityService() {
         val cleanTarget = targetTextOrId.trim()
         if (cleanTarget.isBlank()) return false
 
+        // [P0-37] Fail-closed Emergency Stop check
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            Log.w(TAG, "clickElement rejected: Emergency stop is active")
+            DeviceControlEvidenceTracker.recordAction("CLICK_ELEMENT", targetTextOrId, false, "ABORTED_EMERGENCY_STOP")
+            return false
+        }
+
+        // [P0-37] Explicit User Consent Guard
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+            Log.w(TAG, "clickElement rejected: User consent not granted for device control")
+            DeviceControlEvidenceTracker.recordAction("CLICK_ELEMENT", targetTextOrId, false, "BLOCKED_NO_CONSENT")
+            return false
+        }
+
         // Check if direct coordinate tap
         val coordPattern = Regex("""^(?:x\s*=\s*)?(\d+(?:\.\d+)?)\s*,\s*(?:y\s*=\s*)?(\d+(?:\.\d+)?)$""", RegexOption.IGNORE_CASE)
         val match = coordPattern.find(cleanTarget)
@@ -641,6 +672,17 @@ class WastiAccessibilityService : AccessibilityService() {
         endY: Float,
         durationMs: Long = 300L
     ): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            Log.w(TAG, "performSwipe rejected: Emergency stop is active")
+            DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", false, "ABORTED_EMERGENCY_STOP")
+            return false
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+            Log.w(TAG, "performSwipe rejected: User consent not granted for device control")
+            DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", false, "BLOCKED_NO_CONSENT")
+            return false
+        }
+
         val path = Path().apply {
             moveTo(startX, startY)
             lineTo(endX, endY)
@@ -654,12 +696,14 @@ class WastiAccessibilityService : AccessibilityService() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
                 Log.i(TAG, "Swipe gesture completed from ($startX, $startY) to ($endX, $endY)")
+                DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", true, "Swipe completed via Accessibility API")
                 logGestureResultToDb(x = endX, y = endY, success = true, reason = "Swipe completed via Accessibility API")
             }
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
                 Log.w(TAG, "Swipe gesture cancelled from ($startX, $startY) to ($endX, $endY)")
+                DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", false, "Swipe gesture cancelled by system")
                 logGestureResultToDb(x = endX, y = endY, success = false, reason = "Swipe gesture cancelled by system")
             }
         }
@@ -673,6 +717,17 @@ class WastiAccessibilityService : AccessibilityService() {
      * to the SystemLogEntity database for debugging missed taps.
      */
     fun performTapAt(x: Float, y: Float): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            Log.w(TAG, "performTapAt rejected: Emergency stop is active")
+            DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", false, "ABORTED_EMERGENCY_STOP")
+            return false
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+            Log.w(TAG, "performTapAt rejected: User consent not granted for device control")
+            DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", false, "BLOCKED_NO_CONSENT")
+            return false
+        }
+
         val path = Path().apply {
             moveTo(x, y)
         }
@@ -685,12 +740,14 @@ class WastiAccessibilityService : AccessibilityService() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
                 Log.i(TAG, "Gesture completed successfully at coordinates (X: $x, Y: $y)")
+                DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", true, "Gesture completed via Android Accessibility Dispatcher")
                 logGestureResultToDb(x = x, y = y, success = true, reason = "Gesture completed via Android Accessibility Dispatcher")
             }
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
                 Log.w(TAG, "Gesture cancelled/failed at coordinates (X: $x, Y: $y)")
+                DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", false, "Gesture cancelled by Android System window framework")
                 logGestureResultToDb(x = x, y = y, success = false, reason = "Gesture cancelled by Android System window framework")
             }
         }
@@ -701,20 +758,46 @@ class WastiAccessibilityService : AccessibilityService() {
     /**
      * Executes global navigation actions: Back, Home, Recents, Notifications, QuickSettings.
      */
-    fun performBack(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
+    fun performBack(): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) return false
+        return performGlobalAction(GLOBAL_ACTION_BACK)
+    }
 
-    fun performHome(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
+    fun performHome(): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) return false
+        return performGlobalAction(GLOBAL_ACTION_HOME)
+    }
 
-    fun performRecents(): Boolean = performGlobalAction(GLOBAL_ACTION_RECENTS)
+    fun performRecents(): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) return false
+        return performGlobalAction(GLOBAL_ACTION_RECENTS)
+    }
 
-    fun performNotifications(): Boolean = performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+    fun performNotifications(): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) return false
+        return performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+    }
 
-    fun performQuickSettings(): Boolean = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+    fun performQuickSettings(): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) return false
+        return performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+    }
 
     /**
      * Types text into a specific target element or currently focused editable node.
      */
     fun typeText(text: String, targetElement: String? = null): Boolean {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            Log.w(TAG, "typeText rejected: Emergency stop is active")
+            DeviceControlEvidenceTracker.recordAction("TYPE_TEXT", targetElement ?: "FOCUSED", false, "ABORTED_EMERGENCY_STOP")
+            return false
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+            Log.w(TAG, "typeText rejected: User consent not granted for device control")
+            DeviceControlEvidenceTracker.recordAction("TYPE_TEXT", targetElement ?: "FOCUSED", false, "BLOCKED_NO_CONSENT")
+            return false
+        }
+
         val rootNode = rootInActiveWindow ?: return false
         
         if (!targetElement.isNullOrBlank()) {

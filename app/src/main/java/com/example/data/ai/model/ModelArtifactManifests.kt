@@ -34,13 +34,24 @@ data class ModelArtifactManifest(
     val isChecksumVerifiedPublished: Boolean = false
 )
 
+enum class AcceleratorExecutionStatus {
+    NOT_DETECTED,                     // No hardware acceleration driver or device node present
+    DRIVER_DETECTED_UNVERIFIED,       // System driver/node exists, but no neural kernel execution has been verified
+    INITIALIZED_NEURAL_BACKEND,       // NPU/GPU runtime bridge initialized
+    ACTIVE_VERIFIED_ACCELERATION      // Verified tensor acceleration on hardware with execution evidence
+}
+
 data class HardwareEnvironmentSpecs(
     val totalRamMb: Long,
     val availableRamMb: Long,
     val availableStorageMb: Long,
     val cpuCores: Int,
-    val hasNpuAcceleration: Boolean,
-    val isLowRamDevice: Boolean,
-    val isBatteryLowOrThermalsThrottling: Boolean
+    val isNpuHardwareDetected: Boolean = false,
+    val isGpuHardwareDetected: Boolean = false,
+    val acceleratorStatus: AcceleratorExecutionStatus = AcceleratorExecutionStatus.NOT_DETECTED,
+    val isLowRamDevice: Boolean = false,
+    val isBatteryLowOrThermalsThrottling: Boolean = false,
+    val verifiedExecutionEvidence: String? = null,
+    val hasNpuAcceleration: Boolean = false
 )
 

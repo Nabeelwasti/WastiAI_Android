@@ -12,6 +12,8 @@ import com.example.data.db.MemoryEntity
 import com.example.data.db.SettingEntity
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
+import com.example.assistant.PermissionManager
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.persistence.DraftPersistenceManager
 import com.example.service.WastiAccessibilityService
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +30,18 @@ object WastiDeviceController {
 
     // 1. Mobile App Launcher & Intent Dispatcher
     fun openApp(context: Context, target: String): DeviceCommandResult {
+        // [P0-37] Fail-closed Emergency Stop check
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("OPEN_APP", target, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+
+        // [P0-37] Explicit User Consent Guard
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+            DeviceControlEvidenceTracker.recordAction("OPEN_APP", target, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         val lower = target.lowercase().trim()
         val pm = context.packageManager
 
@@ -38,6 +52,7 @@ object WastiDeviceController {
                 if (directIntent != null) {
                     directIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(directIntent)
+                    DeviceControlEvidenceTracker.recordAction("OPEN_APP", target, true, "Direct package launch")
                     return DeviceCommandResult(true, "Successfully launched package '$target', Sir.", "OPEN_APP")
                 }
             }
@@ -152,6 +167,15 @@ object WastiDeviceController {
 
     // 2. Direct Messaging & Posting Automation
     fun sendWhatsAppMessage(context: Context, recipient: String, message: String): DeviceCommandResult {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+            DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         return try {
             val cleanNumber = recipient.replace(Regex("[^0-9+]"), "")
             val uri = Uri.parse("https://api.whatsapp.com/send?phone=$cleanNumber&text=${Uri.encode(message)}")
@@ -159,13 +183,24 @@ object WastiDeviceController {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+            DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, true, "WhatsApp intent dispatched")
             DeviceCommandResult(true, "WhatsApp chat opened for $recipient with prefilled message: \"$message\"", "WHATSAPP_SEND")
         } catch (e: Exception) {
+            DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, false, e.localizedMessage ?: "Unknown error")
             DeviceCommandResult(false, "Failed to open WhatsApp: ${e.localizedMessage}", "ERROR")
         }
     }
 
     fun sendEmail(context: Context, recipient: String, subject: String, body: String): DeviceCommandResult {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+            DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         return try {
             val intent = Intent(Intent.ACTION_SENDTO).apply {
                 data = Uri.parse("mailto:")
@@ -175,13 +210,24 @@ object WastiDeviceController {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+            DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, true, "Email composer dispatched")
             DeviceCommandResult(true, "Email composer opened for $recipient with subject '$subject'", "EMAIL_SEND")
         } catch (e: Exception) {
+            DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, false, e.localizedMessage ?: "Unknown error")
             DeviceCommandResult(false, "Failed to open Email composer: ${e.localizedMessage}", "ERROR")
         }
     }
 
     fun sendSMS(context: Context, recipient: String, message: String): DeviceCommandResult {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+            DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         return try {
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 data = Uri.parse("sms:$recipient")
@@ -189,13 +235,24 @@ object WastiDeviceController {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
+            DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, true, "SMS composer dispatched")
             DeviceCommandResult(true, "SMS composer opened for $recipient with message: \"$message\"", "SMS_SEND")
         } catch (e: Exception) {
+            DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, false, e.localizedMessage ?: "Unknown error")
             DeviceCommandResult(false, "Failed to open SMS app: ${e.localizedMessage}", "ERROR")
         }
     }
 
     fun postSocialMedia(context: Context, platform: String, content: String): DeviceCommandResult {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+            DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         return try {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
@@ -206,14 +263,20 @@ object WastiDeviceController {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooser)
+            DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, true, "Chooser intent dispatched")
             DeviceCommandResult(true, "Dispatched post content to $platform.", "SOCIAL_POST")
         } catch (e: Exception) {
+            DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, false, e.localizedMessage ?: "Unknown error")
             DeviceCommandResult(false, "Failed to post: ${e.localizedMessage}", "ERROR")
         }
     }
 
     // 3. Screen Reader & Active UI Node Inspection
     fun readScreenContent(context: Context? = null): String {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            return "[Operation Aborted: Emergency stop is active]"
+        }
+
         val ctx = context ?: com.example.WastiApplication.instance
         val service = WastiAccessibilityService.instance
         if (service != null && WastiAccessibilityService.isServiceActive) {
@@ -239,6 +302,15 @@ object WastiDeviceController {
 
     // 4. Tap / Click / Touch & Swipe Simulation (Command Dispatcher via IPC)
     fun simulateTap(context: Context? = null, targetElement: String): DeviceCommandResult {
+        if (WastiEmergencyStopController.isEmergencyStopped) {
+            DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, false, "ABORTED_EMERGENCY_STOP")
+            return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
+        }
+        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+            DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, false, "BLOCKED_NO_CONSENT")
+            return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
+        }
+
         val ctx = context ?: com.example.WastiApplication.instance
 
         // Send IPC broadcast intent to WastiCommandReceiver
@@ -254,8 +326,10 @@ object WastiDeviceController {
         if (service != null && WastiAccessibilityService.isServiceActive) {
             val success = service.clickElement(targetElement)
             return if (success) {
+                DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, true, "Tap executed via Accessibility Service")
                 DeviceCommandResult(true, "Successfully executed tap gesture on target '$targetElement' via Wasti IPC Bridge.", "SIMULATE_TAP")
             } else {
+                DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, false, "Target not found or gesture failed")
                 DeviceCommandResult(false, "Wasti Accessibility Engine scanned the screen but target '$targetElement' was not found or gesture dispatch failed.", "SIMULATE_TAP")
             }
         }

@@ -1,7 +1,9 @@
 package com.example.data.ai.runtime
 
 import android.content.Context
+import android.os.StatFs
 import android.util.Log
+import com.example.data.ai.engine.HardwareCapabilityDetector
 import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.model.ModelArtifactManifest
 import com.example.data.ai.model.ModelRuntimeStatus
@@ -14,6 +16,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
+import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
 
@@ -33,8 +36,57 @@ object WastiModelDownloader {
     private val _downloadProgressMap = MutableStateFlow<Map<String, ModelDownloadProgress>>(emptyMap())
     val downloadProgressMap: StateFlow<Map<String, ModelDownloadProgress>> = _downloadProgressMap.asStateFlow()
 
-    private fun isTrustedSha256(value: String): Boolean =
-        value.length == 64 && value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
+    fun isTrustedSha256(value: String): Boolean {
+        if (value.length != 64) return false
+        if (value.all { it == '0' } || value.all { it == 'f' || it == 'F' }) return false
+        return value.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
+    }
+
+    fun isSecureDownloadUrl(urlString: String): Boolean {
+        return try {
+            val uri = URI(urlString)
+            if (!uri.scheme.equals("https", ignoreCase = true)) return false
+            val host = uri.host?.lowercase() ?: return false
+            if (host == "localhost" || host == "127.0.0.1" || host == "::1") return false
+            if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return false
+            val allowedSuffixes = listOf("huggingface.co", "github.com", "githubusercontent.com")
+            allowedSuffixes.any { host == it || host.endsWith(".$it") }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    fun checkDiskSpaceForDownload(context: Context, requiredBytes: Long): Pair<Boolean, String> {
+        val storageDir = context.filesDir
+        val stat = StatFs(storageDir.absolutePath)
+        val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+        val safetyBuffer = 500L * 1024 * 1024 // 500MB headroom
+        val totalNeeded = requiredBytes + safetyBuffer
+        if (availableBytes < totalNeeded) {
+            val availableMb = availableBytes / (1024 * 1024)
+            val neededMb = totalNeeded / (1024 * 1024)
+            return false to "Insufficient disk space: Model requires ${requiredBytes / (1024 * 1024)}MB (+ 500MB safety buffer = ${neededMb}MB), but device only has ${availableMb}MB available."
+        }
+        return true to "Storage space verified."
+    }
+
+    fun canDownload(context: Context, manifest: ModelArtifactManifest): Pair<Boolean, String> {
+        if (!isTrustedSha256(manifest.expectedSha256)) {
+            return false to "Model '${manifest.modelId}' does not have a verified, published SHA-256 checksum in catalog."
+        }
+        if (!isSecureDownloadUrl(manifest.downloadUrl)) {
+            return false to "Model download URL is not secure HTTPS or from an allowed repository: ${manifest.downloadUrl}"
+        }
+        val diskCheck = checkDiskSpaceForDownload(context, manifest.byteSize)
+        if (!diskCheck.first) {
+            return diskCheck
+        }
+        val hwSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
+        if (hwSpecs.isBatteryLowOrThermalsThrottling) {
+            return false to "Device is battery-constrained or thermally throttling. Download paused for device safety."
+        }
+        return true to "Ready to download."
+    }
 
     suspend fun downloadModel(
         context: Context,
@@ -42,10 +94,13 @@ object WastiModelDownloader {
     ): Boolean = withContext(Dispatchers.IO) {
         val modelId = manifest.modelId
         val targetFile = ModelArtifactManager.getModelFile(context, modelId)
+        targetFile.parentFile?.mkdirs()
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.downloading")
 
-        if (!isTrustedSha256(manifest.expectedSha256)) {
-            val errorMsg = "Model '$modelId' does not have a verified, published SHA-256 checksum in catalog. Download blocked for security."
+        // Pre-download validation: SHA-256, URL security, disk space, and battery/thermals
+        val check = canDownload(context, manifest)
+        if (!check.first) {
+            val errorMsg = check.second
             Log.w(TAG, errorMsg)
             updateProgress(
                 ModelDownloadProgress(
@@ -53,12 +108,17 @@ object WastiModelDownloader {
                     bytesDownloaded = 0L,
                     totalBytes = manifest.byteSize,
                     progressFraction = 0.0f,
-                    statusText = "Download blocked: Unverified checksum",
+                    statusText = "Download blocked: $errorMsg",
                     isFailed = true,
                     errorMessage = errorMsg
                 )
             )
-            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.PENDING_VERIFICATION)
+            val newStatus = if (!isTrustedSha256(manifest.expectedSha256)) {
+                ModelRuntimeStatus.PENDING_VERIFICATION
+            } else {
+                ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD
+            }
+            ModelArtifactManager.updateStatus(modelId, newStatus)
             return@withContext false
         }
 
@@ -103,6 +163,10 @@ object WastiModelDownloader {
             val totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
             val digest = MessageDigest.getInstance("SHA-256")
             var downloadedBytes = 0L
+
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
 
             connection.inputStream.use { input ->
                 FileOutputStream(tempFile).use { output ->
@@ -164,6 +228,24 @@ object WastiModelDownloader {
                     tempFile.copyTo(targetFile, overwrite = true)
                     tempFile.delete()
                 }
+            }
+
+            if (!targetFile.exists() || targetFile.length() == 0L) {
+                val atomicFailMsg = "Atomic commitment of downloaded model file failed for $modelId."
+                Log.e(TAG, atomicFailMsg)
+                updateProgress(
+                    ModelDownloadProgress(
+                        modelId = modelId,
+                        bytesDownloaded = downloadedBytes,
+                        totalBytes = totalBytes,
+                        progressFraction = 0.0f,
+                        statusText = "Storage error: Atomic move failed",
+                        isFailed = true,
+                        errorMessage = atomicFailMsg
+                    )
+                )
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.FAILED_INITIALIZATION)
+                return@withContext false
             }
 
             updateProgress(

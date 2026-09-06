@@ -39,28 +39,34 @@ object OpenSourceModelCatalog {
             id = "wasti-llama",
             familyName = "Llama",
             brandDisplayName = "Wasti Llama Local (Meta Family)",
-            defaultVersion = "Llama-3.3-8B-Instruct",
-            parameterRange = "1B - 70B (Quantized Q4_K_M)",
+            defaultVersion = "Llama-3.2-1B-Instruct",
+            parameterRange = "1B - 3B (Edge Quantized Q4_K_M)",
             primarySpecialization = ModelSpecialization.GENERAL_REASONING,
-            maxContextTokens = 128000
+            maxContextTokens = 128000,
+            isLocalExecutionSupported = true,
+            defaultBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR
         ),
         OpenSourceModelDescriptor(
             id = "wasti-qwen",
             familyName = "Qwen",
             brandDisplayName = "Wasti Qwen Local (Alibaba Family)",
-            defaultVersion = "Qwen2.5-Coder-7B",
-            parameterRange = "0.5B - 72B",
+            defaultVersion = "Qwen2.5-Coder-1.5B",
+            parameterRange = "0.5B - 1.5B (Edge Quantized Q4_K_M)",
             primarySpecialization = ModelSpecialization.DEEP_CODING,
-            maxContextTokens = 131072
+            maxContextTokens = 131072,
+            isLocalExecutionSupported = true,
+            defaultBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED
         ),
         OpenSourceModelDescriptor(
             id = "wasti-gemma",
             familyName = "Gemma",
             brandDisplayName = "Wasti Gemma Local (Google Open Family)",
-            defaultVersion = "Gemma-2-9B-IT",
-            parameterRange = "2B - 27B",
+            defaultVersion = "Gemma-2-2B-IT",
+            parameterRange = "2B (Edge Quantized Q4_K_M)",
             primarySpecialization = ModelSpecialization.MATHEMATICS_LOGIC,
-            maxContextTokens = 8192
+            maxContextTokens = 8192,
+            isLocalExecutionSupported = true,
+            defaultBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR
         ),
         OpenSourceModelDescriptor(
             id = "wasti-deepseek",
@@ -69,7 +75,9 @@ object OpenSourceModelCatalog {
             defaultVersion = "DeepSeek-R1-Distill-Qwen-8B",
             parameterRange = "1.5B - 671B (MoE / Distilled)",
             primarySpecialization = ModelSpecialization.DEEP_CODING,
-            maxContextTokens = 65536
+            maxContextTokens = 65536,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         ),
         OpenSourceModelDescriptor(
             id = "wasti-mistral",
@@ -78,16 +86,20 @@ object OpenSourceModelCatalog {
             defaultVersion = "Mistral-Nemo-12B-Instruct",
             parameterRange = "7B - 8x22B",
             primarySpecialization = ModelSpecialization.RESEARCH_SYNTHESIS,
-            maxContextTokens = 128000
+            maxContextTokens = 128000,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         ),
         OpenSourceModelDescriptor(
             id = "wasti-phi",
             familyName = "Phi",
             brandDisplayName = "Wasti Phi Local (Microsoft Family)",
             defaultVersion = "Phi-3.5-mini-instruct-3.8B",
-            parameterRange = "1.5B - 14B",
+            parameterRange = "1.5B - 3.8B (Edge Quantized Q4_K_M)",
             primarySpecialization = ModelSpecialization.LIGHTWEIGHT_EDGE_EXECUTION,
-            maxContextTokens = 128000
+            maxContextTokens = 128000,
+            isLocalExecutionSupported = true,
+            defaultBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED
         ),
         OpenSourceModelDescriptor(
             id = "wasti-granite",
@@ -96,7 +108,9 @@ object OpenSourceModelCatalog {
             defaultVersion = "Granite-3.0-8B-Instruct",
             parameterRange = "2B - 34B",
             primarySpecialization = ModelSpecialization.SYSTEM_AUTOMATION,
-            maxContextTokens = 32768
+            maxContextTokens = 32768,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         ),
         OpenSourceModelDescriptor(
             id = "wasti-glm",
@@ -105,16 +119,20 @@ object OpenSourceModelCatalog {
             defaultVersion = "GLM-4-9B-Chat",
             parameterRange = "6B - 130B",
             primarySpecialization = ModelSpecialization.MULTILINGUAL_TRANSLATION,
-            maxContextTokens = 128000
+            maxContextTokens = 128000,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         ),
         OpenSourceModelDescriptor(
             id = "wasti-commandr",
             familyName = "Command R",
             brandDisplayName = "Wasti Command R Local (Cohere Open Family)",
             defaultVersion = "Command-R-35B",
-            parameterRange = "7B - 35B",
+            parameterRange = "7B - 35B (Requires Mesh / Server)",
             primarySpecialization = ModelSpecialization.SYSTEM_AUTOMATION,
-            maxContextTokens = 128000
+            maxContextTokens = 128000,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.WASTI_MESH_FEDERATION
         ),
         OpenSourceModelDescriptor(
             id = "wasti-falcon",
@@ -123,16 +141,20 @@ object OpenSourceModelCatalog {
             defaultVersion = "Falcon-Mamba-7B",
             parameterRange = "7B - 180B",
             primarySpecialization = ModelSpecialization.RESEARCH_SYNTHESIS,
-            maxContextTokens = 32768
+            maxContextTokens = 32768,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         ),
         OpenSourceModelDescriptor(
             id = "wasti-smollm",
             familyName = "SmolLM",
             brandDisplayName = "Wasti SmolLM Ultra-Edge (Hugging Face Family)",
             defaultVersion = "SmolLM2-1.7B-Instruct",
-            parameterRange = "135M - 1.7B",
+            parameterRange = "135M - 1.7B (Edge Quantized Q4_K_M)",
             primarySpecialization = ModelSpecialization.LIGHTWEIGHT_EDGE_EXECUTION,
-            maxContextTokens = 8192
+            maxContextTokens = 8192,
+            isLocalExecutionSupported = true,
+            defaultBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR
         ),
         OpenSourceModelDescriptor(
             id = "wasti-stablelm",
@@ -141,7 +163,9 @@ object OpenSourceModelCatalog {
             defaultVersion = "StableLM-2-12B-Chat",
             parameterRange = "1.6B - 12B",
             primarySpecialization = ModelSpecialization.CREATIVE_WRITING,
-            maxContextTokens = 4096
+            maxContextTokens = 4096,
+            isLocalExecutionSupported = false,
+            defaultBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER
         )
     )
 

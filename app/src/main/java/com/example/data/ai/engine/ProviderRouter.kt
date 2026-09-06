@@ -5,6 +5,7 @@ import com.example.data.ai.model.ProviderCapability
 import com.example.data.ai.model.ProviderRequest
 import com.example.data.ai.model.ProviderResponse
 import com.example.data.ai.provider.AIProvider
+import kotlin.coroutines.cancellation.CancellationException
 
 class ProviderRouter(
     private val capabilityRegistry: CapabilityRegistry,
@@ -19,20 +20,25 @@ class ProviderRouter(
         preferredProviderId: String? = null
     ): ProviderResponse {
 
-        // 1. Separate online providers from offline fallback provider
+        // 1. Separate online providers from offline fallback provider, strictly filtered by requiredCapabilities
         val allAvailable = capabilityRegistry.getAvailableProviders()
         val onlineAvailable = allAvailable.filter { it.id != "offline" }
 
+        val capableOnline = if (request.requiredCapabilities.isEmpty()) {
+            onlineAvailable
+        } else {
+            capabilityRegistry.findProvidersWithCapabilities(request.requiredCapabilities).filter { it.id != "offline" }
+        }
+
         val onlineCandidates = if (!preferredProviderId.isNullOrBlank()) {
-            val preferred = capabilityRegistry.getProvider(preferredProviderId)
-            if (preferred != null && preferred.id != "offline" && preferred.isAvailable()) {
-                listOf(preferred) + onlineAvailable.filter { it.id != preferredProviderId }
+            val preferred = capableOnline.firstOrNull { it.id == preferredProviderId }
+            if (preferred != null && preferred.isAvailable()) {
+                listOf(preferred) + capableOnline.filter { it.id != preferredProviderId }
             } else {
-                onlineAvailable
+                capableOnline
             }
         } else {
-            if (request.requiredCapabilities.isEmpty()) onlineAvailable
-            else capabilityRegistry.findProvidersWithCapabilities(request.requiredCapabilities).filter { it.id != "offline" }
+            capableOnline
         }
 
         // 2. Sort online providers by HealthStatus and Latency, maintaining preferred provider at top if set
@@ -64,9 +70,13 @@ class ProviderRouter(
             }
         }
 
-        // 3. Sequential Cascading Execution across online providers
+        val attemptedProviders = mutableListOf<String>()
+        val providerErrors = mutableListOf<String>()
         var lastErrorMsg = ""
+
+        // 3. Sequential Cascading Execution across online providers
         for (provider in sortedOnline) {
+            attemptedProviders.add(provider.id)
             val startTime = System.currentTimeMillis()
             try {
                 val response = retryManager.executeWithRetry(actionName = "Call ${provider.name}") {
@@ -84,21 +94,61 @@ class ProviderRouter(
                         costUsd = response.costUsd
                     )
                     costTracker.updateCost()
-                    return response
+
+                    val isFailover = attemptedProviders.size > 1
+                    return response.copy(
+                        isFallback = if (isFailover) true else response.isFallback,
+                        fallbackReason = if (isFailover) "Failover after errors on: ${attemptedProviders.dropLast(1).joinToString(", ")}" else response.fallbackReason,
+                        attemptedProviders = attemptedProviders.toList()
+                    )
                 } else {
                     healthMonitor.recordFailure(provider.id, provider.name)
-                    lastErrorMsg = response.errorMessage ?: "Empty response from ${provider.name}"
+                    val err = response.errorMessage ?: "Empty response from ${provider.name}"
+                    lastErrorMsg = err
+                    providerErrors.add("${provider.id}: $err")
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 healthMonitor.recordFailure(provider.id, provider.name)
-                lastErrorMsg = e.message ?: "Execution exception on ${provider.name}"
+                val err = e.message ?: "Execution exception on ${provider.name}"
+                lastErrorMsg = err
+                providerErrors.add("${provider.id}: $err")
             }
         }
 
-        // 4. Final Fallback to Offline Core if all remote providers fail
+        // 4. Final Fallback to Offline Core if all remote providers fail or none available
         val offlineProvider = capabilityRegistry.getProvider("offline")
-        if (offlineProvider != null) {
-            return offlineProvider.generate(request)
+        if (offlineProvider != null && offlineProvider.isAvailable()) {
+            val missingCapabilities = request.requiredCapabilities.filter { it !in offlineProvider.capabilities }
+            if (missingCapabilities.isNotEmpty()) {
+                // Offline fallback provider lacks required capabilities (e.g. IMAGE_UNDERSTANDING, TOOL_USE, AUDIO_TRANSCRIPTION)
+                // Fail closed truthfully without pretending offline core can handle it!
+                attemptedProviders.add(offlineProvider.id)
+                return ProviderResponse(
+                    content = "Capability mismatch: Request requires [${missingCapabilities.joinToString(", ")}], but offline fallback provider '${offlineProvider.name}' only supports [${offlineProvider.capabilities.joinToString(", ")}]. Failing closed.",
+                    providerId = "offline",
+                    providerName = offlineProvider.name,
+                    modelUsed = "none",
+                    isError = true,
+                    isFallback = true,
+                    fallbackReason = "Offline core lacks required capabilities: ${missingCapabilities.joinToString(", ")}",
+                    errorMessage = "Capability Mismatch Error: Missing ${missingCapabilities.joinToString(", ")}",
+                    attemptedProviders = attemptedProviders.toList()
+                )
+            }
+
+            attemptedProviders.add(offlineProvider.id)
+            val offlineResp = offlineProvider.generate(request)
+            val fallbackReasonStr = if (providerErrors.isNotEmpty()) {
+                "All online providers failed (${providerErrors.joinToString("; ")}). Routed to offline fallback."
+            } else {
+                "Offline routing invoked."
+            }
+            return offlineResp.copy(
+                isFallback = true,
+                fallbackReason = fallbackReasonStr,
+                attemptedProviders = attemptedProviders.toList()
+            )
         }
 
         return ProviderResponse(
@@ -107,7 +157,10 @@ class ProviderRouter(
             providerName = "Provider Router",
             modelUsed = "none",
             isError = true,
-            errorMessage = lastErrorMsg
+            isFallback = attemptedProviders.isNotEmpty(),
+            fallbackReason = if (attemptedProviders.isNotEmpty()) "All attempted providers failed: ${attemptedProviders.joinToString(", ")}" else null,
+            errorMessage = lastErrorMsg,
+            attemptedProviders = attemptedProviders.toList()
         )
     }
 }

@@ -13,8 +13,15 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
+
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
+@TestCategory(
+    tier = TestTier.ROBOLECTRIC,
+    description = "Robolectric host simulation of capability reality and truthful inactive device states"
+)
 class CapabilityRealityAndDeviceTest {
 
     private lateinit var context: Context

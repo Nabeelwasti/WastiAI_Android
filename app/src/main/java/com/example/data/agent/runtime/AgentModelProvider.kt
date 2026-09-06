@@ -21,7 +21,11 @@ data class PlannedStep(
 data class ModelPlanResponse(
     val rawReasoning: String,
     val steps: List<PlannedStep>,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
+    val isNeuralModel: Boolean = false,
+    val providerSource: String = "RULE_BASED_FALLBACK",
+    val isFallback: Boolean = false,
+    val fallbackReason: String? = null
 )
 
 data class ModelDiagnosticResponse(
@@ -29,13 +33,17 @@ data class ModelDiagnosticResponse(
     val summary: String,
     val evidence: String,
     val probableCause: String,
-    val suggestedAction: String
+    val suggestedAction: String,
+    val isFallback: Boolean = false,
+    val fallbackReason: String? = null
 )
 
 data class ModelCorrectionResponse(
     val explanation: String,
     val proposedAction: PlannedStep?,
-    val alternativeStrategy: String? = null
+    val alternativeStrategy: String? = null,
+    val isFallback: Boolean = false,
+    val fallbackReason: String? = null
 )
 
 /**
@@ -99,7 +107,9 @@ class RuleBasedAgentModelProvider : AgentModelProvider {
         return ModelPlanResponse(
             rawReasoning = "Rule-based planning logic applied for goal: $goal",
             steps = steps,
-            isValid = true
+            isValid = true,
+            isNeuralModel = false,
+            providerSource = "RULE_BASED_FALLBACK"
         )
     }
 

@@ -93,8 +93,17 @@ class WorkspaceManager(context: Context) {
         }
     }
 
-    fun writeFile(relativePath: String, content: String): Result<Unit> {
+    fun writeFile(relativePath: String, content: String, isAutonomous: Boolean = false, adminAuthToken: String? = null): Result<Unit> {
         return resolvePathSafely(relativePath).mapCatching { file ->
+            val decision = SelfModificationSafetyEngine.evaluateModification(
+                filePath = file.absolutePath,
+                newContent = content,
+                isAutonomous = isAutonomous,
+                adminAuthToken = adminAuthToken
+            )
+            if (decision != ModificationDecision.ALLOWED) {
+                throw SecurityException("Write blocked by SelfModificationSafetyEngine: $decision on path '${file.canonicalPath}'")
+            }
             val parent = file.parentFile
             if (parent != null && !parent.exists()) {
                 parent.mkdirs()

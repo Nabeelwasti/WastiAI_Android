@@ -52,8 +52,8 @@ object BiometricSecurityManager {
         return if (stored != null) {
             inputPin == stored
         } else {
-            // If no PIN is yet configured, allow initial setup with 10-digit PIN
-            if (inputPin.length == 10 && inputPin.all { it.isDigit() }) {
+            // If no PIN is yet configured, allow initial setup with 4-to-10 digit numeric PIN
+            if (inputPin.length in 4..10 && inputPin.all { it.isDigit() }) {
                 setPin(context, inputPin)
                 true
             } else {

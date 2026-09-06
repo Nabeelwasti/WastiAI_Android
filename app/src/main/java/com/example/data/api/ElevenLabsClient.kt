@@ -66,7 +66,7 @@ object ElevenLabsClient {
         modelId: String = "eleven_multilingual_v2"
     ): ByteArray? = withContext(Dispatchers.IO) {
         val apiKey = CredentialRegistry.getRawValue("ELEVENLABS_API_KEY")
-        if (apiKey.isNullOrBlank()) return@withContext null
+        if (apiKey.isNullOrBlank() || CredentialRegistry.isPlaceholder(apiKey)) return@withContext null
 
         try {
             val response = api.textToSpeech(
@@ -76,6 +76,7 @@ object ElevenLabsClient {
             )
             response.bytes()
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             null
         }
     }

@@ -67,8 +67,9 @@ class RecoveryPlanner(
             }
 
             errorMsg.contains("toolchain") || errorMsg.contains("not found") || errorMsg.contains("missing") -> {
-                // If local toolchain missing, try routing to WASM sandbox or Mesh Node
-                val isWasmViable = capId.contains("terminal") || capId.contains("code")
+                // If local toolchain missing, try routing to WASM sandbox only if native WASI engine is available, else Mesh Node
+                val isWasmViable = (capId.contains("terminal") || capId.contains("code")) &&
+                    com.example.data.sandbox.WastiWasmRuntime.instance.isNativeWasmAvailable
                 if (isWasmViable) {
                     RecoveryPlan(
                         failureReason = "Native compiler/runtime missing on Android host",

@@ -393,7 +393,7 @@ fun CredentialCardItem(
     }
 
     val displayVal = when {
-        rawVal.isBlank() || rawVal.startsWith("MY_") || rawVal.startsWith("YOUR_") -> "Not Configured (Placeholder Key)"
+        rawVal.isBlank() || com.example.data.credential.CredentialRegistry.isPlaceholder(rawVal) -> "Not Configured (Placeholder Key)"
         isRevealed -> rawVal
         else -> "••••••••••••••••••••"
     }
@@ -448,7 +448,7 @@ fun CredentialCardItem(
                             enteredPin = ""
                             authError = null
                         } else {
-                            authError = "Incorrect PIN / Passcode. Try '1234' or your custom PIN."
+                            authError = "Incorrect PIN / Passcode. Please enter your 4-10 digit master PIN."
                         }
                     }
                 ) {

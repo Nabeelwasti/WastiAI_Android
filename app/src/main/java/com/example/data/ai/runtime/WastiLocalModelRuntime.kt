@@ -169,30 +169,65 @@ class WastiLocalModelRuntime(
         }
     }
 
-    suspend fun executeInference(
+    suspend fun executeInferenceDetailed(
         modelId: String,
         prompt: String,
         systemInstruction: String = "",
         maxTokens: Int = 256,
         temperature: Float = 0.7f
-    ): String = withContext(Dispatchers.Default) {
+    ): LocalInferenceResult = withContext(Dispatchers.Default) {
+        val startTime = System.currentTimeMillis()
+
+        if (com.example.data.di.WastiServiceLocator.emergencyStopController.isEmergencyStopped) {
+            val stopReason = com.example.data.di.WastiServiceLocator.emergencyStopController.getReason() ?: "Emergency stop active"
+            return@withContext LocalInferenceResult(
+                status = LocalInferenceStatus.ABORTED_EMERGENCY_STOP,
+                output = "[EMERGENCY_STOP_ACTIVE]: Local neural model inference aborted: $stopReason",
+                modelId = modelId,
+                latencyMs = 0L,
+                isNeuralOutput = false,
+                errorMessage = "Execution aborted by emergency stop: $stopReason"
+            )
+        }
+
         val modelFile = ModelArtifactManager.getModelFile(context, modelId)
         val manifest = ModelArtifactManager.getManifest(modelId)
 
         if (!modelFile.exists() || modelFile.length() == 0L) {
-            return@withContext "[LOCAL_MODEL_UNAVAILABLE]: Model weights for '$modelId' are not present locally on device. Download required via Model Manager."
+            return@withContext LocalInferenceResult(
+                status = LocalInferenceStatus.WEIGHTS_MISSING,
+                output = "[LOCAL_MODEL_UNAVAILABLE]: Model weights for '$modelId' are not present locally on device. Download required via Model Manager.",
+                modelId = modelId,
+                latencyMs = System.currentTimeMillis() - startTime,
+                isNeuralOutput = false,
+                errorMessage = "Model weights not present on device"
+            )
         }
 
         val header = parseGgufHeader(modelFile)
         if (!header.isValidGguf) {
-            return@withContext "[LOCAL_MODEL_CORRUPT]: GGUF header validation failed for '${modelFile.name}'. File may be corrupt or invalid format."
+            return@withContext LocalInferenceResult(
+                status = LocalInferenceStatus.GGUF_HEADER_CORRUPT,
+                output = "[LOCAL_MODEL_CORRUPT]: GGUF header validation failed for '${modelFile.name}'. File may be corrupt or invalid format.",
+                modelId = modelId,
+                latencyMs = System.currentTimeMillis() - startTime,
+                isNeuralOutput = false,
+                errorMessage = "GGUF header validation failed"
+            )
         }
 
         // Check hardware requirements
         val specs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
         val minRam = manifest?.minRamRequiredMb ?: 256
         if (specs.totalRamMb < minRam) {
-            return@withContext "[INSUFFICIENT_RAM]: Model requires ${minRam}MB RAM, device only provides ${specs.totalRamMb}MB."
+            return@withContext LocalInferenceResult(
+                status = LocalInferenceStatus.INSUFFICIENT_RAM,
+                output = "[INSUFFICIENT_RAM]: Model requires ${minRam}MB RAM, device only provides ${specs.totalRamMb}MB.",
+                modelId = modelId,
+                latencyMs = System.currentTimeMillis() - startTime,
+                isNeuralOutput = false,
+                errorMessage = "Insufficient device RAM"
+            )
         }
 
         // If native llama.cpp backend is bundled, invoke native runtime
@@ -207,17 +242,74 @@ class WastiLocalModelRuntime(
                     }
                     val result = NativeLlamaBridge.evalPrompt(handle, fullPrompt, maxTokens, temperature)
                     NativeLlamaBridge.freeModel(handle)
-                    result
+                    LocalInferenceResult(
+                        status = LocalInferenceStatus.SUCCESS,
+                        output = result,
+                        modelId = modelId,
+                        latencyMs = System.currentTimeMillis() - startTime,
+                        isNeuralOutput = true
+                    )
                 } else {
-                    "[NATIVE_LOAD_FAILED]: Native Llama runtime failed to initialize model handle from GGUF."
+                    LocalInferenceResult(
+                        status = LocalInferenceStatus.NATIVE_LOAD_FAILED,
+                        output = "[NATIVE_LOAD_FAILED]: Native Llama runtime failed to initialize model handle from GGUF.",
+                        modelId = modelId,
+                        latencyMs = System.currentTimeMillis() - startTime,
+                        isNeuralOutput = false,
+                        errorMessage = "Failed to initialize native model handle"
+                    )
                 }
             } catch (e: Throwable) {
                 Log.e(TAG, "Native inference execution error", e)
-                "[NATIVE_INFERENCE_ERROR]: ${e.message}"
+                LocalInferenceResult(
+                    status = LocalInferenceStatus.NATIVE_EXECUTION_ERROR,
+                    output = "[NATIVE_INFERENCE_ERROR]: ${e.message}",
+                    modelId = modelId,
+                    latencyMs = System.currentTimeMillis() - startTime,
+                    isNeuralOutput = false,
+                    errorMessage = e.message
+                )
             }
         }
 
         // Truthful reporting: GGUF weights verified and tensor validated on device
-        "[LOCAL_GGUF_VALIDATED]: GGUF weights loaded (v${header.version}, ${header.tensorCount} tensors, ${header.metadataKvCount} metadata entries, ${modelFile.length() / (1024 * 1024)}MB). Native ARM64 Llama runtime required for full token generation loop."
+        LocalInferenceResult(
+            status = LocalInferenceStatus.NATIVE_RUNTIME_UNAVAILABLE,
+            output = "[LOCAL_GGUF_VALIDATED]: GGUF weights loaded (v${header.version}, ${header.tensorCount} tensors, ${header.metadataKvCount} metadata entries, ${modelFile.length() / (1024 * 1024)}MB). Native ARM64 Llama runtime required for full token generation loop.",
+            modelId = modelId,
+            latencyMs = System.currentTimeMillis() - startTime,
+            isNeuralOutput = false,
+            errorMessage = "Native llama.cpp library (.so) not bundled for device ABI"
+        )
+    }
+
+    suspend fun executeInference(
+        modelId: String,
+        prompt: String,
+        systemInstruction: String = "",
+        maxTokens: Int = 256,
+        temperature: Float = 0.7f
+    ): String {
+        return executeInferenceDetailed(modelId, prompt, systemInstruction, maxTokens, temperature).output
     }
 }
+
+enum class LocalInferenceStatus {
+    SUCCESS,
+    WEIGHTS_MISSING,
+    GGUF_HEADER_CORRUPT,
+    INSUFFICIENT_RAM,
+    NATIVE_RUNTIME_UNAVAILABLE,
+    NATIVE_LOAD_FAILED,
+    NATIVE_EXECUTION_ERROR,
+    ABORTED_EMERGENCY_STOP
+}
+
+data class LocalInferenceResult(
+    val status: LocalInferenceStatus,
+    val output: String,
+    val modelId: String,
+    val latencyMs: Long = 0L,
+    val isNeuralOutput: Boolean = false,
+    val errorMessage: String? = null
+)

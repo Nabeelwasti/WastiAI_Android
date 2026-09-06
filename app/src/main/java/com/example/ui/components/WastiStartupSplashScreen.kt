@@ -35,7 +35,6 @@ fun WastiStartupSplashScreen(
                     )
                 )
             )
-            .clickable { AppStartupManager.setReady() }
             .testTag("wasti_startup_splash_screen"),
         contentAlignment = Alignment.Center
     ) {
@@ -68,22 +67,7 @@ fun WastiStartupSplashScreen(
                 modifier = Modifier.padding(top = 4.dp)
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
-
-            Button(
-                onClick = { AppStartupManager.setReady() },
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .testTag("enter_workspace_splash_btn"),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text(
-                    text = "Enter Workspace",
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             when (startupState) {
                 is AppStartupState.Initializing -> {

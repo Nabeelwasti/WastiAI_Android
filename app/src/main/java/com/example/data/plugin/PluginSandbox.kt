@@ -61,8 +61,11 @@ class PluginSandbox(
             }
 
             if (!isGranted) {
-                // Auto-grant for built-in trusted system plugins or prompt user
-                PermissionManager.grantPermission(pluginId, requiredPermission)
+                // [P0-36] Truth Invariant: Declared in manifest != Granted by user.
+                // Ungranted permissions cannot be automatically assumed granted.
+                val err = "Security Violation: Plugin [$pluginId] requested action [$actionName] requiring permission [$requiredPermission]. Permission is declared in manifest but has not been granted by user consent."
+                WastiEventBus.emit(WastiEvent.SystemAlert("PERMISSION_NOT_GRANTED", err))
+                return PluginExecutionResult(isSuccess = false, errorMessage = err)
             }
         }
 

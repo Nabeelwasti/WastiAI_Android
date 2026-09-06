@@ -176,7 +176,12 @@ object AIManager {
                 parametersJsonSchema = """{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}"""
             )
         ) { paramsJson ->
-            val path = try { org.json.JSONObject(paramsJson).optString("path", "") } catch (_: Exception) { "" }
+            val path = try {
+                org.json.JSONObject(paramsJson).optString("path", "")
+            } catch (e: Exception) {
+                Log.w("AIManager", "Malformed JSON arguments in read_file: ${e.message}")
+                return@registerTool "Execution Error: Malformed JSON arguments in read_file: ${e.message}"
+            }
             val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
                 capabilityId = "read_file",
                 parameters = mapOf("path" to path)
@@ -194,8 +199,9 @@ object AIManager {
             val (path, content) = try {
                 val obj = org.json.JSONObject(paramsJson)
                 Pair(obj.optString("path", ""), obj.optString("content", ""))
-            } catch (_: Exception) {
-                Pair("", "")
+            } catch (e: Exception) {
+                Log.w("AIManager", "Malformed JSON arguments in write_file: ${e.message}")
+                return@registerTool "Execution Error: Malformed JSON arguments in write_file: ${e.message}"
             }
             val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
                 capabilityId = "write_file",

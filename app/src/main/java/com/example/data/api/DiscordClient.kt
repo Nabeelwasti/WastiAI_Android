@@ -17,7 +17,7 @@ object DiscordClient {
 
     suspend fun getBotUserMe(): String = withContext(Dispatchers.IO) {
         val botToken = CredentialRegistry.getRawValue("DISCORD_BOT_KEY")
-        if (botToken.isNullOrBlank()) return@withContext "Not Configured"
+        if (botToken.isNullOrBlank() || CredentialRegistry.isPlaceholder(botToken)) return@withContext "Not Configured"
 
         val request = Request.Builder()
             .url("$BASE_URL/users/@me")
@@ -33,6 +33,7 @@ object DiscordClient {
                 "Discord Auth Status: HTTP ${response.code}"
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             "Error: ${e.message}"
         }
     }

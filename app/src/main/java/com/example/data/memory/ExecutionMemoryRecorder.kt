@@ -139,11 +139,15 @@ object ExecutionMemoryRecorder {
             Log.d(TAG, "Recorded execution graph for task ${record.taskId} with outcome: $outcomeStr")
 
             // Self-Training Feedback Loop: Distill verified successes into reusable learned skills
-            if (record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED || record.isSuccess == true) {
+            val evidence = record.verificationEvidence
+            if (record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED &&
+                !evidence.isNullOrBlank() &&
+                !com.example.data.ai.engine.SelfTrainingKnowledgeDistillationEngine.isSyntheticOrMock(evidence)
+            ) {
                 try {
                     com.example.data.ai.engine.SelfTrainingKnowledgeDistillationEngine.recordVerifiedInteractionAndDistill(
                         taskPrompt = record.goal,
-                        successfulExecutionEvidence = record.verificationEvidence ?: "Verified execution evidence",
+                        successfulExecutionEvidence = evidence,
                         winningModelId = record.selectedNode
                     )
                 } catch (distillErr: Exception) {
@@ -153,6 +157,36 @@ object ExecutionMemoryRecorder {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to persist execution record to MemoryManager", e)
         }
+
+        // [P0-49] Cryptographic Provenance Recording
+        try {
+            val structuredEvidence = if (record.verificationStatus == "VERIFIED" || record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED) {
+                com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                    evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+                    subject = record.selectedCapability,
+                    verifiedState = record.verificationEvidence ?: "Execution verified",
+                    confidence = 0.95,
+                    observedAt = record.timestamp
+                )
+            } else null
+
+            com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                taskId = record.taskId,
+                actionId = record.interpretedIntent,
+                capabilityId = record.selectedCapability,
+                providerId = record.selectedNode,
+                modelId = null,
+                inputContent = record.goal,
+                outputContent = record.verificationEvidence ?: record.error ?: "Outcome: ${record.terminalTruthState?.name ?: record.isSuccess}",
+                evidence = structuredEvidence
+            )
+        } catch (provErr: Exception) {
+            Log.w(TAG, "Provenance recording warning: ${provErr.message}")
+        }
+    }
+
+    fun clearHistoryForTesting() {
+        executionHistory.clear()
     }
 
     suspend fun getLastExecutionForCapability(capabilityId: String, context: Context? = null): ExecutionRecord? = withContext(Dispatchers.IO) {

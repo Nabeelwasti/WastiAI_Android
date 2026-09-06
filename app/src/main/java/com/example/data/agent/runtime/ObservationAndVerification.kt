@@ -58,7 +58,8 @@ data class VerificationRequest(
     val capabilityId: String,
     val expectedOutcome: String = "",
     val executionResult: UnifiedExecutionResult,
-    val observationResult: ObservationResult
+    val observationResult: ObservationResult,
+    val structuredEvidence: VerifiedExecutionEvidence? = null
 )
 
 data class VerificationResult(
@@ -69,7 +70,8 @@ data class VerificationResult(
     val evidence: String,
     val confidence: Double = 0.0,
     val failureReason: String? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val structuredEvidence: VerifiedExecutionEvidence? = null
 )
 
 data class StructuredUiObservation(

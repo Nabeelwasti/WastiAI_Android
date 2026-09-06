@@ -1,6 +1,7 @@
 package com.example.data.agent.runtime
 
 import android.content.Context
+import com.example.data.core.TestTier
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +71,8 @@ data class TestCaseResult(
     val lineNumber: Int?,
     val status: TestExecutionStatus,
     val durationMs: Long,
+    val tier: TestTier = TestTier.UNIT,
+    val provesRealWorldCapability: Boolean = false,
     val errorMessage: String? = null,
     val stackTrace: String? = null
 )
@@ -88,7 +91,9 @@ data class TestReport(
     val status: TestExecutionStatus,
     val stdout: String,
     val stderr: String,
-    val failureLocations: List<String> = emptyList()
+    val failureLocations: List<String> = emptyList(),
+    val dominantTier: TestTier = TestTier.UNIT,
+    val hasRealWorldProof: Boolean = false
 )
 
 data class DiagnosticFinding(

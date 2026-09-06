@@ -11,7 +11,9 @@ data class EmbeddingVector(
     val providerId: String,
     val modelName: String,
     val vectorLength: Int,
-    val values: FloatArray
+    val values: FloatArray,
+    val isNeuralEmbedding: Boolean = false,
+    val engineType: String = "DETERMINISTIC_MATHEMATICAL_FALLBACK"
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -20,6 +22,8 @@ data class EmbeddingVector(
         if (providerId != other.providerId) return false
         if (modelName != other.modelName) return false
         if (vectorLength != other.vectorLength) return false
+        if (isNeuralEmbedding != other.isNeuralEmbedding) return false
+        if (engineType != other.engineType) return false
         if (!values.contentEquals(other.values)) return false
         return true
     }

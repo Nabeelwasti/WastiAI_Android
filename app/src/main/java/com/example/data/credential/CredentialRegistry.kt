@@ -60,11 +60,48 @@ object CredentialRegistry {
                upper == "PLACEHOLDER" ||
                upper == "ENTER_KEY_HERE" ||
                upper == "NULL" ||
+               upper == "UNDEFINED" ||
+               upper == "NONE" ||
+               upper == "DUMMY" ||
+               upper == "TODO" ||
+               upper == "CHANGEME" ||
+               upper == "FAKE" ||
+               upper.contains("PLACEHOLDER") ||
                upper.startsWith("MY_") ||
-               upper.startsWith("YOUR_")
+               upper.startsWith("YOUR_") ||
+               upper.startsWith("TODO_") ||
+               upper.startsWith("CHANGEME") ||
+               upper.startsWith("DUMMY_") ||
+               upper.startsWith("FAKE_") ||
+               upper.startsWith("SAMPLE_") ||
+               upper.startsWith("TEST_KEY")
     }
 
-    // Helper for HTTP GET checks
+    // Helper to sanitize secret strings from logs, UI previews, and error messages
+    fun sanitizeSecretString(input: String): String {
+        if (input.isBlank()) return ""
+        var sanitized = input
+        try {
+            val secrets = getActiveConfiguredSecrets()
+            for (s in secrets) {
+                if (s.length >= 6 && sanitized.contains(s)) {
+                    sanitized = sanitized.replace(s, "[REDACTED_SECRET]")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CredentialRegistry", "Secret sanitization error: ${e.message}")
+        }
+
+        val apiKeyPattern = Regex("(?i)(key|secret|token|password|auth)[:=]\\s*[\"']?([a-zA-Z0-9_\\-]{8,})[\"']?")
+        sanitized = apiKeyPattern.replace(sanitized) { mr ->
+            "${mr.groupValues[1]}=[REDACTED]"
+        }
+        val bearerPattern = Regex("(?i)Bearer\\s+([a-zA-Z0-9_\\-\\.]+)")
+        sanitized = bearerPattern.replace(sanitized, "Bearer [REDACTED]")
+        return sanitized
+    }
+
+    // Helper for HTTP GET checks with strict response body sanitization
     private fun httpGetCheck(
         url: String,
         headers: Map<String, String> = emptyMap(),
@@ -75,7 +112,8 @@ object CredentialRegistry {
             headers.forEach { (k, v) -> reqBuilder.addHeader(k, v) }
             val response = httpClient.newCall(reqBuilder.build()).execute()
             val code = response.code
-            val bodyPreview = response.body?.string()?.take(150)?.replace("\n", " ") ?: ""
+            val rawBody = response.body?.string()?.take(150)?.replace("\n", " ") ?: ""
+            val bodyPreview = sanitizeSecretString(rawBody)
             response.close()
             if (code in expectedCodes) {
                 Pair(true, "Connected (HTTP $code OK)")
@@ -83,7 +121,8 @@ object CredentialRegistry {
                 Pair(false, "HTTP $code - $bodyPreview")
             }
         } catch (e: Exception) {
-            Pair(false, "Network Error: ${e.localizedMessage ?: e.message}")
+            val safeMsg = sanitizeSecretString(e.localizedMessage ?: e.message ?: "Unknown error")
+            Pair(false, "Network Error: $safeMsg")
         }
     }
 
@@ -97,7 +136,10 @@ object CredentialRegistry {
             description = "Powers Gemini 3.6 Flash & 3.5 Flash Lite reasoning engines.",
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
-                else httpGetCheck("https://generativelanguage.googleapis.com/v1beta/models?key=$value")
+                else httpGetCheck(
+                    "https://generativelanguage.googleapis.com/v1beta/models",
+                    mapOf("x-goog-api-key" to value)
+                )
             }
         ),
         CredentialEntry(
@@ -394,7 +436,7 @@ object CredentialRegistry {
             description = "OAuth 2.0 Client ID for LinkedIn API social media integration.",
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
-                else Pair(true, "Configured (${value.take(10)}...)")
+                else Pair(true, "Configured (${maskKey(value)})")
             }
         ),
         CredentialEntry(
@@ -439,7 +481,7 @@ object CredentialRegistry {
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else if (value.startsWith("http")) Pair(true, "Valid Endpoint URL")
-                else Pair(true, "Configured ($value)")
+                else Pair(true, "Configured (${maskKey(value)})")
             }
         ),
         CredentialEntry(
@@ -543,7 +585,7 @@ object CredentialRegistry {
             description = "OAuth 2.0 Client ID for Upwork GraphQL & REST API contract integration.",
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Client ID)")
-                else Pair(true, "Client ID Configured (${value.take(10)}...)")
+                else Pair(true, "Client ID Configured (${maskKey(value)})")
             }
         ),
         CredentialEntry(

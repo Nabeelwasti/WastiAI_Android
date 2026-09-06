@@ -39,6 +39,7 @@ class BackendClientTest {
             lastRecordedBody = exchange.requestBody.bufferedReader().use { it.readText() }
 
             val responseBody = when (exchange.requestURI.path) {
+                "/health" -> "{\"status\":\"ok\",\"timestamp\":1725660000000,\"githubConfigured\":true,\"brevoConfigured\":false,\"stripeConfigured\":true,\"firebaseConfigured\":false,\"authEnforced\":true}"
                 "/llm" -> "{\"provider\":\"openai\",\"result\":\"mocked LLM answer\"}"
                 "/dev/patch" -> "{\"prUrl\":\"https://github.com/test/pull/1\",\"branch\":\"wasti/patch-1\"}"
                 "/wakeword" -> "{\"status\":\"accepted\"}"
@@ -141,5 +142,52 @@ class BackendClientTest {
             payloadJson = "{}"
         )
         assertNull(result)
+    }
+
+    @Test
+    fun testCheckHealth_returnsReachableAndSubsystemStatus() = runBlocking {
+        val health = BackendClient.checkHealth(baseUrl, authToken = "secret-token-xyz")
+        assertTrue("Backend should be marked reachable", health.isReachable)
+        assertEquals(200, health.httpCode)
+        assertEquals("ok", health.status)
+        assertTrue(health.latencyMs >= 0)
+        assertTrue(health.githubConfigured)
+        assertFalse(health.brevoConfigured)
+        assertTrue(health.stripeConfigured)
+        assertTrue(health.authEnforced)
+        assertEquals("/health", lastRecordedPath)
+        assertEquals("secret-token-xyz", lastRecordedTokenHeader)
+    }
+
+    @Test
+    fun testCheckHealth_invalidUrl_failsClosed() = runBlocking {
+        val health = BackendClient.checkHealth("invalid_not_a_url")
+        assertFalse("Invalid URL must fail closed as unreachable", health.isReachable)
+        assertNotNull(health.errorMessage)
+        assertTrue(health.errorMessage!!.contains("Invalid base URL"))
+    }
+
+    @Test
+    fun testCheckHealth_unreachableHost_failsClosed() = runBlocking {
+        val health = BackendClient.checkHealth("http://127.0.0.1:1", timeoutMs = 500)
+        assertFalse("Unreachable server must fail closed", health.isReachable)
+        assertNotNull(health.errorMessage)
+    }
+
+    @Test
+    fun testIsEndpointReachable() = runBlocking {
+        assertTrue(BackendClient.isEndpointReachable("$baseUrl/health"))
+        assertFalse(BackendClient.isEndpointReachable("http://127.0.0.1:1", timeoutMs = 500))
+        assertFalse(BackendClient.isEndpointReachable("ftp://invalid"))
+    }
+
+    @Test
+    fun testCallLLM_invalidUrl_failsClosedImmediately() = runBlocking {
+        val result = BackendClient.callLLM(
+            baseUrl = "htp://bad-scheme",
+            provider = "openai",
+            payloadJson = "{}"
+        )
+        assertNull("Invalid baseUrl must return null without crashing", result)
     }
 }

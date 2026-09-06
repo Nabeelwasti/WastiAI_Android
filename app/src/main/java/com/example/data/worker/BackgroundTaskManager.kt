@@ -132,7 +132,7 @@ object BackgroundTaskManager {
             job.state = TaskState.RUNNING
             updateJobsFlow()
             block()
-            job.state = TaskState.COMPLETED
+            job.state = if (job.isRecurring) TaskState.SCHEDULED else TaskState.COMPLETED
             job.lastRunTimestamp = System.currentTimeMillis()
             job.runCount += 1
             WastiEventBus.emit(WastiEvent.SyncCompleted(job.name, true))

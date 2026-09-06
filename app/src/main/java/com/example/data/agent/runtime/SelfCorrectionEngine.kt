@@ -84,11 +84,32 @@ class SelfCorrectionEngine(
     /**
      * Executes the proposed correction strictly through WastiAgentToolRouter.
      * NEVER executes tool logic directly.
+     * [P0-40] Enforces SelfModificationSafetyEngine before mutating files.
      */
     suspend fun applyCorrectionThroughRouter(
         task: AgentTask,
         proposal: CorrectionProposal
     ): ToolResult {
+        val targetPath = proposal.toolArguments["path"]?.toString()
+            ?: proposal.toolArguments["filePath"]?.toString()
+        val content = proposal.toolArguments["content"]?.toString() ?: ""
+
+        if (proposal.toolName in listOf("write_file", "patch_file", "append_file") && !targetPath.isNullOrBlank()) {
+            val decision = SelfModificationSafetyEngine.evaluateModification(
+                filePath = targetPath,
+                newContent = content,
+                isAutonomous = true
+            )
+            if (decision != ModificationDecision.ALLOWED) {
+                return ToolResult(
+                    toolName = proposal.toolName,
+                    success = false,
+                    output = "Blocked by SelfModificationSafetyEngine: $decision on target path '$targetPath'",
+                    error = SecurityException("Autonomous self-modification blocked: $decision")
+                )
+            }
+        }
+
         return toolRouter.routeAndExecute(
             toolName = proposal.toolName,
             args = proposal.toolArguments,

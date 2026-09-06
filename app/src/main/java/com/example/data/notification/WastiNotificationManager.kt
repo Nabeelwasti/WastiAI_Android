@@ -31,7 +31,12 @@ object WastiNotificationManager {
         matchScore: Int,
         category: String,
         draftedPitch: String
-    ) {
+    ): Boolean {
+        if (!com.example.assistant.PermissionManager.hasPostNotifications(context)) {
+            android.util.Log.w("WastiNotification", "Notification skipped: POST_NOTIFICATIONS permission not granted.")
+            return false
+        }
+
         initNotificationChannel(context)
 
         val notificationManager =
@@ -51,10 +56,12 @@ object WastiNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
-        try {
+        return try {
             notificationManager.notify(notificationId, builder.build())
+            true
         } catch (e: Exception) {
             android.util.Log.e("WastiNotification", "Error sending notification", e)
+            false
         }
     }
 
@@ -62,7 +69,12 @@ object WastiNotificationManager {
         context: Context,
         title: String,
         message: String
-    ) {
+    ): Boolean {
+        if (!com.example.assistant.PermissionManager.hasPostNotifications(context)) {
+            android.util.Log.w("WastiNotification", "Voice alert notification skipped: POST_NOTIFICATIONS permission not granted.")
+            return false
+        }
+
         initNotificationChannel(context)
 
         val notificationManager =
@@ -78,10 +90,12 @@ object WastiNotificationManager {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
 
-        try {
+        return try {
             notificationManager.notify(notificationId, builder.build())
+            true
         } catch (e: Exception) {
             android.util.Log.e("WastiNotification", "Error sending voice alert notification", e)
+            false
         }
     }
 }

@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 data class UnsplashPhotoUrls(val raw: String, val full: String, val regular: String, val small: String)
@@ -25,10 +26,16 @@ object UnsplashClient {
 
     suspend fun searchStockPhotos(query: String): List<UnsplashPhotoItem> = withContext(Dispatchers.IO) {
         val accessKey = CredentialRegistry.getRawValue("UNSPLASH_ACCESS_KEY")
-        if (accessKey.isNullOrBlank()) return@withContext emptyList()
+        if (accessKey.isNullOrBlank() || CredentialRegistry.isPlaceholder(accessKey)) return@withContext emptyList()
+
+        val encodedQuery = try {
+            URLEncoder.encode(query.trim(), "UTF-8")
+        } catch (_: Exception) {
+            query.trim()
+        }
 
         val request = Request.Builder()
-            .url("$BASE_URL/search/photos?query=${query.trim()}&per_page=3")
+            .url("$BASE_URL/search/photos?query=$encodedQuery&per_page=3")
             .addHeader("Authorization", "Client-ID $accessKey")
             .get()
             .build()
@@ -36,13 +43,14 @@ object UnsplashClient {
         try {
             val response = client.newCall(request).execute()
             if (response.isSuccessful) {
-                val json = response.body?.string() ?: ""
+                val json = response.body?.string().orEmpty()
                 val adapter = moshi.adapter(UnsplashSearchResponse::class.java)
                 adapter.fromJson(json)?.results ?: emptyList()
             } else {
                 emptyList()
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             emptyList()
         }
     }

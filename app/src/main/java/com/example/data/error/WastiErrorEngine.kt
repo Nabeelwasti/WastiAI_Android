@@ -79,6 +79,24 @@ object WastiErrorEngine {
                 isRecoverable = throwable.isRecoverable
             )
 
+            is kotlinx.coroutines.CancellationException -> WastiErrorAnalysis(
+                errorCode = "TASK_CANCELLED",
+                userFriendlyMessage = "Operation was cancelled.",
+                technicalDetails = message,
+                probableCause = "Coroutine or task was cancelled (e.g. timeout, user cancellation, or emergency stop).",
+                suggestedSelfCorrectionPrompt = "Do not retry a cancelled operation without explicit user command.",
+                isRecoverable = false
+            )
+
+            is VirtualMachineError -> WastiErrorAnalysis(
+                errorCode = "FATAL_JVM_ERROR",
+                userFriendlyMessage = "Fatal JVM resource error: $message",
+                technicalDetails = message,
+                probableCause = "Fatal JVM condition (OutOfMemoryError or StackOverflowError).",
+                suggestedSelfCorrectionPrompt = "Operation cannot continue safely. Release resources immediately.",
+                isRecoverable = false
+            )
+
             else -> {
                 val lowerMsg = message.lowercase()
                 val (code, cause, fix) = when {

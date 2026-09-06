@@ -27,12 +27,19 @@ class ActionExecutor(private val context: Context) {
 
     fun makeCallIntent(phoneNumber: String) {
         try {
-            val intent = Intent(Intent.ACTION_CALL)
-            intent.data = Uri.parse("tel:" + phoneNumber)
+            val hasCallPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.CALL_PHONE
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            val intent = if (hasCallPermission) {
+                Intent(Intent.ACTION_CALL, Uri.parse("tel:$phoneNumber"))
+            } else {
+                Log.i("ActionExecutor", "CALL_PHONE not granted, falling back gracefully to ACTION_DIAL.")
+                Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phoneNumber"))
+            }
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
-        } catch (e: SecurityException) {
-            Log.e("ActionExecutor", "Missing CALL_PHONE permission", e)
         } catch (e: Exception) {
             Log.e("ActionExecutor", "makeCall failed", e)
         }

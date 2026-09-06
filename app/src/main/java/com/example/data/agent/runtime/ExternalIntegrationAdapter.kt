@@ -262,7 +262,8 @@ class WasmSandboxIntegrationAdapter(
     override val supportedActions: List<String> = listOf("EXECUTE_MODULE", "RUN_FUNCTION", "RUN_TOOL", "STATUS")
 
     override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
-    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
+    override fun getLiveVerificationState(): LiveConnectionStatus =
+        if (runtime.isNativeWasmAvailable) LiveConnectionStatus.VERIFIED else LiveConnectionStatus.NOT_VERIFIED
 
     override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
         return try {
@@ -471,7 +472,9 @@ class SystemInfoIntegrationAdapter(
             appendLine("• OS Engine: Wasti Unified Cognitive Brain")
             appendLine("• Accessibility Bridge: ${if (accActive) "ONLINE & ACTIVE" else "INACTIVE (Needs Android permission)"}")
             appendLine("• Local HTTP Daemon: $serverActive")
-            appendLine("• Sandboxed WASM Engine: VERIFIED & READY")
+            val wasmCap = com.example.data.sandbox.WastiWasmRuntime.instance.getEngineCapability()
+            val wasmDesc = if (wasmCap.isNativeEngineAvailable) "NATIVE WASI READY" else "JVM MICRO-INTERPRETER (Integer MVP; No Native WASI)"
+            appendLine("• Sandboxed WASM Engine: $wasmDesc")
             appendLine("• Capabilities Verified: $verifiedCount / ${allCaps.size}")
             appendLine("• Capabilities Overview:")
             allCaps.take(8).forEach { cap ->
@@ -495,4 +498,121 @@ class SystemInfoIntegrationAdapter(
         ExternalActionResult(ExternalActionResultStatus.SUCCESS, emptyMap(), "System info dry-run preview")
 
     override fun describeAction(action: String): String = "System Readiness & Capability Reality Check"
+}
+
+/**
+ * Real-world backend server integration adapter that validates reachability and health
+ * of the configured Wasti backend service without synthetic fabrication.
+ */
+class BackendIntegrationAdapter(
+    private val configuredBaseUrl: String? = System.getenv("WASTI_BACKEND_URL")
+) : ExternalIntegrationAdapter {
+    override val capabilityId: String = "BACKEND_SERVICE"
+    override val supportedActions: List<String> = listOf(
+        "CHECK_HEALTH",
+        "PROBE_REACHABILITY",
+        "GET_QUEUE_STATUS"
+    )
+
+    override fun getAuthState(): CapabilityAuthStatus {
+        val token = System.getenv("WASTI_SERVER_SECRET")
+            ?: System.getenv("WASTI_ADMIN_TOKEN")
+            ?: System.getenv("WASTI_BACKEND_AUTH_SECRET")
+        return if (!token.isNullOrBlank()) CapabilityAuthStatus.AUTHENTICATED else CapabilityAuthStatus.REQUIRED_NOT_PROVIDED
+    }
+
+    override fun getLiveVerificationState(): LiveConnectionStatus {
+        val url = configuredBaseUrl ?: return LiveConnectionStatus.NOT_VERIFIED
+        if (!com.example.assistant.backend.BackendClient.isValidUrl(url)) return LiveConnectionStatus.NOT_VERIFIED
+
+        return kotlinx.coroutines.runBlocking {
+            try {
+                val health = com.example.assistant.backend.BackendClient.checkHealth(url, timeoutMs = 2000)
+                if (health.isReachable && health.httpCode == 200) {
+                    LiveConnectionStatus.VERIFIED
+                } else {
+                    LiveConnectionStatus.NOT_VERIFIED
+                }
+            } catch (_: Throwable) {
+                LiveConnectionStatus.NOT_VERIFIED
+            }
+        }
+    }
+
+    override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
+        val url = params["baseUrl"]?.toString() ?: configuredBaseUrl
+        if (url.isNullOrBlank() || !com.example.assistant.backend.BackendClient.isValidUrl(url)) {
+            return ExternalActionResult(
+                status = ExternalActionResultStatus.NOT_CONNECTED,
+                diagnosticMessage = "Backend URL is not configured or is invalid: '$url'"
+            )
+        }
+
+        val authToken = params["authToken"]?.toString()
+            ?: System.getenv("WASTI_SERVER_SECRET")
+            ?: System.getenv("WASTI_ADMIN_TOKEN")
+
+        return kotlinx.coroutines.runBlocking {
+            when (action.uppercase()) {
+                "CHECK_HEALTH", "PROBE_REACHABILITY" -> {
+                    val health = com.example.assistant.backend.BackendClient.checkHealth(url, authToken)
+                    if (health.isReachable) {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf(
+                                "isReachable" to true,
+                                "httpCode" to health.httpCode,
+                                "latencyMs" to health.latencyMs,
+                                "status" to health.status,
+                                "githubConfigured" to health.githubConfigured,
+                                "brevoConfigured" to health.brevoConfigured,
+                                "stripeConfigured" to health.stripeConfigured,
+                                "firebaseConfigured" to health.firebaseConfigured,
+                                "authEnforced" to health.authEnforced
+                            ),
+                            diagnosticMessage = "Backend endpoint reachable at $url (${health.latencyMs}ms)"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            data = mapOf("isReachable" to false, "httpCode" to health.httpCode),
+                            diagnosticMessage = "Backend endpoint unreachable: ${health.errorMessage}"
+                        )
+                    }
+                }
+                "GET_QUEUE_STATUS" -> {
+                    val queue = com.example.assistant.backend.BackendClient.getWakewordQueueStatus(url, authToken = authToken)
+                    if (queue != null) {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.SUCCESS,
+                            data = mapOf("queue" to queue),
+                            diagnosticMessage = "Wakeword queue retrieved successfully"
+                        )
+                    } else {
+                        ExternalActionResult(
+                            status = ExternalActionResultStatus.FAILED,
+                            diagnosticMessage = "Failed to retrieve wakeword queue status from $url"
+                        )
+                    }
+                }
+                else -> {
+                    ExternalActionResult(
+                        status = ExternalActionResultStatus.NOT_IMPLEMENTED,
+                        diagnosticMessage = "Action $action not supported by BackendIntegrationAdapter"
+                    )
+                }
+            }
+        }
+    }
+
+    override fun dryRun(action: String, params: Map<String, Any>): ExternalActionResult {
+        val url = params["baseUrl"]?.toString() ?: configuredBaseUrl ?: "http://localhost:8080"
+        return ExternalActionResult(
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf("targetUrl" to url, "action" to action),
+            diagnosticMessage = "Dry-run plan for backend action '$action' against '$url'"
+        )
+    }
+
+    override fun describeAction(action: String): String = "Backend action: $action against configured endpoint"
 }

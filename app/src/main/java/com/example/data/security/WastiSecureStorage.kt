@@ -14,6 +14,7 @@ import androidx.security.crypto.MasterKey
  */
 object WastiSecureStorage {
     private const val TAG = "WastiSecureStorage"
+    private val prefsCache = java.util.concurrent.ConcurrentHashMap<String, SharedPreferences>()
 
     val isRobolectricHost: Boolean by lazy {
         try {
@@ -37,24 +38,26 @@ object WastiSecureStorage {
      * On Robolectric host test environments, a designated test-isolated preference store is provided.
      */
     fun getEncryptedPreferences(context: Context, fileName: String): SharedPreferences {
-        return try {
-            val masterKey = MasterKey.Builder(context)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build()
-            EncryptedSharedPreferences.create(
-                context,
-                fileName,
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            )
-        } catch (e: Throwable) {
-            if (isRobolectricHost) {
-                Log.d(TAG, "Robolectric host detected: using test-isolated substitute preferences for [$fileName]")
-                context.getSharedPreferences("${fileName}_host_test_substitute", Context.MODE_PRIVATE)
-            } else {
-                Log.e(TAG, "FATAL SECURITY ERROR: AndroidKeyStore unavailable for [$fileName]. Storage downgrade strictly prohibited on physical device.", e)
-                throw SecurityException("AndroidKeyStore unavailable on production device. Storage downgrade strictly prohibited for $fileName", e)
+        return prefsCache.getOrPut(fileName) {
+            try {
+                val masterKey = MasterKey.Builder(context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build()
+                EncryptedSharedPreferences.create(
+                    context,
+                    fileName,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                )
+            } catch (e: Throwable) {
+                if (isRobolectricHost) {
+                    Log.d(TAG, "Robolectric host detected: using test-isolated substitute preferences for [$fileName]")
+                    context.getSharedPreferences("${fileName}_host_test_substitute", Context.MODE_PRIVATE)
+                } else {
+                    Log.e(TAG, "FATAL SECURITY ERROR: AndroidKeyStore unavailable for [$fileName]. Storage downgrade strictly prohibited on physical device.", e)
+                    throw SecurityException("AndroidKeyStore unavailable on production device. Storage downgrade strictly prohibited for $fileName", e)
+                }
             }
         }
     }

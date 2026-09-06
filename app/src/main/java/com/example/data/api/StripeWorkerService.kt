@@ -45,7 +45,7 @@ object StripeWorkerService {
         val cloudflareKey = CredentialRegistry.getRawValue("CLOUDFLARE_API_KEY")
         val publishableKey = CredentialRegistry.getRawValue("STRIPE_PUBLISHABLE_KEY")
 
-        if (cloudflareKey.isNullOrBlank()) {
+        if (cloudflareKey.isNullOrBlank() || CredentialRegistry.isPlaceholder(cloudflareKey)) {
             return@withContext StripeChargeResult(
                 success = false,
                 chargeId = null,
@@ -59,7 +59,7 @@ object StripeWorkerService {
                 "currency": "usd",
                 "description": "$description",
                 "customer_email": "$customerEmail",
-                "client_publishable_key": "$publishableKey"
+                "client_publishable_key": "${publishableKey.orEmpty()}"
             }
         """.trimIndent()
 
@@ -72,27 +72,38 @@ object StripeWorkerService {
 
         try {
             val response = client.newCall(request).execute()
-            val bodyStr = response.body?.string() ?: ""
-            if (response.isSuccessful || bodyStr.contains("ch_") || bodyStr.contains("success")) {
-                StripeChargeResult(
-                    success = true,
-                    chargeId = "ch_cf_worker_" + System.currentTimeMillis(),
-                    message = "Success: Charged $$amountCents via Cloudflare Server-Side Worker Proxy."
-                )
+            val bodyStr = response.body?.string().orEmpty()
+            if (response.isSuccessful) {
+                // Parse genuine charge result
+                val isSuccess = bodyStr.contains("\"success\":true") || bodyStr.contains("\"status\":\"succeeded\"") || bodyStr.contains("ch_")
+                if (isSuccess) {
+                    val chargeIdMatch = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").find(bodyStr)?.groupValues?.get(1)
+                        ?: "ch_cf_${System.currentTimeMillis()}"
+                    StripeChargeResult(
+                        success = true,
+                        chargeId = chargeIdMatch,
+                        message = "Success: Charged $$amountCents via Cloudflare Server-Side Worker Proxy."
+                    )
+                } else {
+                    StripeChargeResult(
+                        success = false,
+                        chargeId = null,
+                        message = "Stripe charge declined or unsuccessful: $bodyStr"
+                    )
+                }
             } else {
-                // Return success in test environment with Cloudflare Edge proxy confirmation
                 StripeChargeResult(
-                    success = true,
-                    chargeId = "ch_cf_sandbox_" + System.currentTimeMillis(),
-                    message = "Cloudflare Worker Proxy Verified: Charge processed through server-side Cloudflare Worker."
+                    success = false,
+                    chargeId = null,
+                    message = "Stripe Cloudflare Worker failed with HTTP ${response.code}: ${bodyStr.take(100)}"
                 )
             }
         } catch (e: Exception) {
-            // Cloudflare Worker Proxy handles isolation server-side
+            if (e is kotlinx.coroutines.CancellationException) throw e
             StripeChargeResult(
-                success = true,
-                chargeId = "ch_cf_proxy_verified_" + System.currentTimeMillis().toString().takeLast(6),
-                message = "Cloudflare Worker Proxy Active: Secret key isolated on Edge server."
+                success = false,
+                chargeId = null,
+                message = "Stripe charge network error: ${e.message ?: e.toString()}"
             )
         }
     }

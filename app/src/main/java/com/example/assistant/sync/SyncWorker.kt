@@ -24,6 +24,8 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
     }
 
     override suspend fun doWork(): ListenableWorker.Result {
+        val workName = "wasti_sync_worker"
+        com.example.data.worker.WastiWorkManagerLifecycleTracker.recordWorkStarted(workName, "SyncWorker", runAttemptCount)
         return try {
             // 1. Create a genuine verified database snapshot archive
             val snapshotResult = CloudSyncManager.createDatabaseSnapshotArchive(applicationContext)
@@ -53,10 +55,22 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
                 SyncExecutionOutcome.FULL_SYNC_SUCCESS,
                 SyncExecutionOutcome.PARTIAL_SYNC_SNAPSHOT_ONLY -> {
                     // Local snapshot secured successfully (cloud sync optional/deferred)
+                    com.example.data.worker.WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                        workName,
+                        "SyncWorker",
+                        true,
+                        "Sync completed with outcome $outcome"
+                    )
                     ListenableWorker.Result.success()
                 }
                 SyncExecutionOutcome.PARTIAL_SYNC_ENTITY_ONLY,
                 SyncExecutionOutcome.RETRYABLE_FAILURE -> {
+                    com.example.data.worker.WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                        workName,
+                        "SyncWorker",
+                        false,
+                        "Sync partial or retryable: $outcome"
+                    )
                     // Retry incomplete sync operations
                     if (runAttemptCount < 3) {
                         ListenableWorker.Result.retry()
@@ -65,11 +79,23 @@ class SyncWorker(appContext: Context, params: WorkerParameters) : CoroutineWorke
                     }
                 }
                 SyncExecutionOutcome.FAILED -> {
+                    com.example.data.worker.WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                        workName,
+                        "SyncWorker",
+                        false,
+                        "Sync execution failed"
+                    )
                     ListenableWorker.Result.failure()
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error executing SyncWorker", e)
+            com.example.data.worker.WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                workName,
+                "SyncWorker",
+                false,
+                "Exception: ${e.message}"
+            )
             if (runAttemptCount < 3) {
                 ListenableWorker.Result.retry()
             } else {

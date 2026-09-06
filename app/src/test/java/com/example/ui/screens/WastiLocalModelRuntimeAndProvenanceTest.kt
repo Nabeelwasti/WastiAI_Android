@@ -3,11 +3,17 @@ package com.example.ui.screens
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.agent.runtime.*
+import com.example.data.ai.engine.HardwareCapabilityDetector
 import com.example.data.ai.engine.ModelArtifactManager
+import com.example.data.ai.model.AcceleratorExecutionStatus
 import com.example.data.ai.model.ModelRuntimeStatus
 import com.example.data.ai.model.QuantizationType
 import com.example.data.ai.provider.WastiLocalBrainProvider
 import com.example.data.ai.runtime.*
+import com.example.data.cloud.ComputeExecutionTier
+import com.example.data.cloud.ComputeTaskRequest
+import com.example.data.cloud.ComputeTaskType
+import com.example.data.cloud.FirebaseComputeOffloader
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -15,11 +21,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
 import java.io.File
 import java.io.FileOutputStream
 
 @RunWith(RobolectricTestRunner::class)
 @Config(manifest = Config.NONE)
+@TestCategory(
+    tier = TestTier.HOST_SIMULATION,
+    description = "Robolectric host simulation of model catalog, weights presence, and downloader safety"
+)
 class WastiLocalModelRuntimeAndProvenanceTest {
 
     private lateinit var context: Context
@@ -155,6 +167,14 @@ class WastiLocalModelRuntimeAndProvenanceTest {
     fun testWastiLocalModelRuntimeInferenceWithoutWeights() {
         runBlocking {
             val runtime = WastiLocalModelRuntime(context)
+            val detailedResult = runtime.executeInferenceDetailed(
+                modelId = "wasti-smollm",
+                prompt = "Hello Wasti"
+            )
+            assertEquals(LocalInferenceStatus.WEIGHTS_MISSING, detailedResult.status)
+            assertFalse(detailedResult.isNeuralOutput)
+            assertTrue(detailedResult.output.contains("not present locally") || detailedResult.output.contains("Download required"))
+
             val output = runtime.executeInference(
                 modelId = "wasti-smollm",
                 prompt = "Hello Wasti"
@@ -194,5 +214,145 @@ class WastiLocalModelRuntimeAndProvenanceTest {
 
             dummyFile.delete()
         }
+    }
+
+    @Test
+    fun testModelCatalogAndManifestsIntegrity() {
+        val smollmManifest = ModelArtifactManager.getManifest("wasti-smollm")
+        assertNotNull(smollmManifest)
+        assertEquals("decd2598bc2c8ed08c19adc3c8fdd461ee19ed5708679d1c54ef54a5a30d4f33", smollmManifest?.expectedSha256)
+        assertTrue(smollmManifest?.isChecksumVerifiedPublished == true)
+
+        val llamaManifest = ModelArtifactManager.getManifest("wasti-llama")
+        assertNotNull(llamaManifest)
+        assertEquals("6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83", llamaManifest?.expectedSha256)
+        assertTrue(llamaManifest?.isChecksumVerifiedPublished == true)
+
+        val qwenManifest = ModelArtifactManager.getManifest("wasti-qwen")
+        assertNotNull(qwenManifest)
+        assertEquals("cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046", qwenManifest?.expectedSha256)
+        assertTrue(qwenManifest?.isChecksumVerifiedPublished == true)
+
+        // Heavy / remote-only models must not claim local execution without mesh or server
+        val commandR = OpenSourceModelCatalog.getModelById("wasti-commandr")
+        assertNotNull(commandR)
+        assertFalse(commandR!!.isLocalExecutionSupported)
+        assertEquals(LocalExecutionBackend.WASTI_MESH_FEDERATION, commandR.defaultBackend)
+
+        val deepseek = OpenSourceModelCatalog.getModelById("wasti-deepseek")
+        assertNotNull(deepseek)
+        assertFalse(deepseek!!.isLocalExecutionSupported)
+    }
+
+    @Test
+    fun testModelRunnableStatusFailsClosedWithoutWeights() {
+        // Model weights are not downloaded in test environment
+        val (isRunnable, reason) = ModelArtifactManager.isModelRunnableLocally(context, "wasti-smollm")
+        assertFalse(isRunnable)
+        assertTrue(reason.contains("not present locally") || reason.contains("Download required"))
+
+        // Unmanifested model fails closed
+        val (isRunnableDeepseek, reasonDeepseek) = ModelArtifactManager.isModelRunnableLocally(context, "wasti-deepseek")
+        assertFalse(isRunnableDeepseek)
+        assertTrue(reasonDeepseek.contains("manifest"))
+
+        // Status for downloadable model with missing weights must be AVAILABLE_PENDING_DOWNLOAD, not LOCAL_WEIGHTS_PRESENT
+        val status = ModelArtifactManager.getModelStatus(context, "wasti-smollm")
+        assertEquals(ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD, status)
+    }
+
+    @Test
+    fun testWastiModelDownloaderSafetyAndValidation() {
+        // SHA-256 validation
+        assertTrue(WastiModelDownloader.isTrustedSha256("decd2598bc2c8ed08c19adc3c8fdd461ee19ed5708679d1c54ef54a5a30d4f33"))
+        assertFalse(WastiModelDownloader.isTrustedSha256("PENDING_VERIFICATION"))
+        assertFalse(WastiModelDownloader.isTrustedSha256("0000000000000000000000000000000000000000000000000000000000000000"))
+        assertFalse(WastiModelDownloader.isTrustedSha256("short_sha"))
+
+        // Secure URL validation
+        assertTrue(WastiModelDownloader.isSecureDownloadUrl("https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf"))
+        assertFalse(WastiModelDownloader.isSecureDownloadUrl("http://huggingface.co/model.gguf"))
+        assertFalse(WastiModelDownloader.isSecureDownloadUrl("https://localhost/model.gguf"))
+        assertFalse(WastiModelDownloader.isSecureDownloadUrl("https://127.0.0.1/model.gguf"))
+        assertFalse(WastiModelDownloader.isSecureDownloadUrl("https://192.168.1.1/model.gguf"))
+        assertFalse(WastiModelDownloader.isSecureDownloadUrl("https://untrusted-domain.com/model.gguf"))
+
+        // canDownload safety check
+        val unverifiedManifest = ModelArtifactManifest(
+            modelId = "test-unverified",
+            canonicalFileName = "test.gguf",
+            expectedSha256 = "INVALID_HASH",
+            byteSize = 1000L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/test/model.gguf",
+            license = "MIT",
+            minRamRequiredMb = 256,
+            requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
+            isChecksumVerifiedPublished = false
+        )
+        val (canDl, dlReason) = WastiModelDownloader.canDownload(context, unverifiedManifest)
+        assertFalse(canDl)
+        assertTrue(dlReason.contains("SHA-256") || dlReason.contains("checksum"))
+    }
+
+    @Test
+    fun testHardwareCapabilityDetectorTruthfulAccelerationEvidence() {
+        // Clear any previous evidence
+        HardwareCapabilityDetector.clearAcceleratorExecutionEvidence()
+
+        val initialSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
+        // Without verified execution evidence, acceleratorStatus cannot be ACTIVE_VERIFIED_ACCELERATION
+        assertNotEquals(AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION, initialSpecs.acceleratorStatus)
+        assertFalse(initialSpecs.hasNpuAcceleration)
+        assertNull(initialSpecs.verifiedExecutionEvidence)
+
+        // Record real execution evidence (e.g. from native benchmark / llama tensor eval)
+        HardwareCapabilityDetector.recordAcceleratorExecutionEvidence("NNAPI_CONV2D_BENCHMARK_EVIDENCE_OK_25ms")
+
+        val acceleratedSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
+        assertEquals(AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION, acceleratedSpecs.acceleratorStatus)
+        assertTrue(acceleratedSpecs.hasNpuAcceleration)
+        assertEquals("NNAPI_CONV2D_BENCHMARK_EVIDENCE_OK_25ms", acceleratedSpecs.verifiedExecutionEvidence)
+
+        // Clearing evidence resets truthful status
+        HardwareCapabilityDetector.clearAcceleratorExecutionEvidence()
+        val resetSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
+        assertFalse(resetSpecs.hasNpuAcceleration)
+        assertNotEquals(AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION, resetSpecs.acceleratorStatus)
+    }
+
+    @Test
+    fun testComputeOffloadTruthfulExecutionAndFailClosed() = runBlocking {
+        // 1. Batch embeddings real bounded computation
+        val embRequest = ComputeTaskRequest(
+            type = ComputeTaskType.BATCH_EMBEDDINGS,
+            payload = mapOf("texts" to listOf("Kotlin flow", "Room SQLite database"))
+        )
+        val embOutcome = FirebaseComputeOffloader.executeTask(context, embRequest)
+        assertTrue(embOutcome.success)
+        assertEquals(ComputeExecutionTier.LOCAL_THROTTLED_SAFE, embOutcome.executionTier)
+        assertTrue(embOutcome.output.contains("Computed batch of 2 deterministic fallback embeddings"))
+
+        // 2. Empty payload fails closed
+        val emptyRequest = ComputeTaskRequest(
+            type = ComputeTaskType.BATCH_EMBEDDINGS,
+            payload = emptyMap()
+        )
+        val emptyOutcome = FirebaseComputeOffloader.executeTask(context, emptyRequest)
+        assertFalse(emptyOutcome.success)
+        assertNotNull(emptyOutcome.error)
+        assertTrue(emptyOutcome.error!!.contains("Missing or empty texts list"))
+
+        // 3. File transform real SHA-256
+        val content = "Zero-Fabrication Wasti Engine"
+        val transformRequest = ComputeTaskRequest(
+            type = ComputeTaskType.HEAVY_FILE_TRANSFORM,
+            payload = mapOf("content" to content)
+        )
+        val transformOutcome = FirebaseComputeOffloader.executeTask(context, transformRequest)
+        assertTrue(transformOutcome.success)
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        val expectedHash = digest.digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
+        assertTrue(transformOutcome.output.contains(expectedHash))
     }
 }

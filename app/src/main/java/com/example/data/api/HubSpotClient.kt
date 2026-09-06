@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object HubSpotClient {
@@ -23,18 +24,16 @@ object HubSpotClient {
         clientEmail: String
     ): Boolean = withContext(Dispatchers.IO) {
         val connId = CredentialRegistry.getRawValue("HUBSPOT_CONNECTION_ID")
-        if (connId.isNullOrBlank()) return@withContext false
+        if (connId.isNullOrBlank() || CredentialRegistry.isPlaceholder(connId)) return@withContext false
 
-        val dealJson = """
-            {
-                "properties": {
-                    "dealname": "Wasti OS Quote $quoteId ($clientEmail)",
-                    "amount": "$amountDollars",
-                    "pipeline": "default",
-                    "dealstage": "contractsent"
-                }
-            }
-        """.trimIndent()
+        val dealJson = JSONObject().apply {
+            put("properties", JSONObject().apply {
+                put("dealname", "Wasti OS Quote $quoteId ($clientEmail)")
+                put("amount", amountDollars.toString())
+                put("pipeline", "default")
+                put("dealstage", "contractsent")
+            })
+        }.toString()
 
         val request = Request.Builder()
             .url("$BASE_URL/deals")
@@ -47,6 +46,7 @@ object HubSpotClient {
             val response = client.newCall(request).execute()
             response.isSuccessful
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             false
         }
     }

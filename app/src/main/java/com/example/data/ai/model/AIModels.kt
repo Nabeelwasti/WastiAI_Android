@@ -45,7 +45,10 @@ data class ProviderResponse(
     val latencyMs: Long = 0,
     val costUsd: Double = 0.0,
     val isError: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val isFallback: Boolean = false,
+    val fallbackReason: String? = null,
+    val attemptedProviders: List<String> = emptyList()
 )
 
 data class ProviderHealth(

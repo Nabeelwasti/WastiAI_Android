@@ -129,6 +129,25 @@ class UnifiedExecutionFabric(
         val taskId = TaskId(request.taskId)
         val ctx = context ?: appContext ?: WastiApplication.instance
 
+        if (com.example.data.di.WastiServiceLocator.emergencyStopController.isEmergencyStopped) {
+            val stopReason = com.example.data.di.WastiServiceLocator.emergencyStopController.getReason() ?: "Emergency stop active"
+            eventBus?.emit(AgentEvent.TaskCancelled(taskId, stopReason))
+            return UnifiedExecutionResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = UnifiedExecutionStatus.CANCELLED,
+                output = "Execution rejected: Emergency stop is active ($stopReason)",
+                error = "EMERGENCY_STOP_ACTIVE: $stopReason",
+                executor = "UnifiedExecutionFabric",
+                startedAt = startedAt,
+                completedAt = System.currentTimeMillis(),
+                verificationStatus = UnifiedVerificationStatus.CANCELLED,
+                terminalTruthState = TerminalTruthState.CANCELLED,
+                verificationEvidence = "Execution blocked by active emergency stop latch"
+            )
+        }
+
         if (request.timeoutMs <= 0L) {
             return createResult(
                 request = request,
@@ -1626,7 +1645,7 @@ class UnifiedExecutionFabric(
             executor = "WastiWasmRuntime",
             startedAt = startedAt,
             verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-            verificationEvidence = "WASM Execution verified, fuel: ${res.fuelConsumed}"
+            verificationEvidence = if (res.isSuccess) "WASM Execution verified [${wasmRuntime.engineType.name}], fuel: ${res.fuelConsumed}" else "WASM Execution failed: ${res.diagnosticMessage}"
         )
     }
 
@@ -1668,12 +1687,14 @@ class UnifiedExecutionFabric(
         val workDir = request.parameters["workingDirectory"]?.toString() ?: "home/wasti"
         val timeout = (request.parameters["timeoutMs"] as? Number)?.toLong() ?: 30000L
 
+        val adminToken = request.parameters["adminAuthToken"]?.toString()
         val wreReq = com.example.data.wre.ExecutionRequest(
             command = fullCmd,
             arguments = rawArgs,
             workingDirectory = workDir,
             timeoutMs = timeout,
-            initiatedBy = "UnifiedExecutionFabric"
+            initiatedBy = "UnifiedExecutionFabric",
+            adminAuthToken = adminToken
         )
 
         val wreResult = wreManager.execute(wreReq)
@@ -1781,8 +1802,8 @@ class UnifiedExecutionFabric(
                 outputContent = result.output,
                 evidence = structuredEvidence
             )
-        } catch (_: Throwable) {
-            // Ensure provenance logging does not interrupt execution
+        } catch (e: Exception) {
+            android.util.Log.w("UnifiedExecutionFabric", "Provenance record warning: ${e.message}")
         }
     }
 }

@@ -52,6 +52,7 @@ class ProactiveReconciliationWorker(
                     ExistingPeriodicWorkPolicy.KEEP,
                     request
                 )
+                WastiWorkManagerLifecycleTracker.recordWorkEnqueued(WORK_NAME, "ProactiveReconciliationWorker", isPeriodic = true)
                 Log.i(TAG, "ProactiveReconciliationWorker scheduled successfully (15m interval).")
                 true
             } catch (e: Exception) {
@@ -91,6 +92,7 @@ class ProactiveReconciliationWorker(
     }
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        WastiWorkManagerLifecycleTracker.recordWorkStarted(WORK_NAME, "ProactiveReconciliationWorker", runAttemptCount)
         try {
             Log.d(TAG, "Starting ProactiveReconciliationWorker cycle...")
             val context = applicationContext
@@ -99,13 +101,31 @@ class ProactiveReconciliationWorker(
             // Check emergency stop
             if (WastiServiceLocator.emergencyStopController.isEmergencyStopped) {
                 Log.w(TAG, "Emergency Stop is active. Skipping reconciliation.")
+                WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                    WORK_NAME,
+                    "ProactiveReconciliationWorker",
+                    true,
+                    "Skipped: emergency stop active"
+                )
                 return@withContext Result.success()
             }
 
             performReconciliation(context)
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "ProactiveReconciliationWorker",
+                true,
+                "Reconciliation cycle executed successfully"
+            )
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error in ProactiveReconciliationWorker: ${e.message}", e)
+            WastiWorkManagerLifecycleTracker.recordWorkFinished(
+                WORK_NAME,
+                "ProactiveReconciliationWorker",
+                false,
+                "Exception: ${e.message}"
+            )
             Result.retry()
         }
     }

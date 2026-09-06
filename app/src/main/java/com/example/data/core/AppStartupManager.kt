@@ -141,6 +141,20 @@ object AppStartupManager {
             totalStartupTimeMs = totalMs
         )
 
+        // 1. Enforce that all critical stages have been evaluated
+        val criticalStages = StartupStage.values().filter { it.isCritical }
+        val missingCritical = criticalStages.filter { !stageTimings.containsKey(it) && !failedCriticalStages.contains(it) }
+        if (missingCritical.isNotEmpty()) {
+            val uninitialized = missingCritical.first()
+            _startupState.value = AppStartupState.FatalError(
+                stage = uninitialized,
+                message = "Startup sequence violated: critical subsystem [${uninitialized.displayName}] was never completed."
+            )
+            WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", "Wasti AI OS Startup Blocked: Uninitialized critical subsystem ${uninitialized.name}"))
+            return
+        }
+
+        // 2. If any critical stage failed -> FATAL
         if (failedCriticalStages.isNotEmpty()) {
             val criticalStage = failedCriticalStages.first()
             _startupState.value = AppStartupState.FatalError(
@@ -148,13 +162,23 @@ object AppStartupManager {
                 message = "Critical subsystem [${criticalStage.displayName}] failed to initialize properly."
             )
             WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", "Wasti AI OS Startup Blocked: Critical failure in ${criticalStage.name}"))
-        } else if (degradedStages.isNotEmpty()) {
+            return
+        }
+
+        // 3. If any non-critical stage is degraded -> CoreReadyDegraded
+        if (degradedStages.isNotEmpty()) {
             _startupState.value = AppStartupState.CoreReadyDegraded(diagnostic, ArrayList(degradedStages))
             WastiEventBus.tryEmit(WastiEvent.SystemAlert("WARNING", "Wasti AI OS Core Ready (Degraded: ${degradedStages.joinToString { it.name }}) in ${totalMs}ms"))
-        } else {
-            _startupState.value = AppStartupState.Ready(diagnostic)
-            WastiEventBus.tryEmit(WastiEvent.SystemAlert("INFO", "Wasti AI OS Ready in ${totalMs}ms (${warningsList.size} warnings)"))
+            return
         }
+
+        // 4. All stages passed without warnings -> Ready
+        _startupState.value = AppStartupState.Ready(diagnostic)
+        WastiEventBus.tryEmit(WastiEvent.SystemAlert("INFO", "Wasti AI OS Ready in ${totalMs}ms (${warningsList.size} warnings)"))
+    }
+
+    fun resetForTesting() {
+        startStartupTrace()
     }
 
     fun setCoreReadyDegraded(degraded: List<StartupStage>) {

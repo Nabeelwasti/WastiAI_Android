@@ -10,6 +10,11 @@ import android.widget.Toast
 import com.example.data.db.LeadEntity
 import com.example.data.db.ProspectEntity
 import com.example.data.db.WastiDatabase
+import com.example.data.crm.FieldProvenanceSource
+import com.example.data.crm.LeadFieldProvenance
+import com.example.data.crm.LeadProvenanceProfile
+import com.example.data.crm.LeadProvenanceTracker
+import com.example.data.crm.ProvenanceTrackedField
 import com.example.data.notification.WastiNotificationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +31,30 @@ import java.util.UUID
 
 enum class LeadStatus {
     DISCOVERED,
+    LEAD_DISCOVERED,
+    DATA_UNVERIFIED,
+    DRAFT,
+    HUMAN_REVIEW_REQUIRED,
+    APPROVED,
+    SENT,
     PROPOSAL_SENT,
     NEGOTIATING,
-    CLOSED
+    CLOSED;
+
+    val isApprovedForDispatch: Boolean
+        get() = this == APPROVED || this == SENT || this == PROPOSAL_SENT
+
+    fun toOutreachStage(): OutreachStage {
+        return when (this) {
+            DISCOVERED, LEAD_DISCOVERED -> OutreachStage.LEAD_DISCOVERED
+            DATA_UNVERIFIED -> OutreachStage.DATA_UNVERIFIED
+            DRAFT -> OutreachStage.DRAFT
+            HUMAN_REVIEW_REQUIRED -> OutreachStage.HUMAN_REVIEW_REQUIRED
+            APPROVED -> OutreachStage.APPROVED
+            SENT, PROPOSAL_SENT -> OutreachStage.SENT
+            NEGOTIATING, CLOSED -> OutreachStage.SENT
+        }
+    }
 }
 
 data class LeadItemEntity(
@@ -238,6 +264,21 @@ object LeadRadarRepository {
             else -> "Web Scraper"
         }
 
+        // [P0-39] Register lead provenance profile
+        val isAiInferredContact = (lead.clientEmail.isBlank() && !fullText.contains("@"))
+        LeadProvenanceTracker.createScrapedWithAiEnrichment(
+            leadId = lead.id,
+            clientName = clientName,
+            email = email,
+            phone = phone,
+            companyName = companyName,
+            websiteUrl = websiteUrl,
+            budgetOrPayment = "Pending Discovery",
+            opportunityNature = opportunityNature,
+            isAiInferredContact = isAiInferredContact,
+            scraperSource = leadSource
+        )
+
         ProspectEntity(
             id = lead.id,
             clientName = clientName,
@@ -408,6 +449,74 @@ object LeadRadarRepository {
     }
 
     var appContext: Context? = null
+
+    /**
+     * [P0-38] & [P0-39] Human Review Signoff:
+     * Advances lead stage in OutreachSafetyEngine, verifies contact provenance, and updates status to APPROVED.
+     */
+    fun recordHumanOutreachApproval(
+        leadId: String,
+        recipient: String,
+        channel: String,
+        reviewer: String
+    ): Result<OutreachApprovalRecord> {
+        val profile = LeadProvenanceTracker.getProfile(leadId)
+        if (profile != null) {
+            // Explicit human approval verifies contact fields
+            LeadProvenanceTracker.recordProfile(
+                profile.verifyField("email", reviewer).verifyField("phone", reviewer)
+            )
+        }
+        val result = OutreachSafetyEngine.recordHumanApproval(leadId, recipient, channel, reviewer)
+        if (result.isSuccess) {
+            updateLeadStatus(leadId, LeadStatus.APPROVED)
+        }
+        return result
+    }
+
+    /**
+     * [P0-39] Get provenance profile for a lead.
+     */
+    fun getLeadProvenance(leadId: String): LeadProvenanceProfile? {
+        return LeadProvenanceTracker.getProfile(leadId)
+    }
+
+    /**
+     * [P0-39] Manually verify a lead field with reviewer identification.
+     */
+    fun verifyLeadField(leadId: String, fieldName: String, verifier: String): Boolean {
+        val profile = LeadProvenanceTracker.getProfile(leadId) ?: return false
+        val updated = profile.verifyField(fieldName, verifier)
+        LeadProvenanceTracker.recordProfile(updated)
+        return true
+    }
+
+    /**
+     * [P0-39] Ingest user-entered lead with authentic provenance.
+     */
+    fun recordUserEnteredLead(
+        leadId: String,
+        clientName: String,
+        email: String,
+        phone: String,
+        companyName: String,
+        websiteUrl: String,
+        budget: String,
+        opportunityNature: String,
+        userIdentifier: String = "USER"
+    ): LeadProvenanceProfile {
+        return LeadProvenanceTracker.createUserEntered(
+            leadId = leadId,
+            clientName = clientName,
+            email = email,
+            phone = phone,
+            companyName = companyName,
+            websiteUrl = websiteUrl,
+            budgetOrPayment = budget,
+            opportunityNature = opportunityNature,
+            userIdentifier = userIdentifier
+        )
+    }
 
     private fun LeadItemEntity.toRoomEntity(): LeadEntity {
         return LeadEntity(

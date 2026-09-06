@@ -23,13 +23,27 @@ class GeminiProvider : AIProvider {
 
     override fun isAvailable(): Boolean {
         val key = CredentialRegistry.getRawValue("GEMINI_API_KEY")
-        return !key.isNullOrBlank() && key != "MY_GEMINI_API_KEY"
+        return !key.isNullOrBlank() && !CredentialRegistry.isPlaceholder(key)
     }
 
     override suspend fun generate(request: ProviderRequest): ProviderResponse {
         val startTime = System.currentTimeMillis()
+        val model = request.modelName ?: defaultModel
+        val key = CredentialRegistry.getRawValue("GEMINI_API_KEY")
+        if (key.isNullOrBlank() || CredentialRegistry.isPlaceholder(key)) {
+            return ProviderResponse(
+                content = "",
+                providerId = id,
+                providerName = name,
+                modelName = model,
+                tokensUsed = 0,
+                latencyMs = System.currentTimeMillis() - startTime,
+                costUsd = 0.0,
+                success = false,
+                errorMessage = "Gemini provider is unavailable: GEMINI_API_KEY is not configured or contains placeholder."
+            )
+        }
         return try {
-            val model = request.modelName ?: defaultModel
             val output = GeminiClient.generateText(
                 prompt = request.prompt,
                 systemInstruction = request.systemInstruction,

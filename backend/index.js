@@ -11,6 +11,7 @@ const orchestrator = require('./orchestrator');
 const brevo = require('./brevo');
 const stripeHelper = require('./stripe_helper');
 const firebaseHelper = require('./firebase_helper');
+const wakewordQueue = require('./wakeword_queue');
 
 const app = express();
 
@@ -55,11 +56,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// In-memory replay / idempotency cache for Stripe events (24-hour TTL)
-const processedStripeEvents = new Map();
-const STRIPE_EVENT_TTL_MS = 24 * 60 * 60 * 1000;
-
-// Stripe webhook raw body handling with strict cryptographic signature verification
+// Stripe webhook raw body handling with strict cryptographic signature verification & durable idempotency
 // NOTE: Must be mounted BEFORE global bodyParser.json() to preserve raw Buffer for signature verification
 app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
   try {
@@ -72,21 +69,28 @@ app.post('/stripe/webhook', bodyParser.raw({ type: 'application/json' }), async 
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    if (event && event.id) {
-      const now = Date.now();
-      if (processedStripeEvents.size > 5000) {
-        for (const [id, ts] of processedStripeEvents.entries()) {
-          if (now - ts > STRIPE_EVENT_TTL_MS) processedStripeEvents.delete(id);
-        }
-      }
-      if (processedStripeEvents.has(event.id)) {
-        return res.json({ received: true, eventType: event.type, duplicate: true });
-      }
-      processedStripeEvents.set(event.id, now);
+    if (!event || !event.id) {
+      return res.status(400).json({ error: 'Malformed webhook event: missing event id' });
     }
 
-    console.log('Verified Stripe event received:', event.type);
-    return res.json({ received: true, eventType: event.type });
+    // Enforce timestamp freshness to prevent delayed replay attacks
+    const timeValidation = stripeHelper.validateEventTimestamp(event);
+    if (!timeValidation.valid) {
+      console.warn(`Stripe event ${event.id} failed timestamp freshness check:`, timeValidation.error);
+      return res.status(400).json({ error: 'Replay rejected: ' + timeValidation.error });
+    }
+
+    // Check durable idempotency
+    if (stripeHelper.isEventProcessed(event.id)) {
+      console.log(`Duplicate Stripe webhook event detected: ${event.id} (${event.type})`);
+      return res.json({ received: true, eventType: event.type, duplicate: true });
+    }
+
+    // Mark event processed in durable store
+    stripeHelper.recordProcessedEvent(event.id, { type: event.type, receivedAt: Date.now() });
+
+    console.log('Verified Stripe event processed:', event.type, event.id);
+    return res.json({ received: true, eventType: event.type, duplicate: false });
   } catch (err) {
     console.error('stripe webhook handler error:', err.message);
     res.status(500).send('Internal server error');
@@ -101,25 +105,91 @@ const PORT = process.env.PORT || 8080;
 const GITHUB_PAT = process.env.BACKEND_GITHUB_PAT || process.env.BACKEND_GITHUB_CLASSIC || process.env.GITHUB_PAT || null;
 const octokit = GITHUB_PAT ? new Octokit({ auth: GITHUB_PAT }) : null;
 
-// Auth Middleware for sensitive endpoints (strictly fail-closed)
+// Scopes definition for fine-grained principle of least privilege
+const SCOPES = {
+  DEV: 'dev',
+  EMAIL: 'email',
+  COMPUTE: 'compute',
+  LLM: 'llm',
+  WAKEWORD: 'wakeword',
+  ADMIN: 'admin'
+};
+
+function getAuthorizedScopes(providedToken) {
+  if (!providedToken) return [];
+  const masterSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
+  if (masterSecret && providedToken === masterSecret) {
+    return [SCOPES.ADMIN, SCOPES.DEV, SCOPES.EMAIL, SCOPES.COMPUTE, SCOPES.LLM, SCOPES.WAKEWORD];
+  }
+
+  const scopes = [];
+  if (process.env.WASTI_DEV_TOKEN && providedToken === process.env.WASTI_DEV_TOKEN) scopes.push(SCOPES.DEV);
+  if (process.env.WASTI_EMAIL_TOKEN && providedToken === process.env.WASTI_EMAIL_TOKEN) scopes.push(SCOPES.EMAIL);
+  if (process.env.WASTI_COMPUTE_TOKEN && providedToken === process.env.WASTI_COMPUTE_TOKEN) scopes.push(SCOPES.COMPUTE);
+  if (process.env.WASTI_LLM_TOKEN && providedToken === process.env.WASTI_LLM_TOKEN) scopes.push(SCOPES.LLM);
+  if (process.env.WASTI_WAKEWORD_TOKEN && providedToken === process.env.WASTI_WAKEWORD_TOKEN) scopes.push(SCOPES.WAKEWORD);
+
+  if (process.env.WASTI_SCOPED_TOKENS) {
+    try {
+      const parsed = JSON.parse(process.env.WASTI_SCOPED_TOKENS);
+      if (parsed[providedToken]) {
+        const tokenScopes = Array.isArray(parsed[providedToken]) ? parsed[providedToken] : [parsed[providedToken]];
+        scopes.push(...tokenScopes);
+      }
+    } catch (_) {}
+  }
+
+  return scopes;
+}
+
+function requireScope(requiredScope) {
+  return function (req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
+    const masterSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
+
+    const hasAnySecret = Boolean(
+      masterSecret ||
+      process.env.WASTI_COMPUTE_TOKEN ||
+      process.env.WASTI_DEV_TOKEN ||
+      process.env.WASTI_EMAIL_TOKEN ||
+      process.env.WASTI_LLM_TOKEN ||
+      process.env.WASTI_WAKEWORD_TOKEN ||
+      process.env.WASTI_SCOPED_TOKENS
+    );
+
+    if (!hasAnySecret) {
+      console.error('CRITICAL: Backend authentication secret not configured. Failing closed.');
+      return res.status(503).json({ error: 'Backend authentication secret not configured on server. Access blocked.' });
+    }
+
+    let providedToken = tokenHeader;
+    if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
+      providedToken = authHeader.substring(7).trim();
+    }
+
+    if (!providedToken) {
+      return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
+    }
+
+    const authorizedScopes = getAuthorizedScopes(providedToken);
+    if (authorizedScopes.length === 0) {
+      return res.status(401).json({ error: 'Unauthorized: Invalid Wasti authentication token' });
+    }
+
+    if (requiredScope && !authorizedScopes.includes(SCOPES.ADMIN) && !authorizedScopes.includes(requiredScope)) {
+      return res.status(403).json({
+        error: `Forbidden: Token lacks required scope '${requiredScope}'. Authorized scopes: ${authorizedScopes.join(', ')}`
+      });
+    }
+
+    req.authScopes = authorizedScopes;
+    next();
+  };
+}
+
 function requireAuth(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
-  const expectedSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
-
-  if (!expectedSecret) {
-    console.error('CRITICAL: Backend authentication secret not configured (WASTI_BACKEND_AUTH_SECRET / BACKEND_API_SECRET). Failing closed.');
-    return res.status(503).json({ error: 'Backend authentication secret not configured on server. Access blocked.' });
-  }
-
-  let providedToken = tokenHeader;
-  if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
-    providedToken = authHeader.substring(7).trim();
-  }
-  if (!providedToken || providedToken !== expectedSecret) {
-    return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
-  }
-  next();
+  return requireScope(null)(req, res, next);
 }
 
 // Health check endpoint with subsystem status
@@ -135,7 +205,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.post('/llm', requireAuth, async (req, res) => {
+app.post('/llm', requireScope(SCOPES.LLM), async (req, res) => {
   try {
     const { provider = 'openai', payload = {}, priority } = req.body;
     if (!payload || (typeof payload !== 'object' && typeof payload !== 'string')) {
@@ -151,7 +221,22 @@ app.post('/llm', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/dev/patch', requireAuth, async (req, res) => {
+const PROTECTED_PATCH_PATTERNS = [
+  /^\.github\//i,
+  /build\.gradle(\.kts)?$/i,
+  /settings\.gradle(\.kts)?$/i,
+  /androidmanifest\.xml$/i,
+  /proguard-rules\.pro$/i,
+  /\.env(\..+)?$/i,
+  /keystore/i,
+  /\.jks$/i,
+  /\.pem$/i,
+  /\/security\//i,
+  /\/credential\//i,
+  /ProductionReadinessGate/i
+];
+
+app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
   try {
     if (!octokit) return res.status(503).json({ error: 'GitHub integration not configured on server' });
     const { owner, repo, base = 'main', title = 'Wasti Dev Patch', body = 'Automated patch', changes = [] } = req.body;
@@ -160,9 +245,11 @@ app.post('/dev/patch', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'At least one file change required to create patch' });
     }
 
-    // Validate repo ownership against optional allowlist
-    const allowedRepos = process.env.ALLOWED_GITHUB_REPOS ? process.env.ALLOWED_GITHUB_REPOS.split(',').map(r => r.trim().toLowerCase()) : null;
-    if (allowedRepos && !allowedRepos.includes(`${owner}/${repo}`.toLowerCase()) && !allowedRepos.includes(repo.toLowerCase())) {
+    // Validate repo ownership against allowlist (default to official repository to fail closed)
+    const allowedRepos = process.env.ALLOWED_GITHUB_REPOS
+      ? process.env.ALLOWED_GITHUB_REPOS.split(',').map(r => r.trim().toLowerCase())
+      : ['nabeelwasti/wastiai_android'];
+    if (!allowedRepos.includes(`${owner}/${repo}`.toLowerCase()) && !allowedRepos.includes(repo.toLowerCase())) {
       return res.status(403).json({ error: 'Repository not in authorized allowlist for automated patches' });
     }
 
@@ -186,6 +273,27 @@ app.post('/dev/patch', requireAuth, async (req, res) => {
       if (typeof c.content !== 'string') {
         return res.status(400).json({ error: `Invalid content for file ${c.path}` });
       }
+    }
+
+    // [P0-40] Protected path enforcement: Never allow autonomous modification of security core or release signing without admin token
+    const touchesProtectedPath = changes.some(c =>
+      PROTECTED_PATCH_PATTERNS.some(pattern => pattern.test(c.path))
+    );
+    const adminToken = req.body.adminAuthToken || req.headers['x-wasti-admin-token'];
+    if (touchesProtectedPath && !adminToken) {
+      return res.status(403).json({
+        error: 'Security violation: Automated patch touches protected security/signing paths and requires explicit admin authorization',
+        protected: true
+      });
+    }
+
+    // Bounded policy: Limit maximum files and payload size
+    if (changes.length > 20) {
+      return res.status(400).json({ error: 'Patch exceeds maximum allowed file count (20)' });
+    }
+    const totalPayloadBytes = changes.reduce((sum, c) => sum + (c.content ? c.content.length : 0), 0);
+    if (totalPayloadBytes > 200000) {
+      return res.status(400).json({ error: 'Patch exceeds maximum allowed payload size (200KB)' });
     }
 
     const baseRef = `heads/${base}`;
@@ -212,7 +320,7 @@ app.post('/dev/patch', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/email/send', requireAuth, async (req, res) => {
+app.post('/email/send', requireScope(SCOPES.EMAIL), async (req, res) => {
   try {
     const { to, subject, html, from } = req.body;
     if (!to || !subject || !html) return res.status(400).json({ error: 'to, subject, html required' });
@@ -220,6 +328,17 @@ app.post('/email/send', requireAuth, async (req, res) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(to)) {
       return res.status(400).json({ error: 'Invalid recipient email address format' });
+    }
+
+    // Validate email domain against optional allowlist
+    const allowedEmailDomains = process.env.ALLOWED_EMAIL_DOMAINS
+      ? process.env.ALLOWED_EMAIL_DOMAINS.split(',').map(d => d.trim().toLowerCase()).filter(Boolean)
+      : null;
+    if (allowedEmailDomains && allowedEmailDomains.length > 0) {
+      const domain = to.split('@')[1]?.toLowerCase();
+      if (!domain || !allowedEmailDomains.includes(domain)) {
+        return res.status(403).json({ error: `Recipient domain '${domain}' is not in authorized email domain allowlist` });
+      }
     }
 
     // Require approval token header for safety - fail closed if not configured
@@ -238,31 +357,33 @@ app.post('/email/send', requireAuth, async (req, res) => {
   }
 });
 
-// Bounded in-memory queue for wakeword event buffering when cloud push queue is offline
-const inMemoryWakewordQueue = [];
-const MAX_WAKEWORD_QUEUE_SIZE = 100;
-
-app.post('/wakeword', requireAuth, async (req, res) => {
+app.post('/wakeword', requireScope(SCOPES.WAKEWORD), async (req, res) => {
   try {
     const payload = req.body;
-    if (!payload || typeof payload !== 'object') {
-      return res.status(400).json({ error: 'Invalid wakeword payload' });
+    if (!payload || typeof payload !== 'object' || !payload.event || typeof payload.event !== 'object') {
+      return res.status(400).json({ error: 'Invalid wakeword payload: must contain an event object' });
     }
     if (process.env.FIREBASE_SA_BASE64 || process.env.FIREBASE_SA_PATH) {
       if (payload.token) {
-        const out = await firebaseHelper.sendPush(payload.token, { wakeword: JSON.stringify(payload.event || {}) });
+        const out = await firebaseHelper.sendPush(payload.token, { wakeword: JSON.stringify(payload.event) });
         return res.json({ status: 'pushed', detail: out });
       }
-      return res.status(202).json({ status: 'AWAITING_DEVICE_TOKEN', detail: 'Firebase configured, awaiting device registration token.' });
+      // Preserve event in buffer pending device token registration so it is not lost
+      const queuedItem = wakewordQueue.enqueueEvent(payload.event, { awaitingToken: true });
+      return res.status(202).json({
+        status: 'QUEUED_AWAITING_DEVICE_TOKEN',
+        eventId: queuedItem.eventId,
+        queueDepth: wakewordQueue.getQueueStatus().queueDepth,
+        detail: 'Firebase configured; event buffered pending device registration token.'
+      });
     }
-    if (inMemoryWakewordQueue.length >= MAX_WAKEWORD_QUEUE_SIZE) {
-      inMemoryWakewordQueue.shift();
-    }
-    inMemoryWakewordQueue.push({ event: payload.event || {}, receivedAt: Date.now() });
+
+    const queuedItem = wakewordQueue.enqueueEvent(payload.event);
     return res.status(202).json({
       status: 'QUEUED_IN_MEMORY',
+      eventId: queuedItem.eventId,
       durable: false,
-      queueDepth: inMemoryWakewordQueue.length,
+      queueDepth: wakewordQueue.getQueueStatus().queueDepth,
       detail: 'Event buffered in process memory. Durable cloud push queue unconfigured.'
     });
   } catch (err) {
@@ -271,7 +392,56 @@ app.post('/wakeword', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/compute/offload', requireAuth, async (req, res) => {
+// Observable wakeword queue inspection endpoint
+app.get('/wakeword/queue', requireScope(SCOPES.WAKEWORD), (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
+    const status = wakewordQueue.getQueueStatus({ limit, includeEvents: true });
+    return res.json({
+      status: 'ok',
+      cloudPushConfigured: Boolean(process.env.FIREBASE_SA_BASE64 || process.env.FIREBASE_SA_PATH),
+      ...status
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed retrieving wakeword queue status', detail: err.message });
+  }
+});
+
+// Dequeue events in FIFO order
+app.post('/wakeword/dequeue', requireScope(SCOPES.WAKEWORD), (req, res) => {
+  try {
+    const limit = req.body?.limit || req.query?.limit || 10;
+    const dequeued = wakewordQueue.dequeueEvents(limit);
+    return res.json({
+      status: 'ok',
+      count: dequeued.length,
+      events: dequeued,
+      remainingQueueDepth: wakewordQueue.getQueueStatus().queueDepth
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed dequeuing wakeword events', detail: err.message });
+  }
+});
+
+// Acknowledge processed events by ID
+app.post('/wakeword/ack', requireScope(SCOPES.WAKEWORD), (req, res) => {
+  try {
+    const { eventIds = [] } = req.body || {};
+    if (!Array.isArray(eventIds)) {
+      return res.status(400).json({ error: 'eventIds must be an array of event IDs' });
+    }
+    const acknowledged = wakewordQueue.acknowledgeEvents(eventIds);
+    return res.json({
+      status: 'ok',
+      acknowledgedCount: acknowledged,
+      remainingQueueDepth: wakewordQueue.getQueueStatus().queueDepth
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed acknowledging wakeword events', detail: err.message });
+  }
+});
+
+app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
   try {
     const { taskType, payload = {} } = req.body;
     const allowedTaskTypes = [
@@ -445,7 +615,19 @@ app.post('/compute/offload', requireAuth, async (req, res) => {
 });
 
 
-app.listen(PORT, () => {
-  console.log(`Wasti AI OS Backend listening securely on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Wasti AI OS Backend listening securely on port ${PORT}`);
+  });
+}
+
+module.exports = {
+  app,
+  requireAuth,
+  requireScope,
+  SCOPES,
+  getAuthorizedScopes,
+  wakewordQueue,
+  stripeHelper
+};
 

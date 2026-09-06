@@ -30,33 +30,26 @@ object CloudSyncManager {
 
     private const val TAG = "CloudSyncManager"
 
-    private fun getFirestore(): FirebaseFirestore? {
-        return try {
-            val app = try {
-                com.google.firebase.FirebaseApp.getInstance()
-            } catch (_: Throwable) {
-                val ctx = com.example.WastiApplication.instance?.applicationContext
-                if (ctx != null) {
-                    try {
-                        com.google.firebase.FirebaseApp.initializeApp(ctx)
-                    } catch (_: Throwable) {
-                        null
-                    }
-                } else null
-            }
-            if (app != null) {
-                FirebaseFirestore.getInstance(app)
-            } else {
-                null
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "Firestore instance unavailable: ${e.message}")
-            null
-        }
+    private fun getFirestore(context: Context? = null): FirebaseFirestore? {
+        val appContext = context ?: com.example.WastiApplication.instance?.applicationContext
+        return com.example.data.cloud.WastiFirebaseIntegrity.getSafeFirestore(appContext)
+    }
+
+    /**
+     * Checks whether a memory entity contains private keys, API credentials, or secrets that must not be synced to cloud.
+     */
+    fun isSensitiveMemory(memory: MemoryEntity): Boolean {
+        val cat = memory.category.trim().uppercase()
+        val key = memory.key.trim().uppercase()
+        val sensitiveCategories = setOf("SECRET", "CREDENTIAL", "CREDENTIALS", "PASSWORD", "AUTH", "TOKEN", "API_KEY", "VAULT", "KEY")
+        if (cat in sensitiveCategories) return true
+        val sensitiveIndicators = listOf("API_KEY", "SECRET", "PASSWORD", "TOKEN", "BEARER", "PRIVATE_KEY", "CREDENTIAL", "AUTH_KEY", "CLIENT_SECRET")
+        return sensitiveIndicators.any { key.contains(it) }
     }
 
     /**
      * Creates a genuine compressed snapshot archive of the SQLite database files with SHA-256 verification.
+     * Stored strictly in noBackupFilesDir to prevent auto-backup leakage.
      */
     suspend fun createDatabaseSnapshotArchive(context: Context): SyncResult = withContext(Dispatchers.IO) {
         try {
@@ -68,7 +61,15 @@ object CloudSyncManager {
                 return@withContext SyncResult.Error("Database file ${WastiDatabase.WASTI_DATABASE_NAME} does not exist on disk.")
             }
 
-            val backupDir = File(context.filesDir, "backups").apply { if (!exists()) mkdirs() }
+            // Strictly use noBackupFilesDir to ensure database snapshots are never leaked into cloud auto-backups or adb backups
+            val backupDir = File(context.noBackupFilesDir, "backups").apply { if (!exists()) mkdirs() }
+
+            // Clean up legacy snapshots in filesDir if any exist
+            val legacyBackupDir = File(context.filesDir, "backups")
+            if (legacyBackupDir.exists()) {
+                try { legacyBackupDir.deleteRecursively() } catch (_: Throwable) {}
+            }
+
             val archiveFile = File(backupDir, "wasti_db_backup_${System.currentTimeMillis()}.zip")
 
             ZipOutputStream(FileOutputStream(archiveFile)).use { zos ->
@@ -79,6 +80,14 @@ object CloudSyncManager {
                         fis.copyTo(zos)
                     }
                     zos.closeEntry()
+                }
+            }
+
+            // Prune older archives, retaining at most 3 latest snapshots to bound storage footprint
+            val existingArchives = backupDir.listFiles { f -> f.extension == "zip" } ?: emptyArray()
+            if (existingArchives.size > 3) {
+                existingArchives.sortedByDescending { it.lastModified() }.drop(3).forEach { oldArchive ->
+                    try { oldArchive.delete() } catch (_: Throwable) {}
                 }
             }
 
@@ -166,8 +175,14 @@ object CloudSyncManager {
             }
 
             val memories = db.memoryDao().getAllMemoriesSync()
+            val safeMemories = memories.filterNot { isSensitiveMemory(it) }
+            val sensitiveExcludedCount = memories.size - safeMemories.size
+            if (sensitiveExcludedCount > 0) {
+                Log.w(TAG, "Cloud Backup: Excluded $sensitiveExcludedCount sensitive credential/secret memory records from cloud sync.")
+            }
+
             var memoriesCount = 0
-            for (m in memories) {
+            for (m in safeMemories) {
                 val data = mapOf(
                     "id" to m.id,
                     "key" to m.key,
@@ -183,7 +198,7 @@ object CloudSyncManager {
                 memoriesCount++
             }
 
-            Log.i(TAG, "Cloud Backup successful for $sanitizedUserId: $prospectsCount prospects, $invoicesCount invoices, $memoriesCount memories.")
+            Log.i(TAG, "Cloud Backup successful for $sanitizedUserId: $prospectsCount prospects, $invoicesCount invoices, $memoriesCount memories (Excluded $sensitiveExcludedCount sensitive).")
             SyncResult.Success(prospectsCount, invoicesCount, memoriesCount)
         } catch (e: Exception) {
             Log.e(TAG, "Backup to cloud failed: ${e.message}", e)
@@ -261,15 +276,21 @@ object CloudSyncManager {
             var memoriesRestored = 0
             for (doc in memoriesSnapshot.documents) {
                 val d = doc.data ?: continue
+                val key = d["key"] as? String ?: ""
+                val category = d["category"] as? String ?: "Fact"
                 val m = MemoryEntity(
                     id = doc.id,
-                    key = d["key"] as? String ?: "",
-                    category = d["category"] as? String ?: "Fact",
+                    key = key,
+                    category = category,
                     value = d["value"] as? String ?: "",
                     importanceScore = (d["importanceScore"] as? Number)?.toFloat() ?: 0.9f,
                     timestamp = (d["timestamp"] as? Long) ?: System.currentTimeMillis(),
                     sourceMessageId = (d["sourceMessageId"] as? String).takeIf { !it.isNull_or_blank() }
                 )
+                if (isSensitiveMemory(m)) {
+                    Log.w(TAG, "Cloud Restore: Refusing to restore sensitive/credential memory '$key' from remote Firestore.")
+                    continue
+                }
                 db.memoryDao().insertMemory(m)
                 memoriesRestored++
             }

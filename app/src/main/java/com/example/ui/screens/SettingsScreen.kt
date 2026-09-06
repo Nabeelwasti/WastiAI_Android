@@ -130,7 +130,7 @@ fun SettingsScreen(
                             enteredPasscode = ""
                             vaultAuthError = null
                         } else {
-                            vaultAuthError = "Incorrect PIN / Passcode. Try '1234' or your custom PIN."
+                            vaultAuthError = "Incorrect PIN / Passcode. Please enter your 4-10 digit master PIN."
                         }
                     }
                 ) {

@@ -30,16 +30,7 @@ class GoogleAuthClient(private val context: Context) {
 
     private val credentialManager = CredentialManager.create(context)
     private val firebaseAuth: FirebaseAuth?
-        get() = try {
-            FirebaseAuth.getInstance()
-        } catch (_: Throwable) {
-            try {
-                com.google.firebase.FirebaseApp.initializeApp(context.applicationContext)
-                FirebaseAuth.getInstance()
-            } catch (_: Throwable) {
-                null
-            }
-        }
+        get() = com.example.data.cloud.WastiFirebaseIntegrity.getSafeAuth(context)
 
     val currentUser: FirebaseUser?
         get() = try { firebaseAuth?.currentUser } catch (_: Exception) { null }

@@ -7,6 +7,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object SlackClient {
@@ -18,7 +19,7 @@ object SlackClient {
 
     suspend fun sendSlackNotification(messageText: String): Boolean = withContext(Dispatchers.IO) {
         val domainOrWebhook = CredentialRegistry.getRawValue("SLACK_DOMAIN")
-        if (domainOrWebhook.isNullOrBlank()) return@withContext false
+        if (domainOrWebhook.isNullOrBlank() || CredentialRegistry.isPlaceholder(domainOrWebhook)) return@withContext false
 
         val url = if (domainOrWebhook.startsWith("http")) {
             domainOrWebhook
@@ -26,7 +27,9 @@ object SlackClient {
             "https://hooks.slack.com/services/$domainOrWebhook"
         }
 
-        val json = """{"text": "⚡ [Wasti AI Alert]: $messageText"}"""
+        val json = JSONObject().apply {
+            put("text", "⚡ [Wasti AI Alert]: $messageText")
+        }.toString()
 
         val request = Request.Builder()
             .url(url)
@@ -38,6 +41,7 @@ object SlackClient {
             val response = client.newCall(request).execute()
             response.isSuccessful
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             false
         }
     }

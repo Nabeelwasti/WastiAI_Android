@@ -431,6 +431,21 @@ abstract class WastiDatabase : RoomDatabase() {
                 instance
             }
         }
+
+        /**
+         * Creates an isolated in-memory instance for testing without touching disk.
+         */
+        fun createInMemoryDatabase(context: Context): WastiDatabase {
+            return Room.inMemoryDatabaseBuilder(
+                context.applicationContext,
+                WastiDatabase::class.java
+            ).allowMainThreadQueries().build()
+        }
+
+        fun resetInstanceForTesting() {
+            INSTANCE?.close()
+            INSTANCE = null
+        }
     }
 }
 

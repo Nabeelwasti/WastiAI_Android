@@ -185,6 +185,14 @@ object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.Remot
         apiKey: String?,
         request: ExecutionRequest
     ): RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse = withContext(Dispatchers.IO) {
+        val trimmed = endpoint.trim()
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            return@withContext RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
+                statusCode = 400,
+                isServiceUnavailable = true,
+                stderr = "Invalid remote sandbox endpoint URL: '$endpoint'"
+            )
+        }
         try {
             val json = JSONObject().apply {
                 put("executable", request.executable)
@@ -197,7 +205,7 @@ object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.Remot
                 put("environment", envObj)
             }
             val body = json.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
-            val reqBuilder = Request.Builder().url(endpoint).post(body)
+            val reqBuilder = Request.Builder().url(trimmed).post(body)
             if (!apiKey.isNullOrBlank()) {
                 reqBuilder.header("Authorization", "Bearer $apiKey")
                 reqBuilder.header("x-api-key", apiKey)
@@ -241,6 +249,7 @@ object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.Remot
                 stderr = "Socket timeout connecting to remote sandbox"
             )
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
                 statusCode = 500,
                 isServiceUnavailable = true,

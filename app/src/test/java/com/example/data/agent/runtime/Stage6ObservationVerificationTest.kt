@@ -378,4 +378,110 @@ class Stage6ObservationVerificationTest {
         assertEquals("CustomTestExecutor", result.executor)
         assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
     }
+
+    // 16. Rejection of mock and synthetic evidence
+    @Test
+    fun testVerificationEngineRejectsMockAndSyntheticEvidence() {
+        val execResult = UnifiedExecutionResult(
+            taskId = "t-synth",
+            actionId = "a-synth",
+            capabilityId = "file_write",
+            status = UnifiedExecutionStatus.COMPLETED,
+            output = "File write completed",
+            executor = "LocalFileSystem",
+            startedAt = System.currentTimeMillis(),
+            completedAt = System.currentTimeMillis(),
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+        )
+
+        val mockObs = ObservationResult(
+            taskId = "t-synth",
+            actionId = "a-synth",
+            capabilityId = "file_write",
+            status = ObservationStatus.OBSERVED,
+            observedState = "observed",
+            evidence = "mock_evidence of file writing"
+        )
+
+        val req1 = VerificationRequest(
+            taskId = "t-synth",
+            actionId = "a-synth",
+            capabilityId = "file_write",
+            executionResult = execResult,
+            observationResult = mockObs
+        )
+
+        val res1 = verificationEngine.verify(req1)
+        assertEquals(ActionVerificationStatus.FAILED, res1.status)
+        assertTrue(res1.evidence.contains("synthetic or mock"))
+
+        val syntheticObs = ObservationResult(
+            taskId = "t-synth",
+            actionId = "a-synth",
+            capabilityId = "file_write",
+            status = ObservationStatus.OBSERVED,
+            observedState = "observed",
+            evidence = "synthetic confirmation test"
+        )
+
+        val req2 = VerificationRequest(
+            taskId = "t-synth",
+            actionId = "a-synth",
+            capabilityId = "file_write",
+            executionResult = execResult,
+            observationResult = syntheticObs
+        )
+
+        val res2 = verificationEngine.verify(req2)
+        assertEquals(ActionVerificationStatus.FAILED, res2.status)
+    }
+
+    // 17. Structured evidence validation and canonical verification
+    @Test
+    fun testVerificationEngineStructuredEvidenceIntegrity() {
+        val validEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.FILESYSTEM,
+            subject = "workspace/manifest.json",
+            verifiedState = "FILE_EXISTS_SHA256_VALID",
+            confidence = 0.98
+        )
+
+        val validRes = verificationEngine.verifyStructuredEvidence(
+            taskId = "task_struct_1",
+            actionId = "act_struct_1",
+            capabilityId = "file_write",
+            evidence = validEvidence
+        )
+        assertEquals(ActionVerificationStatus.VERIFIED, validRes.status)
+        assertNotNull(validRes.structuredEvidence)
+        assertTrue(validRes.evidence.contains("FILESYSTEM"))
+
+        val mockSubjectEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.FILESYSTEM,
+            subject = "mock_evidence_file",
+            verifiedState = "WRITTEN",
+            confidence = 0.98
+        )
+        val mockRes = verificationEngine.verifyStructuredEvidence(
+            taskId = "task_struct_2",
+            actionId = "act_struct_2",
+            capabilityId = "file_write",
+            evidence = mockSubjectEvidence
+        )
+        assertEquals(ActionVerificationStatus.FAILED, mockRes.status)
+
+        val lowConfidenceEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+            subject = "daemon_pid",
+            verifiedState = "RUNNING",
+            confidence = 0.60
+        )
+        val lowConfRes = verificationEngine.verifyStructuredEvidence(
+            taskId = "task_struct_3",
+            actionId = "act_struct_3",
+            capabilityId = "process_exec",
+            evidence = lowConfidenceEvidence
+        )
+        assertEquals(ActionVerificationStatus.FAILED, lowConfRes.status)
+    }
 }
