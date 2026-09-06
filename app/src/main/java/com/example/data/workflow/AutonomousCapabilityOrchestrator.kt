@@ -79,6 +79,14 @@ sealed class CapabilityResolutionResult {
     data class ResolutionFailed(val reason: String, val capabilityId: String) : CapabilityResolutionResult()
 }
 
+fun CapabilityResolutionResult.toStrategy(): CapabilityResolutionStrategy = when (this) {
+    is CapabilityResolutionResult.ExistingTool -> CapabilityResolutionStrategy.USE_EXISTING_TOOL
+    is CapabilityResolutionResult.NativeCapability -> CapabilityResolutionStrategy.DELEGATE_TO_NATIVE_PROVIDER
+    is CapabilityResolutionResult.DynamicCreatedTool -> CapabilityResolutionStrategy.CREATE_DYNAMIC_WRE_TOOL
+    is CapabilityResolutionResult.SecurityBlocked,
+    is CapabilityResolutionResult.ResolutionFailed -> CapabilityResolutionStrategy.UNAVAILABLE
+}
+
 /**
  * Stage 14: Canonical Self-Evolving Capability Engine & Orchestrator.
  * Implements the full autonomous capability lifecycle:

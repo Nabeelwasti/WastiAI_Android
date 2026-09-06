@@ -141,6 +141,19 @@ object ProductionReadinessGate {
             )
         )
 
+        // 6. Integration Audit Boundary Verification
+        val integrationAuditList = com.example.data.agent.runtime.IntegrationAuditRegistry.getAuditReport()
+        val verifiedBoundaryCount = integrationAuditList.count { it.status == com.example.data.agent.runtime.IntegrationStatus.VERIFIED_CONNECTED }
+        checks.add(
+            SubsystemReadinessCheck(
+                subsystemName = "IntegrationAuditRegistry",
+                isOperational = true,
+                isLiveVerified = verifiedBoundaryCount > 0,
+                state = if (verifiedBoundaryCount > 0) ProductionReadinessState.TEST_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = "$verifiedBoundaryCount / ${integrationAuditList.size} integration boundaries verified connected"
+            )
+        )
+
         val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
         val mandatoryChecksPassed = startupOk && dbOk && (operationalCount > 0)
         val overall = when {

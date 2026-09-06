@@ -73,3 +73,12 @@
     @kotlinx.serialization.SerialName <fields>;
 }
 
+# Native Llama & JNI Bridges
+-keep class com.example.data.ai.runtime.NativeLlamaBridge {
+    native <methods>;
+    *;
+}
+
+# WRE Command Parser Nodes
+-keep class com.example.data.wre.CommandNode** { *; }
+-keep class com.example.data.wre.ChainOperator { *; }

@@ -28,8 +28,8 @@ class NativeCommandProvider(
         val trimmed = request.command.trim()
         if (trimmed.isEmpty()) return false
 
-        // Support piped lines or package commands
-        if (trimmed.contains("|")) return true
+        // Support chained commands, piped lines, or package commands
+        if (trimmed.contains("&&") || trimmed.contains("||") || trimmed.contains(";") || trimmed.contains("|")) return true
 
         val cmd = trimmed.split("\\s+".toRegex())[0]
         return supportedCommands.contains(cmd) ||
@@ -70,6 +70,12 @@ class NativeCommandProvider(
         val startTime = System.currentTimeMillis()
         val rawCommand = request.command.trim()
 
+        // Handle Command Chaining (&&, ||, ;) if chaining operators are present
+        val chainedStages = WreCommandParser.parseChained(rawCommand)
+        if (chainedStages.size > 1) {
+            return executeChained(chainedStages, request, startTime)
+        }
+
         // Handle UNIX-style Piping if pipe operator is present
         if (rawCommand.contains("|")) {
             return executePipeline(rawCommand, request, startTime)
@@ -93,6 +99,66 @@ class NativeCommandProvider(
         val args = if (tokens.size > 1) tokens.subList(1, tokens.size) else request.arguments
 
         return executeSingleCommand(cmd, args, request, startTime, stdin = null)
+    }
+
+    private suspend fun executeChained(
+        stages: List<Pair<String, ChainOperator?>>,
+        request: ExecutionRequest,
+        startTime: Long
+    ): ExecutionResult {
+        val stdoutBuilder = StringBuilder()
+        val stderrBuilder = StringBuilder()
+        var lastResult: ExecutionResult? = null
+        var shouldExecuteNext = true
+
+        for (i in stages.indices) {
+            if (!shouldExecuteNext) break
+
+            val (cmdStr, nextOp) = stages[i]
+            val subReq = request.copy(command = cmdStr)
+            val res = if (cmdStr.contains("|")) {
+                executePipeline(cmdStr, subReq, System.currentTimeMillis())
+            } else {
+                val tokens = WreCommandParser.tokenize(cmdStr)
+                if (tokens.isEmpty()) continue
+                val cmd = tokens[0]
+                val args = if (tokens.size > 1) tokens.subList(1, tokens.size) else emptyList()
+                executeSingleCommand(cmd, args, subReq, System.currentTimeMillis(), stdin = null)
+            }
+            lastResult = res
+
+            if (res.stdout.isNotEmpty()) {
+                if (stdoutBuilder.isNotEmpty()) stdoutBuilder.append("\n")
+                stdoutBuilder.append(res.stdout)
+            }
+            if (res.stderr.isNotEmpty()) {
+                if (stderrBuilder.isNotEmpty()) stderrBuilder.append("\n")
+                stderrBuilder.append(res.stderr)
+            }
+
+            shouldExecuteNext = when (nextOp) {
+                ChainOperator.AND -> res.exitCode == 0
+                ChainOperator.OR -> res.exitCode != 0
+                ChainOperator.SEQ -> true
+                null -> true
+            }
+        }
+
+        return lastResult?.copy(
+            command = request.command,
+            stdout = stdoutBuilder.toString(),
+            stderr = stderrBuilder.toString(),
+            durationMs = System.currentTimeMillis() - startTime
+        ) ?: ExecutionResult(
+            executionId = request.executionId,
+            command = request.command,
+            exitCode = 0,
+            stdout = "",
+            stderr = "",
+            durationMs = System.currentTimeMillis() - startTime,
+            status = ExecutionStatus.SUCCESS,
+            verified = true
+        )
     }
 
     private fun executePipeline(pipelineCmd: String, request: ExecutionRequest, startTime: Long): ExecutionResult {

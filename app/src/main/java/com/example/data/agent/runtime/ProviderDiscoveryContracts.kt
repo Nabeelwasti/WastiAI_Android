@@ -31,6 +31,17 @@ class WastiExecutionProviderRegistry : ExecutionProviderRegistry {
 
     private val providers = ConcurrentHashMap<String, Pair<CodeExecutionProvider, ProviderCapabilityAdvertisement>>()
 
+    init {
+        val fallbackAd = ProviderCapabilityAdvertisement(
+            providerId = "safe_local_stub",
+            providerName = "SafeLocalExecutionStub",
+            supportedLanguages = emptyList(),
+            supportedExecutables = emptyList(),
+            reliabilityRating = 0.0
+        )
+        registerProvider(SafeLocalExecutionStub(), fallbackAd)
+    }
+
     override fun registerProvider(
         provider: CodeExecutionProvider,
         advertisement: ProviderCapabilityAdvertisement

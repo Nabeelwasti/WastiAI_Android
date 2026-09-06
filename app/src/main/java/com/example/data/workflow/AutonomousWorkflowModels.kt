@@ -66,6 +66,7 @@ data class WorkflowStep(
     val description: String = "",
     val capabilityId: String,
     val toolId: String? = null,
+    val resolutionStrategy: CapabilityResolutionStrategy = CapabilityResolutionStrategy.USE_EXISTING_TOOL,
     val parameters: Map<String, Any> = emptyMap(),
     val dependsOnStepIds: List<String> = emptyList(),
     val requiresVerification: Boolean = true,

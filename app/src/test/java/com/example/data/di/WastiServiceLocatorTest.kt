@@ -30,5 +30,9 @@ class WastiServiceLocatorTest {
         assertNotNull(WastiServiceLocator.agentEventBus)
         assertNotNull(WastiServiceLocator.agentRuntime)
         assertNotNull(WastiServiceLocator.toolRouter)
+        assertNotNull(WastiServiceLocator.executionProviderRouter)
+        assertNotNull(WastiServiceLocator.capabilityDevelopmentEngine)
+        assertNotNull(WastiServiceLocator.skillEvolutionEngine)
+        assertNotNull(WastiServiceLocator.integrationAuditRegistry)
     }
 }

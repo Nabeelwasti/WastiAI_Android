@@ -123,4 +123,60 @@ class Stage9CDynamicNativeRuntimeTest {
         val pkgSuggestions = autocomplete.getSuggestions("wre pkg ")
         assertTrue(pkgSuggestions.any { it.text == "list" || it.displayText.contains("list") })
     }
+
+    @Test
+    fun testWreChainedParsing() {
+        val stages = WreCommandParser.parseChained("echo start && ls -la || echo fallback ; echo done")
+        assertEquals(4, stages.size)
+        assertEquals("echo start", stages[0].first)
+        assertEquals(ChainOperator.AND, stages[0].second)
+        assertEquals("ls -la", stages[1].first)
+        assertEquals(ChainOperator.OR, stages[1].second)
+        assertEquals("echo fallback", stages[2].first)
+        assertEquals(ChainOperator.SEQ, stages[2].second)
+        assertEquals("echo done", stages[3].first)
+        assertNull(stages[3].second)
+
+        val tree = WreCommandParser.parseCommandTree("echo a && echo b")
+        assertTrue(tree is CommandNode.Chained)
+        val chained = tree as CommandNode.Chained
+        assertEquals(ChainOperator.AND, chained.operator)
+        assertTrue(chained.left is CommandNode.Simple)
+        assertTrue(chained.right is CommandNode.Simple)
+    }
+
+    @Test
+    fun testChainedExecutionAndLogic() = runBlocking {
+        val req = ExecutionRequest(
+            command = "echo first && echo second",
+            workingDirectory = "home/wasti"
+        )
+        val res = wreManager.execute(req)
+        assertEquals(ExecutionStatus.SUCCESS, res.status)
+        assertTrue(res.stdout.contains("first"))
+        assertTrue(res.stdout.contains("second"))
+    }
+
+    @Test
+    fun testChainedExecutionOrLogic() = runBlocking {
+        val req = ExecutionRequest(
+            command = "false || echo recovered",
+            workingDirectory = "home/wasti"
+        )
+        val res = wreManager.execute(req)
+        assertEquals(ExecutionStatus.SUCCESS, res.status)
+        assertTrue(res.stdout.contains("recovered"))
+    }
+
+    @Test
+    fun testChainedExecutionSequential() = runBlocking {
+        val req = ExecutionRequest(
+            command = "echo step1 ; echo step2",
+            workingDirectory = "home/wasti"
+        )
+        val res = wreManager.execute(req)
+        assertEquals(ExecutionStatus.SUCCESS, res.status)
+        assertTrue(res.stdout.contains("step1"))
+        assertTrue(res.stdout.contains("step2"))
+    }
 }

@@ -229,6 +229,35 @@ object WastiServiceLocator {
         )
     }
 
+    val executionProviderRouter: ExecutionProviderRouter by lazy {
+        ExecutionProviderRouter().apply {
+            registerProvider(
+                SafeLocalExecutionStub(),
+                ProviderCapabilityAdvertisement(
+                    providerId = "safe_local_stub",
+                    providerName = "SafeLocalExecutionStub",
+                    supportedLanguages = emptyList(),
+                    supportedExecutables = emptyList(),
+                    reliabilityRating = 0.0
+                )
+            )
+        }
+    }
+
+    val capabilityDevelopmentEngine: CapabilityDevelopmentContract by lazy {
+        WastiCapabilityDevelopmentEngine(
+            workspaceManager = workspaceManager,
+            executionRouter = executionProviderRouter
+        )
+    }
+
+    val skillEvolutionEngine: AutonomousSkillEvolutionEngine by lazy {
+        AutonomousSkillEvolutionEngine(requireContext())
+    }
+
+    val integrationAuditRegistry: IntegrationAuditRegistry
+        get() = IntegrationAuditRegistry
+
     fun init(context: Context) {
         if (appContext == null) {
             synchronized(this) {
