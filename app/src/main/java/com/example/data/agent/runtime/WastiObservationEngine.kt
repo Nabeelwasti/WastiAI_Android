@@ -65,7 +65,8 @@ class WastiObservationEngine(
             capabilityId in MEMORY_CAPABILITIES || category == "MEMORY" ->
                 observeMemory(request, executorResult)
 
-            category == "COMMUNICATION" -> observeCommunication(request, executorResult)
+            category == "COMMUNICATION" || category == "MESSAGING" || capabilityId in setOf("whatsapp", "send_whatsapp", "send_email", "email") ->
+                observeCommunication(request, executorResult)
 
             else -> observeSystemAndCode(request, executorResult)
         }

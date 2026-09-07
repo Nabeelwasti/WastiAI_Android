@@ -158,6 +158,7 @@ class Stage6ObservationVerificationTest {
     // 5. Verification unavailable path
     @Test
     fun testVerificationUnavailablePath() = runBlocking {
+        com.example.assistant.PermissionManager.setUserConsent("ANDROID_CONTROL", true)
         val request = UnifiedExecutionRequest(
             capabilityId = "WHATSAPP",
             parameters = mapOf("target" to "+15551234567", "content" to "Hello World")
