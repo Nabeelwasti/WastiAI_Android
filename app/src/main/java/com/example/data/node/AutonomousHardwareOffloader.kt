@@ -1,7 +1,9 @@
 package com.example.data.node
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.util.Log
@@ -203,7 +205,7 @@ object AutonomousHardwareOffloader {
             }
             HardwareTransportType.BLUETOOTH_RFCOMM -> {
                 // Route through Bluetooth RFCOMM link
-                dispatchBluetoothTask(targetNode, request)
+                dispatchBluetoothTask(targetNode, request, context)
             }
             else -> {
                 WastiMeshTransportEngine.dispatchRemoteTask(targetNode.nodeId, request)
@@ -234,19 +236,30 @@ object AutonomousHardwareOffloader {
     /**
      * Dispatches a task over Bluetooth RFCOMM to a bonded PC/Laptop.
      */
+    @SuppressLint("MissingPermission")
     private suspend fun dispatchBluetoothTask(
         targetNode: NearbyHardwareNode,
-        request: UnifiedExecutionRequest
+        request: UnifiedExecutionRequest,
+        context: Context? = null
     ): UnifiedExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        val adapter = try { BluetoothAdapter.getDefaultAdapter() } catch (_: Throwable) { null }
+        val adapter = try {
+            val btManager = context?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            btManager?.adapter
+        } catch (_: Throwable) {
+            null
+        }
 
         if (adapter != null && adapter.isEnabled) {
             var socket: BluetoothSocket? = null
             try {
                 val device: BluetoothDevice = adapter.getRemoteDevice(targetNode.addressOrIp)
                 socket = device.createRfcommSocketToServiceRecord(WastiNearbyHardwareEngine.WASTI_RFCOMM_UUID)
-                adapter.cancelDiscovery()
+                try {
+                    adapter.cancelDiscovery()
+                } catch (_: SecurityException) {
+                    // Safe handling if discovery cancellation lacks permission
+                }
                 socket.connect()
 
             val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))

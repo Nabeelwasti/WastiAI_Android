@@ -54,7 +54,6 @@ fun OnboardingModelWizardDialog(
     val isWeightsInstalled = remember { ModelArtifactManager.isWeightsPresent(context, targetModelId) }
 
     val activeProgress = downloadProgressMap[targetModelId]
-    val isDownloading = activeProgress != null && !activeProgress.isCompleted && !activeProgress.isFailed
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -158,14 +157,15 @@ fun OnboardingModelWizardDialog(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    if (isDownloading && activeProgress != null) {
+                    val currentProgress = activeProgress
+                    if (currentProgress != null && !currentProgress.isCompleted && !currentProgress.isFailed) {
                         LinearProgressIndicator(
-                            progress = { activeProgress.progressFraction },
+                            progress = { currentProgress.progressFraction },
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "${(activeProgress.progressFraction * 100).toInt()}% • ${activeProgress.statusText}",
+                            text = "${(currentProgress.progressFraction * 100).toInt()}% • ${currentProgress.statusText}",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary

@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.input.InputManager
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import android.util.Log
@@ -155,9 +156,34 @@ object WastiDeviceSensoryEngine {
         val volPct = if (maxVol > 0) (curVol * 100) / maxVol else 50
 
         val isMusic = am?.isMusicActive == true
-        val isSpeaker = am?.isSpeakerphoneOn == true
-        val isWired = am?.isWiredHeadsetOn == true
-        val isBt = am?.isBluetoothA2dpOn == true
+
+        // Modern hardware device output routing inspection via AudioDeviceInfo
+        val devices = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && am != null) {
+            try {
+                am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            } catch (_: Throwable) {
+                emptyArray()
+            }
+        } else {
+            emptyArray()
+        }
+
+        val isSpeaker = devices.any { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        val isWired = devices.any {
+            it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                it.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                it.type == AudioDeviceInfo.TYPE_USB_DEVICE
+        }
+        val isBt = devices.any {
+            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && (
+                    it.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                    it.type == AudioDeviceInfo.TYPE_BLE_BROADCAST
+                ))
+        }
 
         // Classify acoustic context
         val acoustic = when {

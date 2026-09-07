@@ -183,7 +183,7 @@ object WastiNearbyHardwareEngine {
         }
 
         val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
-        val btAdapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter() ?: return
+        val btAdapter = btManager?.adapter ?: return
 
         if (!btAdapter.isEnabled) {
             Log.d(TAG, "Bluetooth adapter is disabled.")
