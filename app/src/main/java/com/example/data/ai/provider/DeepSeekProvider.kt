@@ -35,10 +35,9 @@ class DeepSeekProvider : AIProvider {
                 modelUsed = defaultModel,
                 promptTokens = 0,
                 completionTokens = 0,
-                totalTokens = 0,
                 latencyMs = System.currentTimeMillis() - startTime,
                 costUsd = 0.0,
-                success = false,
+                isError = true,
                 errorMessage = "DeepSeek provider is unavailable: DEEPSEEK_API_KEY is not configured or contains placeholder."
             )
         }

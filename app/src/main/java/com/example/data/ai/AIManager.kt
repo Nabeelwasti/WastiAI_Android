@@ -1,5 +1,6 @@
 package com.example.data.ai
 
+import android.util.Log
 import com.example.data.ai.engine.CapabilityRegistry
 import com.example.data.ai.engine.ConversationCoordinator
 import com.example.data.ai.engine.CostTracker

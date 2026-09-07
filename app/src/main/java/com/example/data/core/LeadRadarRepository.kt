@@ -11,7 +11,6 @@ import com.example.data.db.LeadEntity
 import com.example.data.db.ProspectEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.crm.FieldProvenanceSource
-import com.example.data.crm.LeadFieldProvenance
 import com.example.data.crm.LeadProvenanceProfile
 import com.example.data.crm.LeadProvenanceTracker
 import com.example.data.crm.ProvenanceTrackedField

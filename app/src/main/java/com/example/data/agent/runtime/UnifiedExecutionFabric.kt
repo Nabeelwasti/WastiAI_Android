@@ -142,8 +142,7 @@ class UnifiedExecutionFabric(
                 executor = "UnifiedExecutionFabric",
                 startedAt = startedAt,
                 completedAt = System.currentTimeMillis(),
-                verificationStatus = UnifiedVerificationStatus.CANCELLED,
-                terminalTruthState = TerminalTruthState.CANCELLED,
+                verificationStatus = UnifiedVerificationStatus.FAILED,
                 verificationEvidence = "Execution blocked by active emergency stop latch"
             )
         }

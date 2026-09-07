@@ -35,10 +35,9 @@ class OpenRouterProvider : AIProvider {
                 modelUsed = model,
                 promptTokens = 0,
                 completionTokens = 0,
-                totalTokens = 0,
                 latencyMs = System.currentTimeMillis() - startTime,
                 costUsd = 0.0,
-                success = false,
+                isError = true,
                 errorMessage = "OpenRouter provider is unavailable: OPENROUTER_API_KEY is not configured or contains placeholder."
             )
         }

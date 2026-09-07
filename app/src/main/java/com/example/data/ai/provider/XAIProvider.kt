@@ -35,10 +35,9 @@ class XAIProvider : AIProvider {
                 modelUsed = model,
                 promptTokens = 0,
                 completionTokens = 0,
-                totalTokens = 0,
                 latencyMs = System.currentTimeMillis() - startTime,
                 costUsd = 0.0,
-                success = false,
+                isError = true,
                 errorMessage = "xAI provider is unavailable: XAI_API_KEY is not configured or contains placeholder."
             )
         }

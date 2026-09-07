@@ -224,4 +224,26 @@ class WastiEmergencyStopController : EmergencyStopController {
             if (next === current || state.compareAndSet(current, next)) return
         }
     }
+
+    companion object {
+        val instance: WastiEmergencyStopController
+            get() = com.example.data.di.WastiServiceLocator.emergencyStopController
+
+        val isEmergencyStopped: Boolean
+            get() = instance.isEmergencyStopped
+
+        val stopStateFlow: StateFlow<EmergencyStopSnapshot>
+            get() = instance.stopStateFlow
+
+        fun triggerEmergencyStop(reason: String) = instance.triggerEmergencyStop(reason)
+        fun triggerReset() = instance.triggerReset()
+        fun registerScope(name: String, scope: CoroutineScope): AutoCloseable = instance.registerScope(name, scope)
+        fun registerJob(name: String, job: Job): AutoCloseable = instance.registerJob(name, job)
+        fun registerCancellationHook(name: String, hook: (reason: String) -> Unit): AutoCloseable = instance.registerCancellationHook(name, hook)
+        fun registerOkHttpClient(client: OkHttpClient): AutoCloseable = instance.registerOkHttpClient(client)
+        fun registerWorkManagerCancellation(hook: (reason: String) -> Unit) = instance.registerWorkManagerCancellation(hook)
+        fun getReason(): String? = instance.getReason()
+        fun snapshot(): EmergencyStopSnapshot = instance.snapshot()
+        fun getAuditHistory(): List<EmergencyStopAuditEntry> = instance.getAuditHistory()
+    }
 }

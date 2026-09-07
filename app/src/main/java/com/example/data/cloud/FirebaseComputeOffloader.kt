@@ -200,7 +200,7 @@ object FirebaseComputeOffloader {
                         return false to "Missing or empty prompt for MULTI_MODEL_CONSENSUS."
                     }
                     val consensus = com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt)
-                    true to "Consensus Evaluated (${consensus.consensusType.name}): ${consensus.finalSynthesizedText}"
+                    true to "Consensus Evaluated (${consensus.consensusType.name}): ${consensus.finalSynthesis}"
                 }
                 ComputeTaskType.BATCH_EMBEDDINGS -> {
                     @Suppress("UNCHECKED_CAST")

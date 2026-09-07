@@ -33,11 +33,10 @@ class OpenAIProvider : AIProvider {
                 content = "",
                 providerId = id,
                 providerName = name,
-                modelName = model,
-                tokensUsed = 0,
+                modelUsed = model,
                 latencyMs = System.currentTimeMillis() - startTime,
                 costUsd = 0.0,
-                success = false,
+                isError = true,
                 errorMessage = "OpenAI provider is unavailable: OPENAI_API_KEY is not configured or contains placeholder."
             )
         }

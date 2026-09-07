@@ -102,10 +102,10 @@ class SelfCorrectionEngine(
             )
             if (decision != ModificationDecision.ALLOWED) {
                 return ToolResult(
-                    toolName = proposal.toolName,
-                    success = false,
-                    output = "Blocked by SelfModificationSafetyEngine: $decision on target path '$targetPath'",
-                    error = SecurityException("Autonomous self-modification blocked: $decision")
+                    isSuccess = false,
+                    output = mapOf("toolName" to proposal.toolName, "message" to "Blocked by SelfModificationSafetyEngine: $decision on target path '$targetPath'"),
+                    error = "Autonomous self-modification blocked: $decision",
+                    isSecurityBlocked = true
                 )
             }
         }

@@ -1413,18 +1413,20 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     onDragEnd = {
                         if (offsetX > 120f) {
                             val nextStatus = when (lead.status) {
-                                LeadStatus.DISCOVERED -> LeadStatus.PROPOSAL_SENT
-                                LeadStatus.PROPOSAL_SENT -> LeadStatus.NEGOTIATING
+                                LeadStatus.DISCOVERED, LeadStatus.LEAD_DISCOVERED, LeadStatus.DATA_UNVERIFIED, LeadStatus.DRAFT -> LeadStatus.PROPOSAL_SENT
+                                LeadStatus.PROPOSAL_SENT, LeadStatus.HUMAN_REVIEW_REQUIRED, LeadStatus.APPROVED, LeadStatus.SENT -> LeadStatus.NEGOTIATING
                                 LeadStatus.NEGOTIATING -> LeadStatus.CLOSED
                                 LeadStatus.CLOSED -> LeadStatus.CLOSED
+                                else -> LeadStatus.CLOSED
                             }
                             LeadRadarRepository.updateLeadStatus(context, lead.id, nextStatus)
                         } else if (offsetX < -120f) {
                             val prevStatus = when (lead.status) {
                                 LeadStatus.CLOSED -> LeadStatus.NEGOTIATING
                                 LeadStatus.NEGOTIATING -> LeadStatus.PROPOSAL_SENT
-                                LeadStatus.PROPOSAL_SENT -> LeadStatus.DISCOVERED
-                                LeadStatus.DISCOVERED -> LeadStatus.DISCOVERED
+                                LeadStatus.PROPOSAL_SENT, LeadStatus.SENT, LeadStatus.APPROVED, LeadStatus.HUMAN_REVIEW_REQUIRED -> LeadStatus.DISCOVERED
+                                LeadStatus.DISCOVERED, LeadStatus.LEAD_DISCOVERED, LeadStatus.DATA_UNVERIFIED, LeadStatus.DRAFT -> LeadStatus.DISCOVERED
+                                else -> LeadStatus.DISCOVERED
                             }
                             LeadRadarRepository.updateLeadStatus(context, lead.id, prevStatus)
                         }
@@ -1449,10 +1451,12 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = when (lead.status) {
-                        LeadStatus.DISCOVERED -> Color(0xFF3B82F6)
-                        LeadStatus.PROPOSAL_SENT -> Color(0xFF8B5CF6)
+                        LeadStatus.DISCOVERED, LeadStatus.LEAD_DISCOVERED, LeadStatus.DATA_UNVERIFIED -> Color(0xFF3B82F6)
+                        LeadStatus.DRAFT, LeadStatus.HUMAN_REVIEW_REQUIRED -> Color(0xFF64748B)
+                        LeadStatus.APPROVED, LeadStatus.SENT, LeadStatus.PROPOSAL_SENT -> Color(0xFF8B5CF6)
                         LeadStatus.NEGOTIATING -> Color(0xFFF59E0B)
                         LeadStatus.CLOSED -> Color(0xFF10B981)
+                        else -> Color(0xFF3B82F6)
                     }
                 ) {
                     Text(
