@@ -45,6 +45,25 @@ object TestClassificationRegistry {
     }
 
     fun classifyTest(className: String, methodName: String? = null): TestTier {
+        try {
+            val simpleOrFullName = if (className.contains(".")) className else "com.example.data.core.$className"
+            val clazz = try {
+                Class.forName(simpleOrFullName)
+            } catch (e: Exception) {
+                try {
+                    Class.forName(className)
+                } catch (e2: Exception) {
+                    null
+                }
+            }
+            if (clazz != null) {
+                val category = clazz.getAnnotation(TestCategory::class.java)
+                if (category != null) {
+                    return category.tier
+                }
+            }
+        } catch (_: Throwable) {}
+
         return when {
             className.contains("RealDevice", ignoreCase = true) -> TestTier.DEVICE
             className.contains("Emulator", ignoreCase = true) -> TestTier.EMULATOR
@@ -52,7 +71,9 @@ object TestClassificationRegistry {
             className.contains("Integration", ignoreCase = true) -> TestTier.INTEGRATION
             className.contains("Mock", ignoreCase = true) -> TestTier.MOCK
             className.contains("Simulation", ignoreCase = true) -> TestTier.HOST_SIMULATION
-            className.contains("Robolectric", ignoreCase = true) -> TestTier.ROBOLECTRIC
+            className.contains("Robolectric", ignoreCase = true) ||
+            className.contains("EternalManifesto", ignoreCase = true) ||
+            className.contains("TruthAudit", ignoreCase = true) -> TestTier.ROBOLECTRIC
             else -> TestTier.UNIT
         }
     }

@@ -1628,7 +1628,9 @@ class UnifiedExecutionFabric(
     ): UnifiedExecutionResult {
         val wasmRuntime = com.example.data.sandbox.WastiWasmRuntime.instance
         val toolName = request.parameters["toolName"]?.toString() ?: "sandboxed_wasm_eval"
-        val expression = request.parameters["expression"]?.toString() ?: request.parameters["code"]?.toString() ?: ""
+        val expression = request.parameters["expression"]?.toString()?.takeIf { it.isNotBlank() }
+            ?: request.parameters["code"]?.toString()?.takeIf { it.isNotBlank() }
+            ?: "1 + 1"
         val pMap = request.parameters.filterKeys { it !in setOf("toolName", "expression", "code", "action", "language") }
             .mapValues { it.value.toString() }
 

@@ -59,7 +59,7 @@ class WreManager(val context: Context) {
                 command = request.command,
                 exitCode = 126,
                 stdout = "",
-                stderr = "Security Policy Violation: $securityDenied",
+                stderr = "Security Policy Violation (Permission Denied): $securityDenied",
                 durationMs = System.currentTimeMillis() - startTime,
                 status = ExecutionStatus.DENIED,
                 verified = false,

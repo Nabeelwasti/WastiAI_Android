@@ -32,7 +32,7 @@ data class ProvenanceTrackedField<T>(
     val verifiedBy: String? = if (source == FieldProvenanceSource.USER_ENTERED) "USER" else null
 ) {
     val isAuthoritative: Boolean
-        get() = source.isAuthoritative && (verifiedBy != null || source == FieldProvenanceSource.AUTHORITATIVE_API || source == FieldProvenanceSource.USER_ENTERED)
+        get() = source.isAuthoritative || verifiedBy != null
 
     fun verify(verifier: String, newConfidence: Float = 1.0f): ProvenanceTrackedField<T> {
         return copy(

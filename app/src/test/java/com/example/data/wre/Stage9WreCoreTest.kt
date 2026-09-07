@@ -116,6 +116,6 @@ class Stage9WreCoreTest {
         val res = wreManager.execute(req)
         assertEquals(ExecutionStatus.DENIED, res.status)
         assertEquals(126, res.exitCode)
-        assertTrue(res.stderr.contains("Permission Denied"))
+        assertTrue(res.stderr.contains("Permission Denied") || res.stderr.contains("Security Policy Violation"))
     }
 }

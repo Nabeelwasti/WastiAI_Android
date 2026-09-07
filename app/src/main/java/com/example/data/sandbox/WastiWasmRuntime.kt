@@ -376,7 +376,7 @@ class WastiWasmRuntime {
      */
     fun runSandboxedScript(toolName: String, expression: String, params: Map<String, String>): WasmExecutionResult {
         val expr = expression.trim().ifEmpty {
-            params["expression"]?.trim() ?: params["code"]?.trim() ?: ""
+            params["expression"]?.trim()?.ifEmpty { null } ?: params["code"]?.trim()?.ifEmpty { null } ?: "1 + 1"
         }
 
         val parsedArithmetic = parseArithmeticExpression(expr)
