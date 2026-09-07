@@ -33,6 +33,8 @@ class WreManager(val context: Context) {
     private val providers = CopyOnWriteArrayList<ExecutionProvider>()
 
     init {
+        // Register Polyglot Engine (Python, Node.js, SQL, Keystore, Tunnel, Hardware Telemetry)
+        registerProvider(WastiPolyglotTerminalEngine(context, workspaceManager))
         // Register Native Commands Provider with Package Manager integration
         registerProvider(NativeCommandProvider(workspaceManager, environmentManager, processManager, packageManager))
     }

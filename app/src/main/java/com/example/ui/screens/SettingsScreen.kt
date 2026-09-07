@@ -398,6 +398,11 @@ fun SettingsScreen(
             GoogleDriveBackupCard()
         }
 
+        // SECTION 2.55: THE RESURRECTION PROTOCOL (10,000-YEAR STATE MIGRATION)
+        item {
+            WastiResurrectionProtocolCard()
+        }
+
         // SECTION 2.6: OMNI-PRESENT FLOATING ACTION BUBBLE
         item {
             WastiFloatingBubbleCard()
@@ -1322,6 +1327,248 @@ fun WastiFloatingBubbleCard() {
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
                 ) {
                     Text("Grant Overlay Permission in System Settings")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WastiResurrectionProtocolCard() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var passphrase by remember { mutableStateOf("") }
+    var isExporting by remember { mutableStateOf(false) }
+    var isImporting by remember { mutableStateOf(false) }
+    var exportResult by remember { mutableStateOf<com.example.data.core.ResurrectionExportResult?>(null) }
+    var importResult by remember { mutableStateOf<com.example.data.core.ResurrectionImportResult?>(null) }
+    var showPassphrase by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "The Resurrection Protocol",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "10,000-Year Principle • Sovereign State Migration",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Export or restore your full memory graph, knowledge base, and acquired dynamic capabilities across any device body (Android, Linux, Windows, Cloud) using zero-knowledge PBKDF2 (100k rounds) + AES-256-GCM encryption.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 16.sp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = passphrase,
+                onValueChange = { passphrase = it },
+                label = { Text("Resurrection Passphrase or 12-Word Seed (min 8 chars)", fontSize = 11.sp) },
+                visualTransformation = if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPassphrase = !showPassphrase }) {
+                        Icon(
+                            imageVector = if (showPassphrase) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                },
+                singleLine = false,
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = {
+                        passphrase = com.example.data.core.WastiResurrectionProtocol.generate12WordMnemonic()
+                        showPassphrase = true
+                    }
+                ) {
+                    Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Generate 12-Word Recovery Seed", fontSize = 11.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = {
+                        if (passphrase.length < 8) {
+                            Toast.makeText(context, "Passphrase must be at least 8 characters", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        coroutineScope.launch {
+                            isExporting = true
+                            val result = com.example.data.core.WastiResurrectionProtocol.exportResurrectionBundle(context, passphrase)
+                            isExporting = false
+                            exportResult = result
+                            if (result.isSuccess) {
+                                Toast.makeText(context, "Resurrection Bundle exported successfully!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Export error: ${result.errorMessage}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    enabled = !isExporting && !isImporting && passphrase.length >= 8,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isExporting) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Exporting...", fontSize = 11.sp)
+                    } else {
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Export .was", fontSize = 11.sp)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        if (passphrase.length < 8) {
+                            Toast.makeText(context, "Passphrase must be at least 8 characters", Toast.LENGTH_SHORT).show()
+                            return@OutlinedButton
+                        }
+                        coroutineScope.launch {
+                            isImporting = true
+                            val bundleFiles = context.filesDir.listFiles { _, name -> name.endsWith(".was") }?.sortedByDescending { it.lastModified() }
+                            val targetFile = bundleFiles?.firstOrNull()
+                            if (targetFile == null) {
+                                isImporting = false
+                                Toast.makeText(context, "No .was bundle found in storage to import", Toast.LENGTH_LONG).show()
+                                return@launch
+                            }
+                            val result = com.example.data.core.WastiResurrectionProtocol.importResurrectionBundle(context, targetFile, passphrase)
+                            isImporting = false
+                            importResult = result
+                            if (result.isSuccess) {
+                                Toast.makeText(context, "Resurrected state: ${result.totalMemoriesRestored} memories, ${result.totalCapabilitiesRestored} capabilities!", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(context, "Import error: ${result.errorMessage}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    },
+                    enabled = !isExporting && !isImporting && passphrase.length >= 8,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (isImporting) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Restoring...", fontSize = 11.sp)
+                    } else {
+                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Import .was", fontSize = 11.sp)
+                    }
+                }
+            }
+
+            // Results Display
+            exportResult?.let { res ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (res.isSuccess) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = if (res.isSuccess) "✓ State Preserved: ${res.totalMemoriesExported} memories • ${res.totalKnowledgeExported} knowledge • ${res.totalCapabilitiesExported} dynamic capabilities" else "Export Failed: ${res.errorMessage}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (res.isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                        if (res.isSuccess && res.bundleFile != null) {
+                            Text("File: ${res.bundleFile.name} (${res.bundleFile.length()} bytes)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("SHA-256: ${res.sha256Checksum.take(16)}...", fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (res.mnemonicRecoveryPhrase.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("Sovereign 12-Word Recovery Phrase:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                                ) {
+                                    Text(
+                                        text = res.mnemonicRecoveryPhrase,
+                                        fontSize = 11.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            importResult?.let { res ->
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (res.isSuccess) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = if (res.isSuccess) "✓ State Resurrected: ${res.totalMemoriesRestored} memories • ${res.totalKnowledgeRestored} knowledge • ${res.totalCapabilitiesRestored} capabilities" else "Import Failed: ${res.errorMessage}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (res.isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                        if (res.isSuccess) {
+                            Text("Source Device: ${res.sourceDeviceId.take(12)}... (Restored into ${android.os.Build.MODEL})", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
             }
         }

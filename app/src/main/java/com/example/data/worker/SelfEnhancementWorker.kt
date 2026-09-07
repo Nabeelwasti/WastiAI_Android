@@ -140,6 +140,15 @@ class SelfEnhancementWorker(
             WastiRootController.submitSkillMatrixProposal(proposal)
             Log.i(TAG, "SelfEnhancementWorker completed successfully. Proposal submitted to WastiRootController.")
 
+            // Execute Autonomous Sleep-Time Memory Dreaming & Cognitive Consolidation Cycle
+            try {
+                Log.d(TAG, "Executing Autonomous Memory Dreaming Cycle...")
+                val dreamingResult = com.example.data.memory.MemoryDreamingEngine.executeDreamingCycle(context)
+                Log.i(TAG, "Memory Dreaming Cycle completed: consolidated=${dreamingResult.memoriesConsolidated}, contradictions=${dreamingResult.contradictionsResolved}, triples=${dreamingResult.triplesExtracted}")
+            } catch (dreamEx: Exception) {
+                Log.w(TAG, "Autonomous Memory Dreaming warning: ${dreamEx.message}")
+            }
+
             WastiWorkManagerLifecycleTracker.recordWorkFinished(
                 WORK_NAME,
                 "SelfEnhancementWorker",

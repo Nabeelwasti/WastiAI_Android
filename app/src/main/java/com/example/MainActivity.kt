@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -89,6 +90,26 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 }
             }
 
+            var showOnboardingWizard by rememberSaveable { mutableStateOf(false) }
+            var showFirstRunWizard by rememberSaveable { mutableStateOf(false) }
+
+            // Automatic cold-start first-run personalization & gate resolution trigger
+            LaunchedEffect(Unit) {
+                if (!com.example.data.core.PersonalizedOnboardingEngine.isSetupCompleted(this@MainActivity)) {
+                    showFirstRunWizard = true
+                }
+            }
+
+            // Automatic cold-start edge model onboarding trigger if weights not present and wizard not dismissed
+            LaunchedEffect(Unit) {
+                val prefs = getSharedPreferences("wasti_app_prefs", android.content.Context.MODE_PRIVATE)
+                val wizardDismissed = prefs.getBoolean("onboarding_model_wizard_dismissed", false)
+                val hasWeights = com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(this@MainActivity, "wasti-smollm")
+                if (!wizardDismissed && !hasWeights) {
+                    showOnboardingWizard = true
+                }
+            }
+
             val startupState by AppStartupManager.startupState.collectAsStateWithLifecycle()
             val darkTheme by viewModel.darkThemeEnabled.collectAsStateWithLifecycle()
             val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()
@@ -143,71 +164,35 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         onExecuteCommand = { cmd -> viewModel.executeQuickCommand(cmd) }
                     )
 
-                    Scaffold(
-                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .testTag("wasti_main_scaffold"),
-                        topBar = {
-                            ExecutiveBrainHeader(
-                                activeAgentName = activeAgentName,
-                                isDarkTheme = darkTheme,
-                                onToggleTheme = { viewModel.toggleTheme() },
-                                onOpenCommandPalette = { viewModel.toggleCommandPalette() },
-                                onOpenVoiceCall = {
-                                    focusManager.clearFocus()
-                                    viewModel.selectTab("chat")
-                                    triggerVoiceModalSignal++
-                                }
-                            )
-                        },
-                        bottomBar = {
-                            ScrollableTabRow(
-                                selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
-                                edgePadding = 8.dp,
-                                containerColor = MaterialTheme.colorScheme.surface,
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                divider = {},
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .windowInsetsPadding(WindowInsets.navigationBars)
-                                    .testTag("main_bottom_nav")
-                            ) {
-                                navItems.forEach { nav ->
-                                    val isSelected = activeTab == nav.id
-                                    Tab(
-                                        selected = isSelected,
-                                        onClick = {
-                                            focusManager.clearFocus()
-                                            viewModel.selectTab(nav.id)
-                                        },
-                                        modifier = Modifier.testTag("nav_item_${nav.id}"),
-                                        text = {
-                                            Text(
-                                                text = nav.title,
-                                                fontSize = 10.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        },
-                                        icon = {
-                                            Icon(
-                                                imageVector = nav.icon,
-                                                contentDescription = nav.title,
-                                                tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                        }
-                                    )
-                                }
-                            }
+                    com.example.ui.components.FirstRunSetupWizardDialog(
+                        isOpen = showFirstRunWizard,
+                        onDismiss = { showFirstRunWizard = false },
+                        onComplete = {
+                            showFirstRunWizard = false
+                            android.widget.Toast.makeText(this@MainActivity, "Sovereign Personalization & Production Gates Resolved!", android.widget.Toast.LENGTH_SHORT).show()
                         }
-                    ) { innerPadding ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                    ) {
+                    )
+
+                    com.example.ui.components.OnboardingModelWizardDialog(
+                        isOpen = showOnboardingWizard,
+                        onDismiss = {
+                            showOnboardingWizard = false
+                            getSharedPreferences("wasti_app_prefs", android.content.Context.MODE_PRIVATE)
+                                .edit()
+                                .putBoolean("onboarding_model_wizard_dismissed", true)
+                                .apply()
+                        },
+                        onComplete = {
+                            showOnboardingWizard = false
+                            getSharedPreferences("wasti_app_prefs", android.content.Context.MODE_PRIVATE)
+                                .edit()
+                                .putBoolean("onboarding_model_wizard_dismissed", true)
+                                .apply()
+                            android.widget.Toast.makeText(this@MainActivity, "Sovereign Edge Neural Brain active and ready!", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
+                    val renderScreenContent: @Composable () -> Unit = {
                         when (activeTab) {
                             "dashboard" -> DashboardScreen(
                                 conversations = conversations,
@@ -352,9 +337,157 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             )
                         }
                     }
+
+                    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                        val isWideScreen = maxWidth >= 768.dp
+                        if (isWideScreen) {
+                            Row(modifier = Modifier.fillMaxSize()) {
+                                NavigationRail(
+                                    containerColor = MaterialTheme.colorScheme.surface,
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                    header = {
+                                        Icon(
+                                            imageVector = Icons.Default.Psychology,
+                                            contentDescription = "Wasti AI OS",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .padding(vertical = 4.dp)
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .testTag("main_rail_nav")
+                                ) {
+                                    navItems.forEach { nav ->
+                                        val isSelected = activeTab == nav.id
+                                        NavigationRailItem(
+                                            selected = isSelected,
+                                            onClick = {
+                                                focusManager.clearFocus()
+                                                viewModel.selectTab(nav.id)
+                                            },
+                                            modifier = Modifier.testTag("nav_item_${nav.id}"),
+                                            icon = {
+                                                Icon(
+                                                    imageVector = nav.icon,
+                                                    contentDescription = nav.title,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            },
+                                            label = {
+                                                Text(
+                                                    text = nav.title,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Scaffold(
+                                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight()
+                                        .testTag("wasti_main_scaffold"),
+                                    topBar = {
+                                        ExecutiveBrainHeader(
+                                            activeAgentName = activeAgentName,
+                                            isDarkTheme = darkTheme,
+                                            onToggleTheme = { viewModel.toggleTheme() },
+                                            onOpenCommandPalette = { viewModel.toggleCommandPalette() },
+                                            onOpenVoiceCall = {
+                                                focusManager.clearFocus()
+                                                viewModel.selectTab("chat")
+                                                triggerVoiceModalSignal++
+                                            }
+                                        )
+                                    }
+                                ) { innerPadding ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(innerPadding)
+                                    ) {
+                                        renderScreenContent()
+                                    }
+                                }
+                            }
+                        } else {
+                            Scaffold(
+                                contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .testTag("wasti_main_scaffold"),
+                                topBar = {
+                                    ExecutiveBrainHeader(
+                                        activeAgentName = activeAgentName,
+                                        isDarkTheme = darkTheme,
+                                        onToggleTheme = { viewModel.toggleTheme() },
+                                        onOpenCommandPalette = { viewModel.toggleCommandPalette() },
+                                        onOpenVoiceCall = {
+                                            focusManager.clearFocus()
+                                            viewModel.selectTab("chat")
+                                            triggerVoiceModalSignal++
+                                        }
+                                    )
+                                },
+                                bottomBar = {
+                                    ScrollableTabRow(
+                                        selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
+                                        edgePadding = 8.dp,
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        contentColor = MaterialTheme.colorScheme.primary,
+                                        divider = {},
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
+                                            .testTag("main_bottom_nav")
+                                    ) {
+                                        navItems.forEach { nav ->
+                                            val isSelected = activeTab == nav.id
+                                            Tab(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    focusManager.clearFocus()
+                                                    viewModel.selectTab(nav.id)
+                                                },
+                                                modifier = Modifier.testTag("nav_item_${nav.id}"),
+                                                text = {
+                                                    Text(
+                                                        text = nav.title,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                },
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = nav.icon,
+                                                        contentDescription = nav.title,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            ) { innerPadding ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(innerPadding)
+                                ) {
+                                    renderScreenContent()
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-}
 }

@@ -353,4 +353,38 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         val expectedHash = digest.digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
         assertTrue(transformOutcome.output.contains(expectedHash))
     }
+
+    /**
+     * [P0-01] Verifies progressive lifecycle state determination:
+     * UNAVAILABLE -> CONFIGURED -> INSTALLED -> LOADABLE -> EXECUTABLE -> VERIFIED
+     */
+    @Test
+    fun testLocalNeuralProgressiveStateProgression() {
+        val runtime = WastiLocalModelRuntime(context)
+
+        // 1. Unknown model -> UNAVAILABLE
+        val unknownState = runtime.getProgressiveState("non-existent-model-xyz")
+        assertEquals(LocalNeuralProgressiveState.UNAVAILABLE, unknownState)
+
+        // 2. Configured manifest but weights not on disk -> CONFIGURED
+        val smollmState = runtime.getProgressiveState("wasti-smollm")
+        assertEquals(LocalNeuralProgressiveState.CONFIGURED, smollmState)
+    }
+
+    /**
+     * [P0-01] Verifies NativeLlamaBridge native version and state reporting
+     */
+    @Test
+    fun testNativeLlamaBridgeVersionAndState() {
+        val version = NativeLlamaBridge.getNativeVersion()
+        assertNotNull(version)
+        // If native library is not bundled on host robolectric runner, it truthfully reports UNAVAILABLE
+        // If bundled, it reports runtime version
+        if (NativeLlamaBridge.isNativeSupported()) {
+            assertTrue(version.contains("wasti-llama-runtime"))
+        } else {
+            assertEquals("UNAVAILABLE", version)
+        }
+    }
 }
+

@@ -146,7 +146,7 @@ jobs:
 
     - name: Run Backend Syntax & Security Validation Tests
       run: |
-        node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js
+        node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
         node --test backend/test_backend.js
         echo "SUCCESS: Backend syntax and security tests verified."
 
@@ -437,6 +437,18 @@ jobs:
 
         echo "SUCCESS: Comprehensive source, backend, workflow, and APK secret boundary scan passed cleanly."
 
+    - name: Execute Release Runtime & Evidence Verification
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
+      run: |
+        chmod +x scripts/verify_release_runtime.sh
+        ./scripts/verify_release_runtime.sh app/build/outputs/apk/release/app-release.apk release_verification_evidence.json
+
+    - name: Execute Debug Runtime & Evidence Verification
+      if: env.HAVE_RELEASE_KEYSTORE != 'true'
+      run: |
+        chmod +x scripts/verify_release_runtime.sh
+        ./scripts/verify_release_runtime.sh app/build/outputs/apk/debug/app-debug.apk debug_verification_evidence.json
+
     - name: Cleanup Sensitive Build Files
       if: always()
       run: |
@@ -450,7 +462,9 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: WastiAI-Debug-APK
-        path: app/build/outputs/apk/debug/app-debug.apk
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          debug_verification_evidence.json
 
     - name: Stage Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
@@ -458,6 +472,9 @@ jobs:
         mkdir -p build-release-artifacts
         cp app/build/outputs/apk/release/app-release.apk build-release-artifacts/
         cp app/build/outputs/bundle/release/app-release.aab build-release-artifacts/
+        if [ -f "release_verification_evidence.json" ]; then
+          cp release_verification_evidence.json build-release-artifacts/
+        fi
 
     - name: Upload Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
@@ -490,6 +507,7 @@ jobs:
         find build-artifacts -type f
         find build-artifacts -type f -name "app-release.apk" -exec cp -f {} build-artifacts/app-release.apk \;
         find build-artifacts -type f -name "app-release.aab" -exec cp -f {} build-artifacts/app-release.aab \;
+        find build-artifacts -type f -name "release_verification_evidence.json" -exec cp -f {} build-artifacts/release_verification_evidence.json \;
 
         test -f build-artifacts/app-release.apk || { echo "ERROR: Genuine signed app-release.apk missing. Release aborted."; exit 1; }
         test -f build-artifacts/app-release.aab || { echo "ERROR: Genuine signed app-release.aab missing. Release aborted."; exit 1; }
@@ -512,11 +530,12 @@ jobs:
         files: |
           build-artifacts/app-release.apk
           build-artifacts/app-release.aab
+          build-artifacts/release_verification_evidence.json
         tag_name: ${{ steps.release_meta.outputs.tag_name }}
         name: ${{ steps.release_meta.outputs.title }}
         overwrite_files: true
         make_latest: true
-        fail_on_unmatched_files: true
+        fail_on_unmatched_files: false
         body: |
           ### 📱 Wasti AI Production Release
           - **Tag:** `${{ steps.release_meta.outputs.tag_name }}`
@@ -524,6 +543,7 @@ jobs:
           - **Artifacts:**
             - `app-release.apk` (Signed Production APK)
             - `app-release.aab` (Signed Production Android App Bundle)
+            - `release_verification_evidence.json` (Cryptographic & Runtime Verification Evidence)
           - Cryptographically signed with release keystore and verified by `apksigner`.
           - Passed multi-tier zero-trust secret and bytecode boundary scans.
         generate_release_notes: false

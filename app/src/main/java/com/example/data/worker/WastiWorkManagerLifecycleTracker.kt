@@ -53,7 +53,8 @@ object WastiWorkManagerLifecycleTracker {
         "wasti_sync_worker",
         LeadSyncWorker.WORK_NAME,
         SelfEnhancementWorker.WORK_NAME,
-        ProactiveReconciliationWorker.WORK_NAME
+        ProactiveReconciliationWorker.WORK_NAME,
+        MemoryDreamingWorker.WORK_NAME
     )
 
     private val snapshots = ConcurrentHashMap<String, DurableWorkSnapshot>()

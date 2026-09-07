@@ -2480,6 +2480,38 @@ class EternalManifestoAndTruthAuditTest {
         // Clean up history
         com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
     }
+
+    /**
+     * [P0-03] Verifies that secrets, configuration, and model file presence alone
+     * CANNOT produce a live-verified or production-ready state without real runtime proof.
+     */
+    @Test
+    fun testP003ProductionReadinessEvidenceFailsClosedWithoutLiveProbes() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+
+        val assessment = ProductionReadinessGate.assessReadiness(context)
+
+        // 1. Overall state MUST fail closed (not PRODUCTION_READY or RELEASE_VERIFIED)
+        assertNotEquals(ProductionReadinessState.PRODUCTION_READY, assessment.overallState)
+        assertNotEquals(ProductionReadinessState.RELEASE_VERIFIED, assessment.overallState)
+
+        // 2. CloudBackendOffload must NOT be isLiveVerified without live /health probe reachability
+        val backendCheck = assessment.subsystemChecks.find { it.subsystemName == "CloudBackendOffload" }
+        assertNotNull("CloudBackendOffload check must exist", backendCheck)
+        assertFalse("CloudBackendOffload cannot be live verified from secret string alone", backendCheck!!.isLiveVerified)
+        assertNotEquals(ProductionReadinessState.RELEASE_VERIFIED, backendCheck.state)
+
+        // 3. LocalNeuralInferenceEngine must NOT be RELEASE_VERIFIED without verified tensor forward pass probe
+        val neuralCheck = assessment.subsystemChecks.find { it.subsystemName == "LocalNeuralInferenceEngine" }
+        assertNotNull("LocalNeuralInferenceEngine check must exist", neuralCheck)
+        assertFalse("LocalNeuralInferenceEngine cannot be live verified without active neural execution", neuralCheck!!.isLiveVerified)
+        assertNotEquals(ProductionReadinessState.RELEASE_VERIFIED, neuralCheck.state)
+
+        // 4. RealDeviceExecutionVerification must NOT be DEVICE_VERIFIED in host simulation
+        val deviceCheck = assessment.subsystemChecks.find { it.subsystemName == "RealDeviceExecutionVerification" }
+        assertNotNull("RealDeviceExecutionVerification check must exist", deviceCheck)
+        assertFalse("Device check must not claim verified execution without physical proof", deviceCheck!!.isLiveVerified)
+    }
 }
 
 

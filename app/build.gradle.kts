@@ -105,7 +105,7 @@ android {
       excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/INDEX.LIST", "/META-INF/DEPENDENCIES")
     }
     jniLibs {
-      keepDebugSymbols += "**/libjnidispatch.so"
+      keepDebugSymbols += setOf("**/libjnidispatch.so", "**/libwasti_ai_native.so", "**/libllama.so")
     }
   }
 }

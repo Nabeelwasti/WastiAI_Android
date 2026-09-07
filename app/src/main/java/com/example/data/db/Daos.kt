@@ -77,6 +77,9 @@ interface KnowledgeDao {
     @Query("SELECT * FROM knowledge ORDER BY dateAdded DESC")
     fun getAllKnowledge(): Flow<List<KnowledgeEntity>>
 
+    @Query("SELECT * FROM knowledge ORDER BY dateAdded DESC")
+    suspend fun getAllKnowledgeSync(): List<KnowledgeEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertKnowledge(knowledge: KnowledgeEntity)
 
@@ -106,6 +109,9 @@ interface AgentDao {
 interface ProjectDao {
     @Query("SELECT * FROM projects ORDER BY createdDate DESC")
     fun getAllProjects(): Flow<List<ProjectEntity>>
+
+    @Query("SELECT * FROM projects ORDER BY createdDate DESC")
+    suspend fun getAllProjectsSync(): List<ProjectEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProject(project: ProjectEntity)

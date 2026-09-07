@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
@@ -23,6 +24,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -59,6 +61,11 @@ fun BrainSimulationScreen() {
     var selectedSimulationTab by remember { mutableStateOf(0) } // 0: LIF Biology, 1: ANN MLP, 2: DIY BCI, 3: 12 Models, 4: Code Sandbox
     var stimulusSlider by remember { mutableStateOf(16.0f) }
     var rgResistorOhms by remember { mutableStateOf(500.0f) }
+
+    val context = LocalContext.current
+    val downloadProgressMap by com.example.data.ai.runtime.WastiModelDownloader.downloadProgressMap.collectAsState()
+    var testResultMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var isTestingModel by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -609,42 +616,136 @@ fun BrainSimulationScreen() {
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Memory,
-                                    contentDescription = model.familyName,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = model.brandDisplayName,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontSize = 14.sp
+                            Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Memory,
+                                        contentDescription = model.familyName,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
                                     )
-                                    Text(
-                                        text = "Specialization: ${model.primarySpecialization.name} • Range: ${model.parameterRange}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Status: $statusDesc",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = statusTint
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = model.brandDisplayName,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = "Specialization: ${model.primarySpecialization.name} • Range: ${model.parameterRange}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = "Status: $statusDesc",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = statusTint
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = statusIcon,
+                                        contentDescription = statusDesc,
+                                        tint = statusTint,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
-                                Icon(
-                                    imageVector = statusIcon,
-                                    contentDescription = statusDesc,
-                                    tint = statusTint,
-                                    modifier = Modifier.size(20.dp)
-                                )
+
+                                // Active Download Progress
+                                val downloadProgress = downloadProgressMap[model.id]
+                                if (downloadProgress != null && !downloadProgress.isCompleted && !downloadProgress.isFailed) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { downloadProgress.progressFraction },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "${(downloadProgress.progressFraction * 100).toInt()}% • ${downloadProgress.statusText}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                // Action Buttons (Download / Test)
+                                val manifest = ModelArtifactManager.getManifest(model.id)
+                                if (manifest != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        if (status == ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD) {
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    coroutineScope.launch {
+                                                        val canDown = com.example.data.ai.runtime.WastiModelDownloader.canDownload(context, manifest)
+                                                        if (canDown.first) {
+                                                            com.example.data.ai.runtime.WastiModelDownloader.downloadModel(context, manifest)
+                                                        } else {
+                                                            android.widget.Toast.makeText(context, canDown.second, android.widget.Toast.LENGTH_LONG).show()
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Icon(Icons.Default.Download, contentDescription = "Download", modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Download Weights", fontSize = 12.sp)
+                                            }
+                                        } else if (status == ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT || status == ModelRuntimeStatus.ACTIVE_LOADED) {
+                                            Button(
+                                                onClick = {
+                                                    coroutineScope.launch {
+                                                        isTestingModel = model.id
+                                                        val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(context)
+                                                        val res = runtime.executeInference(model.id, "Hello Wasti AI OS, explain your neural architecture.")
+                                                        testResultMap = testResultMap + (model.id to res)
+                                                        isTestingModel = null
+                                                    }
+                                                },
+                                                enabled = isTestingModel == null,
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                if (isTestingModel == model.id) {
+                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                } else {
+                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Test", modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Run Inference Test", fontSize = 12.sp)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Test Result Output Display
+                                val testOutput = testResultMap[model.id]
+                                if (testOutput != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text(
+                                                text = "INFERENCE TEST OUTPUT:",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = testOutput,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

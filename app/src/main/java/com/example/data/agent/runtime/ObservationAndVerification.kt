@@ -52,6 +52,26 @@ enum class ActionVerificationStatus {
     VERIFICATION_UNAVAILABLE
 }
 
+/**
+ * [P0-02] Canonical Capability-Specific Independent Evidence Schema.
+ * Every field required by independent verification policy must be strictly validated.
+ */
+data class CapabilitySpecificEvidence(
+    val taskId: String,
+    val actionId: String,
+    val capabilityId: String,
+    val executor: String,
+    val observationSource: EvidenceSource,
+    val timestamp: Long = System.currentTimeMillis(),
+    val artifactOrStateReference: String,
+    val checksumOrHash: String? = null,
+    val expectedState: String,
+    val observedState: String,
+    val verifierIdentity: String = "WastiVerificationEngine",
+    val verificationMethod: String,
+    val confidence: Double = 1.0
+)
+
 data class VerificationRequest(
     val taskId: String,
     val actionId: String,
@@ -59,7 +79,8 @@ data class VerificationRequest(
     val expectedOutcome: String = "",
     val executionResult: UnifiedExecutionResult,
     val observationResult: ObservationResult,
-    val structuredEvidence: VerifiedExecutionEvidence? = null
+    val structuredEvidence: VerifiedExecutionEvidence? = null,
+    val capabilitySpecificEvidence: CapabilitySpecificEvidence? = null
 )
 
 data class VerificationResult(
@@ -71,7 +92,8 @@ data class VerificationResult(
     val confidence: Double = 0.0,
     val failureReason: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
-    val structuredEvidence: VerifiedExecutionEvidence? = null
+    val structuredEvidence: VerifiedExecutionEvidence? = null,
+    val capabilitySpecificEvidence: CapabilitySpecificEvidence? = null
 )
 
 data class StructuredUiObservation(
@@ -121,7 +143,8 @@ enum class EvidenceSource {
     PROCESS_TELEMETRY,
     SYSTEM_SERVICE,
     UI_TREE,
-    SENSOR_EVENT
+    SENSOR_EVENT,
+    LOCAL_MODEL_INFERENCE
 }
 
 data class VerifiedExecutionEvidence(

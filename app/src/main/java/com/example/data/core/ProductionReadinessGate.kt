@@ -77,20 +77,24 @@ object ProductionReadinessGate {
 
         // 1. Core Startup & OS Lifecycle
         val startupState = AppStartupManager.startupState.value
-        val startupOk = startupState is AppStartupState.Ready
+        val startupReady = startupState is AppStartupState.Ready
+        val startupDiagnosticOk = (startupState as? AppStartupState.Ready)?.let {
+            it.diagnostic.totalStartupTimeMs > 0 && it.diagnostic.stageTimings.isNotEmpty()
+        } ?: false
         val isDegraded = startupState is AppStartupState.CoreReadyDegraded
+        val startupLiveVerified = startupReady && startupDiagnosticOk
         val startupAssessmentState = when {
-            startupOk -> ProductionReadinessState.RELEASE_VERIFIED
-            isDegraded -> ProductionReadinessState.TEST_VERIFIED
+            startupLiveVerified -> ProductionReadinessState.RELEASE_VERIFIED
+            startupReady || isDegraded -> ProductionReadinessState.TEST_VERIFIED
             else -> ProductionReadinessState.NOT_READY
         }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "AppStartupManager",
-                isOperational = startupOk || isDegraded,
-                isLiveVerified = startupOk,
+                isOperational = startupReady || isDegraded,
+                isLiveVerified = startupLiveVerified,
                 state = startupAssessmentState,
-                notes = "Startup State: ${startupState::class.simpleName}"
+                notes = "Startup State: ${startupState::class.simpleName} (diagnosticProven=$startupDiagnosticOk)"
             )
         )
 
@@ -117,14 +121,15 @@ object ProductionReadinessGate {
         val operationalCount = realities.count { it.executionStatus == CapabilityExecutionStatus.OPERATIONAL }
         val liveVerifiedCount = realities.count { it.liveConnectionStatus == LiveConnectionStatus.VERIFIED }
         val hasRecentVerifiedExecution = ExecutionMemoryRecorder.getRecentExecutions(10).any { it.isSuccess == true && it.verificationStatus == "VERIFIED" }
-        val fabricLiveVerified = operationalCount > 0 && (liveVerifiedCount > 0 || hasRecentVerifiedExecution)
+        // Both active capability reality verification AND recorded execution proof required for live verification
+        val fabricLiveVerified = operationalCount > 0 && liveVerifiedCount > 0 && hasRecentVerifiedExecution
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "UnifiedExecutionFabric",
                 isOperational = operationalCount > 0,
                 isLiveVerified = fabricLiveVerified,
                 state = if (fabricLiveVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.TEST_VERIFIED,
-                notes = "$operationalCount / ${realities.size} operational, $liveVerifiedCount live-verified"
+                notes = "$operationalCount / ${realities.size} operational, $liveVerifiedCount live-verified, hasVerifiedExecution=$hasRecentVerifiedExecution"
             )
         )
 
@@ -157,7 +162,7 @@ object ProductionReadinessGate {
             it.status is CredentialStatus.Connected 
         }
         val credState = when {
-            hasGeminiOrCoreModel && connectedCreds >= 3 -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED
+            hasGeminiOrCoreModel && connectedCreds >= 3 -> ProductionReadinessState.RELEASE_VERIFIED
             hasGeminiOrCoreModel -> ProductionReadinessState.RELEASE_VERIFIED
             totalConfigured > 0 -> ProductionReadinessState.TEST_VERIFIED
             else -> ProductionReadinessState.DEVELOPMENT_READY
@@ -175,12 +180,17 @@ object ProductionReadinessGate {
         // 6. Integration Audit Boundary Verification
         val integrationAuditList = com.example.data.agent.runtime.IntegrationAuditRegistry.getAuditReport()
         val verifiedBoundaryCount = integrationAuditList.count { it.status == com.example.data.agent.runtime.IntegrationStatus.VERIFIED_CONNECTED }
+        val allBoundariesVerified = integrationAuditList.isNotEmpty() && verifiedBoundaryCount == integrationAuditList.size
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "IntegrationAuditRegistry",
-                isOperational = true,
-                isLiveVerified = verifiedBoundaryCount > 0,
-                state = if (verifiedBoundaryCount > 0) ProductionReadinessState.TEST_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                isOperational = integrationAuditList.isNotEmpty(),
+                isLiveVerified = allBoundariesVerified,
+                state = when {
+                    allBoundariesVerified -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED
+                    verifiedBoundaryCount > 0 -> ProductionReadinessState.TEST_VERIFIED
+                    else -> ProductionReadinessState.DEVELOPMENT_READY
+                },
                 notes = "$verifiedBoundaryCount / ${integrationAuditList.size} integration boundaries verified connected"
             )
         )
@@ -196,15 +206,26 @@ object ProductionReadinessGate {
         } catch (_: Throwable) {
             false
         }
-        val localNeuralReady = nativeLlamaAvailable && smolLmPresent
+        val progressiveState = try {
+            com.example.data.ai.runtime.WastiLocalModelRuntime(context).getProgressiveState("wasti-smollm")
+        } catch (_: Throwable) {
+            com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+        }
+        val isVerifiedNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED
+        val isExecutableNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE
+        val localNeuralState = when {
+            isVerifiedNeural -> ProductionReadinessState.RELEASE_VERIFIED
+            isExecutableNeural -> ProductionReadinessState.TEST_VERIFIED
+            nativeLlamaAvailable || smolLmPresent -> ProductionReadinessState.DEVELOPMENT_READY
+            else -> ProductionReadinessState.NOT_READY
+        }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "LocalNeuralInferenceEngine",
                 isOperational = nativeLlamaAvailable || smolLmPresent,
-                isLiveVerified = localNeuralReady,
-                state = if (localNeuralReady) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
-                notes = if (localNeuralReady) "Native llama.cpp engine & GGUF weights active"
-                        else "Native llama.cpp library (.so) or model weights pending device installation"
+                isLiveVerified = isVerifiedNeural,
+                state = localNeuralState,
+                notes = "State: $progressiveState (nativeLib=$nativeLlamaAvailable, weightsPresent=$smolLmPresent)"
             )
         )
 
@@ -214,13 +235,33 @@ object ProductionReadinessGate {
         } catch (_: Throwable) {
             false
         }
+        val backendUrl = try {
+            CredentialRegistry.getRawValue("WASTI_BACKEND_URL", context) ?: System.getenv("WASTI_BACKEND_URL")
+        } catch (_: Throwable) {
+            System.getenv("WASTI_BACKEND_URL")
+        }
+        val backendAdapter = com.example.data.agent.runtime.BackendIntegrationAdapter(configuredBaseUrl = backendUrl)
+        val backendLiveStatus = backendAdapter.getLiveVerificationState()
+        val backendIsLiveVerified = backendLiveStatus == com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED
+
+        val backendReadinessState = when {
+            backendIsLiveVerified && backendSecretConfigured -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED
+            backendIsLiveVerified -> ProductionReadinessState.TEST_VERIFIED
+            backendSecretConfigured -> ProductionReadinessState.DEVELOPMENT_READY
+            else -> ProductionReadinessState.DEVELOPMENT_READY
+        }
+
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "CloudBackendOffload",
-                isOperational = true,
-                isLiveVerified = backendSecretConfigured,
-                state = if (backendSecretConfigured) ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
-                notes = if (backendSecretConfigured) "Backend auth token configured" else "Backend auth secret not configured"
+                isOperational = backendSecretConfigured || backendIsLiveVerified,
+                isLiveVerified = backendIsLiveVerified,
+                state = backendReadinessState,
+                notes = when {
+                    backendIsLiveVerified -> "Live backend endpoint verified reachable (HTTP 200 health probe)"
+                    backendSecretConfigured -> "CONFIGURED_ONLY: Backend auth secret configured, but live /health probe is not verified"
+                    else -> "UNCONFIGURED: Backend endpoint URL and auth token not configured"
+                }
             )
         )
 
@@ -280,12 +321,45 @@ object ProductionReadinessGate {
             )
         )
 
-        val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
-        val mandatoryChecksPassed = startupOk && dbOk && (operationalCount > 0) && !isEmergencyStopped && provenanceIntegrityOk
+        // 13. Sovereign Production Keystore Release Signing Gate
+        val keystoreGate = WastiProductionSigningEngine.verifyProductionReadinessSigningGate(context)
+        checks.add(
+            SubsystemReadinessCheck(
+                subsystemName = "ProductionReleaseKeystoreSigning",
+                isOperational = true,
+                isLiveVerified = keystoreGate.isVerified,
+                state = if (keystoreGate.isVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = keystoreGate.details
+            )
+        )
 
-        // Zero-Fabrication Rule: PRODUCTION_READY can NEVER be claimed until native neural runtime,
-        // live external integrations, and real device execution validation are all verified simultaneously.
-        val canBeProductionReady = localNeuralReady && mandatoryChecksPassed && hasDeviceProof &&
+        // 14. Sovereign Cloud Ingress & Companion Tunnel Gate
+        val tunnelState = com.example.data.node.WastiSovereignTunnelEngine.tunnelState.value
+        val tunnelOperational = tunnelState.isActive || backendIsLiveVerified
+        checks.add(
+            SubsystemReadinessCheck(
+                subsystemName = "SovereignCloudCompanionIngress",
+                isOperational = tunnelOperational,
+                isLiveVerified = tunnelState.isHealthVerified || backendIsLiveVerified,
+                state = if (tunnelState.isHealthVerified || backendIsLiveVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = if (tunnelState.isActive) "Active Public Ingress: ${tunnelState.publicHttpsUrl} (verified=${tunnelState.isHealthVerified})"
+                        else if (backendIsLiveVerified) "Companion backend verified via local/direct endpoint"
+                        else "INACTIVE: Sovereign tunnel not started (run 'tunnel start' or sovereign onboarding)"
+            )
+        )
+
+        val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
+        val mandatoryChecksPassed = startupReady && dbOk && (operationalCount > 0) && !isEmergencyStopped && provenanceIntegrityOk
+        val hasLiveRuntimeProof = hasDeviceProof && backendIsLiveVerified && provenanceIntegrityOk
+
+        // Zero-Fabrication Rule:
+        // 1. PRODUCTION_READY requires simultaneous verification across native neural runtime,
+        //    live external backend reachability, physical device execution proof, cryptographic provenance integrity,
+        //    and all mandatory subsystems verified operational and live.
+        // 2. RELEASE_VERIFIED requires genuine execution evidence (physical device instrumentation proof,
+        //    live backend reachability, and cryptographic provenance integrity).
+        //    It CANNOT be reached from static configurations, mock test harnesses, or partial flags alone.
+        val canBeProductionReady = isVerifiedNeural && mandatoryChecksPassed && hasLiveRuntimeProof &&
             checks.all { it.state == ProductionReadinessState.RELEASE_VERIFIED || it.state == ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED || it.state == ProductionReadinessState.DEVICE_VERIFIED || it.state == ProductionReadinessState.PRODUCTION_READY }
 
         val hasNotReady = checks.any { it.state == ProductionReadinessState.NOT_READY }
@@ -295,7 +369,8 @@ object ProductionReadinessGate {
             !mandatoryChecksPassed || hasNotReady -> ProductionReadinessState.NOT_READY
             canBeProductionReady -> ProductionReadinessState.PRODUCTION_READY
             hasDevelopmentReady -> ProductionReadinessState.DEVELOPMENT_READY
-            checks.all { it.isOperational && it.isLiveVerified } -> ProductionReadinessState.RELEASE_VERIFIED
+            !isVerifiedNeural || !hasDeviceProof -> ProductionReadinessState.TEST_VERIFIED
+            hasLiveRuntimeProof && checks.all { it.isOperational && it.isLiveVerified } -> ProductionReadinessState.RELEASE_VERIFIED
             else -> ProductionReadinessState.TEST_VERIFIED
         }
 

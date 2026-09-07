@@ -25,10 +25,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.data.core.ProductionReadinessAssessment
+import com.example.data.core.ProductionReadinessGate
+import com.example.data.core.ProductionReadinessState
 import com.example.data.db.*
 import com.example.ui.components.AnimatedAiOrb
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun DashboardScreen(
@@ -41,6 +47,17 @@ fun DashboardScreen(
     onNavigateTab: (String) -> Unit,
     onOpenConversation: (String) -> Unit
 ) {
+    val context = LocalContext.current
+    var readinessAssessment by remember {
+        mutableStateOf<ProductionReadinessAssessment?>(null)
+    }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            readinessAssessment = ProductionReadinessGate.assessReadiness(context)
+        }
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -64,26 +81,43 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            val readiness = readinessAssessment
+                            val state = readiness?.overallState ?: ProductionReadinessState.NOT_READY
+                            val statusColor = when (state) {
+                                ProductionReadinessState.PRODUCTION_READY,
+                                ProductionReadinessState.RELEASE_VERIFIED -> Color(0xFF34D399)
+                                ProductionReadinessState.E2E_VERIFIED,
+                                ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED,
+                                ProductionReadinessState.DEVICE_VERIFIED,
+                                ProductionReadinessState.TEST_VERIFIED -> Color(0xFF60A5FA)
+                                ProductionReadinessState.BUILD_VERIFIED,
+                                ProductionReadinessState.DEVELOPMENT_READY -> Color(0xFFFBBF24)
+                                ProductionReadinessState.NOT_READY -> Color(0xFFF87171)
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF34D399))
+                                    .background(statusColor)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "EXECUTIVE BRAIN ONLINE",
+                                text = "GATE: ${state.name.replace("_", " ")}",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary
+                                color = statusColor
                             )
                         }
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            modifier = Modifier.clickable { onNavigateTab("operations") }
                         ) {
+                            val readiness = readinessAssessment
+                            val verified = readiness?.verifiedSubsystemCount ?: 0
+                            val total = readiness?.totalSubsystemCount ?: 0
                             Text(
-                                text = "Wasti AI Engine",
+                                text = if (readiness != null) "$verified/$total Subsystems" else "Auditing Gate...",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold,
@@ -135,8 +169,8 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         QuickMetricBadge("Master Engine", "Wasti AI", Icons.Default.Psychology)
+                        QuickMetricBadge("Gate State", readinessAssessment?.overallState?.name?.replace("_", " ") ?: "AUDITING", Icons.Default.Security)
                         QuickMetricBadge("Memories", "${memories.size}", Icons.Default.Memory)
-                        QuickMetricBadge("Projects", "${projects.size}", Icons.Default.AccountTree)
                         QuickMetricBadge("Pending Tasks", "${tasks.count { !it.isCompleted }}", Icons.Default.CheckCircle)
                     }
                 }
@@ -169,6 +203,16 @@ fun DashboardScreen(
                     }
                 }
             }
+        }
+
+        // Autonomous Sleep-Time Memory Dreaming & Situational Briefing
+        item {
+            ExecutiveMorningBriefingCard()
+        }
+
+        // P2P Swarm & Mesh Federation Bodies
+        item {
+            MeshSwarmFederationCard()
         }
 
         // Live Business Dashboard Card (Stripe & HubSpot Pipeline)
@@ -534,6 +578,331 @@ private fun AgentStatusCard(agent: AgentEntity, onClick: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = agent.name, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Text(text = agent.roleTitle, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+fun ExecutiveMorningBriefingCard() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var dreamingResult by remember { mutableStateOf(com.example.data.memory.MemoryDreamingEngine.getLastDreamingResult()) }
+    var isDreaming by remember { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Psychology,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Cognitive Consolidation & Daily Briefing",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Memory Dreaming Engine • Continuous Evolution",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isDreaming = true
+                            val res = com.example.data.memory.MemoryDreamingEngine.executeDreamingCycle(context)
+                            dreamingResult = res
+                            isDreaming = false
+                        }
+                    },
+                    enabled = !isDreaming
+                ) {
+                    if (isDreaming) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = "Run Dreaming Cycle", modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val currentResult = dreamingResult
+            if (currentResult != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("CONSOLIDATED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("${currentResult.memoriesConsolidated} items", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("CONTRADICTIONS", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                            Text("${currentResult.contradictionsResolved} resolved", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.1f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Text("GRAPH TRIPLES", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                            Text("${currentResult.triplesExtracted} extracted", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Text(
+                        text = currentResult.executiveBriefing,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            } else {
+                Text(
+                    text = "Sleep-time dreaming consolidates episodic memories, resolves contradictions into historical knowledge, and synthesizes proactive daily briefings. Tap below to synthesize your situational briefing.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isDreaming = true
+                            val res = com.example.data.memory.MemoryDreamingEngine.executeDreamingCycle(context)
+                            dreamingResult = res
+                            isDreaming = false
+                        }
+                    },
+                    enabled = !isDreaming,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isDreaming) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Dreaming & Consolidating...", fontSize = 11.sp)
+                    } else {
+                        Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Synthesize Situational Briefing", fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MeshSwarmFederationCard() {
+    val swarmState by com.example.data.node.WastiNearbyHardwareEngine.swarmState.collectAsState()
+    val discoveredNodes = swarmState.connectedNodes
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Hub,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Swarm Mesh & Nearby Hardware",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                        Text(
+                            text = "Wi-Fi (35260/35261) • Bluetooth RFCOMM • mDNS",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = if (discoveredNodes.isNotEmpty()) "${discoveredNodes.size} CONNECTED" else "SCANNING",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF059669),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Swarm Compute Capabilities Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text("HEAVY COMPUTE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Text("${swarmState.heavyComputeNodesAvailable} Nodes Ready", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text("AUTO-OFFLOAD", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                        Text("Active (Dynamic)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Local Body Info
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF10B981))
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text("This Host: ${android.os.Build.MODEL}", fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                            Text("Body: Android • Local Node ID: wasti_local_host", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    Text("PRIMARY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            if (discoveredNodes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Nearby Hardware Bodies (${discoveredNodes.size}):", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(4.dp))
+                discoveredNodes.forEach { node ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(node.deviceName, fontWeight = FontWeight.Medium, fontSize = 11.sp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (node.transportType == com.example.data.node.HardwareTransportType.BLUETOOTH_RFCOMM) Color(0xFF1E88E5).copy(alpha = 0.2f) else Color(0xFF00897B).copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = if (node.transportType == com.example.data.node.HardwareTransportType.BLUETOOTH_RFCOMM) "BLUETOOTH" else "WI-FI",
+                                            fontSize = 8.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                                Text("${node.hardwareType} • Speedup: ${node.estimatedComputeMultiplier}x", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Text("${node.advertisedCapabilities.size} caps", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.secondary)
+                        }
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Scanning Wi-Fi LAN & Bluetooth for nearby Desktops, Laptops, PCs, and Termux nodes. Heavy tasks and multitasking will automatically offload when nearby hardware is detected.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

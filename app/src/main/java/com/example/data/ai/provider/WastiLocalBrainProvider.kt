@@ -66,15 +66,25 @@ class WastiLocalBrainProvider(
     fun isHeuristicFallbackAvailable(): Boolean = true
 
     fun getRuntimeState(): LocalBrainRuntimeState {
-        val appCtx = com.example.WastiApplication.instance
-        val hasWeights = appCtx?.let { ModelArtifactManager.isWeightsPresent(it, id) } ?: false
+        val appCtx = com.example.WastiApplication.instance ?: return LocalBrainRuntimeState.HEURISTIC_NON_NEURAL_FALLBACK
+        val hasWeights = ModelArtifactManager.isWeightsPresent(appCtx, id)
         val hasNative = com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
-        return when {
-            hasWeights && hasNative -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
-            hasWeights -> LocalBrainRuntimeState.MODEL_PRESENT
-            hasNative -> LocalBrainRuntimeState.NATIVE_RUNTIME_PRESENT
-            else -> LocalBrainRuntimeState.HEURISTIC_NON_NEURAL_FALLBACK
+        if (!hasWeights) {
+            return LocalBrainRuntimeState.HEURISTIC_NON_NEURAL_FALLBACK
         }
+        if (!hasNative) {
+            return LocalBrainRuntimeState.MODEL_PRESENT
+        }
+        val progressive = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx).getProgressiveState(id)
+        return when (progressive) {
+            com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED -> LocalBrainRuntimeState.VERIFIED_NEURAL_INFERENCE
+            else -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+        }
+    }
+
+    fun getProgressiveState(): com.example.data.ai.runtime.LocalNeuralProgressiveState {
+        val appCtx = com.example.WastiApplication.instance ?: return com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+        return com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx).getProgressiveState(id)
     }
 
     fun isConfiguredOrDeclared(): Boolean = true

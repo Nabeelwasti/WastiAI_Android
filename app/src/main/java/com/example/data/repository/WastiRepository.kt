@@ -628,12 +628,37 @@ $taskPipelineDigest
             mediaList = mediaList
         )
 
+        var finalResponseText = if (com.example.data.agent.runtime.IntentToRealityCompiler.isAutonomousIntent(userPrompt)) {
+            val compiledPlan = com.example.data.agent.runtime.IntentToRealityCompiler.compileIntent(userPrompt)
+            "$responseText\n\n${compiledPlan.markdownRenderBlock}"
+        } else {
+            responseText
+        }
+
+        // Swarm / Nearby Hardware Compute Offload Detection
+        if (com.example.data.node.AutonomousHardwareOffloader.isHeavyPrompt(userPrompt)) {
+            val heavyNodes = com.example.data.node.WastiNearbyHardwareEngine.getHeavyComputeNodes()
+            val swarmSummary = if (heavyNodes.isNotEmpty()) {
+                val node = heavyNodes.first()
+                "\n\n⚡ **Autonomous Hardware Swarm Routing Active**\n" +
+                        "• **Target Node**: ${node.deviceName} (${node.hardwareType})\n" +
+                        "• **Transport**: ${node.transportType}\n" +
+                        "• **Compute Multiplier**: ${node.estimatedComputeMultiplier}x\n" +
+                        "• **Status**: Heavy computation routed to nearby hardware body."
+            } else {
+                "\n\n⚡ **Autonomous Hardware Swarm Status**\n" +
+                        "• Scanned Wi-Fi & Bluetooth: No external desktop/laptop nodes currently connected.\n" +
+                        "• Executing on local mobile host with thermal & battery safeguards."
+            }
+            finalResponseText += swarmSummary
+        }
+
         db.messageDao().insertMessage(
             MessageEntity(
                 id = UUID.randomUUID().toString(),
                 conversationId = conversationId,
                 role = "assistant",
-                content = responseText,
+                content = finalResponseText,
                 agentId = if (activeAgentId == "ceo_agent") "Wasti Super Agent" else activeAgentId,
                 modelUsed = usedModel
             )

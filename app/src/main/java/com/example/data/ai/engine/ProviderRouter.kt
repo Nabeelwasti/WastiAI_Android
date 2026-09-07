@@ -68,6 +68,18 @@ class ProviderRouter(
                 val latency = health?.latencyMs ?: 0L
                 score * 100000 + latency
             }
+        // [The Eternal Manifesto: Resource Intelligence Law]
+        // Optimize CPU, RAM, battery, network, storage, latency, cost and execution placement
+        val hwSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(null)
+        val isConstrained = hwSpecs.isBatteryLow || hwSpecs.isThermalThrottling || hwSpecs.isLowRam
+
+        val resourceOptimizedOnline = if (isConstrained) {
+            // Prioritize lightweight, low-latency, or local edge providers to preserve thermals and battery
+            sortedOnline.sortedBy { provider ->
+                if (provider.id.contains("local") || provider.id.contains("groq")) 0 else 1
+            }
+        } else {
+            sortedOnline
         }
 
         val attemptedProviders = mutableListOf<String>()
@@ -75,7 +87,7 @@ class ProviderRouter(
         var lastErrorMsg = ""
 
         // 3. Sequential Cascading Execution across online providers
-        for (provider in sortedOnline) {
+        for (provider in resourceOptimizedOnline) {
             attemptedProviders.add(provider.id)
             val startTime = System.currentTimeMillis()
             try {

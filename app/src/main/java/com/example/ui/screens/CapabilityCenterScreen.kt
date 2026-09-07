@@ -75,6 +75,7 @@ fun CapabilityCenterScreen(
         "press_recents" to "Press Recents Navigation",
         "scroll_down" to "Scroll Down Container",
         "execute_wasm" to "WASM Stack VM Sandbox",
+        "local_model_inference" to "Local Neural Model Inference (wasti_ai_native)",
         "search_memory" to "Hybrid Memory Search",
         "search_web" to "Live Web Search (Google/DuckDuckGo)",
         "write_file" to "Write Workspace File",
@@ -283,7 +284,7 @@ fun CapabilityCenterScreen(
                     }
 
                     // Dynamic Parameter Inputs
-                    if (selectedAction in listOf("simulate_tap", "write_file", "read_file", "search_memory", "search_web")) {
+                    if (selectedAction in listOf("simulate_tap", "write_file", "read_file", "search_memory", "search_web", "local_model_inference")) {
                         OutlinedTextField(
                             value = actionTargetParam,
                             onValueChange = { actionTargetParam = it },
@@ -294,6 +295,7 @@ fun CapabilityCenterScreen(
                                         "write_file", "read_file" -> "File Name (e.g. test.txt)"
                                         "search_memory" -> "Memory Query (e.g. Thrivebridge)"
                                         "search_web" -> "Web Query (e.g. AI News)"
+                                        "local_model_inference" -> "Inference Prompt (e.g. Hello Wasti AI)"
                                         else -> "Target Parameter"
                                     },
                                     fontSize = 12.sp
@@ -351,6 +353,13 @@ fun CapabilityCenterScreen(
                                         "execute_wasm" -> UnifiedExecutionRequest(
                                             capabilityId = "TERMINAL",
                                             parameters = mapOf("action" to "execute_code", "language" to "wasm")
+                                        )
+                                        "local_model_inference" -> UnifiedExecutionRequest(
+                                            capabilityId = "local_neural_inference",
+                                            parameters = mapOf(
+                                                "prompt" to actionTargetParam.ifBlank { "Hello Wasti AI" },
+                                                "modelId" to "wasti-smollm"
+                                            )
                                         )
                                         "search_memory" -> UnifiedExecutionRequest(
                                             capabilityId = "MEMORY_SEARCH",
@@ -493,6 +502,40 @@ fun CapabilityCenterScreen(
                         }
                     }
                 )
+            }
+
+            val acquiredList = remember { CapabilityInventionEngine.getAcquiredCapabilities() }
+            if (acquiredList.isNotEmpty()) {
+                item {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Build, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Dynamically Acquired Capabilities (${acquiredList.size})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                items(acquiredList) { acquired ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(acquired.displayName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("INVENTED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Text(acquired.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Type: ${acquired.executionLogicType} • Evidence: ${acquired.verificationEvidenceId.take(12)}...", fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
             }
         }
     }

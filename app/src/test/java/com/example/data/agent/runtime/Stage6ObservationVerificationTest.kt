@@ -485,4 +485,252 @@ class Stage6ObservationVerificationTest {
         )
         assertEquals(ActionVerificationStatus.FAILED, lowConfRes.status)
     }
+
+    // 17. [P0-02 Adversarial Test]: Stale and forward-dated evidence rejection
+    @Test
+    fun testAdversarialStaleAndForwardDatedEvidenceRejected() {
+        val now = System.currentTimeMillis()
+        val staleEvidence = CapabilitySpecificEvidence(
+            taskId = "t-stale",
+            actionId = "a-stale",
+            capabilityId = "file_write",
+            executor = "LocalFileExecutor",
+            observationSource = EvidenceSource.FILESYSTEM,
+            timestamp = now - 600000L, // 10 minutes old
+            artifactOrStateReference = "/data/file.txt",
+            expectedState = "WRITTEN",
+            observedState = "FILE_EXISTS",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "FILESYSTEM_STAT_PROBE",
+            confidence = 1.0
+        )
+
+        val req = VerificationRequest(
+            taskId = "t-stale",
+            actionId = "a-stale",
+            capabilityId = "file_write",
+            executionResult = UnifiedExecutionResult(
+                taskId = "t-stale",
+                actionId = "a-stale",
+                capabilityId = "file_write",
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = "Done",
+                executor = "LocalFileExecutor"
+            ),
+            observationResult = ObservationResult(
+                taskId = "t-stale",
+                actionId = "a-stale",
+                capabilityId = "file_write",
+                status = ObservationStatus.OBSERVED,
+                observedState = "FILE_EXISTS",
+                evidence = "inspected at /data/file.txt"
+            ),
+            capabilitySpecificEvidence = staleEvidence
+        )
+
+        val res = verificationEngine.verifyCapabilitySpecificEvidence(req, staleEvidence)
+        assertEquals(ActionVerificationStatus.FAILED, res.status)
+        assertTrue(res.evidence.contains("stale") || res.failureReason!!.contains("stale", ignoreCase = true))
+    }
+
+    // 18. [P0-02 Adversarial Test]: Mismatched Task, Action, and Capability Provenance Rejection
+    @Test
+    fun testAdversarialMismatchedProvenanceRejected() {
+        val baseEvidence = CapabilitySpecificEvidence(
+            taskId = "task_expected",
+            actionId = "action_expected",
+            capabilityId = "file_write",
+            executor = "LocalFileExecutor",
+            observationSource = EvidenceSource.FILESYSTEM,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = "/data/file.txt",
+            expectedState = "WRITTEN",
+            observedState = "FILE_EXISTS",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "FILESYSTEM_STAT_PROBE",
+            confidence = 1.0
+        )
+
+        val execResult = UnifiedExecutionResult(
+            taskId = "task_expected",
+            actionId = "action_expected",
+            capabilityId = "file_write",
+            status = UnifiedExecutionStatus.COMPLETED,
+            output = "Done",
+            executor = "LocalFileExecutor"
+        )
+        val obsResult = ObservationResult(
+            taskId = "task_expected",
+            actionId = "action_expected",
+            capabilityId = "file_write",
+            status = ObservationStatus.OBSERVED,
+            observedState = "FILE_EXISTS",
+            evidence = "inspected at /data/file.txt"
+        )
+
+        // Mismatched Task ID
+        val wrongTaskReq = VerificationRequest(
+            taskId = "wrong_task_id",
+            actionId = "action_expected",
+            capabilityId = "file_write",
+            executionResult = execResult,
+            observationResult = obsResult,
+            capabilitySpecificEvidence = baseEvidence
+        )
+        val wrongTaskRes = verificationEngine.verifyCapabilitySpecificEvidence(wrongTaskReq, baseEvidence)
+        assertEquals(ActionVerificationStatus.FAILED, wrongTaskRes.status)
+        assertTrue(wrongTaskRes.failureReason!!.contains("task", ignoreCase = true))
+
+        // Mismatched Action ID
+        val wrongActionReq = VerificationRequest(
+            taskId = "task_expected",
+            actionId = "wrong_action_id",
+            capabilityId = "file_write",
+            executionResult = execResult,
+            observationResult = obsResult,
+            capabilitySpecificEvidence = baseEvidence
+        )
+        val wrongActionRes = verificationEngine.verifyCapabilitySpecificEvidence(wrongActionReq, baseEvidence)
+        assertEquals(ActionVerificationStatus.FAILED, wrongActionRes.status)
+        assertTrue(wrongActionRes.failureReason!!.contains("action", ignoreCase = true))
+
+        // Mismatched Capability ID
+        val wrongCapReq = VerificationRequest(
+            taskId = "task_expected",
+            actionId = "action_expected",
+            capabilityId = "database_query",
+            executionResult = execResult,
+            observationResult = obsResult,
+            capabilitySpecificEvidence = baseEvidence
+        )
+        val wrongCapRes = verificationEngine.verifyCapabilitySpecificEvidence(wrongCapReq, baseEvidence)
+        assertEquals(ActionVerificationStatus.FAILED, wrongCapRes.status)
+        assertTrue(wrongCapRes.failureReason!!.contains("capability", ignoreCase = true))
+    }
+
+    // 19. [P0-02 Adversarial Test]: Executor cannot verify itself without external probe
+    @Test
+    fun testAdversarialExecutorCannotVerifyItself() {
+        val selfEvidence = CapabilitySpecificEvidence(
+            taskId = "t-self",
+            actionId = "a-self",
+            capabilityId = "file_write",
+            executor = "WastiInternalWorker",
+            observationSource = EvidenceSource.PROCESS_TELEMETRY,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = "/data/file.txt",
+            expectedState = "WRITTEN",
+            observedState = "FILE_EXISTS",
+            verifierIdentity = "WastiInternalWorker", // Claiming to verify itself
+            verificationMethod = "SELF_INTERNAL_REPORT",
+            confidence = 1.0
+        )
+
+        val req = VerificationRequest(
+            taskId = "t-self",
+            actionId = "a-self",
+            capabilityId = "file_write",
+            executionResult = UnifiedExecutionResult(
+                taskId = "t-self",
+                actionId = "a-self",
+                capabilityId = "file_write",
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = "Self completed",
+                executor = "WastiInternalWorker"
+            ),
+            observationResult = ObservationResult(
+                taskId = "t-self",
+                actionId = "a-self",
+                capabilityId = "file_write",
+                status = ObservationStatus.OBSERVED,
+                observedState = "Self completed",
+                evidence = "Self observed"
+            ),
+            capabilitySpecificEvidence = selfEvidence
+        )
+
+        val res = verificationEngine.verifyCapabilitySpecificEvidence(req, selfEvidence)
+        assertEquals(ActionVerificationStatus.FAILED, res.status)
+        assertTrue(res.failureReason!!.contains("separated", ignoreCase = true))
+    }
+
+    // 20. [P0-02 Adversarial Test]: Arbitrary non-generic text cannot falsely reach VERIFIED
+    @Test
+    fun testAdversarialArbitraryTextCannotReachVerified() {
+        val req = VerificationRequest(
+            taskId = "t-arb",
+            actionId = "a-arb",
+            capabilityId = "file_write",
+            executionResult = UnifiedExecutionResult(
+                taskId = "t-arb",
+                actionId = "a-arb",
+                capabilityId = "file_write",
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = "Random execution output",
+                executor = "SomeExecutor"
+            ),
+            observationResult = ObservationResult(
+                taskId = "t-arb",
+                actionId = "a-arb",
+                capabilityId = "file_write",
+                status = ObservationStatus.OBSERVED,
+                observedState = "Looks good to me",
+                evidence = "I think the file was written successfully without error" // Arbitrary unanchored text
+            )
+        )
+
+        val res = verificationEngine.verify(req)
+        // MUST NEVER be VERIFIED! Must be NOT_VERIFIABLE because it lacks capability-specific state anchors
+        assertFalse("Arbitrary text must never reach VERIFIED", res.status == ActionVerificationStatus.VERIFIED)
+        assertEquals(ActionVerificationStatus.NOT_VERIFIABLE, res.status)
+    }
+
+    // 21. [P0-02]: Canonical CapabilitySpecificEvidence verified cleanly
+    @Test
+    fun testCanonicalCapabilitySpecificEvidenceVerifiedCleanly() {
+        val evidence = CapabilitySpecificEvidence(
+            taskId = "t-valid",
+            actionId = "a-valid",
+            capabilityId = "file_write",
+            executor = "LocalFileExecutor",
+            observationSource = EvidenceSource.FILESYSTEM,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = "/data/data/com.aistudio.wastios.k9v2pz/files/doc.txt",
+            checksumOrHash = "a1b2c3d4e5f60000111122223333444455556666777788889999aaaabbbbcccc",
+            expectedState = "FILE_EXISTS",
+            observedState = "FILE_EXISTS (bytes=1024)",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "FILESYSTEM_STAT_PROBE",
+            confidence = 1.0
+        )
+
+        val req = VerificationRequest(
+            taskId = "t-valid",
+            actionId = "a-valid",
+            capabilityId = "file_write",
+            executionResult = UnifiedExecutionResult(
+                taskId = "t-valid",
+                actionId = "a-valid",
+                capabilityId = "file_write",
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = "Wrote 1024 bytes",
+                executor = "LocalFileExecutor"
+            ),
+            observationResult = ObservationResult(
+                taskId = "t-valid",
+                actionId = "a-valid",
+                capabilityId = "file_write",
+                status = ObservationStatus.OBSERVED,
+                observedState = "FILE_EXISTS",
+                evidence = "File-system post-state inspected at '/data/data/com.aistudio.wastios.k9v2pz/files/doc.txt'"
+            ),
+            capabilitySpecificEvidence = evidence
+        )
+
+        val res = verificationEngine.verify(req)
+        assertEquals(ActionVerificationStatus.VERIFIED, res.status)
+        assertEquals(1.0, res.confidence, 0.001)
+        assertNotNull(res.capabilitySpecificEvidence)
+    }
 }
+

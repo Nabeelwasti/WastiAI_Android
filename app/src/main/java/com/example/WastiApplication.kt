@@ -187,6 +187,7 @@ class WastiApplication : Application(), Configuration.Provider {
                                 com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
                                 com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
                                 com.example.data.worker.ProactiveReconciliationWorker.schedulePeriodicReconciliation(this@WastiApplication)
+                                com.example.data.worker.MemoryDreamingWorker.schedulePeriodicDreaming(this@WastiApplication)
                             } else {
                                 AppStartupManager.recordWarning(StartupStage.SYNC_WORKER, "WorkManager unavailable on host environment")
                             }
@@ -197,8 +198,18 @@ class WastiApplication : Application(), Configuration.Provider {
                         AppStartupManager.recordStageCompletion(StartupStage.SYNC_WORKER, System.currentTimeMillis() - t)
                     }
 
+                    val fabricMeshJob = async(Dispatchers.IO) {
+                        try {
+                            com.example.data.agent.runtime.CapabilityInventionEngine.initialize(this@WastiApplication)
+                            com.example.data.node.WastiNearbyHardwareEngine.startDiscovery(this@WastiApplication)
+                            Log.d("WastiApplication", "CapabilityInventionEngine & WastiNearbyHardwareEngine active (Wi-Fi + Bluetooth).")
+                        } catch (e: Throwable) {
+                            Log.e("WastiApplication", "Fabric & Mesh startup warning", e)
+                        }
+                    }
+
                     // Await all parallel warmup jobs
-                    kotlinx.coroutines.awaitAll(aiJob, opsJob, voiceJob, memoryJob, workerJob)
+                    kotlinx.coroutines.awaitAll(aiJob, opsJob, voiceJob, memoryJob, workerJob, fabricMeshJob)
                 }
 
                 // Stage 8: Complete

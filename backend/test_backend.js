@@ -441,3 +441,142 @@ test('dev/patch security: enforces protected paths and payload bounds for self-m
   assert.strictEqual(checkProtected([{ path: 'app/src/main/java/com/example/data/security/ZeroTrustSentinelEngine.kt' }]), true);
   assert.strictEqual(checkProtected([{ path: 'app/src/main/java/com/example/data/core/ProductionReadinessGate.kt' }]), true);
 });
+
+// 18. Container & Deployment Specification Audit (P0-05)
+test('deployment proof: validates backend Dockerfile and container security hardening', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const dockerfilePath = path.join(__dirname, 'Dockerfile');
+  const dockerignorePath = path.join(__dirname, '.dockerignore');
+
+  assert.ok(fs.existsSync(dockerfilePath), 'backend/Dockerfile must exist');
+  assert.ok(fs.existsSync(dockerignorePath), 'backend/.dockerignore must exist');
+
+  const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf-8');
+  assert.ok(dockerfileContent.includes('USER nodejs'), 'Dockerfile must enforce non-root user');
+  assert.ok(dockerfileContent.includes('HEALTHCHECK'), 'Dockerfile must declare container HEALTHCHECK');
+  assert.ok(dockerfileContent.includes('EXPOSE 8080'), 'Dockerfile must expose port 8080');
+
+  const dockerignoreContent = fs.readFileSync(dockerignorePath, 'utf-8');
+  assert.ok(dockerignoreContent.includes('.env'), '.dockerignore must exclude .env secrets');
+  assert.ok(dockerignoreContent.includes('node_modules'), '.dockerignore must exclude host node_modules');
+});
+
+// 19. Live HTTP Server Health Probe and Contract (P0-05)
+test('deployment proof: live HTTP server health probe, latency metrics, and JSON contract', async () => {
+  const http = require('http');
+
+  // Spin up an ephemeral native HTTP test server honoring the /health contract
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        timestamp: Date.now(),
+        githubConfigured: false,
+        brevoConfigured: false,
+        stripeConfigured: false,
+        firebaseConfigured: false,
+        authEnforced: true
+      }));
+    } else if (req.url === '/compute/offload') {
+      const auth = req.headers['x-wasti-auth-token'];
+      if (!auth) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      }
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const { sendHttpRequest } = require('./verify_backend_deployment');
+
+    // 1. Probe /health
+    const health = await sendHttpRequest('GET', `${baseUrl}/health`, { 'Accept': 'application/json' });
+    assert.strictEqual(health.statusCode, 200);
+    assert.ok(health.latencyMs >= 0);
+    const body = JSON.parse(health.body);
+    assert.strictEqual(body.status, 'ok');
+    assert.strictEqual(body.authEnforced, true);
+
+    // 2. Probe unauthenticated protected route -> fails closed with 401
+    const unauth = await sendHttpRequest('POST', `${baseUrl}/compute/offload`, {}, JSON.stringify({}));
+    assert.strictEqual(unauth.statusCode, 401);
+
+    // 3. Probe authenticated protected route -> 200
+    const auth = await sendHttpRequest('POST', `${baseUrl}/compute/offload`, {
+      'x-wasti-auth-token': 'valid-test-key'
+    }, JSON.stringify({}));
+    assert.strictEqual(auth.statusCode, 200);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// 20. Backend Deployment Evidence Generator Test (P0-05)
+test('deployment proof: verifyDeployment generates verifiable cryptographic evidence', async () => {
+  const http = require('http');
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+
+  const server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        status: 'ok',
+        timestamp: Date.now(),
+        githubConfigured: true,
+        brevoConfigured: false,
+        stripeConfigured: false,
+        firebaseConfigured: false,
+        authEnforced: true
+      }));
+    } else if (req.url === '/compute/offload') {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+    }
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const testEvidenceFile = path.join(__dirname, 'test_deployment_evidence.json');
+
+  try {
+    const { verifyDeployment } = require('./verify_backend_deployment');
+    // Set target url for test
+    const origArgv = process.argv;
+    process.argv = ['node', 'verify_backend_deployment.js', `http://127.0.0.1:${port}`, testEvidenceFile];
+
+    const result = await verifyDeployment(`http://127.0.0.1:${port}`, testEvidenceFile);
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.evidence.verificationType, 'BACKEND_DEPLOYMENT_VERIFIED');
+    assert.strictEqual(result.evidence.isReachable, true);
+    assert.strictEqual(result.evidence.httpCode, 200);
+    assert.strictEqual(result.evidence.subsystems.githubConfigured, true);
+    assert.strictEqual(result.evidence.subsystems.authEnforced, true);
+    assert.ok(result.evidence.evidenceHash.length === 64);
+
+    assert.ok(fs.existsSync(testEvidenceFile));
+    const saved = JSON.parse(fs.readFileSync(testEvidenceFile, 'utf-8'));
+    assert.strictEqual(saved.evidenceHash, result.evidence.evidenceHash);
+
+    process.argv = origArgv;
+  } finally {
+    if (fs.existsSync(testEvidenceFile)) {
+      fs.unlinkSync(testEvidenceFile);
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+

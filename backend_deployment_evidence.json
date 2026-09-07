@@ -1,0 +1,12 @@
+{
+  "verificationType": "BACKEND_UNREACHABLE",
+  "targetUrl": "http://127.0.0.1:8080",
+  "timestamp": 1788794725607,
+  "isReachable": false,
+  "error": "connect ECONNREFUSED 127.0.0.1:8080",
+  "checks": {
+    "healthProbe": "FAILED",
+    "authBoundary": "UNTESTED",
+    "subsystems": "UNAVAILABLE"
+  }
+}

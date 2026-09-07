@@ -492,6 +492,38 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
+
+        // Local Neural Inference Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "LOCAL_NEURAL_INFERENCE",
+                category = "AI_PROVIDERS",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "WastiLocalModelRuntime:wasti_ai_native",
+                supportedOperations = listOf("run_local_model_inference", "local_neural_inference", "local_ai", "execute_prompt"),
+                limitations = listOf("Requires arm64-v8a native library (libwasti_ai_native.so) and local GGUF model weights on disk"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
+
+        // Companion Backend Service Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "BACKEND_SERVICE",
+                category = "BRIDGE",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.REQUIRED_NOT_PROVIDED,
+                provider = "BackendIntegrationAdapter",
+                supportedOperations = listOf("check_health", "probe_reachability", "get_queue_status", "compute_offload"),
+                limitations = listOf("Requires live reachable WASTI_BACKEND_URL with HTTP 200 /health probe"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
@@ -562,6 +594,12 @@ class CapabilityRealityRegistry {
         }
         if (norm.equals("system_info", ignoreCase = true) || norm.equals("system", ignoreCase = true) || norm.equals("inspect_environment", ignoreCase = true) || norm.equals("environment", ignoreCase = true) || norm.equals("status", ignoreCase = true)) {
             capabilityMap["SYSTEM_INFO"]?.let { return it }
+        }
+        if (norm.equals("local_neural_inference", ignoreCase = true) || norm.equals("local_neural", ignoreCase = true) || norm.equals("local_ai", ignoreCase = true) || norm.equals("neural_inference", ignoreCase = true) || norm.equals("local_model", ignoreCase = true) || norm.equals("wasti_smollm", ignoreCase = true)) {
+            capabilityMap["LOCAL_NEURAL_INFERENCE"]?.let { return it }
+        }
+        if (norm.equals("backend_service", ignoreCase = true) || norm.equals("backend", ignoreCase = true) || norm.equals("cloud_backend", ignoreCase = true)) {
+            capabilityMap["BACKEND_SERVICE"]?.let { return it }
         }
 
         return CapabilityReality(

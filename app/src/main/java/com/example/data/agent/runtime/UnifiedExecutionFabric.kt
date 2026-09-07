@@ -334,6 +334,18 @@ class UnifiedExecutionFabric(
             val execResult = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     kotlinx.coroutines.withTimeout(request.timeoutMs) {
+                        // Autonomous Hardware Swarm Offloader: Offload heavy tasks or when mobile host is constrained
+                        if (request.requestedStrategy != ExecutionStrategy.LOCAL_FALLBACK) {
+                            val offloadDecision = com.example.data.node.AutonomousHardwareOffloader.evaluateOffload(ctx, request)
+                            if (offloadDecision.shouldOffload && offloadDecision.targetNode != null) {
+                                return@withTimeout com.example.data.node.AutonomousHardwareOffloader.executeWithOffload(
+                                    request = request,
+                                    targetNode = offloadDecision.targetNode,
+                                    context = ctx
+                                )
+                            }
+                        }
+
                         val customExec = customExecutors[normalizedCapabilityId(request.capabilityId)]
                         if (customExec != null) {
                             customExec.execute(request, ctx)
@@ -499,6 +511,12 @@ class UnifiedExecutionFabric(
                 "bash", "python", "python3", "python_runtime", "node", "nodejs",
                 "node_runtime", "javascript", "npm"
             ) -> executeTerminalOperations(request, capId, ctx, startedAt)
+
+            capId in listOf(
+                "local_neural_inference", "local_neural", "local_ai", "neural_inference",
+                "local_model", "local_model_inference", "wasti_smollm"
+            ) -> executeLocalNeuralInference(request, ctx, startedAt)
+
             else -> {
                 createResult(
                     request = request,
@@ -1650,6 +1668,81 @@ class UnifiedExecutionFabric(
         )
     }
 
+    private fun executeLocalNeuralInference(
+        request: UnifiedExecutionRequest,
+        context: Context?,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val ctx = context ?: appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.UNAVAILABLE,
+                output = "Android context unavailable for local neural runtime.",
+                error = "Context unavailable in executeLocalNeuralInference",
+                executor = "WastiLocalModelRuntime",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+
+        val prompt = request.parameters["prompt"]?.toString()
+            ?: request.parameters["input"]?.toString()
+            ?: request.parameters["query"]?.toString()
+            ?: "Hello Wasti AI"
+        val modelId = request.parameters["modelId"]?.toString()
+            ?: request.parameters["model"]?.toString()
+            ?: "wasti-smollm"
+        val systemInstruction = request.parameters["systemInstruction"]?.toString().orEmpty()
+
+        val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(ctx)
+        val progressiveState = runtime.getProgressiveState(modelId)
+
+        val result = runtime.executeInferenceDetailed(
+            modelId = modelId,
+            prompt = prompt,
+            systemInstruction = systemInstruction
+        )
+
+        return when (result.status) {
+            com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS -> {
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.VERIFIED,
+                    output = result.output,
+                    executor = "WastiLocalModelRuntime:${result.engineUsed}",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                    verificationEvidence = "Local neural inference executed via ${result.engineUsed} (${result.tokensGenerated} tokens, ${result.latencyMs}ms, progressiveState=$progressiveState)"
+                )
+            }
+            com.example.data.ai.runtime.LocalInferenceStatus.UNAVAILABLE -> {
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.UNAVAILABLE,
+                    output = "Local model '$modelId' is unavailable (state: $progressiveState). Native library or weights required.",
+                    error = result.error ?: "Model unavailable",
+                    executor = "WastiLocalModelRuntime",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Progressive state: $progressiveState"
+                )
+            }
+            else -> {
+                createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.FAILED,
+                    output = "Local neural inference failed: ${result.error}",
+                    error = result.error,
+                    executor = "WastiLocalModelRuntime",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "Inference failed with status ${result.status}"
+                )
+            }
+        }
+    }
+
     private suspend fun executeTerminalOperations(
         request: UnifiedExecutionRequest,
         capId: String,
@@ -1775,6 +1868,7 @@ class UnifiedExecutionFabric(
         // Cryptographic Provenance Recording
         try {
             val evidenceSource = when {
+                request.capabilityId.contains("neural", ignoreCase = true) || request.capabilityId.contains("local_ai", ignoreCase = true) || request.capabilityId.contains("model", ignoreCase = true) -> EvidenceSource.LOCAL_MODEL_INFERENCE
                 request.capabilityId.contains("file") -> EvidenceSource.FILESYSTEM
                 request.capabilityId.contains("db") || request.capabilityId.contains("memory") -> EvidenceSource.DATABASE_QUERY
                 request.capabilityId.contains("http") || request.capabilityId.contains("search") || request.capabilityId.contains("api") -> EvidenceSource.HTTP_CONTRACT

@@ -359,8 +359,13 @@ fun TerminalWorkspaceScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 listOf(
-                    "ai status", "ai consensus", "ai models", "help",
-                    "wre pkg list", "sysinfo", "status", "ls -la", "pwd", "jobs", "ps", "clear"
+                    "cognitive", "sensory", "face", "alternatives", "search wasti ai os",
+                    "hardware", "keystore status", "tunnel status", "swarm status",
+                    "sql SELECT * FROM memories LIMIT 5;",
+                    "python3 -c \"print('Polyglot Python Active')\"",
+                    "node -e \"console.log('Polyglot JS Active')\"",
+                    "ai status", "ai consensus", "help",
+                    "wre pkg list", "sysinfo", "status", "ls -la", "clear"
                 ).forEach { chipCmd ->
                     SuggestionChip(
                         onClick = { submitCommand(chipCmd) },
@@ -444,6 +449,37 @@ fun TerminalWorkspaceScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val inputModeBadge: Pair<String, Color>? = remember(currentInput) {
+                    val trimmed = currentInput.trim()
+                    when {
+                        trimmed.startsWith("python") -> "PY" to Color(0xFF38BDF8)
+                        trimmed.startsWith("node") || trimmed.startsWith("js") -> "JS" to Color(0xFFFBBF24)
+                        trimmed.startsWith("sql") -> "SQL" to Color(0xFFA78BFA)
+                        trimmed.startsWith("keystore") -> "SIGN" to Color(0xFF34D399)
+                        trimmed.startsWith("tunnel") -> "TUNNEL" to Color(0xFFF472B6)
+                        trimmed.startsWith("swarm") -> "SWARM" to Color(0xFF60A5FA)
+                        trimmed.startsWith("?") || trimmed.startsWith("ai ") || trimmed.startsWith("wasti ") || isNaturalLanguagePrompt(trimmed) -> "AI" to Color(0xFFA855F7)
+                        else -> null
+                    }
+                }
+
+                if (inputModeBadge != null) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = inputModeBadge.second.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(end = 6.dp)
+                    ) {
+                        Text(
+                            text = inputModeBadge.first,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            color = inputModeBadge.second,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
                 Text(
                     text = ">",
                     fontFamily = FontFamily.Monospace,
