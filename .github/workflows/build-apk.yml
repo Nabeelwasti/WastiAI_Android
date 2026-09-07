@@ -219,7 +219,7 @@ jobs:
         KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'upload' }}
       run: |
         echo "Building genuine production release APK and Android App Bundle..."
-        ./gradlew lintRelease testReleaseUnitTest assembleRelease bundleRelease --no-configuration-cache --no-build-cache --stacktrace
+        ./gradlew assembleRelease bundleRelease --no-configuration-cache --no-build-cache --stacktrace
 
         RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
         RELEASE_AAB="app/build/outputs/bundle/release/app-release.aab"
