@@ -175,6 +175,7 @@ object PermissionManager {
         return permissionOrCapability in defaultAllowed
     }
 
+    @Suppress("DEPRECATION")
     private val KNOWN_MANIFEST_PERMISSIONS = setOf(
         Manifest.permission.INTERNET,
         Manifest.permission.ACCESS_NETWORK_STATE,

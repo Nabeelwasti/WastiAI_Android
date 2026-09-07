@@ -1417,7 +1417,6 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                                 LeadStatus.PROPOSAL_SENT, LeadStatus.HUMAN_REVIEW_REQUIRED, LeadStatus.APPROVED, LeadStatus.SENT -> LeadStatus.NEGOTIATING
                                 LeadStatus.NEGOTIATING -> LeadStatus.CLOSED
                                 LeadStatus.CLOSED -> LeadStatus.CLOSED
-                                else -> LeadStatus.CLOSED
                             }
                             LeadRadarRepository.updateLeadStatus(context, lead.id, nextStatus)
                         } else if (offsetX < -120f) {
@@ -1426,7 +1425,6 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                                 LeadStatus.NEGOTIATING -> LeadStatus.PROPOSAL_SENT
                                 LeadStatus.PROPOSAL_SENT, LeadStatus.SENT, LeadStatus.APPROVED, LeadStatus.HUMAN_REVIEW_REQUIRED -> LeadStatus.DISCOVERED
                                 LeadStatus.DISCOVERED, LeadStatus.LEAD_DISCOVERED, LeadStatus.DATA_UNVERIFIED, LeadStatus.DRAFT -> LeadStatus.DISCOVERED
-                                else -> LeadStatus.DISCOVERED
                             }
                             LeadRadarRepository.updateLeadStatus(context, lead.id, prevStatus)
                         }
@@ -1456,7 +1454,6 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                         LeadStatus.APPROVED, LeadStatus.SENT, LeadStatus.PROPOSAL_SENT -> Color(0xFF8B5CF6)
                         LeadStatus.NEGOTIATING -> Color(0xFFF59E0B)
                         LeadStatus.CLOSED -> Color(0xFF10B981)
-                        else -> Color(0xFF3B82F6)
                     }
                 ) {
                     Text(

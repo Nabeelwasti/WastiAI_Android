@@ -452,14 +452,19 @@ jobs:
         name: WastiAI-Debug-APK
         path: app/build/outputs/apk/debug/app-debug.apk
 
+    - name: Stage Release Artifacts
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
+      run: |
+        mkdir -p build-release-artifacts
+        cp app/build/outputs/apk/release/app-release.apk build-release-artifacts/
+        cp app/build/outputs/bundle/release/app-release.aab build-release-artifacts/
+
     - name: Upload Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
       uses: actions/upload-artifact@v7
       with:
         name: WastiAI-Release-Artifacts
-        path: |
-          app/build/outputs/apk/release/app-release.apk
-          app/build/outputs/bundle/release/app-release.aab
+        path: build-release-artifacts/
 
   publish:
     name: Publish Release Artifact
@@ -481,6 +486,11 @@ jobs:
       id: release_meta
       shell: bash
       run: |
+        echo "Inspecting downloaded release artifacts:"
+        find build-artifacts -type f
+        find build-artifacts -type f -name "app-release.apk" -exec cp -f {} build-artifacts/app-release.apk \;
+        find build-artifacts -type f -name "app-release.aab" -exec cp -f {} build-artifacts/app-release.aab \;
+
         test -f build-artifacts/app-release.apk || { echo "ERROR: Genuine signed app-release.apk missing. Release aborted."; exit 1; }
         test -f build-artifacts/app-release.aab || { echo "ERROR: Genuine signed app-release.aab missing. Release aborted."; exit 1; }
 
