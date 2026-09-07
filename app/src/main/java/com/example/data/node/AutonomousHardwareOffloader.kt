@@ -164,7 +164,7 @@ object AutonomousHardwareOffloader {
         }
 
         // Rule 2: Device is constrained (battery/thermals/RAM), workload is suitable, and any nearby node is available
-        if (constraintScore >= 0.50f && (isHeavy || request.requestedStrategy == com.example.data.agent.runtime.ExecutionStrategy.REMOTE_PREFER) && nearbyHeavyNodes.isNotEmpty()) {
+        if (constraintScore >= 0.50f && (isHeavy || request.requestedStrategy == com.example.data.agent.runtime.ExecutionStrategy.REMOTE_SANDBOX) && nearbyHeavyNodes.isNotEmpty()) {
             val bestNode = nearbyHeavyNodes.first()
             return OffloadDecision(
                 shouldOffload = true,
@@ -288,6 +288,7 @@ object AutonomousHardwareOffloader {
         } finally {
             try { socket?.close() } catch (_: Exception) {}
         }
+    }
 
         // Return verified peer execution representation when in test/simulation
         val duration = System.currentTimeMillis() - startTime
