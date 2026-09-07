@@ -135,7 +135,10 @@ object HardwareCapabilityDetector {
             isLowRamDevice = isLowRam,
             isBatteryLowOrThermalsThrottling = isThermalThrottling || isBatteryLow,
             verifiedExecutionEvidence = currentEvidence,
-            hasNpuAcceleration = acceleratorStatus == AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION
+            hasNpuAcceleration = acceleratorStatus == AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION,
+            isBatteryLow = isBatteryLow,
+            isThermalThrottling = isThermalThrottling,
+            isLowRam = isLowRam
         )
     }
 

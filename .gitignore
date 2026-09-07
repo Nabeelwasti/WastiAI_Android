@@ -28,4 +28,5 @@ debug.keystore.base64
 .build-outputs/
 app/google-services.json
 google-services.json
+build_log.txt
 

@@ -144,8 +144,24 @@ enum class EvidenceSource {
     SYSTEM_SERVICE,
     UI_TREE,
     SENSOR_EVENT,
-    LOCAL_MODEL_INFERENCE
+    LOCAL_MODEL_INFERENCE,
+    RUNTIME_DIAGNOSTIC
 }
+
+typealias ObservationSource = EvidenceSource
+
+enum class CapabilityVerificationDomain {
+    GENERAL_COMPUTATION,
+    FILESYSTEM,
+    NETWORK,
+    SYSTEM_DIAGNOSTIC
+}
+
+val VerificationResult.isVerified: Boolean
+    get() = status == ActionVerificationStatus.VERIFIED
+
+val VerificationResult.explanation: String
+    get() = failureReason ?: evidence
 
 data class VerifiedExecutionEvidence(
     val evidenceSource: EvidenceSource,

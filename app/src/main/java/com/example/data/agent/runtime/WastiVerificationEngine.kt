@@ -217,6 +217,42 @@ class WastiVerificationEngine {
         }
     }
 
+    fun verify(
+        evidence: CapabilitySpecificEvidence,
+        domain: CapabilityVerificationDomain = CapabilityVerificationDomain.GENERAL_COMPUTATION,
+        maxAllowedAgeMs: Long = 60_000L
+    ): VerificationResult {
+        val req = VerificationRequest(
+            taskId = evidence.taskId,
+            actionId = evidence.actionId,
+            capabilityId = evidence.capabilityId,
+            expectedOutcome = evidence.expectedState,
+            executionResult = UnifiedExecutionResult(
+                taskId = evidence.taskId,
+                actionId = evidence.actionId,
+                capabilityId = evidence.capabilityId,
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = evidence.observedState,
+                executor = evidence.executor,
+                startedAt = evidence.timestamp,
+                completedAt = evidence.timestamp,
+                verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+            ),
+            observationResult = ObservationResult(
+                taskId = evidence.taskId,
+                actionId = evidence.actionId,
+                capabilityId = evidence.capabilityId,
+                status = ObservationStatus.SUCCESS,
+                observedState = evidence.observedState,
+                evidence = evidence.observedState,
+                timestamp = evidence.timestamp,
+                source = evidence.observationSource.name
+            ),
+            capabilitySpecificEvidence = evidence
+        )
+        return verifyCapabilitySpecificEvidence(req, evidence)
+    }
+
     fun verify(request: VerificationRequest): VerificationResult {
         // 1. If canonical CapabilitySpecificEvidence is supplied, verify it first
         if (request.capabilitySpecificEvidence != null) {

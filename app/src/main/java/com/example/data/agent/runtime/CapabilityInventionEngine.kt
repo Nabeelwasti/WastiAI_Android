@@ -152,14 +152,14 @@ object CapabilityInventionEngine {
             val evidence = CapabilitySpecificEvidence(
                 taskId = "invention_task_${UUID.randomUUID().toString().take(8)}",
                 actionId = "verify_test_${test.testName}",
-                capability = cleanId,
+                capabilityId = cleanId,
                 executor = "CapabilityInventionEngine",
                 observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,
                 timestamp = testStart,
-                artifactReference = "script_hash:$scriptHash",
+                artifactOrStateReference = "script_hash:$scriptHash",
                 expectedState = test.expectedOutputPattern,
                 observedState = simulatedOutput.take(128),
-                checksum = computeSha256(simulatedOutput),
+                checksumOrHash = computeSha256(simulatedOutput),
                 verifierIdentity = "WastiVerificationEngine_InventionGate",
                 verificationMethod = "SANDBOX_UNIT_TEST"
             )
@@ -330,8 +330,9 @@ object CapabilityInventionEngine {
 
         // 2. Register dynamic UnifiedExecutor into UnifiedExecutionFabric
         val dynamicExecutor = object : UnifiedExecutor {
-            override val executorId: String = "InventionExecutor_${def.capabilityId}"
-            override val supportedCapabilities: Set<String> = setOf(def.capabilityId)
+            override val name: String = "InventionExecutor_${def.capabilityId}"
+            val executorId: String get() = name
+            override val supportedCapabilities: List<String> = listOf(def.capabilityId)
 
             override suspend fun execute(
                 request: UnifiedExecutionRequest,
@@ -341,7 +342,7 @@ object CapabilityInventionEngine {
                 val output = executeSandboxTransform(
                     logicType = def.executionLogicType,
                     script = def.transformScript,
-                    parameters = request.parameters
+                    parameters = request.parameters.mapValues { it.value.toString() }
                 )
                 val isSuccess = output.isNotBlank() && !output.startsWith("Error:")
                 return UnifiedExecutionResult(

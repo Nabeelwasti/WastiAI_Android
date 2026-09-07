@@ -86,6 +86,15 @@ data class DeepSystemProfile(
     val toolchains: List<InstalledToolchain>
 )
 
+typealias SystemHardwareProfile = DeepSystemProfile
+
+val List<InstalledToolchain>.hasPython: Boolean
+    get() = any { it.toolName.contains("python", ignoreCase = true) && it.isInstalled }
+
+val List<InstalledToolchain>.hasNode: Boolean
+    get() = any { it.toolName.contains("node", ignoreCase = true) && it.isInstalled }
+
+
 object WastiDeepHardwareProfiler {
 
     private const val TAG = "DeepHardwareProfiler"

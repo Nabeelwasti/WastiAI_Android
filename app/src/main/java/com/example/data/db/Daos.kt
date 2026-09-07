@@ -68,6 +68,9 @@ interface MemoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMemory(memory: MemoryEntity)
 
+    @Query("SELECT * FROM memories WHERE `key` = :key LIMIT 1")
+    suspend fun getMemoryByKey(key: String): MemoryEntity?
+
     @Query("DELETE FROM memories WHERE id = :id")
     suspend fun deleteMemoryById(id: String)
 }

@@ -74,7 +74,9 @@ data class NearbySwarmState(
     val totalDiscoveredDevices: Int = 0,
     val heavyComputeNodesAvailable: Int = 0,
     val connectedNodes: List<NearbyHardwareNode> = emptyList()
-)
+) {
+    val discoveredPeers: List<NearbyHardwareNode> get() = connectedNodes
+}
 
 object WastiNearbyHardwareEngine {
 

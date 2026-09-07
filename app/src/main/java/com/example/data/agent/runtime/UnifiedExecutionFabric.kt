@@ -50,7 +50,8 @@ data class UnifiedExecutionRequest(
     val authorizationState: ActionAuthorizationState = ActionAuthorizationState.AUTHORIZED,
     val riskLevel: RiskLevel = RiskLevel.MEDIUM,
     val dryRun: Boolean = false,
-    val timeoutMs: Long = 30000L
+    val timeoutMs: Long = 30000L,
+    val originatingNodeId: String? = null
 )
 
 data class UnifiedExecutionResult(
@@ -1668,7 +1669,7 @@ class UnifiedExecutionFabric(
         )
     }
 
-    private fun executeLocalNeuralInference(
+    private suspend fun executeLocalNeuralInference(
         request: UnifiedExecutionRequest,
         context: Context?,
         startedAt: Long

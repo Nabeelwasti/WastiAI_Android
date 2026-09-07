@@ -3,6 +3,7 @@ package com.example.data.core
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import java.io.File
 import com.example.data.db.KnowledgeEntity
 import com.example.data.db.MemoryEntity
 import com.example.data.db.WastiDatabase

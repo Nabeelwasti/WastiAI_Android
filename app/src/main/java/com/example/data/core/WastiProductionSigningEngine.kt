@@ -456,6 +456,7 @@ MA0GCSqGSIb3DQEBCwUAA4IBAQBL...==
                 override fun getIssuerUniqueID() = null
                 override fun getSubjectUniqueID() = null
                 override fun getKeyUsage() = null
+                override fun getBasicConstraints() = -1
             }
         }
     }

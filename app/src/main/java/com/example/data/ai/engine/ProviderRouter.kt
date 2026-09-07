@@ -68,6 +68,7 @@ class ProviderRouter(
                 val latency = health?.latencyMs ?: 0L
                 score * 100000 + latency
             }
+        }
         // [The Eternal Manifesto: Resource Intelligence Law]
         // Optimize CPU, RAM, battery, network, storage, latency, cost and execution placement
         val hwSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(null)

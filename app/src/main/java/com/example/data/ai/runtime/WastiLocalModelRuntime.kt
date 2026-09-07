@@ -176,12 +176,12 @@ class WastiLocalModelRuntime(
         private const val GGUF_MAGIC = 0x46554747 // "GGUF" in little-endian
     }
 
-    suspend fun parseGgufHeader(file: File): GgufHeader = withContext(Dispatchers.IO) {
+    fun parseGgufHeader(file: File): GgufHeader {
         if (!file.exists() || file.length() < 24) {
-            return@withContext GgufHeader(magic = "", version = 0u, tensorCount = 0uL, metadataKvCount = 0uL, isValidGguf = false)
+            return GgufHeader(magic = "", version = 0u, tensorCount = 0uL, metadataKvCount = 0uL, isValidGguf = false)
         }
 
-        try {
+        return try {
             RandomAccessFile(file, "r").use { raf ->
                 val buffer = ByteArray(24)
                 raf.readFully(buffer)
@@ -408,7 +408,8 @@ enum class LocalInferenceStatus {
     NATIVE_RUNTIME_UNAVAILABLE,
     NATIVE_LOAD_FAILED,
     NATIVE_EXECUTION_ERROR,
-    ABORTED_EMERGENCY_STOP
+    ABORTED_EMERGENCY_STOP,
+    UNAVAILABLE
 }
 
 data class LocalInferenceResult(
@@ -417,5 +418,9 @@ data class LocalInferenceResult(
     val modelId: String,
     val latencyMs: Long = 0L,
     val isNeuralOutput: Boolean = false,
-    val errorMessage: String? = null
-)
+    val errorMessage: String? = null,
+    val engineUsed: String = "llama.cpp",
+    val tokensGenerated: Int = 0
+) {
+    val error: String? get() = errorMessage
+}

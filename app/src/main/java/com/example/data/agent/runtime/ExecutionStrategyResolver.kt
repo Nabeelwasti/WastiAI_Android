@@ -7,7 +7,8 @@ enum class ExecutionStrategy {
     OPEN_SOURCE_DYNAMIC,
     REMOTE_SANDBOX,
     EXTERNAL_API,
-    HUMAN_ASSISTANCE
+    HUMAN_ASSISTANCE,
+    LOCAL_FALLBACK
 }
 
 data class ExecutionStrategyDecision(

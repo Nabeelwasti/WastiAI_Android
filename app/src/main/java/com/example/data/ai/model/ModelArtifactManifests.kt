@@ -52,6 +52,9 @@ data class HardwareEnvironmentSpecs(
     val isLowRamDevice: Boolean = false,
     val isBatteryLowOrThermalsThrottling: Boolean = false,
     val verifiedExecutionEvidence: String? = null,
-    val hasNpuAcceleration: Boolean = false
+    val hasNpuAcceleration: Boolean = false,
+    val isBatteryLow: Boolean = false,
+    val isThermalThrottling: Boolean = false,
+    val isLowRam: Boolean = false
 )
 
