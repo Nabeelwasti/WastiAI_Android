@@ -1554,6 +1554,19 @@ class EternalManifestoAndTruthAuditTest {
             autonomousDecision
         )
 
+        // 2b. Adversarial check: Unregistered/forged token must be blocked fail-closed
+        val forgedDecision = safetyEngine.evaluateModification(
+            filePath = "app/src/main/AndroidManifest.xml",
+            newContent = "<manifest></manifest>",
+            isAutonomous = true,
+            adminAuthToken = "ADMIN_ROOT_AUTHORIZED_FORGED_ATTACK"
+        )
+        assertEquals(
+            "Forged admin token must be rejected fail-closed",
+            com.example.data.agent.runtime.ModificationDecision.BLOCKED_PROTECTED_PATH,
+            forgedDecision
+        )
+
         // 3. Admin Authorized Modification Proceeds
         val adminToken = "ADMIN_ROOT_AUTHORIZED_KEY_TEST"
         safetyEngine.registerAdminToken(adminToken)

@@ -111,7 +111,7 @@ object SelfModificationSafetyEngine {
 
     fun isValidAdminToken(token: String?): Boolean {
         if (token.isNullOrBlank()) return false
-        return activeAdminTokens.contains(token) || token.startsWith("ADMIN_ROOT_AUTHORIZED_")
+        return activeAdminTokens.contains(token)
     }
 
     /**

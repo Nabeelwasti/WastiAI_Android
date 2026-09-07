@@ -73,6 +73,12 @@ interface MemoryDao {
 
     @Query("DELETE FROM memories WHERE id = :id")
     suspend fun deleteMemoryById(id: String)
+
+    @Query("DELETE FROM memories")
+    suspend fun deleteAllMemories(): Int
+
+    @Query("DELETE FROM memories WHERE timestamp < :olderThanTimestamp")
+    suspend fun deleteMemoriesOlderThan(olderThanTimestamp: Long): Int
 }
 
 @Dao

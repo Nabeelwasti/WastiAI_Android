@@ -62,4 +62,25 @@ class MemoryManagerSemanticTest {
         index.removeVector("item_1")
         assertEquals(0, index.size())
     }
+
+    @Test
+    fun testMemoryDataGovernanceCompliance() = runBlocking {
+        MemoryManager.resetForTesting()
+
+        // Create memories
+        MemoryManager.createMemory("user_pref", "prefers dark theme", "PREFERENCE", 0.9f)
+        MemoryManager.createMemory("user_device", "runs Android 14", "DEVICE", 0.8f)
+
+        // 1. Verify JSON export for data portability (GDPR)
+        val exportedJson = MemoryManager.exportUserDataJson()
+        assertTrue("Exported JSON must contain pref key", exportedJson.contains("user_pref"))
+        assertTrue("Exported JSON must contain dark theme", exportedJson.contains("prefers dark theme"))
+
+        // 2. Verify complete deletion (Right-to-be-forgotten)
+        val deletedCount = MemoryManager.deleteAllMemories()
+        assertEquals(2, deletedCount)
+        val statsAfter = MemoryManager.getObservabilityStats()
+        assertEquals(0, statsAfter.totalActiveMemories)
+        assertEquals(0, statsAfter.totalVectorsIndexed)
+    }
 }

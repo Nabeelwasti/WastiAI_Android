@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.UUID
 
 object MemoryManager {
@@ -268,6 +270,58 @@ object MemoryManager {
             Log.e("MemoryManager", "Failed to delete memory entity from Room database", e)
         }
         WastiEventBus.emit(WastiEvent.MemoryUpdated(id, "DELETED"))
+    }
+
+    suspend fun deleteAllMemories(): Int = withContext(Dispatchers.IO) {
+        val count = activeMemoriesMap.size
+        activeMemoriesMap.clear()
+        vectorIndex.clear()
+        _memoriesFlow.value = emptyList()
+        var dbDeleted = 0
+        try {
+            dbDeleted = memoryDao?.deleteAllMemories() ?: count
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to clear all memories from Room database", e)
+            dbDeleted = count
+        }
+        WastiEventBus.emit(WastiEvent.MemoryUpdated("ALL", "CLEARED"))
+        maxOf(count, dbDeleted)
+    }
+
+    suspend fun pruneMemoriesOlderThan(retentionDays: Int): Int = withContext(Dispatchers.IO) {
+        if (retentionDays <= 0) return@withContext 0
+        val cutoff = System.currentTimeMillis() - (retentionDays * 86400000L)
+        val toRemove = activeMemoriesMap.filter { it.value.timestamp < cutoff }.keys.toList()
+        toRemove.forEach { id ->
+            activeMemoriesMap.remove(id)
+            vectorIndex.removeVector(id)
+        }
+        _memoriesFlow.value = activeMemoriesMap.values.toList()
+        var deletedCount = 0
+        try {
+            deletedCount = memoryDao?.deleteMemoriesOlderThan(cutoff) ?: toRemove.size
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to prune older memories from Room database", e)
+            deletedCount = toRemove.size
+        }
+        deletedCount
+    }
+
+    suspend fun exportUserDataJson(): String = withContext(Dispatchers.IO) {
+        val memories = memoryDao?.getAllMemoriesSync() ?: activeMemoriesMap.values.toList()
+        val jsonArray = JSONArray()
+        for (m in memories) {
+            val obj = JSONObject().apply {
+                put("id", m.id)
+                put("key", m.key)
+                put("category", m.category)
+                put("value", m.value)
+                put("importanceScore", m.importanceScore.toDouble())
+                put("timestamp", m.timestamp)
+            }
+            jsonArray.put(obj)
+        }
+        jsonArray.toString(2)
     }
 
     private fun calculateKeywordMatchScore(query: String, text: String): Float {
