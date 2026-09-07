@@ -219,8 +219,9 @@ object PermissionManager {
                 @Suppress("DEPRECATION")
                 pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
             }
-            if (info.requestedPermissions != null && info.requestedPermissions.isNotEmpty()) {
-                return info.requestedPermissions.contains(permission)
+            val reqPerms = info.requestedPermissions
+            if (!reqPerms.isNullOrEmpty()) {
+                return reqPerms.contains(permission)
             }
         } catch (_: Throwable) {}
 
