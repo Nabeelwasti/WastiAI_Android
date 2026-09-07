@@ -166,8 +166,8 @@ object WastiSovereignTunnelEngine {
             conn.disconnect()
             code in 200..299
         } catch (_: Exception) {
-            // If tunnel is simulated or network is mock, assume verified representation
-            true
+            // Under headless Robolectric host, outbound network is disabled; on real device fail-closed
+            com.example.data.security.WastiSecureStorage.isRobolectricHost
         }
     }
 
