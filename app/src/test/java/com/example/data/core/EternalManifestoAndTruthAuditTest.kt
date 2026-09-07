@@ -418,27 +418,29 @@ class EternalManifestoAndTruthAuditTest {
         val manifestFile = File(root, "app/src/main/AndroidManifest.xml").let { if (it.exists()) it else File("src/main/AndroidManifest.xml") }
         val manifestContent = if (manifestFile.exists()) manifestFile.readText() else ""
 
-        if (pkgInfo.services != null && pkgInfo.services.isNotEmpty()) {
+        val services = pkgInfo.services
+        val receivers = pkgInfo.receivers
+        if (!services.isNullOrEmpty()) {
             // 1. Verify WastiAccessibilityService has BIND_ACCESSIBILITY_SERVICE permission
-            val accessibilityService = pkgInfo.services?.find { it.name.contains("WastiAccessibilityService") }
+            val accessibilityService = services.find { it.name.contains("WastiAccessibilityService") }
             assertNotNull(accessibilityService)
             assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", accessibilityService?.permission)
 
             // 2. Verify all internal background and overlay services are strictly exported = false
-            val floatingService = pkgInfo.services?.find { it.name.contains("WastiFloatingService") }
+            val floatingService = services.find { it.name.contains("WastiFloatingService") }
             assertNotNull(floatingService)
             assertFalse("WastiFloatingService must not be exported to external apps", floatingService?.exported ?: true)
 
-            val wakeWordService = pkgInfo.services?.find { it.name.contains("WakeWordVoskService") }
+            val wakeWordService = services.find { it.name.contains("WakeWordVoskService") }
             assertNotNull(wakeWordService)
             assertFalse("WakeWordVoskService must not be exported to external apps", wakeWordService?.exported ?: true)
 
-            val execService = pkgInfo.services?.find { it.name.contains("WastiForegroundExecutionService") }
+            val execService = services.find { it.name.contains("WastiForegroundExecutionService") }
             assertNotNull(execService)
             assertFalse("WastiForegroundExecutionService must not be exported to external apps", execService?.exported ?: true)
 
             // 3. Verify BootReceiver is protected by RECEIVE_BOOT_COMPLETED permission
-            val bootReceiver = pkgInfo.receivers?.find { it.name.contains("BootReceiver") }
+            val bootReceiver = receivers?.find { it.name.contains("BootReceiver") }
             assertNotNull(bootReceiver)
             assertEquals("android.permission.RECEIVE_BOOT_COMPLETED", bootReceiver?.permission)
 
@@ -474,9 +476,10 @@ class EternalManifestoAndTruthAuditTest {
         val manifestFile = File(root, "app/src/main/AndroidManifest.xml").let { if (it.exists()) it else File("src/main/AndroidManifest.xml") }
         val manifestContent = if (manifestFile.exists()) manifestFile.readText() else ""
 
-        if (pkgInfo.services != null && pkgInfo.services.isNotEmpty()) {
+        val services = pkgInfo.services
+        if (!services.isNullOrEmpty()) {
             // 1. WakeWordVoskService foreground type must be microphone
-            val wakeWordService = pkgInfo.services?.find { it.name.contains("WakeWordVoskService") }
+            val wakeWordService = services.find { it.name.contains("WakeWordVoskService") }
             assertNotNull(wakeWordService)
             assertEquals(
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
@@ -484,7 +487,7 @@ class EternalManifestoAndTruthAuditTest {
             )
 
             // 2. WastiFloatingService foreground type must be specialUse
-            val floatingService = pkgInfo.services?.find { it.name.contains("WastiFloatingService") }
+            val floatingService = services.find { it.name.contains("WastiFloatingService") }
             assertNotNull(floatingService)
             assertEquals(
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
@@ -492,7 +495,7 @@ class EternalManifestoAndTruthAuditTest {
             )
 
             // 3. WastiForegroundExecutionService foreground type must be specialUse
-            val execService = pkgInfo.services?.find { it.name.contains("WastiForegroundExecutionService") }
+            val execService = services.find { it.name.contains("WastiForegroundExecutionService") }
             assertNotNull(execService)
             assertEquals(
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
