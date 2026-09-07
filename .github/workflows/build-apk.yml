@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    outputs:
+      have_release_keystore: ${{ steps.signing_config.outputs.have_release_keystore }}
 
     steps:
     - name: Checkout Repository
@@ -184,6 +186,7 @@ jobs:
         echo "SUCCESS: WastiApplication bytecode integrity verified."
 
     - name: Configure Production Release Signing
+      id: signing_config
       if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
       env:
         RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -194,6 +197,7 @@ jobs:
           test -s /tmp/release.keystore || { echo "ERROR: Failed to decode release keystore."; exit 1; }
           chmod 600 /tmp/release.keystore
           echo "HAVE_RELEASE_KEYSTORE=true" >> $GITHUB_ENV
+          echo "have_release_keystore=true" >> $GITHUB_OUTPUT
           echo "SUCCESS: Production release keystore configured."
         elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
           echo "ERROR: Release tag triggered without RELEASE_KEYSTORE_BASE64 secret. Failing closed."
@@ -202,6 +206,7 @@ jobs:
           echo "NOTICE: RELEASE_KEYSTORE_BASE64 secret is not configured in this environment."
           echo "Production release packaging marked BLOCKED_EXTERNAL_DEPENDENCY."
           echo "HAVE_RELEASE_KEYSTORE=false" >> $GITHUB_ENV
+          echo "have_release_keystore=false" >> $GITHUB_OUTPUT
         fi
 
     - name: Build and Sign Production Release Artifacts (APK & AAB)
@@ -297,10 +302,26 @@ jobs:
           unzip -q "$TARGET_APK" -d /tmp/apk_inspect
 
           # 3a. Verify canonical package ID in APK manifest
-          unzip -p "$TARGET_APK" AndroidManifest.xml | grep -a -q "com.aistudio.wastios.k9v2pz" || {
-            echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' not found in $TARGET_APK AndroidManifest.xml!"
-            exit 1
-          }
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$AAPT" ] && [ -x "$AAPT" ] && "$AAPT" dump badging "$TARGET_APK" 2>/dev/null | grep -q "com.aistudio.wastios.k9v2pz"; then
+            echo "SUCCESS: Canonical package ID verified via aapt in $TARGET_APK"
+          else
+            python3 -c "
+import zipfile, sys
+apk = sys.argv[1]
+with zipfile.ZipFile(apk, 'r') as z:
+    b = z.read('AndroidManifest.xml')
+    p1 = b'com.aistudio.wastios.k9v2pz'
+    p2 = 'com.aistudio.wastios.k9v2pz'.encode('utf-16le')
+    if p1 not in b and p2 not in b:
+        print(f'ERROR: Canonical package ID com.aistudio.wastios.k9v2pz not found in {apk}')
+        sys.exit(1)
+" "$TARGET_APK" || {
+              echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' not found in $TARGET_APK AndroidManifest.xml!"
+              exit 1
+            }
+            echo "SUCCESS: Canonical package ID verified via binary AXML in $TARGET_APK"
+          fi
 
           # 3b. Verify WastiApplication bytecode integrity
           FOUND_APP=0
@@ -359,8 +380,18 @@ jobs:
           test -f /tmp/aab_inspect/base/manifest/AndroidManifest.xml || { echo "ERROR: base/manifest/AndroidManifest.xml missing in AAB"; exit 1; }
           test -f /tmp/aab_inspect/base/dex/classes.dex || { echo "ERROR: base/dex/classes.dex missing in AAB"; exit 1; }
 
-          # Verify package ID in AAB manifest
-          grep -a -q "com.aistudio.wastios.k9v2pz" /tmp/aab_inspect/base/manifest/AndroidManifest.xml || {
+          # Verify package ID in AAB manifest (protobuf or UTF-8/UTF-16 binary XML)
+          python3 -c "
+import sys
+path = '/tmp/aab_inspect/base/manifest/AndroidManifest.xml'
+with open(path, 'rb') as f:
+    b = f.read()
+p1 = b'com.aistudio.wastios.k9v2pz'
+p2 = 'com.aistudio.wastios.k9v2pz'.encode('utf-16le')
+if p1 not in b and p2 not in b:
+    print('ERROR: Canonical package ID com.aistudio.wastios.k9v2pz missing in AAB manifest')
+    sys.exit(1)
+" || {
             echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' missing in AAB manifest!"
             exit 1
           }
@@ -453,7 +484,7 @@ jobs:
   publish:
     name: Publish Release Artifact
     needs: validate
-    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request' && needs.validate.outputs.have_release_keystore == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
