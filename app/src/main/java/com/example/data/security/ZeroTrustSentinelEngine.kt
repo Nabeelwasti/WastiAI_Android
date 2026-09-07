@@ -34,15 +34,15 @@ object ZeroTrustSentinelEngine {
     // preventing self-detection false-positives in bytecode constant pools while preserving 100% runtime protection.
     private val googleApiKeyRegex by lazy {
         val prefix = "${'A'}${'I'}${'z'}${'a'}${'S'}${'y'}"
-        Regex("$prefix[A-Za-z0-9_-]{33}")
+        Regex("$prefix[A-Za-z0-9_-]{30,40}")
     }
     private val openAiTokenRegex by lazy {
         val prefix = "${'s'}${'k'}-"
-        Regex("$prefix[A-Za-z0-9_-]{32,}")
+        Regex("$prefix[A-Za-z0-9_-]{20,}")
     }
     private val githubPatRegex by lazy {
         val prefix = "${'g'}${'h'}${'p'}_"
-        Regex("$prefix[A-Za-z0-9]{36}")
+        Regex("$prefix[A-Za-z0-9]{30,45}")
     }
 
     fun inspectInputPrompt(rawPrompt: String): SecurityInspectionResult {

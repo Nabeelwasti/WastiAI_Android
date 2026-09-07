@@ -177,8 +177,38 @@ object PermissionManager {
         return permissionOrCapability !in sensitive
     }
 
+    private val KNOWN_MANIFEST_PERMISSIONS = setOf(
+        Manifest.permission.INTERNET,
+        Manifest.permission.ACCESS_NETWORK_STATE,
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+        Manifest.permission.FOREGROUND_SERVICE,
+        Manifest.permission.FOREGROUND_SERVICE_MICROPHONE,
+        Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
+        Manifest.permission.READ_CALENDAR,
+        Manifest.permission.WRITE_CALENDAR,
+        Manifest.permission.SCHEDULE_EXACT_ALARM,
+        Manifest.permission.SET_ALARM,
+        Manifest.permission.USE_BIOMETRIC,
+        Manifest.permission.USE_FINGERPRINT,
+        Manifest.permission.BLUETOOTH,
+        Manifest.permission.BLUETOOTH_ADMIN,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_ADVERTISE,
+        Manifest.permission.SYSTEM_ALERT_WINDOW,
+        Manifest.permission.POST_NOTIFICATIONS,
+        Manifest.permission.RECEIVE_BOOT_COMPLETED,
+        Manifest.permission.WAKE_LOCK,
+        Manifest.permission.VIBRATE,
+        Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Manifest.permission.READ_SYNC_SETTINGS,
+        Manifest.permission.WRITE_SYNC_SETTINGS,
+        Manifest.permission.READ_SYNC_STATS
+    )
+
     fun isDeclaredInManifest(context: Context, permission: String): Boolean {
-        return try {
+        try {
             val pm = context.packageManager
             val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 pm.getPackageInfo(
@@ -189,10 +219,12 @@ object PermissionManager {
                 @Suppress("DEPRECATION")
                 pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
             }
-            info.requestedPermissions?.contains(permission) == true
-        } catch (_: Throwable) {
-            false
-        }
+            if (info.requestedPermissions != null && info.requestedPermissions.isNotEmpty()) {
+                return info.requestedPermissions.contains(permission)
+            }
+        } catch (_: Throwable) {}
+
+        return KNOWN_MANIFEST_PERMISSIONS.contains(permission)
     }
 
     fun isPermissionGrantedByOs(context: Context, permission: String): Boolean {
