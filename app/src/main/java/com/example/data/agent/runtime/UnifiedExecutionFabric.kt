@@ -722,7 +722,7 @@ class UnifiedExecutionFabric(
                     )
                 }
                 val res = WastiDeviceController.sendWhatsAppMessage(ctx, target, content)
-                val waStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                val waStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE else UnifiedVerificationStatus.FAILED
                 return createResult(
                     request = request,
                     status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
@@ -731,7 +731,7 @@ class UnifiedExecutionFabric(
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
                     verificationStatus = waStatus,
-                    verificationEvidence = "WhatsApp intent dispatched"
+                    verificationEvidence = "WhatsApp intent dispatched (external sandbox verification unavailable)"
                 )
             }
             "send_email", "email" -> {

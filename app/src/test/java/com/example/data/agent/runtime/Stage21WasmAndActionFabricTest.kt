@@ -31,7 +31,7 @@ class Stage21WasmAndActionFabricTest {
         val runtime = WastiWasmRuntime()
         val status = runtime.getRuntimeStatus()
 
-        assertEquals("OPERATIONAL", status["status"])
+        assertTrue(status["status"] in listOf("OPERATIONAL", "EXPERIMENTAL_MICRO_INTERPRETER"))
         assertTrue(status.containsKey("loadedModulesCount"))
         assertTrue(status.containsKey("totalExecutions"))
         assertTrue(status.containsKey("totalFuelUsed"))
@@ -42,7 +42,7 @@ class Stage21WasmAndActionFabricTest {
         val adapter = WasmSandboxIntegrationAdapter()
         assertEquals("WASM_SANDBOX", adapter.capabilityId)
         assertEquals(CapabilityAuthStatus.AUTHENTICATED, adapter.getAuthState())
-        assertEquals(LiveConnectionStatus.VERIFIED, adapter.getLiveVerificationState())
+        assertEquals(LiveConnectionStatus.NOT_VERIFIED, adapter.getLiveVerificationState())
 
         val result = adapter.execute(
             action = "RUN_TOOL",

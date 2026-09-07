@@ -163,18 +163,16 @@ object PermissionManager {
     }
 
     private fun defaultConsentFor(permissionOrCapability: String): Boolean {
-        val sensitive = setOf(
-            Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.CALL_PHONE,
-            Manifest.permission.READ_CALENDAR,
-            Manifest.permission.WRITE_CALENDAR,
-            "SYSTEM_ALERT_WINDOW",
-            Manifest.permission.SYSTEM_ALERT_WINDOW,
-            "ANDROID_CONTROL",
-            "ACCESSIBILITY"
+        // Fail-closed default: Only basic non-dangerous Android OS permissions have default consent.
+        // Arbitrary runtime capabilities and sensitive permissions require explicit user consent.
+        val defaultAllowed = setOf(
+            Manifest.permission.INTERNET,
+            Manifest.permission.ACCESS_NETWORK_STATE,
+            Manifest.permission.MODIFY_AUDIO_SETTINGS,
+            Manifest.permission.WAKE_LOCK,
+            Manifest.permission.VIBRATE
         )
-        // Sensitive permissions require explicit opt-in / user consent policy
-        return permissionOrCapability !in sensitive
+        return permissionOrCapability in defaultAllowed
     }
 
     private val KNOWN_MANIFEST_PERMISSIONS = setOf(

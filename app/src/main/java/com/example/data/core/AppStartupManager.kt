@@ -141,7 +141,18 @@ object AppStartupManager {
             totalStartupTimeMs = totalMs
         )
 
-        // 1. Enforce that all critical stages have been evaluated
+        // 1. If any critical stage failed -> FATAL
+        if (failedCriticalStages.isNotEmpty()) {
+            val criticalStage = failedCriticalStages.first()
+            _startupState.value = AppStartupState.FatalError(
+                stage = criticalStage,
+                message = "Critical subsystem [${criticalStage.displayName}] failed to initialize properly."
+            )
+            WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", "Wasti AI OS Startup Blocked: Critical failure in ${criticalStage.name}"))
+            return
+        }
+
+        // 2. Enforce that all critical stages have been evaluated
         val criticalStages = StartupStage.values().filter { it.isCritical }
         val missingCritical = criticalStages.filter { !stageTimings.containsKey(it) && !failedCriticalStages.contains(it) }
         if (missingCritical.isNotEmpty()) {
@@ -151,17 +162,6 @@ object AppStartupManager {
                 message = "Startup sequence violated: critical subsystem [${uninitialized.displayName}] was never completed."
             )
             WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", "Wasti AI OS Startup Blocked: Uninitialized critical subsystem ${uninitialized.name}"))
-            return
-        }
-
-        // 2. If any critical stage failed -> FATAL
-        if (failedCriticalStages.isNotEmpty()) {
-            val criticalStage = failedCriticalStages.first()
-            _startupState.value = AppStartupState.FatalError(
-                stage = criticalStage,
-                message = "Critical subsystem [${criticalStage.displayName}] failed to initialize properly."
-            )
-            WastiEventBus.tryEmit(WastiEvent.SystemAlert("ERROR", "Wasti AI OS Startup Blocked: Critical failure in ${criticalStage.name}"))
             return
         }
 

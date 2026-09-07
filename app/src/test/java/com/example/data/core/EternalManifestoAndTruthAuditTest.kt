@@ -1608,25 +1608,29 @@ class EternalManifestoAndTruthAuditTest {
         }
 
         // 5. Mutation Loop Detection (Exceeding max attempts in sliding window)
-        val loopPath = "/data/data/com.termux/files/home/workspace/sample_loop.kt"
-        for (i in 1..3) {
-            safetyEngine.executeModificationWithStagedRollback(
-                targetFile = File(loopPath),
-                newContent = "fun sample() { val attempt = $i }",
-                isAutonomous = true,
-                stagedValidator = { true }
+        val loopFile = File.createTempFile("sample_loop_", ".kt")
+        try {
+            for (i in 1..3) {
+                safetyEngine.executeModificationWithStagedRollback(
+                    targetFile = loopFile,
+                    newContent = "fun sample() { val attempt = $i }",
+                    isAutonomous = true,
+                    stagedValidator = { true }
+                )
+            }
+            val fourthAttemptDecision = safetyEngine.evaluateModification(
+                filePath = loopFile.absolutePath,
+                newContent = "fun sample() { val attempt = 4 }",
+                isAutonomous = true
             )
+            assertEquals(
+                "4th autonomous mutation on same file in 30 min must be blocked by loop detector",
+                com.example.data.agent.runtime.ModificationDecision.BLOCKED_LOOP_DETECTED,
+                fourthAttemptDecision
+            )
+        } finally {
+            loopFile.delete()
         }
-        val fourthAttemptDecision = safetyEngine.evaluateModification(
-            filePath = loopPath,
-            newContent = "fun sample() { val attempt = 4 }",
-            isAutonomous = true
-        )
-        assertEquals(
-            "4th autonomous mutation on same file in 30 min must be blocked by loop detector",
-            com.example.data.agent.runtime.ModificationDecision.BLOCKED_LOOP_DETECTED,
-            fourthAttemptDecision
-        )
 
         // 6. Emergency Stop Blocks All Modifications
         com.example.data.agent.runtime.WastiEmergencyStopController.triggerEmergencyStop("Test Stop")

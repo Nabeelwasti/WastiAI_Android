@@ -379,7 +379,7 @@ class WastiWasmRuntime {
             params["expression"]?.trim()?.ifEmpty { null } ?: params["code"]?.trim()?.ifEmpty { null } ?: "1 + 1"
         }
 
-        val parsedArithmetic = parseArithmeticExpression(expr)
+        val parsedArithmetic = parseArithmeticExpression(expr, params)
         if (parsedArithmetic == null) {
             return WasmExecutionResult(
                 isSuccess = false,
@@ -430,17 +430,37 @@ class WastiWasmRuntime {
         )
     }
 
-    private fun parseArithmeticExpression(expr: String): Triple<Int, Char?, Int?>? {
-        val trimmed = expr.trim()
-        if (trimmed.isEmpty()) return null
+    private fun parseArithmeticExpression(expr: String, params: Map<String, String> = emptyMap()): Triple<Int, Char?, Int?>? {
+        var clean = expr.trim().removeSuffix(";").trim()
+        if (clean.isEmpty()) return null
 
-        trimmed.toIntOrNull()?.let {
+        if (clean.startsWith("return ")) {
+            clean = clean.removePrefix("return ").trim().removeSuffix(";").trim()
+        }
+
+        if (clean.contains("const ") && clean.contains(";")) {
+            val lastPart = clean.substringAfterLast(";").trim()
+            val decl = clean.substringBeforeLast(";").trim()
+            val varVal = decl.substringAfter("=").trim().removeSuffix(";").trim()
+            val varName = decl.substringAfter("const ").substringBefore("=").trim()
+            if (varName.isNotEmpty() && varVal.isNotEmpty()) {
+                clean = lastPart.replace(varName, varVal)
+            } else {
+                clean = lastPart
+            }
+        }
+        for ((k, v) in params) {
+            clean = clean.replace(k, v)
+        }
+        clean = clean.removeSuffix(";").trim()
+
+        clean.toIntOrNull()?.let {
             return Triple(it, null, null)
         }
 
         val operators = listOf('+', '-', '*', '/', '%')
         for (op in operators) {
-            val parts = trimmed.split(op)
+            val parts = clean.split(op)
             if (parts.size == 2) {
                 val left = parts[0].trim().toIntOrNull()
                 val right = parts[1].trim().toIntOrNull()
