@@ -223,6 +223,8 @@ class WastiEmergencyStopController : EmergencyStopController {
         )
     }
 
+    fun triggerReset() = resetEmergencyStop()
+
     private inline fun updateState(transform: (EmergencyStopSnapshot) -> EmergencyStopSnapshot) {
         while (true) {
             val current = state.get()

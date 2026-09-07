@@ -109,6 +109,29 @@ object ExecutionProvenanceLedger {
         _entries.value = _entries.value + tamperedEntry
     }
 
+    @Synchronized
+    fun injectTamperedEntryForTesting(badSignature: String) {
+        val latest = _entries.value.lastOrNull()
+        val entry = ProvenanceEntry(
+            entryId = "tampered_${System.currentTimeMillis()}",
+            taskId = "task_tampered",
+            actionId = "tampered_action",
+            capabilityId = "TAMPERED",
+            providerId = "untrusted",
+            modelId = null,
+            inputHash = hashString("tampered_input"),
+            outputHash = hashString("tampered_output"),
+            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+            evidenceSummary = "Tampered signature: $badSignature",
+            verificationStatus = "UNVERIFIED",
+            isVerified = false,
+            timestamp = System.currentTimeMillis(),
+            previousEntryHash = latest?.entryHash ?: GENESIS_HASH,
+            entryHash = badSignature
+        )
+        injectTamperedEntryForTesting(entry)
+    }
+
     fun verifyEntry(entryId: String): Boolean {
         val entry = _entries.value.find { it.entryId == entryId } ?: return false
         val payload = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"

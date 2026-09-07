@@ -640,29 +640,29 @@ class EternalManifestoAndTruthAuditTest {
         assertFalse("xAI must be unavailable when key is unconfigured or placeholder", xai.isAvailable())
 
         // 3. Calling generate() on unavailable providers must fail closed gracefully without throwing exceptions
-        val req = com.example.data.ai.provider.ProviderRequest(prompt = "Testing fail-closed execution")
+        val req = com.example.data.ai.model.ProviderRequest(prompt = "Testing fail-closed execution")
         val geminiRes = gemini.generate(req)
-        assertFalse(geminiRes.success)
+        assertTrue(geminiRes.isError)
         assertTrue(geminiRes.errorMessage?.contains("unavailable") == true)
 
         val openaiRes = openai.generate(req)
-        assertFalse(openaiRes.success)
+        assertTrue(openaiRes.isError)
         assertTrue(openaiRes.errorMessage?.contains("unavailable") == true)
 
         val deepseekRes = deepseek.generate(req)
-        assertFalse(deepseekRes.success)
+        assertTrue(deepseekRes.isError)
         assertTrue(deepseekRes.errorMessage?.contains("unavailable") == true)
 
         val groqRes = groq.generate(req)
-        assertFalse(groqRes.success)
+        assertTrue(groqRes.isError)
         assertTrue(groqRes.errorMessage?.contains("unavailable") == true)
 
         val openrouterRes = openrouter.generate(req)
-        assertFalse(openrouterRes.success)
+        assertTrue(openrouterRes.isError)
         assertTrue(openrouterRes.errorMessage?.contains("unavailable") == true)
 
         val xaiRes = xai.generate(req)
-        assertFalse(xaiRes.success)
+        assertTrue(xaiRes.isError)
         assertTrue(xaiRes.errorMessage?.contains("unavailable") == true)
     }
 
@@ -1025,7 +1025,7 @@ class EternalManifestoAndTruthAuditTest {
         assertFalse(stopController.stopStateFlow.value.isStopped)
 
         // 1. Setup active coroutine job and custom hook
-        val job = kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.Default) {
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
             kotlinx.coroutines.delay(10000)
         }
         assertTrue("Test job must be active before stop", job.isActive)
@@ -1067,7 +1067,7 @@ class EternalManifestoAndTruthAuditTest {
             )
         )
         assertEquals(UnifiedExecutionStatus.CANCELLED, execResult.status)
-        assertEquals(TerminalTruthState.CANCELLED, execResult.terminalTruthState)
+        assertEquals(UnifiedVerificationStatus.FAILED, execResult.verificationStatus)
         assertTrue(execResult.output.contains("Emergency stop is active"))
 
         // 6. Local model runtime aborts inference
@@ -1184,27 +1184,28 @@ class EternalManifestoAndTruthAuditTest {
             id = "test_plugin_audit",
             name = "Test Plugin",
             version = "1.0",
-            entryPoint = "com.test.Plugin",
-            isEnabled = true,
-            requiredPermissions = listOf(com.example.data.plugin.PluginPermission.DEVICE_AUTOMATION)
+            description = "Test plugin for audit",
+            author = "Wasti",
+            requiredPermissions = setOf(com.example.data.plugin.PluginPermission.DEVICE_CONTROL),
+            entryPointClass = "com.test.Plugin",
+            isEnabled = true
         )
         val testPlugin = object : com.example.data.plugin.WastiPlugin {
             override val manifest = testManifest
-            override suspend fun initialize(): Boolean = true
-            override suspend fun shutdown() {}
-            override fun getActions(): List<com.example.data.plugin.PluginAction> = emptyList()
+            override suspend fun onInitialize(): Boolean = true
+            override suspend fun onTerminate() {}
         }
         val sandbox = com.example.data.plugin.PluginSandbox(testPlugin)
 
         // Ensure permission is not pre-granted
         com.example.data.plugin.PermissionManager.revokePermission(
             testManifest.id,
-            com.example.data.plugin.PluginPermission.DEVICE_AUTOMATION
+            com.example.data.plugin.PluginPermission.DEVICE_CONTROL
         )
 
         runBlocking {
             val result = sandbox.executeSafely(
-                requiredPermission = com.example.data.plugin.PluginPermission.DEVICE_AUTOMATION,
+                requiredPermission = com.example.data.plugin.PluginPermission.DEVICE_CONTROL,
                 actionName = "testAction"
             ) { "executed" }
 
@@ -1217,10 +1218,10 @@ class EternalManifestoAndTruthAuditTest {
             // Once explicitly granted by user/system, execution succeeds
             com.example.data.plugin.PermissionManager.grantPermission(
                 testManifest.id,
-                com.example.data.plugin.PluginPermission.DEVICE_AUTOMATION
+                com.example.data.plugin.PluginPermission.DEVICE_CONTROL
             )
             val grantedResult = sandbox.executeSafely(
-                requiredPermission = com.example.data.plugin.PluginPermission.DEVICE_AUTOMATION,
+                requiredPermission = com.example.data.plugin.PluginPermission.DEVICE_CONTROL,
                 actionName = "testAction"
             ) { "executed_successfully" }
 
@@ -1238,8 +1239,8 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue(capTruth.notes.contains("DECLARED_OR_CONFIGURED_ONLY"))
 
         // 6. ProductionReadinessGate: RuntimePermissionTruth check
-        val readiness = ProductionReadinessGate.evaluate(context)
-        val permCheck = readiness.checks.find { it.subsystemName == "RuntimePermissionTruth" }
+        val readiness = ProductionReadinessGate.assessReadiness(context)
+        val permCheck = readiness.subsystemChecks.find { it.subsystemName == "RuntimePermissionTruth" }
         assertNotNull("RuntimePermissionTruth check must exist in ProductionReadinessGate", permCheck)
         assertTrue(permCheck!!.notes.contains("DECLARED_ONLY_PENDING_RUNTIME_GRANT"))
         assertEquals(ProductionReadinessState.DEVELOPMENT_READY, permCheck.state)
@@ -2285,7 +2286,6 @@ class EternalManifestoAndTruthAuditTest {
             capabilityId = "EXPLOIT",
             providerId = "rogue_node",
             modelId = null,
-            inputContent = "forge",
             inputHash = com.example.data.agent.runtime.ExecutionProvenanceLedger.hashString("forge"),
             outputHash = com.example.data.agent.runtime.ExecutionProvenanceLedger.hashString("forged_output"),
             evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
