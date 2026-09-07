@@ -252,6 +252,12 @@ object MemoryManager {
         )
     }
 
+    fun resetForTesting() {
+        activeMemoriesMap.clear()
+        vectorIndex.clear()
+        _memoriesFlow.value = emptyList()
+    }
+
     suspend fun deleteMemory(id: String) = withContext(Dispatchers.IO) {
         activeMemoriesMap.remove(id)
         vectorIndex.removeVector(id)

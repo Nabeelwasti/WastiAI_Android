@@ -60,7 +60,7 @@ object SelfModificationSafetyEngine {
     private const val MUTATION_WINDOW_MS = 30 * 60 * 1000L // 30 minutes
     private const val MAX_FILE_SIZE_BYTES = 500 * 1024L // 500 KB limit for self-modification
 
-    // Protected paths that can NEVER be modified autonomously without explicit admin authorization
+    // Protected paths and capabilities that can NEVER be modified autonomously without explicit admin authorization
     private val PROTECTED_SUBSTRINGS = listOf(
         "security/",
         "credential/",
@@ -69,6 +69,10 @@ object SelfModificationSafetyEngine {
         "WastiEmergencyStopController",
         "ZeroTrustSentinelEngine",
         "SelfModificationSafetyEngine",
+        "terminal",
+        "root_shell",
+        "accessibility_service",
+        "system_settings",
         "build.gradle",
         "settings.gradle",
         "androidmanifest.xml",

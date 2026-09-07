@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.service.WastiAccessibilityService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import com.example.data.memory.MemoryManager
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,6 +34,7 @@ class Stage6ObservationVerificationTest {
     @Before
     fun setUp() {
         WastiEmergencyStopController.resetEmergencyStop()
+        MemoryManager.resetForTesting()
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
         eventBus = AgentEventBus()
@@ -52,6 +54,7 @@ class Stage6ObservationVerificationTest {
     @After
     fun tearDown() {
         WastiEmergencyStopController.resetEmergencyStop()
+        MemoryManager.resetForTesting()
     }
 
     // 1. Executor completion without verification (intermediate observation contract)

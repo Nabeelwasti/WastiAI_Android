@@ -405,7 +405,15 @@ class UnifiedExecutionFabric(
             // 8. Final Result Assembly with Truthful Status Mapping
             val finalStatus = when (verResult.status) {
                 ActionVerificationStatus.VERIFIED -> {
-                    if (execResult.status == UnifiedExecutionStatus.COMPLETED) UnifiedExecutionStatus.VERIFIED else execResult.status
+                    if (execResult.status == UnifiedExecutionStatus.COMPLETED) {
+                        if (customExecutors.containsKey(normalizedCapabilityId(request.capabilityId))) {
+                            UnifiedExecutionStatus.COMPLETED
+                        } else {
+                            UnifiedExecutionStatus.VERIFIED
+                        }
+                    } else {
+                        execResult.status
+                    }
                 }
                 ActionVerificationStatus.FAILED -> {
                     if (execResult.status == UnifiedExecutionStatus.COMPLETED || execResult.status == UnifiedExecutionStatus.VERIFIED) {

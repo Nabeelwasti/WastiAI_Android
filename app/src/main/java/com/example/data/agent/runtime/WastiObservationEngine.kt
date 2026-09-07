@@ -221,10 +221,12 @@ class WastiObservationEngine(
         executorResult: UnifiedExecutionResult
     ): ObservationResult {
         val capabilityId = normalizeCapabilityId(request.capabilityId)
-        return when (capabilityId) {
-            in MEMORY_CAPABILITIES -> observeMemory(request, executorResult)
+        val category = effectiveRegistry.get(request.capabilityId)?.category?.uppercase(Locale.ROOT)
+            ?: effectiveRegistry.get(capabilityId)?.category?.uppercase(Locale.ROOT)
+        return when {
+            capabilityId in MEMORY_CAPABILITIES -> observeMemory(request, executorResult)
 
-            "search_web", "web_search", "read_web_page", "b2b_xray_search" -> result(
+            capabilityId in setOf("search_web", "web_search", "read_web_page", "b2b_xray_search") -> result(
                 request = request,
                 status = ObservationStatus.OBSERVED,
                 observedState = executorResult.output,
@@ -232,23 +234,29 @@ class WastiObservationEngine(
                 confidence = if (isExecutionSuccessful(executorResult)) 1.0 else 0.5
             )
 
-            "system_info", "system", "inspect_environment", "environment", "status",
-            "project_dev_manager", "create_project", "create_managed_project", "inspect_project",
-            "list_projects", "delete_project", "project", "dev_environment",
-            "navigate_to", "open_screen", "navigate" -> successfulExecutionObservation(
+            capabilityId in setOf(
+                "system_info", "system", "inspect_environment", "environment", "status",
+                "project_dev_manager", "create_project", "create_managed_project", "inspect_project",
+                "list_projects", "delete_project", "project", "dev_environment",
+                "navigate_to", "open_screen", "navigate"
+            ) -> successfulExecutionObservation(
                 request = request,
                 executorResult = executorResult,
                 description = "Environment, navigation, or project operation"
             )
 
-            "build_project", "compile_project", "build", "compile", "build_manager",
-            "test_project", "run_tests", "test", "test_runner",
-            "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
-            "package_manager", "resolve_package", "install_package",
-            "wasti_sandbox", "sandbox", "wasm", "wasm_sandbox", "wasm_runtime",
-            "local_server", "start_server", "stop_server", "server_status", "server",
-            "python_bridge", "termux_bridge",
-            "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python", "node", "npm" ->
+            category == "INVENTED" || category == "DYNAMIC_WRE" || capabilityId.startsWith("wre_tool_") ||
+                executorResult.executor.startsWith("InventionExecutor_") ||
+                capabilityId in setOf(
+                    "build_project", "compile_project", "build", "compile", "build_manager",
+                    "test_project", "run_tests", "test", "test_runner",
+                    "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
+                    "package_manager", "resolve_package", "install_package",
+                    "wasti_sandbox", "sandbox", "wasm", "wasm_sandbox", "wasm_runtime",
+                    "local_server", "start_server", "stop_server", "server_status", "server",
+                    "python_bridge", "termux_bridge",
+                    "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd", "python", "node", "npm"
+                ) ->
                 verifiedExecutionObservation(request, executorResult, capabilityId)
 
             else -> {

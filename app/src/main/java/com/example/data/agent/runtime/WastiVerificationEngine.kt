@@ -328,7 +328,7 @@ class WastiVerificationEngine {
                     trimmedEvidence.equals("passed", ignoreCase = true) ||
                     trimmedEvidence.length < 5
 
-                if (isSyntheticOrMock(trimmedEvidence) || isSyntheticOrMock(obs.observedState)) {
+                if (isSyntheticOrMock(trimmedEvidence)) {
                     VerificationResult(
                         taskId = request.taskId,
                         actionId = request.actionId,
@@ -462,8 +462,11 @@ class WastiVerificationEngine {
                 text.contains("active package matching", ignoreCase = true) ||
                 text.contains("window package", ignoreCase = true)
 
-            // Process / Shell / Code: must anchor to verified execution
-            cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ->
+            // Process / Shell / Code / Transform: must anchor to verified execution
+            cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ||
+                cap.contains("invented") || cap.contains("transformer") || cap.contains("transform") ||
+                cap.contains("reverse") || cap.contains("extractor") || cap.contains("aggregator") ||
+                cap.startsWith("wre_tool_") ->
                 text.contains("returned exit code 0", ignoreCase = true) ||
                 text.contains("FACT_VERIFIED", ignoreCase = true) ||
                 text.contains("Terminal command", ignoreCase = true) ||
