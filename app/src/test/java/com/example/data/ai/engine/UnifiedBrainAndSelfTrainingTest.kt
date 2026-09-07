@@ -56,14 +56,15 @@ class UnifiedBrainAndSelfTrainingTest {
         )
 
         assertNotNull(artifact)
-        assertEquals("Wasti Qwen Local (Alibaba Family)", artifact.sourceModel)
-        assertEquals(ModelSpecialization.DEEP_CODING, artifact.targetSpecialization)
+        val validArtifact = checkNotNull(artifact)
+        assertEquals("Wasti Qwen Local (Alibaba Family)", validArtifact.sourceModel)
+        assertEquals(ModelSpecialization.DEEP_CODING, validArtifact.targetSpecialization)
         assertTrue(SelfTrainingKnowledgeDistillationEngine.getKnowledgeBaseSize() >= initialSize + 1)
 
         // Test skill matching for future prompts
         val matches = SelfTrainingKnowledgeDistillationEngine.findMatchingSkills("background worker for data sync")
         assertTrue(matches.isNotEmpty())
-        assertEquals(artifact.artifactId, matches.first().artifactId)
+        assertEquals(validArtifact.artifactId, matches.first().artifactId)
     }
 
     @Test

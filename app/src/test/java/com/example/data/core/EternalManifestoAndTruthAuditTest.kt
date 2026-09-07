@@ -9,7 +9,7 @@ import com.example.data.db.WastiDatabase
 import com.example.data.drive.DriveSyncEngine
 import com.example.data.sync.CloudSyncManager
 import com.example.data.sync.SyncResult
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.*
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Test
@@ -1025,8 +1025,8 @@ class EternalManifestoAndTruthAuditTest {
         assertFalse(stopController.stopStateFlow.value.isStopped)
 
         // 1. Setup active coroutine job and custom hook
-        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
-            kotlinx.coroutines.delay(10000)
+        val job = CoroutineScope(Dispatchers.Default).launch {
+            delay(10000)
         }
         assertTrue("Test job must be active before stop", job.isActive)
 
