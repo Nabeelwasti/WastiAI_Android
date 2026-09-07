@@ -17,7 +17,8 @@ enum class NodePlatform {
     LOCAL_CONTAINER,
     IOT,
     ROBOT,
-    FUTURE_NODE
+    FUTURE_NODE,
+    LINUX
 }
 
 enum class NodeTrustState {

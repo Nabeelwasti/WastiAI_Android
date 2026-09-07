@@ -63,9 +63,9 @@ data class UnifiedExecutionResult(
     val error: String? = null,
     val executor: String,
     val providerOrModel: String? = null,
-    val startedAt: Long,
-    val completedAt: Long,
-    val verificationStatus: UnifiedVerificationStatus,
+    val startedAt: Long = System.currentTimeMillis(),
+    val completedAt: Long = System.currentTimeMillis(),
+    val verificationStatus: UnifiedVerificationStatus = UnifiedVerificationStatus.UNVERIFIED,
     val verificationEvidence: String? = null,
     val exitCode: Int? = null,
     val details: Map<String, String> = emptyMap()

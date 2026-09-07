@@ -81,9 +81,9 @@ data class ProjectEntity(
 @Entity(tableName = "tasks")
 data class TaskEntity(
     @PrimaryKey val id: String,
-    val projectId: String,
+    val projectId: String = "general",
     val title: String,
-    val description: String,
+    val description: String = "",
     val isCompleted: Boolean = false,
     val priority: String = "Medium",
     val assignedAgentId: String = "ceo_agent",

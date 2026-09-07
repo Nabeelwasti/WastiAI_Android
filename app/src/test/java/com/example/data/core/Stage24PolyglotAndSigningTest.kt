@@ -2,8 +2,8 @@ package com.example.data.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.TestCategory
-import com.example.data.agent.runtime.TestTier
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
 import com.example.data.node.WastiSovereignTunnelEngine
 import com.example.data.wre.ExecutionRequest
 import com.example.data.wre.WastiPolyglotTerminalEngine
@@ -52,7 +52,7 @@ class Stage24PolyglotAndSigningTest {
     }
 
     @Test
-    fun testAutonomousKeystoreGenerationAndVerification() {
+    fun testAutonomousKeystoreGenerationAndVerification() = runBlocking {
         assertFalse("Initially keystore should not exist", WastiProductionSigningEngine.hasExistingKeystore(context))
 
         val result = WastiProductionSigningEngine.generateSovereignReleaseKeystore(
@@ -106,7 +106,7 @@ class Stage24PolyglotAndSigningTest {
     }
 
     @Test
-    fun testSovereignTunnelLifecycle() {
+    fun testSovereignTunnelLifecycle() = runBlocking {
         val initialState = WastiSovereignTunnelEngine.tunnelState.value
         assertFalse(initialState.isActive)
 

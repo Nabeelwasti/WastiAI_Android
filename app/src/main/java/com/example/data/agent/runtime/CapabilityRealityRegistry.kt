@@ -618,6 +618,8 @@ class CapabilityRealityRegistry {
 
     fun get(capabilityId: String): CapabilityReality? = getCapabilityReality(capabilityId)
 
+    fun getCapability(capabilityId: String): CapabilityReality? = get(capabilityId)
+
     /**
      * Registers or atomically replaces the current reality record for one capability.
      * Concurrent readers always see either the previous complete record or the next one.

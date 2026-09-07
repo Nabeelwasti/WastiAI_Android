@@ -2,8 +2,8 @@ package com.example.data.node
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.TestCategory
-import com.example.data.agent.runtime.TestTier
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
 import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.data.agent.runtime.UnifiedExecutionStatus
 import com.example.data.agent.runtime.UnifiedVerificationStatus
