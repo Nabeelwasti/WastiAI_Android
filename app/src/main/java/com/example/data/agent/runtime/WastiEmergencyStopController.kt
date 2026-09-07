@@ -81,10 +81,16 @@ class WastiEmergencyStopController : EmergencyStopController {
         return AutoCloseable { registeredScopes.remove(name) }
     }
 
+    fun registerScope(scope: CoroutineScope): AutoCloseable =
+        registerScope("scope_${System.identityHashCode(scope)}", scope)
+
     fun registerJob(name: String, job: Job): AutoCloseable {
         registeredJobs[name] = job
         return AutoCloseable { registeredJobs.remove(name) }
     }
+
+    fun registerJob(job: Job): AutoCloseable =
+        registerJob("job_${System.identityHashCode(job)}", job)
 
     fun registerCancellationHook(name: String, hook: (reason: String) -> Unit): AutoCloseable {
         registeredHooks[name] = hook
@@ -236,8 +242,11 @@ class WastiEmergencyStopController : EmergencyStopController {
             get() = instance.stopStateFlow
 
         fun triggerEmergencyStop(reason: String) = instance.triggerEmergencyStop(reason)
-        fun triggerReset() = instance.triggerReset()
+        fun resetEmergencyStop() = instance.resetEmergencyStop()
+        fun triggerReset() = instance.resetEmergencyStop()
+        fun registerScope(scope: CoroutineScope): AutoCloseable = instance.registerScope(scope)
         fun registerScope(name: String, scope: CoroutineScope): AutoCloseable = instance.registerScope(name, scope)
+        fun registerJob(job: Job): AutoCloseable = instance.registerJob(job)
         fun registerJob(name: String, job: Job): AutoCloseable = instance.registerJob(name, job)
         fun registerCancellationHook(name: String, hook: (reason: String) -> Unit): AutoCloseable = instance.registerCancellationHook(name, hook)
         fun registerOkHttpClient(client: OkHttpClient): AutoCloseable = instance.registerOkHttpClient(client)
