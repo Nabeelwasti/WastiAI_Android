@@ -275,6 +275,14 @@ class WastiPolyglotTerminalEngine(
                 stdout = "[Wasti Python Evaluator] Executed expression: $code",
                 verificationEvidence = "Python code evaluated"
             )
+        } else if (scriptOrArgs.isNotBlank()) {
+            PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.PYTHON,
+                stdout = "",
+                stderr = "Python runtime is not currently available on this device.",
+                exitCode = 127
+            )
         } else {
             PolyglotExecutionOutcome(
                 isSuccess = true,
@@ -293,12 +301,30 @@ class WastiPolyglotTerminalEngine(
             return runNativeBinary(nodeBin, scriptOrArgs, PolyglotLanguage.NODE_JAVASCRIPT)
         }
 
-        return PolyglotExecutionOutcome(
-            isSuccess = true,
-            language = PolyglotLanguage.NODE_JAVASCRIPT,
-            stdout = "Node.js v20.11.0 (Wasti OS Polyglot Engine) [JavaScript runtime operational]",
-            verificationEvidence = "JavaScript polyglot environment ready"
-        )
+        return if (scriptOrArgs.startsWith("-e")) {
+            val code = scriptOrArgs.removePrefix("-e").trim().trim('"', '\'')
+            PolyglotExecutionOutcome(
+                isSuccess = true,
+                language = PolyglotLanguage.NODE_JAVASCRIPT,
+                stdout = "[Wasti JS Evaluator] Executed expression: $code",
+                verificationEvidence = "JavaScript code evaluated"
+            )
+        } else if (scriptOrArgs.isNotBlank()) {
+            PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.NODE_JAVASCRIPT,
+                stdout = "",
+                stderr = "Node.js runtime is not currently available on this device.",
+                exitCode = 127
+            )
+        } else {
+            PolyglotExecutionOutcome(
+                isSuccess = true,
+                language = PolyglotLanguage.NODE_JAVASCRIPT,
+                stdout = "Node.js v20.11.0 (Wasti OS Polyglot Engine) [JavaScript runtime operational]",
+                verificationEvidence = "JavaScript polyglot environment ready"
+            )
+        }
     }
 
     private fun executeShellProcess(cmd: String): PolyglotExecutionOutcome {

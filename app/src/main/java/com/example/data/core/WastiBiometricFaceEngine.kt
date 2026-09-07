@@ -85,7 +85,7 @@ object WastiBiometricFaceEngine {
             db.memoryDao().insertMemory(hashEntity)
 
             // Save feature vector as comma-separated floats
-            val vectorStr = vector.joinToString(",") { "%.4f".format(it) }
+            val vectorStr = vector.joinToString(",") { String.format(java.util.Locale.US, "%.4f", it) }
             val vectorEntity = MemoryEntity(
                 id = KEY_FACE_VECTOR,
                 key = KEY_FACE_VECTOR,

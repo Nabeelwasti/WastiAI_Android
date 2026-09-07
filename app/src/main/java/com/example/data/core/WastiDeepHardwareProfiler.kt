@@ -180,9 +180,17 @@ object WastiDeepHardwareProfiler {
             val memInfo = ActivityManager.MemoryInfo()
             if (am != null) {
                 am.getMemoryInfo(memInfo)
-                val totalMb = memInfo.totalMem / (1024 * 1024)
-                val availMb = memInfo.availMem / (1024 * 1024)
-                val threshMb = memInfo.threshold / (1024 * 1024)
+                val totalMb = if (memInfo.totalMem > 0L) {
+                    memInfo.totalMem / (1024 * 1024)
+                } else {
+                    (Runtime.getRuntime().maxMemory() / (1024 * 1024)).coerceAtLeast(512L)
+                }
+                val availMb = if (memInfo.availMem > 0L) {
+                    memInfo.availMem / (1024 * 1024)
+                } else {
+                    (Runtime.getRuntime().freeMemory() / (1024 * 1024)).coerceAtLeast(256L)
+                }
+                val threshMb = if (memInfo.threshold > 0L) memInfo.threshold / (1024 * 1024) else 128L
                 val usedRatio = 1.0f - (availMb.toFloat() / totalMb.coerceAtLeast(1))
                 MemoryTelemetry(totalMb, availMb, threshMb, memInfo.lowMemory, usedRatio)
             } else {
@@ -294,11 +302,11 @@ object WastiDeepHardwareProfiler {
      */
     fun generateSystemSummaryMarkdown(profile: DeepSystemProfile): String {
         return buildString {
-            appendLine("### ⚡ Wasti AI OS • Silicon & Environment Telemetry")
+            appendLine("### ⚡ Wasti Deep Silicon & Physical Reality Profile • Wasti AI OS Native Runtime")
             appendLine("**Hardware Body:** ${profile.identity.manufacturer} ${profile.identity.model} (${profile.identity.brand})")
-            appendLine("• **Architecture:** ${profile.cpu.primaryArchitecture} (${profile.cpu.availableCores} Cores, 64-bit: ${profile.cpu.is64Bit})")
+            appendLine("• **CPU Architecture:** ${profile.cpu.primaryArchitecture} (${profile.cpu.availableCores} Cores, 64-bit: ${profile.cpu.is64Bit})")
             appendLine("• **OS Kernel:** Android ${profile.os.androidVersion} (API ${profile.os.apiLevel}) • ${profile.os.kernelVersion.take(45)}")
-            appendLine("• **RAM Memory:** ${profile.memory.availableRamMb} MB Free / ${profile.memory.totalRamMb} MB Total (${(profile.memory.usedPercentage * 100).toInt()}% Used)")
+            appendLine("• **Memory Matrix (RAM):** ${profile.memory.availableRamMb} MB Free / ${profile.memory.totalRamMb} MB Total (${(profile.memory.usedPercentage * 100).toInt()}% Used)")
             appendLine("• **Internal Flash:** ${"%.1f".format(profile.storage.internalFreeGb)} GB Free / ${"%.1f".format(profile.storage.internalTotalGb)} GB Total")
             appendLine("• **Power Status:** ${profile.power.batteryPercentage}% • Plug: ${profile.power.chargePlug} • Temp: ${profile.power.temperatureCelsius}°C")
             

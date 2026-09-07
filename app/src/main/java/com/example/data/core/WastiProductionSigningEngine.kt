@@ -6,19 +6,27 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.math.BigInteger
+import java.nio.charset.StandardCharsets
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.Signature
 import java.security.cert.Certificate
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * [P0-03 & The Production Law: Sovereign Keystore & Release Signing Engine]
@@ -345,7 +353,8 @@ object WastiProductionSigningEngine {
     }
 
     /**
-     * Generates a self-signed X.509 certificate using standard Java ASN.1 / X509 encoding.
+     * Generates a self-signed X.509 certificate using standard ASN.1 DER encoding.
+     * Compliant with RFC 5280 and standard Java/Android Security providers.
      */
     private fun generateSelfSignedCertificate(
         keyPair: KeyPair,
@@ -353,112 +362,128 @@ object WastiProductionSigningEngine {
         notBefore: Date,
         notAfter: Date
     ): X509Certificate {
-        // Build minimal valid self-signed X.509 certificate structure
-        val distinguishedName = "CN=Wasti Production Release, O=$organization, C=US"
-        
-        // Generate DER certificate bytes with standard SHA256withRSA signature
-        val certFactory = CertificateFactory.getInstance("X.509")
-        
-        // Create standard self-signed certificate using Java Reflection or Sun security if available,
-        // or synthesize standard X509CertImpl / BouncyCastle / Android OpenSSL cert
-        return try {
-            val certClass = Class.forName("sun.security.x509.X509CertImpl")
-            val certInfoClass = Class.forName("sun.security.x509.X509CertInfo")
-            val x500NameClass = Class.forName("sun.security.x509.X500Name")
-            val certValidityClass = Class.forName("sun.security.x509.CertificateValidity")
-            val certSerialClass = Class.forName("sun.security.x509.CertificateSerialNumber")
-            val certAlgIdClass = Class.forName("sun.security.x509.CertificateAlgorithmId")
-            val algIdClass = Class.forName("sun.security.x509.AlgorithmId")
-            val certKeyClass = Class.forName("sun.security.x509.CertificateX509Key")
+        val cn = "Wasti Production Release"
+        val country = "US"
 
-            val info = certInfoClass.getDeclaredConstructor().newInstance()
-            val validity = certValidityClass.getDeclaredConstructor(Date::class.java, Date::class.java).newInstance(notBefore, notAfter)
-            val sn = certSerialClass.getDeclaredConstructor(BigInteger::class.java).newInstance(BigInteger(64, SecureRandom()))
-            val owner = x500NameClass.getDeclaredConstructor(String::class.java).newInstance(distinguishedName)
-            val alg = algIdClass.getDeclaredMethod("get", String::class.java).invoke(null, "SHA256withRSA")
-            val certAlg = certAlgIdClass.getDeclaredConstructor(algIdClass).newInstance(alg)
+        // AlgorithmIdentifier SHA256withRSA: 1.2.840.113549.1.1.11
+        val algId = byteArrayOf(
+            0x30.toByte(), 0x0D.toByte(),
+            0x06.toByte(), 0x09.toByte(), 0x2A.toByte(), 0x86.toByte(), 0x48.toByte(), 0x86.toByte(), 0xF7.toByte(), 0x0D.toByte(), 0x01.toByte(), 0x01.toByte(), 0x0B.toByte(),
+            0x05.toByte(), 0x00.toByte()
+        )
 
-            val setMethod = certInfoClass.getDeclaredMethod("set", String::class.java, Any::class.java)
-            setMethod.invoke(info, "validity", validity)
-            setMethod.invoke(info, "serialNumber", sn)
-            setMethod.invoke(info, "subject", owner)
-            setMethod.invoke(info, "issuer", owner)
-            setMethod.invoke(info, "key", certKeyClass.getDeclaredConstructor(java.security.PublicKey::class.java).newInstance(keyPair.public))
-            setMethod.invoke(info, "version", Class.forName("sun.security.x509.CertificateVersion").getDeclaredConstructor(Int::class.java).newInstance(2))
-            setMethod.invoke(info, "algorithmID", certAlg)
+        // version [0] EXPLICIT INTEGER 2 (v3)
+        val version = derEncode(0xA0, derInteger(BigInteger.valueOf(2)))
+        val serialNumber = derInteger(BigInteger(64, SecureRandom()).abs())
+        val name = createDerName(cn, organization, country)
+        val validity = derSequence(derTime(notBefore), derTime(notAfter))
+        val spki = keyPair.public.encoded
 
-            val certObj = certClass.getDeclaredConstructor(certInfoClass).newInstance(info)
-            val signMethod = certClass.getDeclaredMethod("sign", java.security.PrivateKey::class.java, String::class.java)
-            signMethod.invoke(certObj, keyPair.private, "SHA256withRSA")
+        val tbsCert = derSequence(
+            version,
+            serialNumber,
+            algId,
+            name,
+            validity,
+            name,
+            spki
+        )
 
-            certObj as X509Certificate
-        } catch (_: Throwable) {
-            // Android platform fallback: Generate synthetic certificate representation
-            createSyntheticAndroidX509(keyPair, distinguishedName, notBefore, notAfter)
+        // Sign tbsCert with private key
+        val sig = Signature.getInstance("SHA256withRSA")
+        sig.initSign(keyPair.private)
+        sig.update(tbsCert)
+        val signatureBytes = sig.sign()
+
+        // BIT STRING: 0 unused bits + signatureBytes
+        val bitStringContent = ByteArray(1 + signatureBytes.size)
+        bitStringContent[0] = 0x00
+        System.arraycopy(signatureBytes, 0, bitStringContent, 1, signatureBytes.size)
+        val sigBitString = derEncode(0x03, bitStringContent)
+
+        val certDer = derSequence(tbsCert, algId, sigBitString)
+
+        val cf = CertificateFactory.getInstance("X.509")
+        return cf.generateCertificate(ByteArrayInputStream(certDer)) as X509Certificate
+    }
+
+    private fun derLength(length: Int): ByteArray {
+        return when {
+            length < 128 -> byteArrayOf(length.toByte())
+            length < 256 -> byteArrayOf(0x81.toByte(), length.toByte())
+            length < 65536 -> byteArrayOf(0x82.toByte(), (length shr 8).toByte(), (length and 0xFF).toByte())
+            else -> byteArrayOf(0x83.toByte(), (length shr 16).toByte(), ((length shr 8) and 0xFF).toByte(), (length and 0xFF).toByte())
         }
     }
 
-    private fun createSyntheticAndroidX509(
-        keyPair: KeyPair,
-        dn: String,
-        notBefore: Date,
-        notAfter: Date
-    ): X509Certificate {
-        // Fallback for Android runtime: self-signing provider via BouncyCastle or KeyStore wrapper
-        val provider = java.security.Security.getProvider("BC") ?: java.security.Security.getProvider("AndroidOpenSSL")
-        val cf = CertificateFactory.getInstance("X.509")
+    private fun derEncode(tag: Int, content: ByteArray): ByteArray {
+        val len = derLength(content.size)
+        val res = ByteArray(1 + len.size + content.size)
+        res[0] = tag.toByte()
+        System.arraycopy(len, 0, res, 1, len.size)
+        System.arraycopy(content, 0, res, 1 + len.size, content.size)
+        return res
+    }
 
-        // Construct standard self-signed certificate wrapper
-        val dummyCertPem = """
------BEGIN CERTIFICATE-----
-MIIDRjCCAi6gAwIBAgIIZ1a2b3c4d5EwDQYJKoZIhvcNAQELBQAwNjEWMBQGA1UE
-AwwNV2FzdGlPU1JlbGVhc2UxETAPBgNVBAoMCFdhc3RpT1MxCzAJBgNVBAYTAlVT
-MB4XDTI2MDEwMTAwMDAwMFoXDTUxMDEwMTAwMDAwMFowNjEWMBQGA1UEAwwNV2Fz
-dGlPU1JlbGVhc2UxETAPBgNVBAoMCFdhc3RpT1MxCzAJBgNVBAYTAlVTMIIBIjAN
-BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy0e1234567890abcdefghijklmnopqrst
-uvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnop
-qrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefghijkl
-mnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcdefgh
-ijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890abcd
-efghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz1234567890
-abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyzIDAQAB
-MA0GCSqGSIb3DQEBCwUAA4IBAQBL...==
------END CERTIFICATE-----
-        """.trimIndent()
-        
-        return try {
-            cf.generateCertificate(dummyCertPem.byteInputStream()) as X509Certificate
-        } catch (_: Exception) {
-            // Ultimate fallback: generate dynamic certificate in memory
-            object : X509Certificate() {
-                override fun getPublicKey() = keyPair.public
-                override fun getEncoded() = keyPair.public.encoded
-                override fun verify(key: java.security.PublicKey?) {}
-                override fun verify(key: java.security.PublicKey?, sigProvider: String?) {}
-                override fun toString() = "SovereignX509Certificate($dn)"
-                override fun hasUnsupportedCriticalExtension() = false
-                override fun getCriticalExtensionOIDs() = emptySet<String>()
-                override fun getNonCriticalExtensionOIDs() = emptySet<String>()
-                override fun getExtensionValue(oid: String?) = null
-                override fun checkValidity() {}
-                override fun checkValidity(date: Date?) {}
-                override fun getVersion() = 3
-                override fun getSerialNumber() = BigInteger.ONE
-                override fun getIssuerDN() = java.security.Principal { dn }
-                override fun getSubjectDN() = java.security.Principal { dn }
-                override fun getNotBefore() = notBefore
-                override fun getNotAfter() = notAfter
-                override fun getTBSCertificate() = ByteArray(0)
-                override fun getSignature() = ByteArray(0)
-                override fun getSigAlgName() = "SHA256withRSA"
-                override fun getSigAlgOID() = "1.2.840.113549.1.1.11"
-                override fun getSigAlgParams() = null
-                override fun getIssuerUniqueID() = null
-                override fun getSubjectUniqueID() = null
-                override fun getKeyUsage() = null
-                override fun getBasicConstraints() = -1
+    private fun derSequence(vararg items: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+        for (item in items) baos.write(item)
+        return derEncode(0x30, baos.toByteArray())
+    }
+
+    private fun derSet(vararg items: ByteArray): ByteArray {
+        val baos = ByteArrayOutputStream()
+        for (item in items) baos.write(item)
+        return derEncode(0x31, baos.toByteArray())
+    }
+
+    private fun derInteger(value: BigInteger): ByteArray {
+        return derEncode(0x02, value.toByteArray())
+    }
+
+    private fun derOid(oidBytes: ByteArray): ByteArray {
+        return derEncode(0x06, oidBytes)
+    }
+
+    private fun derUtf8String(str: String): ByteArray {
+        return derEncode(0x0C, str.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    private fun derPrintableString(str: String): ByteArray {
+        return derEncode(0x13, str.toByteArray(StandardCharsets.US_ASCII))
+    }
+
+    private fun derTime(date: Date): ByteArray {
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        cal.time = date
+        val year = cal.get(Calendar.YEAR)
+        return if (year in 1950..2049) {
+            val sdf = SimpleDateFormat("yyMMddHHmmss'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
             }
+            derEncode(0x17, sdf.format(date).toByteArray(StandardCharsets.US_ASCII))
+        } else {
+            val sdf = SimpleDateFormat("yyyyMMddHHmmss'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            derEncode(0x18, sdf.format(date).toByteArray(StandardCharsets.US_ASCII))
         }
+    }
+
+    private fun createDerName(cn: String, org: String, country: String): ByteArray {
+        val cnOid = byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x03.toByte())
+        val orgOid = byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x0A.toByte())
+        val cOid = byteArrayOf(0x55.toByte(), 0x04.toByte(), 0x06.toByte())
+
+        val atvC = derSequence(derOid(cOid), derPrintableString(country))
+        val atvOrg = derSequence(derOid(orgOid), derUtf8String(org))
+        val atvCn = derSequence(derOid(cnOid), derUtf8String(cn))
+
+        return derSequence(
+            derSet(atvC),
+            derSet(atvOrg),
+            derSet(atvCn)
+        )
     }
 
     private fun computeFingerprint(cert: Certificate, algorithm: String): String {

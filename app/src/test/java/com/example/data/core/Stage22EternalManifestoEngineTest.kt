@@ -172,7 +172,7 @@ class Stage22EternalManifestoEngineTest {
     }
 
     @Test
-    fun testResurrectionProtocolExportEncryptDecryptRestoreCycle() = runBlocking {
+    fun testResurrectionProtocolExportEncryptDecryptRestoreCycle(): Unit = runBlocking {
         val passphrase = "EternalManifestoSecureKey2026!"
 
         // 1. Seed database with rich initial state
@@ -369,7 +369,7 @@ class Stage22EternalManifestoEngineTest {
     }
 
     @Test
-    fun testResurrection12WordMnemonicSeedCycle() = runBlocking {
+    fun testResurrection12WordMnemonicSeedCycle(): Unit = runBlocking {
         // 1. Generate BIP-39 style 12-word recovery mnemonic
         val mnemonic = WastiResurrectionProtocol.generate12WordMnemonic()
         val words = mnemonic.split(" ")

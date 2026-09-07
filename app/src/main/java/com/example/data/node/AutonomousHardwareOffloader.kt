@@ -61,6 +61,26 @@ object AutonomousHardwareOffloader {
         "wasm_heavy_compile"
     )
 
+    private val LOCAL_EXCLUSIVE_CAPABILITIES = setOf(
+        "file",
+        "files",
+        "file_system",
+        "fs",
+        "workspace",
+        "memory",
+        "system",
+        "sysinfo",
+        "system_info",
+        "sensory",
+        "keystore",
+        "tunnel",
+        "device_control",
+        "project",
+        "terminal",
+        "status",
+        "wasm"
+    )
+
     /**
      * Determines if a natural language prompt explicitly requests heavy processing or desktop offloading.
      */
@@ -105,6 +125,20 @@ object AutonomousHardwareOffloader {
      * Evaluates whether a task should be autonomously offloaded to a nearby Desktop or Laptop.
      */
     fun evaluateOffload(context: Context?, request: UnifiedExecutionRequest): OffloadDecision {
+        val cap = request.capabilityId.lowercase()
+        val action = request.actionId.lowercase()
+
+        // Local-host exclusive operations must never be offloaded to remote bodies
+        if (LOCAL_EXCLUSIVE_CAPABILITIES.any { cap.contains(it) || action.contains(it) }) {
+            return OffloadDecision(
+                shouldOffload = false,
+                targetNode = null,
+                reason = "Local Host Exclusive: Capability '$cap' must execute directly on the local mobile spacecraft.",
+                estimatedLocalConstraintScore = 0.0f,
+                taskIntensityScore = 0.10f
+            )
+        }
+
         val isHeavy = isHeavyWorkload(request)
         val hwSpecs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
 
@@ -129,8 +163,8 @@ object AutonomousHardwareOffloader {
             )
         }
 
-        // Rule 2: Device is constrained (battery/thermals/RAM) and any nearby node is available
-        if (constraintScore >= 0.50f && nearbyHeavyNodes.isNotEmpty()) {
+        // Rule 2: Device is constrained (battery/thermals/RAM), workload is suitable, and any nearby node is available
+        if (constraintScore >= 0.50f && (isHeavy || request.requestedStrategy == com.example.data.agent.runtime.ExecutionStrategy.REMOTE_PREFER) && nearbyHeavyNodes.isNotEmpty()) {
             val bestNode = nearbyHeavyNodes.first()
             return OffloadDecision(
                 shouldOffload = true,
@@ -205,29 +239,15 @@ object AutonomousHardwareOffloader {
         request: UnifiedExecutionRequest
     ): UnifiedExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        val adapter = BluetoothAdapter.getDefaultAdapter()
+        val adapter = try { BluetoothAdapter.getDefaultAdapter() } catch (_: Throwable) { null }
 
-        if (adapter == null || !adapter.isEnabled) {
-            return@withContext UnifiedExecutionResult(
-                taskId = request.taskId,
-                actionId = request.actionId,
-                capabilityId = request.capabilityId,
-                status = UnifiedExecutionStatus.FAILED,
-                output = "Bluetooth adapter unavailable for RFCOMM offload.",
-                error = "BLUETOOTH_UNAVAILABLE",
-                executor = "AutonomousHardwareOffloader",
-                startedAt = startTime,
-                completedAt = System.currentTimeMillis(),
-                verificationStatus = UnifiedVerificationStatus.FAILED
-            )
-        }
-
-        var socket: BluetoothSocket? = null
-        try {
-            val device: BluetoothDevice = adapter.getRemoteDevice(targetNode.addressOrIp)
-            socket = device.createRfcommSocketToServiceRecord(WastiNearbyHardwareEngine.WASTI_RFCOMM_UUID)
-            adapter.cancelDiscovery()
-            socket.connect()
+        if (adapter != null && adapter.isEnabled) {
+            var socket: BluetoothSocket? = null
+            try {
+                val device: BluetoothDevice = adapter.getRemoteDevice(targetNode.addressOrIp)
+                socket = device.createRfcommSocketToServiceRecord(WastiNearbyHardwareEngine.WASTI_RFCOMM_UUID)
+                adapter.cancelDiscovery()
+                socket.connect()
 
             val writer = BufferedWriter(OutputStreamWriter(socket.outputStream, Charsets.UTF_8))
             val reader = BufferedReader(InputStreamReader(socket.inputStream, Charsets.UTF_8))

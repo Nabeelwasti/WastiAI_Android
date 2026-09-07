@@ -9,6 +9,7 @@ import com.example.data.agent.runtime.UnifiedExecutionStatus
 import com.example.data.agent.runtime.UnifiedVerificationStatus
 import com.example.data.di.WastiServiceLocator
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -36,6 +37,11 @@ class Stage23SwarmHardwareOffloadTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        WastiNearbyHardwareEngine.clearForTesting()
+    }
+
+    @After
+    fun tearDown() {
         WastiNearbyHardwareEngine.clearForTesting()
     }
 

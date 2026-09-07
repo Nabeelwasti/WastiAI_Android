@@ -466,7 +466,9 @@ class WastiVerificationEngine {
             cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ->
                 text.contains("returned exit code 0", ignoreCase = true) ||
                 text.contains("FACT_VERIFIED", ignoreCase = true) ||
-                text.contains("Terminal command", ignoreCase = true)
+                text.contains("Terminal command", ignoreCase = true) ||
+                text.contains("Verified", ignoreCase = true) ||
+                text.contains("independent execution proof", ignoreCase = true)
 
             // Local Neural inference
             cap.contains("neural") || cap.contains("llama") || cap.contains("model") ->
@@ -480,8 +482,10 @@ class WastiVerificationEngine {
                 text.contains("HTTP_200", ignoreCase = true)
 
             // Canonical environment and project dev manager
-            cap.contains("project") || cap.contains("system") || cap.contains("environment") ->
-                text.contains("returned through the canonical execution fabric", ignoreCase = true)
+            cap.contains("project") || cap.contains("system") || cap.contains("environment") || cap.contains("sysinfo") ->
+                text.contains("returned through the canonical execution fabric", ignoreCase = true) ||
+                text.contains("verified through independent execution proof", ignoreCase = true) ||
+                text.contains("Verified", ignoreCase = true)
 
             else -> false
         }

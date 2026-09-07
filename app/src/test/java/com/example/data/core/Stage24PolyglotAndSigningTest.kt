@@ -44,10 +44,16 @@ class Stage24PolyglotAndSigningTest {
         workspaceManager = WreWorkspaceManager(context)
         polyglotEngine = WastiPolyglotTerminalEngine(context, workspaceManager)
 
+        WastiSovereignTunnelEngine.terminateTunnel(context)
+
         // Clean up any test keystore
-        val keystoreFile = File(context.filesDir, "wasti_production_release.p12")
-        if (keystoreFile.exists()) {
-            keystoreFile.delete()
+        val keystoreInternal = File(context.filesDir, "security/keystore/wasti_production_release.p12")
+        if (keystoreInternal.exists()) {
+            keystoreInternal.delete()
+        }
+        val keystoreRoot = File(context.filesDir, "wasti_production_release.p12")
+        if (keystoreRoot.exists()) {
+            keystoreRoot.delete()
         }
     }
 
@@ -271,9 +277,11 @@ class Stage24PolyglotAndSigningTest {
     fun testBiometricFaceEngineEnrollmentAndMatching() = runBlocking {
         // Create a test 64x64 bitmap representing Commander's face
         val faceBitmap = android.graphics.Bitmap.createBitmap(64, 64, android.graphics.Bitmap.Config.ARGB_8888)
-        val canvas = android.graphics.Canvas(faceBitmap)
-        val paint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE }
-        canvas.drawCircle(32f, 32f, 20f, paint)
+        for (x in 16 until 48) {
+            for (y in 16 until 48) {
+                faceBitmap.setPixel(x, y, android.graphics.Color.WHITE)
+            }
+        }
 
         // 1. Enroll face
         val enrollResult = WastiBiometricFaceEngine.enrollUserFace(context, faceBitmap)
