@@ -1,12 +1,15 @@
 package com.example.service
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import androidx.core.content.ContextCompat
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -199,9 +202,11 @@ class WakeWordVoskService : Service() {
         }
     }
 
+    @android.annotation.SuppressLint("MissingPermission")
     private fun startAudioRecordBufferLoop() {
         serviceScope.launch {
-            if (!com.example.assistant.PermissionManager.hasUserConsent("RECORD_AUDIO") ||
+            if (ContextCompat.checkSelfPermission(this@WakeWordVoskService, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
+                !com.example.assistant.PermissionManager.hasUserConsent("RECORD_AUDIO") ||
                 !com.example.assistant.PermissionManager.hasRecordAudio(this@WakeWordVoskService)
             ) {
                 Log.e(TAG, "RECORD_AUDIO permission or user consent not granted")
@@ -216,6 +221,12 @@ class WakeWordVoskService : Service() {
             ).coerceAtLeast(4096)
 
             try {
+                if (ContextCompat.checkSelfPermission(this@WakeWordVoskService, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                    Log.e(TAG, "Microphone runtime permission check failed before AudioRecord creation")
+                    WakeWordVoskState.updateStatus("Error: Microphone permission required")
+                    return@launch
+                }
+
                 audioRecord = AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     SAMPLE_RATE,
@@ -260,6 +271,9 @@ class WakeWordVoskService : Service() {
                         }
                     }
                 }
+            } catch (se: SecurityException) {
+                Log.e(TAG, "SecurityException creating or starting AudioRecord", se)
+                WakeWordVoskState.updateStatus("Error: Microphone permission rejected")
             } catch (e: Exception) {
                 Log.e(TAG, "Error reading audio buffer loop", e)
                 WakeWordVoskState.updateStatus("Error: Audio buffer read failure")
