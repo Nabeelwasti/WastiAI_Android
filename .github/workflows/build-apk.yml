@@ -306,17 +306,7 @@ jobs:
           if [ -n "$AAPT" ] && [ -x "$AAPT" ] && "$AAPT" dump badging "$TARGET_APK" 2>/dev/null | grep -q "com.aistudio.wastios.k9v2pz"; then
             echo "SUCCESS: Canonical package ID verified via aapt in $TARGET_APK"
           else
-            python3 -c "
-import zipfile, sys
-apk = sys.argv[1]
-with zipfile.ZipFile(apk, 'r') as z:
-    b = z.read('AndroidManifest.xml')
-    p1 = b'com.aistudio.wastios.k9v2pz'
-    p2 = 'com.aistudio.wastios.k9v2pz'.encode('utf-16le')
-    if p1 not in b and p2 not in b:
-        print(f'ERROR: Canonical package ID com.aistudio.wastios.k9v2pz not found in {apk}')
-        sys.exit(1)
-" "$TARGET_APK" || {
+            python3 -c "import zipfile, sys; apk = sys.argv[1]; b = zipfile.ZipFile(apk).read('AndroidManifest.xml'); sys.exit(0 if (b'com.aistudio.wastios.k9v2pz' in b or 'com.aistudio.wastios.k9v2pz'.encode('utf-16le') in b) else 1)" "$TARGET_APK" || {
               echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' not found in $TARGET_APK AndroidManifest.xml!"
               exit 1
             }
@@ -381,17 +371,7 @@ with zipfile.ZipFile(apk, 'r') as z:
           test -f /tmp/aab_inspect/base/dex/classes.dex || { echo "ERROR: base/dex/classes.dex missing in AAB"; exit 1; }
 
           # Verify package ID in AAB manifest (protobuf or UTF-8/UTF-16 binary XML)
-          python3 -c "
-import sys
-path = '/tmp/aab_inspect/base/manifest/AndroidManifest.xml'
-with open(path, 'rb') as f:
-    b = f.read()
-p1 = b'com.aistudio.wastios.k9v2pz'
-p2 = 'com.aistudio.wastios.k9v2pz'.encode('utf-16le')
-if p1 not in b and p2 not in b:
-    print('ERROR: Canonical package ID com.aistudio.wastios.k9v2pz missing in AAB manifest')
-    sys.exit(1)
-" || {
+          python3 -c "import sys; b = open('/tmp/aab_inspect/base/manifest/AndroidManifest.xml', 'rb').read(); sys.exit(0 if (b'com.aistudio.wastios.k9v2pz' in b or 'com.aistudio.wastios.k9v2pz'.encode('utf-16le') in b) else 1)" || {
             echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' missing in AAB manifest!"
             exit 1
           }
