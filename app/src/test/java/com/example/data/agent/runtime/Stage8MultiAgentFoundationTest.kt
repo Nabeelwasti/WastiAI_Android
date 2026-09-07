@@ -3,6 +3,7 @@ package com.example.data.agent.runtime
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -32,6 +33,7 @@ class Stage8MultiAgentFoundationTest {
 
     @Before
     fun setUp() {
+        WastiEmergencyStopController.resetEmergencyStop()
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
         fabric = UnifiedExecutionFabric(
@@ -41,6 +43,11 @@ class Stage8MultiAgentFoundationTest {
             appContext = context
         )
         coordinator = AgentTaskCoordinator(fabric)
+    }
+
+    @After
+    fun tearDown() {
+        WastiEmergencyStopController.resetEmergencyStop()
     }
 
     @Test

@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.service.WastiAccessibilityService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -31,19 +32,26 @@ class Stage6ObservationVerificationTest {
 
     @Before
     fun setUp() {
+        WastiEmergencyStopController.resetEmergencyStop()
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
         eventBus = AgentEventBus()
         auditEngine = RealityAuditEngine(realityRegistry, WastiCredentialBroker())
-        observationEngine = WastiObservationEngine()
+        observationEngine = WastiObservationEngine(realityRegistry = realityRegistry, appContext = context)
         verificationEngine = WastiVerificationEngine()
         fabric = UnifiedExecutionFabric(
             realityRegistry = realityRegistry,
             eventBus = eventBus,
             auditEngine = auditEngine,
             observationEngine = observationEngine,
-            verificationEngine = verificationEngine
+            verificationEngine = verificationEngine,
+            appContext = context
         )
+    }
+
+    @After
+    fun tearDown() {
+        WastiEmergencyStopController.resetEmergencyStop()
     }
 
     // 1. Executor completion without verification (intermediate observation contract)

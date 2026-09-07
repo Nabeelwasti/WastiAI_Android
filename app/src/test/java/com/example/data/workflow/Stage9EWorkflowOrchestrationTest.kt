@@ -12,6 +12,7 @@ import com.example.data.wre.ExecutionRequest
 import com.example.data.wre.ExecutionStatus
 import com.example.data.wre.WreManager
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -45,12 +46,18 @@ class Stage9EWorkflowOrchestrationTest {
 
     @Before
     fun setup() {
+        WastiEmergencyStopController.resetEmergencyStop()
         context = ApplicationProvider.getApplicationContext()
         com.example.data.di.WastiServiceLocator.init(context)
         wreManager = WreManager.getInstance(context)
         capabilityOrchestrator = AutonomousCapabilityOrchestrator(context)
         workflowEngine = UnifiedWorkflowEngine(context = context, capabilityOrchestrator = capabilityOrchestrator)
         jobManager = WorkflowJobManager(context = context, workflowEngine = workflowEngine)
+    }
+
+    @After
+    fun tearDown() {
+        WastiEmergencyStopController.resetEmergencyStop()
     }
 
     @Test

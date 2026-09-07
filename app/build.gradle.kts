@@ -95,6 +95,10 @@ android {
         it.testLogging {
           events("passed", "skipped", "failed", "standardError")
           showStandardStreams = true
+          exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+          showExceptions = true
+          showCauses = true
+          showStackTraces = true
         }
       }
     }

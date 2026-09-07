@@ -145,7 +145,7 @@ object WastiProductionSigningEngine {
                 KeystoreGenerationResult(
                     isSuccess = true,
                     keystoreDetails = null,
-                    message = "Keystore imported to ${targetFile.absolutePath} (Passphrase verification pending)"
+                    message = "Successfully imported existing keystore to ${targetFile.absolutePath} (Passphrase verification pending)"
                 )
             }
         } catch (e: Exception) {

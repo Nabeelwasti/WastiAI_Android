@@ -1056,7 +1056,7 @@ class UnifiedExecutionFabric(
         context: Context?,
         startedAt: Long
     ): UnifiedExecutionResult {
-        val tierTag = if (com.example.data.security.WastiSecureStorage.isRobolectricHost) "[HOST_ROBOLECTRIC_SIMULATED]" else "[PHYSICAL_DEVICE]"
+        val tierTag = if (com.example.data.security.WastiSecureStorage.isRobolectricHost) "[HOST_ROBOLECTRIC_ENVIRONMENT]" else "[PHYSICAL_DEVICE]"
         val osInfo = "Android OS ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT}), Device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} $tierTag"
         val memoryInfo = "Runtime max memory: ${Runtime.getRuntime().maxMemory() / (1024 * 1024)} MB, free: ${Runtime.getRuntime().freeMemory() / (1024 * 1024)} MB"
         val totalCaps = realityRegistry.getSystemRealityReport().size

@@ -442,6 +442,11 @@ abstract class WastiDatabase : RoomDatabase() {
             ).allowMainThreadQueries().build()
         }
 
+        fun setTestInstance(database: WastiDatabase?) {
+            INSTANCE?.close()
+            INSTANCE = database
+        }
+
         fun resetInstanceForTesting() {
             INSTANCE?.close()
             INSTANCE = null

@@ -214,10 +214,12 @@ object WastiDeepHardwareProfiler {
 
             val totalGb = totalBytes.toFloat() / (1024 * 1024 * 1024)
             val freeGb = freeBytes.toFloat() / (1024 * 1024 * 1024)
-            val usedPercent = 1.0f - (freeGb / totalGb.coerceAtLeast(0.1f))
+            val safeTotalGb = if (totalGb > 0f) totalGb else 64.0f
+            val safeFreeGb = if (freeGb > 0f) freeGb else 32.0f
+            val usedPercent = 1.0f - (safeFreeGb / safeTotalGb.coerceAtLeast(0.1f))
 
             val isExt = Environment.getExternalStorageState() == Environment.MEDIA_MOUNTED
-            StorageTelemetry(totalGb, freeGb, usedPercent, isExt)
+            StorageTelemetry(safeTotalGb, safeFreeGb, usedPercent, isExt)
         } catch (_: Exception) {
             StorageTelemetry(64.0f, 32.0f, 0.5f, true)
         }

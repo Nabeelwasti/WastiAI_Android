@@ -12,8 +12,10 @@ import com.example.data.node.NodePlatform
 import com.example.data.node.WastiMeshTransportEngine
 import com.example.ui.components.IntentExecutionStep
 import com.example.ui.components.IntentStepStatus
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -45,8 +47,16 @@ class Stage22EternalManifestoEngineTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
-        db = WastiDatabase.getDatabase(context)
-        db.clearAllTables()
+        db = WastiDatabase.createInMemoryDatabase(context)
+        WastiDatabase.setTestInstance(db)
+        runBlocking(Dispatchers.IO) {
+            db.clearAllTables()
+        }
+    }
+
+    @After
+    fun tearDown() {
+        WastiDatabase.setTestInstance(null)
     }
 
     // =========================================================================
