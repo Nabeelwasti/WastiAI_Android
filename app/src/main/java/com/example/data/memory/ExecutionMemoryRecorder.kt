@@ -13,9 +13,9 @@ import com.example.data.agent.runtime.TerminalTruthState
 
 data class ExecutionRecord(
     val recordId: String = java.util.UUID.randomUUID().toString(),
-    val taskId: String,
-    val goal: String,
-    val interpretedIntent: String,
+    val taskId: String = java.util.UUID.randomUUID().toString(),
+    val goal: String = "",
+    val interpretedIntent: String = "",
     val selectedCapability: String,
     val selectedNode: String = "local_android_node",
     val stepsCount: Int = 1,
@@ -304,9 +304,5 @@ object ExecutionMemoryRecorder {
             Log.w(TAG, "Error fetching recent audits from database: ${e.message}")
             emptyList()
         }
-    }
-
-    fun clearHistoryForTesting() {
-        executionHistory.clear()
     }
 }
