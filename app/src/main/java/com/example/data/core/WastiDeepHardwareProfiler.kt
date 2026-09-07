@@ -28,7 +28,9 @@ data class DeviceIdentity(
     val hardwareBoard: String,
     val deviceCodename: String,
     val buildFingerprint: String
-)
+) {
+    val board: String get() = hardwareBoard
+}
 
 data class OsArchitecture(
     val androidVersion: String,
@@ -58,7 +60,10 @@ data class StorageTelemetry(
     val internalFreeGb: Float,
     val usedPercentage: Float,
     val isExternalStorageAvailable: Boolean
-)
+) {
+    val freeInternalStorageMb: Long get() = (internalFreeGb * 1024).toLong()
+    val totalInternalStorageMb: Long get() = (internalTotalGb * 1024).toLong()
+}
 
 data class PowerTelemetry(
     val batteryPercentage: Int,
@@ -66,7 +71,9 @@ data class PowerTelemetry(
     val chargePlug: String, // "AC", "USB", "WIRELESS", "BATTERY"
     val temperatureCelsius: Float,
     val isThermalThrottling: Boolean
-)
+) {
+    val thermalThrottlingActive: Boolean get() = isThermalThrottling
+}
 
 data class InstalledToolchain(
     val toolName: String,
@@ -93,6 +100,15 @@ val List<InstalledToolchain>.hasPython: Boolean
 
 val List<InstalledToolchain>.hasNode: Boolean
     get() = any { it.toolName.contains("node", ignoreCase = true) && it.isInstalled }
+
+val List<InstalledToolchain>.hasGit: Boolean
+    get() = any { it.toolName.contains("git", ignoreCase = true) && it.isInstalled }
+
+val List<InstalledToolchain>.hasClang: Boolean
+    get() = any { (it.toolName.contains("clang", ignoreCase = true) || it.toolName.contains("gcc", ignoreCase = true)) && it.isInstalled }
+
+val List<InstalledToolchain>.hasSqlite: Boolean
+    get() = any { it.toolName.contains("sqlite", ignoreCase = true) && it.isInstalled }
 
 
 object WastiDeepHardwareProfiler {

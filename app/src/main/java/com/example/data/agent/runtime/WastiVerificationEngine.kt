@@ -242,7 +242,7 @@ class WastiVerificationEngine {
                 taskId = evidence.taskId,
                 actionId = evidence.actionId,
                 capabilityId = evidence.capabilityId,
-                status = ObservationStatus.SUCCESS,
+                status = ObservationStatus.OBSERVED,
                 observedState = evidence.observedState,
                 evidence = evidence.observedState,
                 timestamp = evidence.timestamp,

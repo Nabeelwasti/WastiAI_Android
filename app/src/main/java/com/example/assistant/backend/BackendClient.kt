@@ -43,6 +43,15 @@ object BackendClient {
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
+    @Volatile
+    private var currentBaseUrl: String = "http://127.0.0.1:8080"
+
+    fun getBaseUrl(): String = currentBaseUrl
+
+    fun setBaseUrl(url: String) {
+        currentBaseUrl = url.trim().trimEnd('/')
+    }
+
     init {
         try {
             com.example.data.di.WastiServiceLocator.emergencyStopController.registerOkHttpClient(client)

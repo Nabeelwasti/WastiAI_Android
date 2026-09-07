@@ -62,6 +62,7 @@ fun CapabilityCenterScreen(
 
     val nodeManager = remember { WastiServiceLocator.nodeManager }
     val nodeTopology = remember(isRefreshing) { nodeManager.getTopologySnapshot() }
+    val acquiredList = remember(isRefreshing) { CapabilityInventionEngine.getAcquiredCapabilities() }
 
     val categories = remember {
         listOf("ALL", "NODES_MESH", "AUTOMATION", "EXECUTION", "STORAGE", "DEVELOPMENT", "BRIDGE", "SECURITY", "AI_PROVIDERS")
@@ -504,7 +505,6 @@ fun CapabilityCenterScreen(
                 )
             }
 
-            val acquiredList = remember { CapabilityInventionEngine.getAcquiredCapabilities() }
             if (acquiredList.isNotEmpty()) {
                 item {
                     Spacer(modifier = Modifier.height(8.dp))

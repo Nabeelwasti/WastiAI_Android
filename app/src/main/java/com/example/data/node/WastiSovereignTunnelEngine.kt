@@ -2,7 +2,7 @@ package com.example.data.node
 
 import android.content.Context
 import android.util.Log
-import com.example.data.network.BackendClient
+import com.example.assistant.backend.BackendClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

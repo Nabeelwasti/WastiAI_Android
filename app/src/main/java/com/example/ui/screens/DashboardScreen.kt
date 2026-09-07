@@ -34,6 +34,7 @@ import com.example.data.core.ProductionReadinessState
 import com.example.data.db.*
 import com.example.ui.components.AnimatedAiOrb
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
