@@ -139,13 +139,7 @@ secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
   ignoreList.add("sdk.dir")
-  ignoreList.add("GMAIL_APP_PASSWORD")
-  ignoreList.add("WASTI_GIT_PAT")
-  ignoreList.add("WASTI_GIT_FINE_GRAINED_PAT")
-  ignoreList.add("STRIPE_SECRET_KEY")
-  ignoreList.add("CANVA_CLIENT_SECRET")
-  ignoreList.add("DRIVE_CLIENT_SECRET")
-  ignoreList.add("UNSPLASH_SECRET_KEY")
+  ignoreList.add(".*")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
