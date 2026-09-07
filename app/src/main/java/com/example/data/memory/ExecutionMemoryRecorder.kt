@@ -59,6 +59,28 @@ object ExecutionMemoryRecorder {
         recordExecutionOutcome(record, context)
     }
 
+    fun recordExecutionOutcome(
+        selectedCapability: String,
+        isSuccess: Boolean,
+        executionTimeMs: Long,
+        errorMessage: String?,
+        verificationStatus: String,
+        verificationEvidence: String?
+    ) {
+        val record = ExecutionRecord(
+            selectedCapability = selectedCapability,
+            isSuccess = isSuccess,
+            durationMs = executionTimeMs,
+            error = errorMessage,
+            verificationStatus = verificationStatus,
+            verificationEvidence = verificationEvidence
+        )
+        executionHistory.add(record)
+        while (executionHistory.size > 100) {
+            executionHistory.poll()
+        }
+    }
+
     suspend fun recordExecutionOutcome(record: ExecutionRecord, context: Context? = null) = withContext(Dispatchers.IO) {
         executionHistory.add(record)
         // Keep max 100 recent in-memory records
@@ -282,5 +304,9 @@ object ExecutionMemoryRecorder {
             Log.w(TAG, "Error fetching recent audits from database: ${e.message}")
             emptyList()
         }
+    }
+
+    fun clearHistoryForTesting() {
+        executionHistory.clear()
     }
 }
