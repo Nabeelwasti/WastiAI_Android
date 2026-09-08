@@ -619,6 +619,31 @@ object CredentialRegistry {
     private val _credentialStates = MutableStateFlow<List<CredentialState>>(emptyList())
     val credentialStates: StateFlow<List<CredentialState>> = _credentialStates.asStateFlow()
 
+    private val testOverrides = java.util.concurrent.ConcurrentHashMap<String, String?>()
+
+    fun setTestOverride(keyName: String, value: String?) {
+        if (value != null) {
+            testOverrides[keyName] = value
+            testOverrides[keyName.lowercase()] = value
+        } else {
+            testOverrides.remove(keyName)
+            testOverrides.remove(keyName.lowercase())
+        }
+    }
+
+    fun clearTestOverrides() {
+        testOverrides.clear()
+    }
+
+    private val isTestRunner: Boolean by lazy {
+        try {
+            Class.forName("org.robolectric.Robolectric") != null ||
+            Class.forName("org.junit.Test") != null
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun getSecureSharedPreferences(context: Context): SharedPreferences {
         return com.example.data.security.WastiSecureStorage.getEncryptedPreferences(context, "wasti_secure_prefs")
     }
@@ -634,6 +659,17 @@ object CredentialRegistry {
     }
 
     fun getRawValue(keyName: String, context: Context? = null): String? {
+        if (testOverrides.containsKey(keyName)) {
+            val overrideVal = testOverrides[keyName]
+            if (overrideVal != null && !isPlaceholder(overrideVal)) return overrideVal
+            if (overrideVal != null && isPlaceholder(overrideVal)) return null
+        }
+        if (testOverrides.containsKey(keyName.lowercase())) {
+            val overrideVal = testOverrides[keyName.lowercase()]
+            if (overrideVal != null && !isPlaceholder(overrideVal)) return overrideVal
+            if (overrideVal != null && isPlaceholder(overrideVal)) return null
+        }
+
         val targetCtx = context ?: appContext
         if (targetCtx != null) {
             val lowerKey = keyName.lowercase()
@@ -673,10 +709,12 @@ object CredentialRegistry {
             return directBuildConfig
         }
 
-        // 4. Fallback to System environment variables
-        val envVal = System.getenv(keyName)
-        if (!envVal.isNullOrBlank() && !isPlaceholder(envVal)) {
-            return envVal
+        // 4. Fallback to System environment variables in production / non-test runner environments
+        if (!isTestRunner) {
+            val envVal = System.getenv(keyName)
+            if (!envVal.isNullOrBlank() && !isPlaceholder(envVal)) {
+                return envVal
+            }
         }
 
         // Return null if not configured

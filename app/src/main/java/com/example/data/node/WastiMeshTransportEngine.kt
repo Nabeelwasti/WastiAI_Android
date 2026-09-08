@@ -319,7 +319,17 @@ object WastiMeshTransportEngine {
         request: UnifiedExecutionRequest
     ): UnifiedExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        val peer = discoveredPeers[targetNodeId]
+        val peer = discoveredPeers[targetNodeId] ?: WastiServiceLocator.nodeManager.getNode(targetNodeId)?.let { node ->
+            MeshDiscoveredNode(
+                nodeId = node.nodeId,
+                nodeName = node.nodeName,
+                platform = node.platform,
+                ipAddress = node.networkAddress?.ifBlank { "127.0.0.1" } ?: "127.0.0.1",
+                port = MESH_EXECUTION_PORT,
+                advertisedCapabilities = node.capabilities,
+                capabilityFingerprint = node.capabilityFingerprint
+            )
+        }
 
         if (peer == null) {
             return@withContext UnifiedExecutionResult(

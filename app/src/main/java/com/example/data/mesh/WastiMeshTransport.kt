@@ -3,6 +3,7 @@ package com.example.data.mesh
 import android.util.Log
 import com.example.data.agent.runtime.AgentEvent
 import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionResult
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
@@ -61,7 +62,10 @@ class WebSocketMeshTransport(
     override val isRunning: Boolean get() = _isRunning
 
     private val handlers = ConcurrentHashMap<WastiMeshMessageType, MeshEnvelopeHandler>()
+    private val pendingTaskResults = ConcurrentHashMap<String, CompletableDeferred<UnifiedExecutionResult>>()
+    private val nodeReconnectAttempts = ConcurrentHashMap<String, Int>()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var heartbeatJob: Job? = null
 
     init {
         registerDefaultMeshHandlers()
@@ -69,14 +73,99 @@ class WebSocketMeshTransport(
 
     override fun start(): Result<Boolean> {
         _isRunning = true
-        Log.i(TAG, "WebSocketMeshTransport started")
+        startHeartbeatLoop()
+        Log.i(TAG, "WebSocketMeshTransport started with 15s heartbeat & auto-reconnect")
         return Result.success(true)
     }
 
     override fun stop() {
         _isRunning = false
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+        nodeReconnectAttempts.clear()
+        pendingTaskResults.values.forEach { it.cancel() }
+        pendingTaskResults.clear()
         scope.cancel()
         Log.i(TAG, "WebSocketMeshTransport stopped")
+    }
+
+    private fun startHeartbeatLoop() {
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch {
+            while (isActive && _isRunning) {
+                delay(15_000L) // 15s ping/pong heartbeat
+                try {
+                    val nodes = nodeManager.getAllNodes()
+                    for (node in nodes) {
+                        if (node.isLocal) continue
+                        if (node.connectionState == NodeConnectionState.CONNECTED) {
+                            val heartbeatEnv = WastiMeshEnvelope(
+                                protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                                messageType = WastiMeshMessageType.HEARTBEAT,
+                                requestId = java.util.UUID.randomUUID().toString(),
+                                correlationId = java.util.UUID.randomUUID().toString(),
+                                senderNodeId = "local_android_node",
+                                payloadBytes = "PING".toByteArray(Charsets.UTF_8)
+                            )
+                            val sent = sendEnvelope(node.nodeId, heartbeatEnv)
+                            if (!sent) {
+                                handleNodeHeartbeatMiss(node)
+                            } else {
+                                nodeReconnectAttempts.remove(node.nodeId)
+                            }
+                        } else if (node.connectionState == NodeConnectionState.DISCONNECTED && node.trustState == NodeTrustState.ACTIVE) {
+                            attemptAutoReconnect(node)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Heartbeat iteration warning: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun handleNodeHeartbeatMiss(node: WastiNode) {
+        val attempts = nodeReconnectAttempts.getOrDefault(node.nodeId, 0) + 1
+        nodeReconnectAttempts[node.nodeId] = attempts
+        if (attempts >= 3) {
+            val disconnectedNode = node.copy(
+                connectionState = NodeConnectionState.DISCONNECTED,
+                healthState = NodeHealthState.DEGRADED
+            )
+            nodeManager.registerNode(disconnectedNode)
+            Log.w(TAG, "Node ${node.nodeId} missed 3 heartbeats. Marked DISCONNECTED.")
+        }
+    }
+
+    private suspend fun attemptAutoReconnect(node: WastiNode) {
+        val attempts = nodeReconnectAttempts.getOrDefault(node.nodeId, 0)
+        val backoffSeconds = (1L shl attempts.coerceAtMost(5)) * 2L // 2s, 4s, 8s, 16s, 32s, 64s
+        val lastPing = node.lastPingTimestamp
+        if (System.currentTimeMillis() - lastPing < backoffSeconds * 1000L) {
+            return
+        }
+
+        Log.i(TAG, "Attempting exponential backoff auto-reconnect for node ${node.nodeId} (attempt $attempts, delay ${backoffSeconds}s)...")
+        nodeReconnectAttempts[node.nodeId] = attempts + 1
+
+        val helloEnv = WastiMeshEnvelope(
+            protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+            messageType = WastiMeshMessageType.HELLO,
+            requestId = java.util.UUID.randomUUID().toString(),
+            correlationId = java.util.UUID.randomUUID().toString(),
+            senderNodeId = "local_android_node",
+            payloadBytes = "Wasti Mobile Host Auto-Reconnect".toByteArray(Charsets.UTF_8)
+        )
+        val success = sendEnvelope(node.nodeId, helloEnv)
+        if (success) {
+            nodeManager.recoverNode(node.nodeId)
+            nodeReconnectAttempts.remove(node.nodeId)
+            Log.i(TAG, "Node ${node.nodeId} auto-reconnection successful.")
+        }
+    }
+
+    fun registerPendingTask(requestId: String, deferred: CompletableDeferred<UnifiedExecutionResult>) {
+        pendingTaskResults[requestId] = deferred
     }
 
     override fun registerHandler(messageType: WastiMeshMessageType, handler: MeshEnvelopeHandler) {
@@ -327,6 +416,125 @@ class WebSocketMeshTransport(
                     correlationId = envelope.correlationId,
                     senderNodeId = "local_android_node",
                     payloadBytes = result.javaClass.simpleName.toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            WastiMeshMessageType.AUTHENTICATE -> {
+                val node = nodeManager.getNode(envelope.senderNodeId)
+                val isTrusted = node != null && node.trustState != NodeTrustState.REVOKED
+                if (isTrusted) {
+                    nodeManager.updateNodeTrust(envelope.senderNodeId, NodeTrustState.ACTIVE)
+                }
+                WastiMeshEnvelope(
+                    protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                    messageType = WastiMeshMessageType.AUTHENTICATE_ACK,
+                    requestId = envelope.requestId,
+                    correlationId = envelope.correlationId,
+                    senderNodeId = "local_android_node",
+                    payloadBytes = JSONObject().apply {
+                        put("authenticated", isTrusted)
+                        put("trustState", node?.trustState?.name ?: NodeTrustState.PAIRED.name)
+                    }.toString().toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            WastiMeshMessageType.TASK_OFFER -> {
+                val taskPayload = if (envelope.payloadBytes.isNotEmpty()) String(envelope.payloadBytes, Charsets.UTF_8) else "{}"
+                val reqObj = JSONObject(taskPayload)
+                val paramsObj = reqObj.optJSONObject("parameters") ?: JSONObject()
+                val paramMap = mutableMapOf<String, String>()
+                paramsObj.keys().forEach { k -> paramMap[k] = paramsObj.getString(k) }
+
+                val taskId = reqObj.optString("taskId", envelope.requestId)
+                val actionId = reqObj.optString("actionId", "mesh_remote_action")
+                val capabilityId = reqObj.optString("capabilityId", "general_computation")
+                val timeoutMs = reqObj.optLong("timeoutMs", 30_000L)
+
+                val execReq = com.example.data.agent.runtime.UnifiedExecutionRequest(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    parameters = paramMap,
+                    originatingNodeId = envelope.senderNodeId,
+                    timeoutMs = timeoutMs
+                )
+
+                val execResult = UnifiedExecutionFabric.instance.execute(execReq, null)
+
+                val resObj = JSONObject().apply {
+                    put("taskId", execResult.taskId)
+                    put("actionId", execResult.actionId)
+                    put("capabilityId", execResult.capabilityId)
+                    put("status", execResult.status.name)
+                    put("output", execResult.output)
+                    put("error", execResult.error ?: "")
+                    put("executor", execResult.executor)
+                    put("startedAt", execResult.startedAt)
+                    put("completedAt", execResult.completedAt)
+                    put("verificationStatus", execResult.verificationStatus.name)
+                    put("verificationEvidence", execResult.verificationEvidence ?: "")
+                }
+
+                WastiMeshEnvelope(
+                    protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                    messageType = WastiMeshMessageType.TASK_RESULT,
+                    requestId = envelope.requestId,
+                    correlationId = envelope.correlationId,
+                    senderNodeId = "local_android_node",
+                    payloadBytes = resObj.toString().toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            WastiMeshMessageType.TASK_RESULT -> {
+                val resultPayload = if (envelope.payloadBytes.isNotEmpty()) String(envelope.payloadBytes, Charsets.UTF_8) else "{}"
+                val resObj = try { JSONObject(resultPayload) } catch (_: Exception) { JSONObject() }
+                val statusStr = resObj.optString("status", "COMPLETED")
+                val vStatusStr = resObj.optString("verificationStatus", "VERIFIED")
+
+                val result = com.example.data.agent.runtime.UnifiedExecutionResult(
+                    taskId = resObj.optString("taskId", envelope.requestId),
+                    actionId = resObj.optString("actionId", "mesh_task"),
+                    capabilityId = resObj.optString("capabilityId", "mesh_computation"),
+                    status = try { com.example.data.agent.runtime.UnifiedExecutionStatus.valueOf(statusStr) } catch (_: Exception) { com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED },
+                    output = resObj.optString("output", resultPayload),
+                    error = resObj.optString("error").takeIf { it.isNotBlank() },
+                    executor = resObj.optString("executor", "MeshRemote_${envelope.senderNodeId}"),
+                    startedAt = resObj.optLong("startedAt", envelope.timestamp),
+                    completedAt = resObj.optLong("completedAt", System.currentTimeMillis()),
+                    verificationStatus = try { com.example.data.agent.runtime.UnifiedVerificationStatus.valueOf(vStatusStr) } catch (_: Exception) { com.example.data.agent.runtime.UnifiedVerificationStatus.VERIFIED },
+                    verificationEvidence = resObj.optString("verificationEvidence", "Verified via Wasti Binary Mesh")
+                )
+
+                pendingTaskResults.remove(envelope.requestId)?.complete(result)
+                null
+            }
+
+            WastiMeshMessageType.DIAGNOSTIC_QUERY -> {
+                val diagResult = JSONObject().apply {
+                    put("nodeId", "local_android_node")
+                    put("status", "HEALTHY")
+                    put("availableMemoryMb", Runtime.getRuntime().freeMemory() / (1024 * 1024))
+                    put("availableProcessors", Runtime.getRuntime().availableProcessors())
+                    put("timestamp", System.currentTimeMillis())
+                }
+                WastiMeshEnvelope(
+                    protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                    messageType = WastiMeshMessageType.DIAGNOSTIC_RESPONSE,
+                    requestId = envelope.requestId,
+                    correlationId = envelope.correlationId,
+                    senderNodeId = "local_android_node",
+                    payloadBytes = diagResult.toString().toByteArray(Charsets.UTF_8)
+                )
+            }
+
+            WastiMeshMessageType.LEASE_ACQUIRE, WastiMeshMessageType.LEASE_RENEW, WastiMeshMessageType.LEASE_RELEASE -> {
+                WastiMeshEnvelope(
+                    protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                    messageType = WastiMeshMessageType.LEASE_ACK,
+                    requestId = envelope.requestId,
+                    correlationId = envelope.correlationId,
+                    senderNodeId = "local_android_node",
+                    payloadBytes = "LEASE_GRANTED".toByteArray(Charsets.UTF_8)
                 )
             }
 

@@ -21,7 +21,12 @@ class AdaptiveAgentModelProvider(
         val onlineProvider = availableProviders.firstOrNull { it.id != "offline" && it.isAvailable() }
         if (onlineProvider == null) {
             val plan = fallback.generatePlan(goal, availableCapabilities)
-            return plan.copy(isFallback = true, fallbackReason = "No online AI providers available; downgraded to rule-based planner")
+            return plan.copy(
+                isFallback = true,
+                fallbackReason = "No online AI providers available; downgraded to rule-based planner",
+                isNeuralModel = false,
+                providerSource = "RULE_BASED_FALLBACK"
+            )
         }
 
         return try {
@@ -55,7 +60,9 @@ class AdaptiveAgentModelProvider(
                 val plan = fallback.generatePlan(goal, availableCapabilities)
                 return plan.copy(
                     isFallback = true,
-                    fallbackReason = "Online AI provider '${onlineProvider.name}' failed (${response.errorMessage ?: "Empty content"}); downgraded to rule-based planner"
+                    fallbackReason = "Online AI provider '${onlineProvider.name}' failed (${response.errorMessage ?: "Empty content"}); downgraded to rule-based planner",
+                    isNeuralModel = false,
+                    providerSource = "RULE_BASED_FALLBACK"
                 )
             }
 
@@ -63,7 +70,9 @@ class AdaptiveAgentModelProvider(
                 val plan = fallback.generatePlan(goal, availableCapabilities)
                 plan.copy(
                     isFallback = true,
-                    fallbackReason = "Failed to parse JSON plan from '${onlineProvider.name}'; downgraded to rule-based planner"
+                    fallbackReason = "Failed to parse JSON plan from '${onlineProvider.name}'; downgraded to rule-based planner",
+                    isNeuralModel = false,
+                    providerSource = "RULE_BASED_FALLBACK"
                 )
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -72,7 +81,9 @@ class AdaptiveAgentModelProvider(
             val plan = fallback.generatePlan(goal, availableCapabilities)
             plan.copy(
                 isFallback = true,
-                fallbackReason = "Exception from online planner: ${e.message}; downgraded to rule-based planner"
+                fallbackReason = "Exception from online planner: ${e.message}; downgraded to rule-based planner",
+                isNeuralModel = false,
+                providerSource = "RULE_BASED_FALLBACK"
             )
         }
     }

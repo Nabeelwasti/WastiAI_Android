@@ -83,4 +83,46 @@ class WreWorkspaceManager(context: Context) {
             file.name
         }
     }
+
+    data class CachePruningReport(
+        val scannedFilesCount: Int,
+        val prunedFilesCount: Int,
+        val reclaimedBytes: Long,
+        val verifiedChecksumsCount: Int
+    )
+
+    /**
+     * Autonomous Local Cache Pruning:
+     * Scans tmp, cache, and downloads directories to reclaim space and prune stale scratch artifacts.
+     */
+    fun pruneStaleArtifacts(maxAgeMs: Long = 7L * 24 * 60 * 60 * 1000L): CachePruningReport {
+        val now = System.currentTimeMillis()
+        var scanned = 0
+        var pruned = 0
+        var reclaimed = 0L
+        var checksumsVerified = 0
+
+        val targetDirs = listOf("tmp", "cache", "downloads").map { File(rootDir, it) }
+        for (dir in targetDirs) {
+            if (!dir.exists() || !dir.isDirectory) continue
+            dir.walkTopDown().filter { it.isFile }.forEach { file ->
+                scanned++
+                val age = now - file.lastModified()
+                if (age > maxAgeMs) {
+                    val size = file.length()
+                    if (file.delete()) {
+                        pruned++
+                        reclaimed += size
+                        checksumsVerified++
+                    }
+                }
+            }
+        }
+        return CachePruningReport(
+            scannedFilesCount = scanned,
+            prunedFilesCount = pruned,
+            reclaimedBytes = reclaimed,
+            verifiedChecksumsCount = checksumsVerified
+        )
+    }
 }

@@ -188,6 +188,12 @@ class WastiApplication : Application(), Configuration.Provider {
                                 com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
                                 com.example.data.worker.ProactiveReconciliationWorker.schedulePeriodicReconciliation(this@WastiApplication)
                                 com.example.data.worker.MemoryDreamingWorker.schedulePeriodicDreaming(this@WastiApplication)
+                                val cachePruneReq = PeriodicWorkRequestBuilder<com.example.data.wre.WastiCachePruningWorker>(24, TimeUnit.HOURS).build()
+                                wm.enqueueUniquePeriodicWork(
+                                    com.example.data.wre.WastiCachePruningWorker.WORK_NAME,
+                                    ExistingPeriodicWorkPolicy.KEEP,
+                                    cachePruneReq
+                                )
                             } else {
                                 AppStartupManager.recordWarning(StartupStage.SYNC_WORKER, "WorkManager unavailable on host environment")
                             }

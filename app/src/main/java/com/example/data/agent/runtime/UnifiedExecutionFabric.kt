@@ -1802,7 +1802,13 @@ class UnifiedExecutionFabric(
 
         val wreResult = wreManager.execute(wreReq)
         val isPythonOrNode = capId in listOf("python", "python3", "python_runtime", "node", "nodejs", "node_runtime", "javascript", "npm")
-        val isUnavailableOutput = wreResult.stderr.contains("not found") || wreResult.stderr.contains("unavailable") || wreResult.exitCode == 127
+        val isUnavailableOutput = wreResult.stderr.contains("not found", ignoreCase = true) ||
+            wreResult.stderr.contains("unavailable", ignoreCase = true) ||
+            wreResult.stderr.contains("No such file", ignoreCase = true) ||
+            wreResult.stderr.contains("can't open file", ignoreCase = true) ||
+            wreResult.stderr.contains("NOT_INSTALLED", ignoreCase = true) ||
+            wreResult.exitCode == 127 ||
+            !wreResult.verified
         
         val finalStatus = when {
             wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.VERIFIED

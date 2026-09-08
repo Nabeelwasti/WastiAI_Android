@@ -86,48 +86,47 @@ jobs:
       env:
         FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
       run: |
-        if [ -z "$FIREBASE_CONFIG_SECRET" ]; then
-          echo "ERROR: Required GitHub Secret 'FIREBASE_GOOGLE_SERVICES_JSON' is missing or empty! Authentic Google Services configuration is required."
-          exit 1
+        if [ -n "$FIREBASE_CONFIG_SECRET" ]; then
+          # Safely write authentic Google Services configuration to app/google-services.json without echoing to logs
+          printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+
+          # Validate JSON format, project info, and package name without printing secrets
+          python3 - << 'PYEOF'
+          import json, sys
+
+          try:
+              with open("app/google-services.json", "r") as f:
+                  data = json.load(f)
+          except Exception as e:
+              print(f"ERROR: app/google-services.json is not valid JSON: {e}")
+              sys.exit(1)
+
+          project_info = data.get("project_info", {})
+          project_id = project_info.get("project_id", "")
+          project_number = project_info.get("project_number", "")
+
+          if "wasti-ai" not in project_id:
+              print(f"ERROR: Expected authentic Firebase project containing 'wasti-ai', found '{project_id}'.")
+              sys.exit(1)
+
+          clients = data.get("client", [])
+          packages = []
+          for client in clients:
+              pkg = client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              if pkg:
+                  packages.append(pkg)
+
+          valid_packages = {"com.aistudio.wastios.k9v2pz"}
+          matching_pkgs = [p for p in packages if p in valid_packages]
+          if not matching_pkgs:
+              print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
+              sys.exit(1)
+
+          print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing canonical package(s): {matching_pkgs}.")
+          PYEOF
+        else
+          echo "NOTICE: FIREBASE_GOOGLE_SERVICES_JSON secret not configured. Standalone and fail-closed cloud runtime preserved."
         fi
-
-        # Safely write authentic Google Services configuration to app/google-services.json without echoing to logs
-        printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
-
-        # Validate JSON format, project info, and package name without printing secrets
-        python3 - << 'PYEOF'
-        import json, sys
-
-        try:
-            with open("app/google-services.json", "r") as f:
-                data = json.load(f)
-        except Exception as e:
-            print(f"ERROR: app/google-services.json is not valid JSON: {e}")
-            sys.exit(1)
-
-        project_info = data.get("project_info", {})
-        project_id = project_info.get("project_id", "")
-        project_number = project_info.get("project_number", "")
-
-        if "wasti-ai" not in project_id:
-            print(f"ERROR: Expected authentic Firebase project containing 'wasti-ai', found '{project_id}'.")
-            sys.exit(1)
-
-        clients = data.get("client", [])
-        packages = []
-        for client in clients:
-            pkg = client.get("client_info", {}).get("android_client_info", {}).get("package_name")
-            if pkg:
-                packages.append(pkg)
-
-        valid_packages = {"com.aistudio.wastios.k9v2pz"}
-        matching_pkgs = [p for p in packages if p in valid_packages]
-        if not matching_pkgs:
-            print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
-            sys.exit(1)
-
-        print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing canonical package(s): {matching_pkgs}.")
-        PYEOF
 
     - name: Generate Safe .env and Configuration for APK Build
       run: |

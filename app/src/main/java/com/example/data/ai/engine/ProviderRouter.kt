@@ -130,12 +130,13 @@ class ProviderRouter(
         }
 
         // 4. Autonomous Local Brain Fallback if all remote providers fail or are unconfigured
-        val localBrainProviders = UnifiedBrain.getAllLocalProviders()
-        val capableLocal = localBrainProviders.filter { local ->
-            request.requiredCapabilities.isEmpty() || local.capabilities.containsAll(request.requiredCapabilities)
+        val localBrainProviders = capabilityRegistry.getAvailableProviders().filter { 
+            it.id.startsWith("wasti-") || (it.id.contains("local") && it.id != "offline")
         }
-        val preferredLocal = capableLocal.firstOrNull { it.isAvailable() }
-            ?: capableLocal.firstOrNull { it.id.contains("llama") || it.id.contains("qwen") || it.id.contains("deepseek") }
+        val capableLocal = localBrainProviders.filter { local ->
+            local.isAvailable() && (request.requiredCapabilities.isEmpty() || local.capabilities.containsAll(request.requiredCapabilities))
+        }
+        val preferredLocal = capableLocal.firstOrNull { it.id.contains("llama") || it.id.contains("qwen") || it.id.contains("deepseek") }
             ?: capableLocal.firstOrNull()
 
         if (preferredLocal != null) {

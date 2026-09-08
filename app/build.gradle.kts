@@ -201,3 +201,20 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
+
+tasks.register("validateReleaseSigning") {
+  doLast {
+    val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("STORE_PASSWORD")
+    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+    if (gradle.startParameter.taskNames.any { it.contains("assembleRelease") || it.contains("bundleRelease") }) {
+      if (releaseKeystorePath.isNullOrBlank() || releaseStorePassword.isNullOrBlank() || releaseKeyPassword.isNullOrBlank()) {
+        throw GradleException("Release build rejected: KEYSTORE_PATH, STORE_PASSWORD, or KEY_PASSWORD missing.")
+      }
+    }
+  }
+}
+tasks.matching { it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease") }.configureEach {
+  dependsOn("validateReleaseSigning")
+}
+
