@@ -129,7 +129,39 @@ class ProviderRouter(
             }
         }
 
-        // 4. Final Fallback to Offline Core if all remote providers fail or none available
+        // 4. Autonomous Local Brain Fallback if all remote providers fail or are unconfigured
+        val localBrainProviders = UnifiedBrain.getAllLocalProviders()
+        val capableLocal = localBrainProviders.filter { local ->
+            request.requiredCapabilities.isEmpty() || local.capabilities.containsAll(request.requiredCapabilities)
+        }
+        val preferredLocal = capableLocal.firstOrNull { it.isAvailable() }
+            ?: capableLocal.firstOrNull { it.id.contains("llama") || it.id.contains("qwen") || it.id.contains("deepseek") }
+            ?: capableLocal.firstOrNull()
+
+        if (preferredLocal != null) {
+            attemptedProviders.add(preferredLocal.id)
+            try {
+                val localResp = preferredLocal.generate(request)
+                if (!localResp.isError && localResp.content.isNotBlank()) {
+                    val fallbackReasonStr = if (providerErrors.isNotEmpty()) {
+                        "Cloud providers unavailable (${providerErrors.joinToString("; ")}). Routed to Sovereign Local Brain (${preferredLocal.name})."
+                    } else {
+                        "Direct Sovereign Local Brain Routing (${preferredLocal.name})."
+                    }
+                    return localResp.copy(
+                        isFallback = true,
+                        fallbackReason = fallbackReasonStr,
+                        attemptedProviders = attemptedProviders.toList()
+                    )
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                val err = e.message ?: "Exception on ${preferredLocal.name}"
+                providerErrors.add("${preferredLocal.id}: $err")
+            }
+        }
+
+        // 5. Final Fallback to Offline Core if local neural nodes and remote providers are exhausted
         val offlineProvider = capabilityRegistry.getProvider("offline")
         if (offlineProvider != null && offlineProvider.isAvailable()) {
             val missingCapabilities = request.requiredCapabilities.filter { it !in offlineProvider.capabilities }
@@ -153,7 +185,7 @@ class ProviderRouter(
             attemptedProviders.add(offlineProvider.id)
             val offlineResp = offlineProvider.generate(request)
             val fallbackReasonStr = if (providerErrors.isNotEmpty()) {
-                "All online providers failed (${providerErrors.joinToString("; ")}). Routed to offline fallback."
+                "All online and local providers failed (${providerErrors.joinToString("; ")}). Routed to offline fallback."
             } else {
                 "Offline routing invoked."
             }

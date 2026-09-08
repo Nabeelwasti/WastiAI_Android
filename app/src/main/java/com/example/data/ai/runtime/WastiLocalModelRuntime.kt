@@ -212,7 +212,7 @@ class WastiLocalModelRuntime(
         modelId: String,
         prompt: String,
         systemInstruction: String = "",
-        maxTokens: Int = 256,
+        maxTokens: Int = 4096,
         temperature: Float = 0.7f
     ): LocalInferenceResult = withContext(Dispatchers.Default) {
         val startTime = System.currentTimeMillis()
@@ -393,7 +393,7 @@ class WastiLocalModelRuntime(
         modelId: String,
         prompt: String,
         systemInstruction: String = "",
-        maxTokens: Int = 256,
+        maxTokens: Int = 4096,
         temperature: Float = 0.7f
     ): String {
         return executeInferenceDetailed(modelId, prompt, systemInstruction, maxTokens, temperature).output

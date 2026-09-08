@@ -19,19 +19,23 @@ import java.util.UUID
  * constructs, verifies, composes, improves and preserves new capabilities."
  *
  * Ultra-Universal Polyglot Terminal Engine:
- * Transforms the native terminal into an environment more capable than Termux:
- * 1. Multi-language polyglot execution: Bash/Shell, Python, Node.js, SQL, C++, Kotlin.
- * 2. Conversational Natural Language to Terminal Command Compiler.
- * 3. On-device Sovereign Release Keystore Management (`keystore generate/status`).
- * 4. Sovereign Cloud Tunnel Ingress (`tunnel start/status/stop`).
- * 5. Deep Silicon & Hardware Telemetry (`sysinfo`, `hardware`, `battery`, `ram`).
+ * Sovereign developer runtime environment equipped with:
+ * 1. Multi-language polyglot execution: Python (3.11), Node.js (v20), SQLite/SQL, Git, GCC/Clang, Bash.
+ * 2. Complete Package Ecosystem: `pkg`, `apt`, `pip`, `npm`.
+ * 3. Developer Workstation: `ssh`, `ssh-keygen`, `tmux`, `curl`, `wget`, `tree`, `htop`, `neofetch`.
+ * 4. Conversational Natural Language to Terminal Command Compiler.
+ * 5. On-device Sovereign Release Keystore Management (`keystore generate/status`).
+ * 6. Sovereign Cloud Tunnel Ingress (`tunnel start/status/stop`).
+ * 7. Deep Silicon & Hardware Telemetry (`sysinfo`, `hardware`, `battery`, `ram`).
  */
 
 enum class PolyglotLanguage {
+    SHELL,
     SHELL_BASH,
     PYTHON,
     NODE_JAVASCRIPT,
     SQL_DATABASE,
+    C_CPP,
     SYSTEM_DIAGNOSTIC,
     SOVEREIGN_KEYSTORE,
     SOVEREIGN_TUNNEL
@@ -54,8 +58,21 @@ class WastiPolyglotTerminalEngine(
 
     override val name: String = "WastiPolyglotTerminalEngine"
 
+    private val pythonEngine = WastiPythonRuntimeEngine(context, workspaceManager)
+    private val nodeEngine = WastiNodeJsRuntimeEngine(context, workspaceManager)
+    private val sqliteEngine = WastiSqliteEngine(context, workspaceManager)
+    private val gitEngine = WastiGitEngine(context, workspaceManager)
+    private val packageEngine = WastiPackageAptPipNpmEngine(context, workspaceManager)
+    private val sshTmuxCompilerEngine = WastiSshTmuxCompilerEngine(context, workspaceManager)
+
     override val supportedCommands: Set<String> = setOf(
-        "python", "python3", "node", "js", "sql", "sqlite", "query",
+        "python", "python3", "pip", "pip3",
+        "node", "nodejs", "js", "npm", "npx",
+        "sql", "sqlite", "sqlite3", "query",
+        "git", "pkg", "apt", "apt-get",
+        "gcc", "clang", "g++", "clang++", "make",
+        "ssh", "ssh-keygen", "tmux",
+        "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum",
         "sysinfo", "hardware", "keystore", "tunnel", "polyglot",
         "search", "speak", "alternatives", "cognitive", "sensory", "face"
     )
@@ -68,40 +85,54 @@ class WastiPolyglotTerminalEngine(
 
     private fun isPolyglotInvocation(cmd: String): Boolean {
         val lower = cmd.lowercase()
-        return lower.startsWith("python ") ||
-                lower.startsWith("python3 ") ||
-                lower.startsWith("node ") ||
-                lower.startsWith("sql ") ||
-                lower.startsWith("keystore ") ||
-                lower.startsWith("tunnel ") ||
-                lower.startsWith("search ") ||
-                lower.startsWith("speak ") ||
-                lower.startsWith("face ") ||
-                lower == "alternatives" ||
-                lower == "cognitive" ||
-                lower == "sensory" ||
-                lower == "face" ||
-                lower == "sysinfo" ||
-                lower == "hardware"
+        val first = lower.substringBefore(" ")
+        return supportedCommands.contains(first) ||
+                lower.startsWith("python") ||
+                lower.startsWith("node") ||
+                lower.startsWith("sql") ||
+                lower.startsWith("git ") ||
+                lower.startsWith("pkg ") ||
+                lower.startsWith("apt ") ||
+                lower.startsWith("pip ") ||
+                lower.startsWith("npm ") ||
+                lower.startsWith("ssh ") ||
+                lower.startsWith("tmux ") ||
+                lower.startsWith("gcc ") ||
+                lower.startsWith("clang ")
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         val raw = request.command.trim()
+        val tokens = raw.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val firstToken = tokens.getOrNull(0)?.lowercase() ?: ""
+        val restOfCmd = raw.substringAfter(firstToken, "").trim()
 
-        val outcome = when {
-            raw == "sysinfo" || raw == "hardware" -> executeHardwareInspection()
-            raw == "sensory" -> executeSensoryInspection()
-            raw.startsWith("face") -> executeFaceCommand(raw)
-            raw == "cognitive" -> executeCognitiveInspection()
-            raw == "alternatives" -> executeAlternativesList()
-            raw.startsWith("search") -> executeSovereignSearch(raw)
-            raw.startsWith("speak") -> executeSovereignSpeak(raw)
-            raw.startsWith("keystore") -> executeKeystoreCommand(raw)
-            raw.startsWith("tunnel") -> executeTunnelCommand(raw)
-            raw.startsWith("sql") -> executeSqlCommand(raw)
-            raw.startsWith("python") || raw.startsWith("python3") -> executePythonCommand(raw)
-            raw.startsWith("node") || raw.startsWith("js") -> executeNodeCommand(raw)
+        val workingDirResult = workspaceManager.resolve(request.workingDirectory)
+        val workingDir = workingDirResult.getOrNull() ?: workspaceManager.getRootDirectory()
+
+        val outcome = when (firstToken) {
+            "python", "python3" -> pythonEngine.executePython(restOfCmd, workingDir)
+            "pip", "pip3" -> packageEngine.executePip(restOfCmd, workingDir)
+            "node", "nodejs", "js" -> nodeEngine.executeNode(restOfCmd, workingDir)
+            "npm", "npx" -> packageEngine.executeNpm(restOfCmd, workingDir)
+            "sql", "sqlite", "sqlite3", "query" -> sqliteEngine.executeSql(raw, workingDir)
+            "git" -> gitEngine.executeGit(restOfCmd, workingDir)
+            "pkg", "apt", "apt-get" -> packageEngine.executePkg(restOfCmd, workingDir)
+            "gcc", "clang", "g++", "clang++" -> sshTmuxCompilerEngine.executeCompiler(firstToken, restOfCmd, workingDir)
+            "ssh", "ssh-keygen" -> sshTmuxCompilerEngine.executeSsh(raw, workingDir)
+            "tmux" -> sshTmuxCompilerEngine.executeTmux(restOfCmd, workingDir)
+            "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum" ->
+                sshTmuxCompilerEngine.executeUnixUtility(firstToken, restOfCmd, workingDir)
+            "sysinfo", "hardware" -> executeHardwareInspection()
+            "sensory" -> executeSensoryInspection()
+            "face" -> executeFaceCommand(raw)
+            "cognitive" -> executeCognitiveInspection()
+            "alternatives" -> executeAlternativesList()
+            "search" -> executeSovereignSearch(raw)
+            "speak" -> executeSovereignSpeak(raw)
+            "keystore" -> executeKeystoreCommand(raw)
+            "tunnel" -> executeTunnelCommand(raw)
             else -> executeShellProcess(raw)
         }
 
@@ -115,7 +146,7 @@ class WastiPolyglotTerminalEngine(
             durationMs = duration,
             status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
             verified = outcome.isSuccess,
-            verificationEvidence = outcome.verificationEvidence
+            verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
         )
     }
 
@@ -209,121 +240,6 @@ class WastiPolyglotTerminalEngine(
                 }
                 PolyglotExecutionOutcome(true, PolyglotLanguage.SOVEREIGN_TUNNEL, out)
             }
-        }
-    }
-
-    private suspend fun executeSqlCommand(cmd: String): PolyglotExecutionOutcome {
-        val query = cmd.substringAfter("sql").trim()
-        if (query.isBlank()) {
-            return PolyglotExecutionOutcome(true, PolyglotLanguage.SQL_DATABASE, "Usage: sql SELECT * FROM memory LIMIT 5;")
-        }
-
-        return try {
-            val db = WastiDatabase.getDatabase(context)
-            val lower = query.lowercase()
-
-            val resultText = when {
-                lower.contains("memory") || lower.contains("memories") -> {
-                    val mems = db.memoryDao().getAllMemoriesSync().take(10)
-                    buildString {
-                        appendLine("| Key | Category | Value | Importance |")
-                        appendLine("| --- | --- | --- | --- |")
-                        mems.forEach { appendLine("| ${it.key} | ${it.category} | ${it.value.take(30)} | ${it.importanceScore} |") }
-                    }
-                }
-                lower.contains("task") || lower.contains("tasks") -> {
-                    val tasks = db.taskDao().getAllTasksSync().take(10)
-                    buildString {
-                        appendLine("| Title | Priority | Completed |")
-                        appendLine("| --- | --- | --- |")
-                        tasks.forEach { appendLine("| ${it.title} | ${it.priority} | ${it.isCompleted} |") }
-                    }
-                }
-                lower.contains("knowledge") -> {
-                    val know = db.knowledgeDao().getAllKnowledgeSync().take(10)
-                    buildString {
-                        appendLine("| Title | Category | Content |")
-                        appendLine("| --- | --- | --- |")
-                        know.forEach { appendLine("| ${it.title} | ${it.category} | ${it.content.take(35)} |") }
-                    }
-                }
-                else -> {
-                    "SQL Query executed safely. Table records retrieved successfully."
-                }
-            }
-
-            PolyglotExecutionOutcome(true, PolyglotLanguage.SQL_DATABASE, resultText, verificationEvidence = "Direct SQLite Room Query Executed")
-        } catch (e: Exception) {
-            PolyglotExecutionOutcome(false, PolyglotLanguage.SQL_DATABASE, "", "SQL Execution error: ${e.message}", exitCode = 1)
-        }
-    }
-
-    private fun executePythonCommand(cmd: String): PolyglotExecutionOutcome {
-        val scriptOrArgs = cmd.substringAfter("python3").substringAfter("python").trim()
-        val pythonBin = findBin("python3") ?: findBin("python")
-
-        if (pythonBin != null) {
-            return runNativeBinary(pythonBin, scriptOrArgs, PolyglotLanguage.PYTHON)
-        }
-
-        // On-device lightweight Python evaluator fallback
-        return if (scriptOrArgs.startsWith("-c")) {
-            val code = scriptOrArgs.removePrefix("-c").trim().trim('"', '\'')
-            PolyglotExecutionOutcome(
-                isSuccess = true,
-                language = PolyglotLanguage.PYTHON,
-                stdout = "[Wasti Python Evaluator] Executed expression: $code",
-                verificationEvidence = "Python code evaluated"
-            )
-        } else if (scriptOrArgs.isNotBlank()) {
-            PolyglotExecutionOutcome(
-                isSuccess = false,
-                language = PolyglotLanguage.PYTHON,
-                stdout = "",
-                stderr = "Python runtime is not currently available on this device.",
-                exitCode = 127
-            )
-        } else {
-            PolyglotExecutionOutcome(
-                isSuccess = true,
-                language = PolyglotLanguage.PYTHON,
-                stdout = "Python 3.11.8 (Wasti OS Polyglot Engine) [Ready for scripts & math]",
-                verificationEvidence = "Python polyglot environment ready"
-            )
-        }
-    }
-
-    private fun executeNodeCommand(cmd: String): PolyglotExecutionOutcome {
-        val scriptOrArgs = cmd.substringAfter("node").substringAfter("js").trim()
-        val nodeBin = findBin("node")
-
-        if (nodeBin != null) {
-            return runNativeBinary(nodeBin, scriptOrArgs, PolyglotLanguage.NODE_JAVASCRIPT)
-        }
-
-        return if (scriptOrArgs.startsWith("-e")) {
-            val code = scriptOrArgs.removePrefix("-e").trim().trim('"', '\'')
-            PolyglotExecutionOutcome(
-                isSuccess = true,
-                language = PolyglotLanguage.NODE_JAVASCRIPT,
-                stdout = "[Wasti JS Evaluator] Executed expression: $code",
-                verificationEvidence = "JavaScript code evaluated"
-            )
-        } else if (scriptOrArgs.isNotBlank()) {
-            PolyglotExecutionOutcome(
-                isSuccess = false,
-                language = PolyglotLanguage.NODE_JAVASCRIPT,
-                stdout = "",
-                stderr = "Node.js runtime is not currently available on this device.",
-                exitCode = 127
-            )
-        } else {
-            PolyglotExecutionOutcome(
-                isSuccess = true,
-                language = PolyglotLanguage.NODE_JAVASCRIPT,
-                stdout = "Node.js v20.11.0 (Wasti OS Polyglot Engine) [JavaScript runtime operational]",
-                verificationEvidence = "JavaScript polyglot environment ready"
-            )
         }
     }
 
@@ -430,27 +346,5 @@ class WastiPolyglotTerminalEngine(
             "### ⚡ Biometric Identity Status: NOT ENROLLED\n• No facial presence registered yet. Complete Onboarding setup to enroll via live camera."
         }
         return PolyglotExecutionOutcome(true, PolyglotLanguage.SYSTEM_DIAGNOSTIC, out, verificationEvidence = "Biometric status checked")
-    }
-
-    private fun runNativeBinary(binPath: String, args: String, lang: PolyglotLanguage): PolyglotExecutionOutcome {
-        return try {
-            val fullCmd = if (args.isNotBlank()) "$binPath $args" else "$binPath --version"
-            val p = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", fullCmd))
-            val out = p.inputStream.bufferedReader().readText()
-            val err = p.errorStream.bufferedReader().readText()
-            val code = p.waitFor()
-
-            PolyglotExecutionOutcome(code == 0, lang, out, err, code, verificationEvidence = "Executed $binPath")
-        } catch (e: Exception) {
-            PolyglotExecutionOutcome(false, lang, "", e.message ?: "Execution error", 1)
-        }
-    }
-
-    private fun findBin(name: String): String? {
-        val candidates = listOf(
-            "/data/data/com.termux/files/usr/bin/$name",
-            "/system/bin/$name"
-        )
-        return candidates.firstOrNull { File(it).canExecute() }
     }
 }

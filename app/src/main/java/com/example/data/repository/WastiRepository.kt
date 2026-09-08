@@ -96,16 +96,16 @@ class WastiRepository(private val db: WastiDatabase) {
         const val DEFAULT_MODEL = "wasti-super-ensemble"
 
         /** How many prior turns of the *current* conversation to send as history to the model. */
-        private const val MAX_HISTORY_TURNS = 20
+        private const val MAX_HISTORY_TURNS = 200
 
         /** How many long-term memory entries to inject into the system prompt at most. */
-        private const val MAX_MEMORY_ENTRIES = 30
+        private const val MAX_MEMORY_ENTRIES = 100
 
         /** How many messages from *other* conversations to surface as cross-session context. */
-        private const val MAX_CROSS_SESSION_HIGHLIGHTS = 12
+        private const val MAX_CROSS_SESSION_HIGHLIGHTS = 50
 
         /** How many active tasks to summarize into the prompt's business-pipeline section. */
-        private const val MAX_ACTIVE_TASKS = 10
+        private const val MAX_ACTIVE_TASKS = 50
 
         /** Minimum length an agent-supplied system instruction must have to be used as-is. */
         private const val MIN_CUSTOM_INSTRUCTION_LENGTH = 150
@@ -535,7 +535,7 @@ class WastiRepository(private val db: WastiDatabase) {
                 .take(MAX_CROSS_SESSION_HIGHLIGHTS)
                 .joinToString("\n") { msg ->
                     val sender = if (msg.role == "user") "User" else "Wasti AI"
-                    "- ($sender in another chat session): ${msg.content.take(120)}"
+                    "- ($sender in another chat session): ${msg.content}"
                 }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch global recent messages for context", e)
@@ -546,7 +546,7 @@ class WastiRepository(private val db: WastiDatabase) {
             db.taskDao().getActiveTasksList()
                 .take(MAX_ACTIVE_TASKS)
                 .takeIf { it.isNotEmpty() }
-                ?.joinToString("\n") { "- [Priority ${it.priority}] ${it.title}: ${it.description.take(100)}" }
+                ?.joinToString("\n") { "- [Priority ${it.priority}] ${it.title}: ${it.description}" }
                 ?: "- Client Outreach Engine: Active (HubSpot Leads + Brevo Automated Emailing)\n- Invoicing & Quotations: Stripe Draft Gateway Ready\n- Software Engineering: Notion Spec Sync + GitHub Automated Repo Generation Online"
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch active tasks for orchestration context", e)

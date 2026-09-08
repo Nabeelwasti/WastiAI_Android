@@ -6,9 +6,9 @@ import java.io.File
  * Stage 9C: Live WRE Autocompletion Engine
  * 
  * Provides dynamic suggestions for:
- * 1. Built-in and installed binary commands (`pwd`, `ls`, `wre`, `sysinfo`, `json-fmt`...)
+ * 1. Built-in and installed binary commands (`python`, `node`, `git`, `pkg`, `apt`, `sqlite3`, `ssh`, `tmux`, `gcc`...)
  * 2. Live virtual filesystem paths (directories and files in the current working directory)
- * 3. Package management subcommands (`list`, `install`, `remove`)
+ * 3. Package management subcommands (`pkg`, `apt`, `pip`, `npm`, `git`, `wre`)
  */
 data class AutocompleteSuggestion(
     val text: String,
@@ -24,7 +24,15 @@ class WreAutocompleteEngine(
     private val builtinCommands = listOf(
         "pwd", "cd", "ls", "mkdir", "touch", "cat", "echo", "rm", "cp", "mv",
         "grep", "find", "env", "which", "date", "whoami", "uname", "status",
-        "ps", "jobs", "kill", "help", "clear", "wre", "python", "node"
+        "ps", "jobs", "kill", "help", "clear", "wre",
+        "python", "python3", "pip", "pip3",
+        "node", "nodejs", "npm", "npx",
+        "git", "pkg", "apt", "apt-get",
+        "sqlite3", "sql",
+        "gcc", "clang", "g++", "clang++", "make",
+        "ssh", "ssh-keygen", "tmux",
+        "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum",
+        "sysinfo", "hardware", "keystore", "tunnel", "search", "speak", "cognitive", "sensory", "face"
     )
 
     fun getSuggestions(currentInput: String, workingDirVirtual: String = "home/wasti"): List<AutocompleteSuggestion> {
@@ -54,7 +62,55 @@ class WreAutocompleteEngine(
                 }
         }
 
-        // Case 2: WRE package subcommands
+        // Case 2: Git subcommands
+        if (tokens.isNotEmpty() && tokens[0] == "git") {
+            val gitSubcmds = listOf("status", "add", "commit", "log", "diff", "branch", "checkout", "clone", "remote", "init", "config", "push", "pull")
+            if (tokens.size == 2 && !isTrailingSpace) {
+                val subPrefix = tokens[1].lowercase()
+                return gitSubcmds.filter { it.startsWith(subPrefix) }.map { AutocompleteSuggestion(it, "git $it") }
+            }
+            if (tokens.size == 1 && isTrailingSpace) {
+                return gitSubcmds.map { AutocompleteSuggestion(it, "git $it") }
+            }
+        }
+
+        // Case 3: Pkg / Apt subcommands
+        if (tokens.isNotEmpty() && (tokens[0] == "pkg" || tokens[0] == "apt" || tokens[0] == "apt-get")) {
+            val pkgSubcmds = listOf("install", "uninstall", "update", "upgrade", "search", "list-installed", "list-all", "show")
+            if (tokens.size == 2 && !isTrailingSpace) {
+                val subPrefix = tokens[1].lowercase()
+                return pkgSubcmds.filter { it.startsWith(subPrefix) }.map { AutocompleteSuggestion(it, "${tokens[0]} $it") }
+            }
+            if (tokens.size == 1 && isTrailingSpace) {
+                return pkgSubcmds.map { AutocompleteSuggestion(it, "${tokens[0]} $it") }
+            }
+        }
+
+        // Case 4: Pip subcommands
+        if (tokens.isNotEmpty() && (tokens[0] == "pip" || tokens[0] == "pip3")) {
+            val pipSubcmds = listOf("install", "uninstall", "list", "show", "freeze", "check", "search")
+            if (tokens.size == 2 && !isTrailingSpace) {
+                val subPrefix = tokens[1].lowercase()
+                return pipSubcmds.filter { it.startsWith(subPrefix) }.map { AutocompleteSuggestion(it, "${tokens[0]} $it") }
+            }
+            if (tokens.size == 1 && isTrailingSpace) {
+                return pipSubcmds.map { AutocompleteSuggestion(it, "${tokens[0]} $it") }
+            }
+        }
+
+        // Case 5: Npm subcommands
+        if (tokens.isNotEmpty() && tokens[0] == "npm") {
+            val npmSubcmds = listOf("install", "init", "run", "test", "list", "start")
+            if (tokens.size == 2 && !isTrailingSpace) {
+                val subPrefix = tokens[1].lowercase()
+                return npmSubcmds.filter { it.startsWith(subPrefix) }.map { AutocompleteSuggestion(it, "npm $it") }
+            }
+            if (tokens.size == 1 && isTrailingSpace) {
+                return npmSubcmds.map { AutocompleteSuggestion(it, "npm $it") }
+            }
+        }
+
+        // Case 6: WRE package subcommands
         if (tokens.isNotEmpty() && tokens[0] == "wre") {
             if (tokens.size == 2 && !isTrailingSpace) {
                 val subPrefix = tokens[1].lowercase()
@@ -82,7 +138,7 @@ class WreAutocompleteEngine(
             }
         }
 
-        // Case 3: Filesystem path completion
+        // Case 7: Filesystem path completion
         val pathArg = if (isTrailingSpace) "" else tokens.last()
         return completePath(pathArg, workingDirVirtual)
     }

@@ -187,52 +187,96 @@ fun UniversalTaskTimelineStepper(
                     HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f))
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val entriesToShow: List<TaskTimelineEntry> = activeRecord?.entries?.takeLast(10)?.reversed()
-                        ?: latestEvents.take(10)
+                    val entriesToShow: List<TaskTimelineEntry> = activeRecord?.entries?.takeLast(12)?.reversed()
+                        ?: latestEvents.take(12)
 
                     for (entry in entriesToShow) {
-                        Row(
+                        val phaseBadgeColor = when (entry.phase) {
+                            TaskTimelinePhase.FAILED -> Color(0xFFE53935)
+                            TaskTimelinePhase.COMPLETED, TaskTimelinePhase.VERIFIED_POST_CORRECTION, TaskTimelinePhase.VERIFYING -> Color(0xFF4CAF50)
+                            TaskTimelinePhase.CORRECTED, TaskTimelinePhase.RETESTED, TaskTimelinePhase.DIAGNOSED -> Color(0xFFFF9800)
+                            TaskTimelinePhase.AUTHORIZED, TaskTimelinePhase.CAPABILITY_CHECKED -> Color(0xFF2196F3)
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+
+                        val evidenceBadge = when (entry.phase) {
+                            TaskTimelinePhase.VERIFYING, TaskTimelinePhase.VERIFIED_POST_CORRECTION -> "VERIFIED"
+                            TaskTimelinePhase.OBSERVING -> "OBSERVED"
+                            TaskTimelinePhase.CORRECTED, TaskTimelinePhase.RETESTED -> "SELF_HEALED"
+                            TaskTimelinePhase.AUTHORIZED -> "AUTHORIZED"
+                            TaskTimelinePhase.CAPABILITY_CHECKED -> "CAPABILITY_OK"
+                            TaskTimelinePhase.FAILED -> "FAILED"
+                            else -> null
+                        }
+
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(vertical = 3.dp),
-                            verticalAlignment = Alignment.Top
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                            tonalElevation = 1.dp
                         ) {
-                            Box(
+                            Row(
                                 modifier = Modifier
-                                    .padding(top = 4.dp)
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when (entry.phase) {
-                                            TaskTimelinePhase.FAILED -> Color(0xFFE53935)
-                                            TaskTimelinePhase.COMPLETED, TaskTimelinePhase.VERIFIED_POST_CORRECTION -> Color(0xFF4CAF50)
-                                            TaskTimelinePhase.CORRECTED, TaskTimelinePhase.RETESTED -> Color(0xFFFF9800)
-                                            else -> MaterialTheme.colorScheme.primary
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(top = 4.dp)
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(phaseBadgeColor)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = entry.phase.name,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            if (evidenceBadge != null) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = phaseBadgeColor.copy(alpha = 0.15f)
+                                                ) {
+                                                    Text(
+                                                        text = evidenceBadge,
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        color = phaseBadgeColor,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
                                         }
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                                        Text(
+                                            text = "+${entry.durationSinceStartMs}ms",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = entry.phase.name,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "+${entry.durationSinceStartMs}ms",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp),
-                                        color = MaterialTheme.colorScheme.outline
+                                        text = entry.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
-                                Text(
-                                    text = entry.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
                             }
                         }
                     }

@@ -187,13 +187,13 @@ fun ChatWorkspaceScreen(
                 base64Data = base64,
                 bitmap = bitmap,
                 isImage = true
-            )).take(10)
+            )).take(50)
         }
     }
 
-    // Real Multi-Gallery / Photos Picker Launcher (PickMultipleVisualMedia max 10)
+    // Real Multi-Gallery / Photos Picker Launcher (PickMultipleVisualMedia max 50)
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 50)
     ) { uris ->
         if (uris.isNotEmpty()) {
             val newAttachments = uris.mapNotNull { uri ->
@@ -208,7 +208,7 @@ fun ChatWorkspaceScreen(
                     isImage = true
                 )
             }
-            activeAttachments = (activeAttachments + newAttachments).take(10)
+            activeAttachments = (activeAttachments + newAttachments).take(50)
         }
     }
 
@@ -229,7 +229,7 @@ fun ChatWorkspaceScreen(
                     } catch (_: Exception) { null }
 
                     if (!textContent.isNullOrBlank()) {
-                        promptInput += "\n\n[Attached File: $name]\n```\n${textContent.take(4000)}\n```\n"
+                        promptInput += "\n\n[Attached File: $name]\n```\n$textContent\n```\n"
                     }
                 }
 
@@ -241,7 +241,7 @@ fun ChatWorkspaceScreen(
                     isImage = isImg
                 )
             }
-            activeAttachments = (activeAttachments + newAttachments).take(10)
+            activeAttachments = (activeAttachments + newAttachments).take(50)
         }
     }
 
