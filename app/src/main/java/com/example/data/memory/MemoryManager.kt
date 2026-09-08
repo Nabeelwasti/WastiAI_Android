@@ -308,9 +308,10 @@ object MemoryManager {
     }
 
     suspend fun exportUserDataJson(): String = withContext(Dispatchers.IO) {
-        val items: List<MemoryItem> = if (memoryDao != null) {
+        val dao = memoryDao
+        val items: List<MemoryItem> = if (dao != null) {
             try {
-                memoryDao.getAllMemoriesSync().map { entity ->
+                dao.getAllMemoriesSync().map { entity ->
                     MemoryItem(
                         id = entity.id,
                         key = entity.key,
