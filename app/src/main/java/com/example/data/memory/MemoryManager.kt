@@ -23,8 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.UUID
 
 object MemoryManager {
@@ -329,19 +327,22 @@ object MemoryManager {
             activeMemoriesMap.values.toList()
         }
 
-        val jsonArray = JSONArray()
-        for (m in items) {
-            val obj = JSONObject().apply {
-                put("id", m.id)
-                put("key", m.key)
-                put("category", m.category)
-                put("value", m.value)
-                put("importanceScore", m.importanceScore.toDouble())
-                put("timestamp", m.timestamp)
+        buildString {
+            append("[\n")
+            items.forEachIndexed { index, m ->
+                append("  {\n")
+                append("    \"id\": \"${m.id}\",\n")
+                append("    \"key\": \"${m.key.replace("\"", "\\\"")}\",\n")
+                append("    \"category\": \"${m.category.replace("\"", "\\\"")}\",\n")
+                append("    \"value\": \"${m.value.replace("\"", "\\\"")}\",\n")
+                append("    \"importanceScore\": ${m.importanceScore},\n")
+                append("    \"timestamp\": ${m.timestamp}\n")
+                append("  }")
+                if (index < items.size - 1) append(",")
+                append("\n")
             }
-            jsonArray.put(obj)
+            append("]")
         }
-        jsonArray.toString(2)
     }
 
     private fun calculateKeywordMatchScore(query: String, text: String): Float {
