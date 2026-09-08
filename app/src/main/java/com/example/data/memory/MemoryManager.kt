@@ -308,9 +308,28 @@ object MemoryManager {
     }
 
     suspend fun exportUserDataJson(): String = withContext(Dispatchers.IO) {
-        val memories = memoryDao?.getAllMemoriesSync() ?: activeMemoriesMap.values.toList()
+        val items: List<MemoryItem> = if (memoryDao != null) {
+            try {
+                memoryDao.getAllMemoriesSync().map { entity ->
+                    MemoryItem(
+                        id = entity.id,
+                        key = entity.key,
+                        category = entity.category,
+                        value = entity.value,
+                        importanceScore = entity.importanceScore,
+                        timestamp = entity.timestamp,
+                        sourceMessageId = entity.sourceMessageId
+                    )
+                }
+            } catch (_: Exception) {
+                activeMemoriesMap.values.toList()
+            }
+        } else {
+            activeMemoriesMap.values.toList()
+        }
+
         val jsonArray = JSONArray()
-        for (m in memories) {
+        for (m in items) {
             val obj = JSONObject().apply {
                 put("id", m.id)
                 put("key", m.key)
