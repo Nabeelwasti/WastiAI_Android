@@ -68,8 +68,8 @@ class MemoryManagerSemanticTest {
         MemoryManager.resetForTesting()
 
         // Create memories
-        MemoryManager.createMemory("user_pref", "prefers dark theme", "PREFERENCE", 0.9f)
-        MemoryManager.createMemory("user_device", "runs Android 14", "DEVICE", 0.8f)
+        MemoryManager.saveMemory(key = "user_pref", category = "PREFERENCE", value = "prefers dark theme", importanceScore = 0.9f)
+        MemoryManager.saveMemory(key = "user_device", category = "DEVICE", value = "runs Android 14", importanceScore = 0.8f)
 
         // 1. Verify JSON export for data portability (GDPR)
         val exportedJson = MemoryManager.exportUserDataJson()
