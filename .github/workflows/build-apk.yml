@@ -92,38 +92,38 @@ jobs:
 
           # Validate JSON format, project info, and package name without printing secrets
           python3 - << 'PYEOF'
-          import json, sys
+import json, sys
 
-          try:
-              with open("app/google-services.json", "r") as f:
-                  data = json.load(f)
-          except Exception as e:
-              print(f"ERROR: app/google-services.json is not valid JSON: {e}")
-              sys.exit(1)
+try:
+    with open("app/google-services.json", "r") as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"ERROR: app/google-services.json is not valid JSON: {e}")
+    sys.exit(1)
 
-          project_info = data.get("project_info", {})
-          project_id = project_info.get("project_id", "")
-          project_number = project_info.get("project_number", "")
+project_info = data.get("project_info", {})
+project_id = project_info.get("project_id", "")
+project_number = project_info.get("project_number", "")
 
-          if "wasti-ai" not in project_id:
-              print(f"ERROR: Expected authentic Firebase project containing 'wasti-ai', found '{project_id}'.")
-              sys.exit(1)
+if "wasti-ai" not in project_id:
+    print(f"ERROR: Expected authentic Firebase project containing 'wasti-ai', found '{project_id}'.")
+    sys.exit(1)
 
-          clients = data.get("client", [])
-          packages = []
-          for client in clients:
-              pkg = client.get("client_info", {}).get("android_client_info", {}).get("package_name")
-              if pkg:
-                  packages.append(pkg)
+clients = data.get("client", [])
+packages = []
+for client in clients:
+    pkg = client.get("client_info", {}).get("android_client_info", {}).get("package_name")
+    if pkg:
+        packages.append(pkg)
 
-          valid_packages = {"com.aistudio.wastios.k9v2pz"}
-          matching_pkgs = [p for p in packages if p in valid_packages]
-          if not matching_pkgs:
-              print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
-              sys.exit(1)
+valid_packages = {"com.aistudio.wastios.k9v2pz"}
+matching_pkgs = [p for p in packages if p in valid_packages]
+if not matching_pkgs:
+    print(f"ERROR: Canonical package 'com.aistudio.wastios.k9v2pz' not found in google-services.json clients: {packages}")
+    sys.exit(1)
 
-          print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing canonical package(s): {matching_pkgs}.")
-          PYEOF
+print(f"SUCCESS: Validated authentic Firebase configuration for project '{project_id}' (number: {project_number}) containing canonical package(s): {matching_pkgs}.")
+PYEOF
         else
           echo "NOTICE: FIREBASE_GOOGLE_SERVICES_JSON secret not configured. Standalone and fail-closed cloud runtime preserved."
         fi
@@ -135,11 +135,21 @@ jobs:
         else
           touch .env
         fi
-        if [ -n "${{ secrets.GOOGLE_WEB_CLIENT_ID }}" ]; then
-          sed -i "s|^GOOGLE_WEB_CLIENT_ID=.*|GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }}|" .env
+        WEB_CLIENT_ID="${{ secrets.PUBLIC_GOOGLE_WEB_CLIENT_ID || secrets.GOOGLE_WEB_CLIENT_ID }}"
+        ANDROID_CLIENT_ID="${{ secrets.PUBLIC_GOOGLE_ANDROID_CLIENT_ID || secrets.GOOGLE_ANDROID_CLIENT_ID }}"
+        if [ -n "$WEB_CLIENT_ID" ]; then
+          if grep -q "^PUBLIC_GOOGLE_WEB_CLIENT_ID=" .env; then
+            sed -i "s|^PUBLIC_GOOGLE_WEB_CLIENT_ID=.*|PUBLIC_GOOGLE_WEB_CLIENT_ID=${WEB_CLIENT_ID}|" .env
+          else
+            echo "PUBLIC_GOOGLE_WEB_CLIENT_ID=${WEB_CLIENT_ID}" >> .env
+          fi
         fi
-        if [ -n "${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}" ]; then
-          sed -i "s|^GOOGLE_ANDROID_CLIENT_ID=.*|GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }}|" .env
+        if [ -n "$ANDROID_CLIENT_ID" ]; then
+          if grep -q "^PUBLIC_GOOGLE_ANDROID_CLIENT_ID=" .env; then
+            sed -i "s|^PUBLIC_GOOGLE_ANDROID_CLIENT_ID=.*|PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${ANDROID_CLIENT_ID}|" .env
+          else
+            echo "PUBLIC_GOOGLE_ANDROID_CLIENT_ID=${ANDROID_CLIENT_ID}" >> .env
+          fi
         fi
         echo "Safely generated .env file for build."
 
@@ -405,34 +415,34 @@ jobs:
 
         # 5. In compiled bytecode (DEX) and source, scan for actual embedded private keys with base64 payload blocks
         python3 - << 'PYEOF'
-        import os, sys, re
+import os, sys, re
 
-        key_block_regex = re.compile(
-            r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{40,}",
-            re.MULTILINE
-        )
+key_block_regex = re.compile(
+    r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----\s*[A-Za-z0-9+/=]{40,}",
+    re.MULTILINE
+)
 
-        found_leak = False
-        scan_targets = ["app/build/outputs/apk", "app/src/main", "backend", ".github/workflows"]
-        for target in scan_targets:
-            if not os.path.exists(target):
-                continue
-            for root, dirs, files in os.walk(target):
-                for file in files:
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "rb") as f:
-                            content = f.read().decode("latin1", errors="ignore")
-                        if key_block_regex.search(content):
-                            print(f"ERROR: Actual embedded private key with payload found in {filepath}!")
-                            found_leak = True
-                    except Exception:
-                        pass
+found_leak = False
+scan_targets = ["app/build/outputs/apk", "app/src/main", "backend", ".github/workflows"]
+for target in scan_targets:
+    if not os.path.exists(target):
+        continue
+    for root, dirs, files in os.walk(target):
+        for file in files:
+            filepath = os.path.join(root, file)
+            try:
+                with open(filepath, "rb") as f:
+                    content = f.read().decode("latin1", errors="ignore")
+                if key_block_regex.search(content):
+                    print(f"ERROR: Actual embedded private key with payload found in {filepath}!")
+                    found_leak = True
+            except Exception:
+                pass
 
-        if found_leak:
-            sys.exit(1)
-        print("SUCCESS: Private key boundary verified — no actual private keys embedded.")
-        PYEOF
+if found_leak:
+    sys.exit(1)
+print("SUCCESS: Private key boundary verified — no actual private keys embedded.")
+PYEOF
 
         echo "SUCCESS: Comprehensive source, backend, workflow, and APK secret boundary scan passed cleanly."
 
