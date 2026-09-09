@@ -399,4 +399,17 @@ class ActionIntentEngine(
 
         return action
     }
+
+    /**
+     * Direct Human Command Intent Execution.
+     * Treats an explicit human command as direct authorization and intention,
+     * proceeding through the canonical PLAN -> AUTH -> EXEC -> OBSERVE -> VERIFY loop.
+     */
+    fun parseAndExecuteUserCommand(prompt: String): ActionIntent? {
+        val intent = parseIntent(prompt) ?: return null
+        intent.authorizationState = ActionAuthorizationState.AUTHORIZED
+        intent.resultMessage = null
+        return executeAction(intent)
+    }
 }
+

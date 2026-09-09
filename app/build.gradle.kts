@@ -80,7 +80,7 @@ android {
   }
   lint {
     abortOnError = false
-    checkReleaseBuilds = false
+    checkReleaseBuilds = true
     warningsAsErrors = false
     ignoreTestSources = true
     disable += setOf("MissingTranslation", "ExtraTranslation")
