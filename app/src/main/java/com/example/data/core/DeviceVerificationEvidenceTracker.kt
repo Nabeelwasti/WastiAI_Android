@@ -71,6 +71,19 @@ object DeviceVerificationEvidenceTracker {
     }
 
     /**
+     * Returns a human-readable evidence summary string for telemetry and test assertions.
+     */
+    @Synchronized
+    fun getExecutionEvidenceSummary(): String {
+        val proofs = executionRecords
+        return if (proofs.isEmpty()) {
+            "ENVIRONMENT: HOST_SIMULATION (No physical device execution records)"
+        } else {
+            "ENVIRONMENT: REAL_DEVICE (${proofs.size} verified proofs)"
+        }
+    }
+
+    /**
      * Clears all recorded device proofs (used strictly for test resets).
      */
     @Synchronized

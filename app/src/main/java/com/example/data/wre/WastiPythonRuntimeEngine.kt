@@ -416,7 +416,7 @@ class WastiPythonRuntimeEngine(
                 variables["math.ceil"] = { x: Double -> ceil(x) }
             }
             "json" -> {
-                variables["json.dumps"] = { obj: Any? -> JSONObject.wrap(obj).toString() }
+                variables["json.dumps"] = { obj: Any? -> (JSONObject.wrap(obj) ?: obj ?: "null").toString() }
             }
             "os" -> {
                 variables["os.name"] = "posix"

@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.agent.runtime.CapabilityRealityRegistry
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
-import com.example.data.agent.runtime.ProductionReadinessState
+import com.example.data.core.ProductionReadinessState
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -75,8 +75,8 @@ class HostRealityBoundaryTest {
         assertNotNull(profile.cpu)
         assertNotNull(profile.memory)
         assertNotNull(profile.storage)
-        assertTrue("Storage capacity must be non-negative", profile.storage.totalBytes >= 0)
-        assertTrue("Memory capacity must be non-negative", profile.memory.totalRamBytes >= 0)
+        assertTrue("Storage capacity must be non-negative", profile.storage.internalTotalGb >= 0f)
+        assertTrue("Memory capacity must be non-negative", profile.memory.totalRamMb >= 0L)
     }
 
     @Test
