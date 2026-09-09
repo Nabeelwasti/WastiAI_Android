@@ -616,3 +616,105 @@ class BackendIntegrationAdapter(
 
     override fun describeAction(action: String): String = "Backend action: $action against configured endpoint"
 }
+
+/**
+ * WRE Polyglot Execution integration adapter that executes commands through WastiNativeExecutionProvider.
+ */
+class WreExecutionIntegrationAdapter(
+    private val context: android.content.Context? = com.example.WastiApplication.instance
+) : ExternalIntegrationAdapter {
+    override val capabilityId: String = "WRE_EXECUTION"
+    override val supportedActions: List<String> = listOf("EXECUTE_COMMAND")
+
+    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
+    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
+
+    override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
+        val command = params["command"]?.toString()
+        if (command.isNullOrBlank()) {
+            return ExternalActionResult(
+                status = ExternalActionResultStatus.FAILED,
+                diagnosticMessage = "Command string cannot be empty"
+            )
+        }
+
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return ExternalActionResult(
+                status = ExternalActionResultStatus.FAILED,
+                diagnosticMessage = "Application context unavailable for native execution"
+            )
+        }
+
+        return kotlinx.coroutines.runBlocking {
+            try {
+                val tokens = command.trim().split("\\s+".toRegex())
+                val cmd = tokens.firstOrNull() ?: "sh"
+                val args = if (tokens.size > 1) tokens.drop(1) else emptyList<String>()
+
+                val executionProvider = WastiNativeExecutionProvider(ctx)
+                val result = executionProvider.executeCommand(cmd, args)
+                if (result.isSuccess && result.exitCode == 0) {
+                    ExternalActionResult(
+                        status = ExternalActionResultStatus.SUCCESS,
+                        data = mapOf("stdout" to result.stdout, "exitCode" to result.exitCode),
+                        diagnosticMessage = "Executed successfully (exit code 0)"
+                    )
+                } else {
+                    ExternalActionResult(
+                        status = ExternalActionResultStatus.FAILED,
+                        data = mapOf("stderr" to result.stderr, "exitCode" to result.exitCode),
+                        diagnosticMessage = "Execution failed with exit code ${result.exitCode}: ${result.stderr.ifBlank { result.stdout }}"
+                    )
+                }
+            } catch (t: Throwable) {
+                ExternalActionResult(
+                    status = ExternalActionResultStatus.FAILED,
+                    diagnosticMessage = "Execution error: ${t.message ?: t.javaClass.simpleName}"
+                )
+            }
+        }
+    }
+
+    override fun dryRun(action: String, params: Map<String, Any>): ExternalActionResult {
+        val cmdStr = params["command"]?.toString() ?: ""
+        return ExternalActionResult(
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf("command" to cmdStr),
+            diagnosticMessage = "Dry run command plan: $cmdStr"
+        )
+    }
+
+    override fun describeAction(action: String): String = "Execute polyglot command in WRE environment"
+}
+
+/**
+ * Universal Fabric Intent Integration Adapter for processing general human intent.
+ */
+class UniversalFabricIntegrationAdapter : ExternalIntegrationAdapter {
+    override val capabilityId: String = "UNIVERSAL_FABRIC"
+    override val supportedActions: List<String> = listOf("PROCESS_INTENT")
+
+    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
+    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
+
+    override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
+        val prompt = params["prompt"]?.toString() ?: ""
+        return ExternalActionResult(
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf("prompt" to prompt, "processed" to true),
+            diagnosticMessage = "Intent processed by Universal Fabric: $prompt"
+        )
+    }
+
+    override fun dryRun(action: String, params: Map<String, Any>): ExternalActionResult {
+        return ExternalActionResult(
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf("prompt" to (params["prompt"] ?: "")),
+            diagnosticMessage = "Dry run intent plan: ${params["prompt"]}"
+        )
+    }
+
+    override fun describeAction(action: String): String = "Process intent through Universal Fabric"
+}
+

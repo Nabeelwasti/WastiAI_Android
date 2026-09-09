@@ -5,8 +5,6 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.agent.runtime.CapabilityRealityRegistry
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
 import com.example.data.agent.runtime.ProductionReadinessState
-import com.example.data.credential.CredentialRegistry
-import com.example.data.device.WastiDeviceController
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Before
@@ -16,10 +14,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * RealDeviceAndroidCapabilityTest
+ * HostRealityBoundaryTest
  *
- * Verifies truth-boundary enforcement for real-device Android capabilities:
- * 1. Distinguishes host simulation from physical hardware execution (JNI, Neural, Bluetooth, Camera)
+ * Verifies truth-boundary enforcement for simulated host/Robolectric test runs:
+ * 1. Proves host simulation cannot masquerade as physical hardware execution (JNI, Neural, Bluetooth, Camera)
  * 2. Enforces fail-closed reality checks when hardware sensors or physical tokens are unattached
  * 3. Proves cryptographic provenance integrity across simulated host runs
  */
@@ -27,9 +25,9 @@ import org.robolectric.annotation.Config
 @Config(manifest = Config.NONE)
 @TestCategory(
     tier = TestTier.ROBOLECTRIC,
-    description = "Host test verifying real-device capability boundaries and non-fabrication contracts"
+    description = "Host test verifying truth boundaries and non-fabrication contracts"
 )
-class RealDeviceAndroidCapabilityTest {
+class HostRealityBoundaryTest {
 
     private lateinit var context: Context
     private lateinit var realityRegistry: CapabilityRealityRegistry

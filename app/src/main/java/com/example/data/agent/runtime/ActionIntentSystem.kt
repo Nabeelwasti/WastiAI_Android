@@ -63,6 +63,9 @@ class ActionIntentEngine(
         registerAdapter(GmailIntegrationAdapter())
         registerAdapter(FilesIntegrationAdapter())
         registerAdapter(SystemInfoIntegrationAdapter())
+        registerAdapter(BackendIntegrationAdapter())
+        registerAdapter(WreExecutionIntegrationAdapter())
+        registerAdapter(UniversalFabricIntegrationAdapter())
     }
 
     fun registerAdapter(adapter: ExternalIntegrationAdapter) {
@@ -267,6 +270,29 @@ class ActionIntentEngine(
                 payload = emptyMap(),
                 previewText = "Check WASM Sandboxed runtime engine status",
                 riskLevel = RiskLevel.LOW
+            )
+        }
+
+        // 9. Polyglot / Terminal / Script Execution Commands
+        if (lower.startsWith("python ") || lower.startsWith("py ") || lower.startsWith("node ") || lower.startsWith("sh ") || lower.startsWith("bash ") || lower.startsWith("git ")) {
+            val cmd = trimmed
+            return prepareActionIntent(
+                target = "WRE_EXECUTION",
+                intent = "EXECUTE_COMMAND",
+                payload = mapOf("command" to cmd),
+                previewText = "Execute polyglot command '$cmd'",
+                riskLevel = RiskLevel.MEDIUM
+            )
+        }
+
+        // 10. General Autonomous Human Intent (Dynamic)
+        if (trimmed.isNotBlank()) {
+            return prepareActionIntent(
+                target = "UNIVERSAL_FABRIC",
+                intent = "PROCESS_INTENT",
+                payload = mapOf("prompt" to trimmed),
+                previewText = "Process human intent: '$trimmed'",
+                riskLevel = RiskLevel.MEDIUM
             )
         }
 
