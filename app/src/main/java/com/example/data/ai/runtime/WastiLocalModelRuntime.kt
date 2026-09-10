@@ -87,7 +87,7 @@ object NativeLlamaBridge {
             try {
                 getNativeRuntimeVersion()
             } catch (_: Throwable) {
-                "wasti-llama-runtime-v1.0.0-aarch64"
+                "UNAVAILABLE"
             }
         } else {
             "UNAVAILABLE"

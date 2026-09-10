@@ -56,6 +56,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.example.data.agent.runtime.ActionIntentEngine
+import com.example.data.agent.runtime.ActionAuthorizationState
 import com.example.data.device.WastiDeviceController
 import com.example.data.device.WastiIntentParser
 import com.example.data.voice.VoiceManager
@@ -505,10 +507,22 @@ fun WastiVoiceCallModal(
         }
     }
 
-    // Mobile System Commands Dispatcher
+    // Mobile System Commands & Action Intent Dispatcher
     fun handleMobileSystemCommand(command: String): Boolean {
         val lower = command.lowercase().trim()
         try {
+            // First check canonical ActionIntentEngine for real device/system action
+            val actionIntent = ActionIntentEngine.instance.parseIntent(command)
+            if (actionIntent != null && actionIntent.target != "UNIVERSAL_FABRIC") {
+                val executed = ActionIntentEngine.instance.parseAndExecuteUserCommand(command)
+                if (executed != null && (executed.authorizationState == ActionAuthorizationState.SUCCEEDED || executed.resultMessage != null)) {
+                    val msg = executed.resultMessage ?: "Command executed: ${executed.intent}"
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                    voiceStatusText = msg
+                    return true
+                }
+            }
+
             val intentResult = WastiIntentParser.parseAndExecute(context, command)
             if (intentResult.hasIntent && intentResult.actionResult != null) {
                 Toast.makeText(context, intentResult.actionResult.userFeedback, Toast.LENGTH_SHORT).show()
