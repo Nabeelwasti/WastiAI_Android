@@ -47,11 +47,17 @@
 -dontwarn androidx.room.paging.**
 
 # 7. Firebase & Google Cloud Infrastructure
--dontwarn com.google.firebase.**
 -keep class com.google.firebase.** { *; }
--dontwarn com.google.android.gms.**
--dontwarn com.google.android.gms.internal.recaptchabase.**
+-keep interface com.google.firebase.** { *; }
+-keep enum com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
+-keep interface com.google.android.gms.** { *; }
+-keep class com.google.android.gms.internal.recaptchabase.** { *; }
+-keep class com.google.android.gms.internal.recaptchabase.zzl { *; }
+-keep class com.google.android.gms.internal.recaptchabase.zzm { *; }
+-keepattributes InnerClasses,EnclosingMethod,Signature,*Annotation*
+-dontwarn com.google.android.gms.internal.recaptchabase.**
+-dontwarn com.google.android.gms.internal.recaptcha.**
 -keep class com.example.data.cloud.** { *; }
 -keep class com.example.data.auth.** { *; }
 
