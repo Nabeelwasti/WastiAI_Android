@@ -37,22 +37,31 @@ def main():
         else:
             preserved_keys.append(key)
 
+    # Check Firebase JSON File Injection
+    firebase_json_path = "app/google-services.json"
+    firebase_injected = os.path.exists(firebase_json_path) and os.path.getsize(firebase_json_path) > 10
+
     print("=" * 68)
     print("      WASTI AI OS — SECRETS & CREDENTIALS INGESTION AUDIT")
     print("=" * 68)
-    print(f"Total Tracked Variables: {len(secrets)}")
-    print(f"Active / Injected Secrets: {len(injected_keys)}")
+    print(f"Total Tracked Environment Variables: {len(secrets)}")
+    print(f"Active / Injected Variables: {len(injected_keys)}")
     print(f"Preserved for Future Use (Empty/Unconfigured): {len(preserved_keys)}")
+    print(f"Firebase Config (FIREBASE_GOOGLE_SERVICES_JSON): {'INJECTED & VERIFIED' if firebase_injected else 'PRESERVED (OPTIONAL)'}")
     print("-" * 68)
     
     print("\n[ACTIVE INJECTED SECRETS]")
+    if firebase_injected:
+        print("  + FIREBASE_GOOGLE_SERVICES_JSON        [CONFIGURED & INJECTED -> app/google-services.json]")
     if injected_keys:
         for k in injected_keys:
             print(f"  + {k:<36} [CONFIGURED & INJECTED]")
-    else:
+    elif not firebase_injected:
         print("  (None configured yet in current environment)")
 
     print("\n[PRESERVED FOR FUTURE USE / OPTIONAL]")
+    if not firebase_injected:
+        print("  o FIREBASE_GOOGLE_SERVICES_JSON        [PRESERVED - OPTIONAL / USER-OVERRIDABLE]")
     if preserved_keys:
         for k in preserved_keys:
             print(f"  o {k:<36} [PRESERVED - OPTIONAL / USER-OVERRIDABLE]")
