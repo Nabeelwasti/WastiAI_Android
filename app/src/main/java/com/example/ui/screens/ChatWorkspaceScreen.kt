@@ -60,6 +60,8 @@ data class ActiveAttachment(
     val isImage: Boolean = true
 )
 
+private const val MAX_DIRECT_TEXT_INPUT_LENGTH = 50000
+
 private fun bitmapToBase64(bitmap: android.graphics.Bitmap): String {
     val outputStream = java.io.ByteArrayOutputStream()
     bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, outputStream)
@@ -72,6 +74,26 @@ private fun uriToBase64(context: android.content.Context, uri: android.net.Uri):
         val bytes = inputStream?.readBytes()
         inputStream?.close()
         if (bytes != null) android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP) else null
+    } catch (_: Exception) {
+        null
+    }
+}
+
+private fun createTextAttachmentFromFile(context: android.content.Context, rawText: String, baseFileName: String = "pasted_document"): ActiveAttachment? {
+    return try {
+        val timestamp = System.currentTimeMillis()
+        val fileName = "${baseFileName}_$timestamp.txt"
+        val file = java.io.File(context.filesDir, fileName)
+        file.writeText(rawText)
+        val bytes = file.readBytes()
+        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+        ActiveAttachment(
+            uri = file.absolutePath,
+            name = fileName,
+            mimeType = "text/plain",
+            base64Data = base64,
+            isImage = false
+        )
     } catch (_: Exception) {
         null
     }
@@ -180,20 +202,20 @@ fun ChatWorkspaceScreen(
         if (bitmap != null) {
             val base64 = bitmapToBase64(bitmap)
             val name = "Camera_Capture_${System.currentTimeMillis() % 10000}.jpg"
-            activeAttachments = (activeAttachments + ActiveAttachment(
+            activeAttachments = activeAttachments + ActiveAttachment(
                 uri = name,
                 name = name,
                 mimeType = "image/jpeg",
                 base64Data = base64,
                 bitmap = bitmap,
                 isImage = true
-            )).take(50)
+            )
         }
     }
 
-    // Real Multi-Gallery / Photos Picker Launcher (PickMultipleVisualMedia max 50)
+    // Real Multi-Gallery / Photos Picker Launcher (Unlimited visual media selection)
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 50)
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
         if (uris.isNotEmpty()) {
             val newAttachments = uris.mapNotNull { uri ->
@@ -208,11 +230,11 @@ fun ChatWorkspaceScreen(
                     isImage = true
                 )
             }
-            activeAttachments = (activeAttachments + newAttachments).take(50)
+            activeAttachments = activeAttachments + newAttachments
         }
     }
 
-    // Real Device Storage / File Manager Multi-Launcher
+    // Real Device Storage / File Manager Multi-Launcher (Unlimited files, docs, txt, md, code, logs attached as files without text dumping)
     val documentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris ->
@@ -223,16 +245,6 @@ fun ChatWorkspaceScreen(
                 val base64 = uriToBase64(context, uri)
                 val isImg = mime.startsWith("image/")
 
-                if (!isImg) {
-                    val textContent = try {
-                        context.contentResolver.openInputStream(uri)?.use { it.bufferedReader().readText() }
-                    } catch (_: Exception) { null }
-
-                    if (!textContent.isNullOrBlank()) {
-                        promptInput += "\n\n[Attached File: $name]\n```\n$textContent\n```\n"
-                    }
-                }
-
                 ActiveAttachment(
                     uri = uri.toString(),
                     name = name,
@@ -241,7 +253,7 @@ fun ChatWorkspaceScreen(
                     isImage = isImg
                 )
             }
-            activeAttachments = (activeAttachments + newAttachments).take(50)
+            activeAttachments = activeAttachments + newAttachments
         }
     }
 
@@ -1079,12 +1091,24 @@ fun ChatWorkspaceScreen(
 
                 OutlinedTextField(
                     value = promptInput,
-                    onValueChange = { promptInput = it },
-                    placeholder = { Text("Command Wasti AI...", fontSize = 12.sp) },
+                    onValueChange = { input ->
+                        if (input.length > MAX_DIRECT_TEXT_INPUT_LENGTH) {
+                            val autoFileAttachment = createTextAttachmentFromFile(context, input, "pasted_large_prompt")
+                            if (autoFileAttachment != null) {
+                                activeAttachments = activeAttachments + autoFileAttachment
+                                promptInput = ""
+                                Toast.makeText(context, "Large text (${input.length} chars) converted into text file attachment automatically.", Toast.LENGTH_SHORT).show()
+                            } else {
+                                promptInput = input
+                            }
+                        } else {
+                            promptInput = input
+                        }
+                    },
+                    placeholder = { Text("Command Wasti AI (no length/size limits)...", fontSize = 12.sp) },
                     modifier = Modifier
                         .weight(1f)
                         .testTag("chat_prompt_input"),
-                    maxLines = 4,
                     shape = RoundedCornerShape(20.dp),
                     trailingIcon = {
                         if (promptInput.isNotEmpty()) {
@@ -1106,9 +1130,18 @@ fun ChatWorkspaceScreen(
                         if (isGenerating) {
                             onCancelGeneration()
                         } else if (promptInput.isNotBlank() || activeAttachments.isNotEmpty()) {
-                            val textToSend = promptInput
-                            val attachmentsToSend = activeAttachments
+                            var textToSend = promptInput
+                            var attachmentsToSend = activeAttachments
                             val targetEditId = editingMessageId
+
+                            // If text is extraordinarily long, convert to text file attachment safely
+                            if (textToSend.length > MAX_DIRECT_TEXT_INPUT_LENGTH) {
+                                val autoFileAttachment = createTextAttachmentFromFile(context, textToSend, "overflow_prompt_document")
+                                if (autoFileAttachment != null) {
+                                    attachmentsToSend = attachmentsToSend + autoFileAttachment
+                                    textToSend = "Please analyze the attached document."
+                                }
+                            }
 
                             promptInput = ""
                             activeAttachments = emptyList()
@@ -1116,7 +1149,7 @@ fun ChatWorkspaceScreen(
                             focusManager.clearFocus()
 
                             if (targetEditId != null) {
-                                // Task 43A: Submitting edit invokes editMessageAndRegenerate without duplicate appending!
+                                // Submitting edit invokes editMessageAndRegenerate without duplicate appending
                                 onEditAndResendMessage(targetEditId, textToSend)
                             } else {
                                 val mediaUrisStr = attachmentsToSend.joinToString(",") { it.uri ?: it.name }

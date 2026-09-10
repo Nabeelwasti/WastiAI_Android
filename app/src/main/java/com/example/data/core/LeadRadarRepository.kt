@@ -375,50 +375,32 @@ object LeadRadarRepository {
     suspend fun scanAndEvaluateLeads(context: Context, query: String): List<LeadItemEntity> = withContext(Dispatchers.IO) {
         initDatabase(context)
         _lastSearchQuery.value = query
-        val rawLeads = LeadScraperEngine.fetchLeadsForQuery(query, context)
-        val skillMatrix = SkillMatrix()
+        val evaluatedEntities = LeadScraperEngine.fetchLeadsForQuery(query, context)
 
-        val evaluatedEntities = rawLeads.map { lead ->
-            val fullText = "${lead.title}\n${lead.description}"
-            val eval = LeadScraperEngine.evaluateLeadMatch(fullText, skillMatrix)
-
-            val entity = LeadItemEntity(
-                title = lead.title,
-                link = lead.link,
-                description = lead.description,
-                pubDate = lead.pubDate,
-                category = lead.category.ifBlank { query },
-                matchScore = eval.matchScore,
-                matchedSkills = eval.matchedSkills,
-                draftedPitch = eval.draftedPitch,
-                status = LeadStatus.DISCOVERED
-            )
-
-            if (eval.matchScore >= 85) {
+        evaluatedEntities.forEach { lead ->
+            if (lead.matchScore >= 85) {
                 WastiNotificationManager.sendHighMatchLeadNotification(
                     context = context,
                     leadTitle = lead.title,
-                    matchScore = eval.matchScore,
+                    matchScore = lead.matchScore,
                     category = lead.category.ifBlank { query },
-                    draftedPitch = eval.draftedPitch
+                    draftedPitch = lead.draftedPitch
                 )
             }
-
-            entity
         }
 
         if (evaluatedEntities.isNotEmpty()) {
             val db = WastiDatabase.getDatabase(context)
             db.leadDao().insertLeads(evaluatedEntities.map { it.toRoomEntity() })
         } else {
-            val errorMsg = "No live leads found from the current feed. Please verify the RSS URL or connection."
+            val errorMsg = "No live leads found from the current feed/search. Please check your query or network connection."
             Log.w(TAG, errorMsg)
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
             }
         }
 
-        evaluatedEntities
+        return@withContext evaluatedEntities
     }
 
     fun updateLeadStatus(context: Context, leadId: String, newStatus: LeadStatus) {

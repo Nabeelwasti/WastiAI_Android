@@ -40,7 +40,6 @@ object MemoryManager {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var memoryDao: MemoryDao? = null
 
-    private const val MAX_ACTIVE_MEMORIES_CACHE = 500
     private val activeMemoriesMap = java.util.concurrent.ConcurrentHashMap<String, MemoryItem>()
     private val _memoriesFlow = MutableStateFlow<List<MemoryItem>>(emptyList())
     val memoriesFlow: StateFlow<List<MemoryItem>> = _memoriesFlow.asStateFlow()
@@ -58,9 +57,8 @@ object MemoryManager {
             val list = dao.getMemoriesList()
             activeMemoriesMap.clear()
 
-            // Sort by importanceScore and lastAccessed/timestamp to populate up to MAX_ACTIVE_MEMORIES_CACHE
-            val sortedList = list.sortedByDescending { it.importanceScore }
-            sortedList.take(MAX_ACTIVE_MEMORIES_CACHE).forEach { entity ->
+            // Index all memories into the knowledge graph & vector index without arbitrary caps
+            list.forEach { entity ->
                 val embedding = embeddingService.generateEmbedding(entity.value)
                 val item = MemoryItem(
                     id = entity.id,
@@ -82,22 +80,10 @@ object MemoryManager {
     }
 
     /**
-     * Enforces LRU memory cache eviction policy when capacity exceeds MAX_ACTIVE_MEMORIES_CACHE.
+     * Preserves memories permanently in accordance with the Eternal Manifesto.
      */
     private fun evictLeastRecentlyUsedIfNeeded() {
-        if (activeMemoriesMap.size > MAX_ACTIVE_MEMORIES_CACHE) {
-            val excessCount = activeMemoriesMap.size - MAX_ACTIVE_MEMORIES_CACHE
-            val toEvict = activeMemoriesMap.values
-                .filter { it.importanceScore < 0.95f } // Protect critical pinned facts
-                .sortedWith(compareBy({ it.lastAccessedTimestamp }, { it.importanceScore }))
-                .take(excessCount)
-
-            toEvict.forEach { mem ->
-                activeMemoriesMap.remove(mem.id)
-                vectorIndex.removeVector(mem.id)
-            }
-            Log.d("MemoryManager", "LRU Cache Eviction: Evicted ${toEvict.size} items from in-memory cache")
-        }
+        // Permanent persistent memory: no arbitrary deletion/eviction of user or system memories
     }
 
     suspend fun processExplicitMemoryIntent(userPrompt: String, sourceMessageId: String? = null) = withContext(Dispatchers.IO) {

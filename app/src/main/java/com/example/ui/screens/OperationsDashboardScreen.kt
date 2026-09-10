@@ -1555,6 +1555,7 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
             ) {
                 // WhatsApp Button -> To Client's WhatsApp
                 item {
+                    val waLabel = if (clientPhone.isNotBlank() && clientPhone != "Pending Discovery") "WA ($clientPhone)" else "WhatsApp"
                     Button(
                         onClick = { LeadRadarRepository.dispatchWhatsAppDirect(context, clientPhone, lead.draftedPitch) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -1563,12 +1564,13 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(waLabel, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // Email Button -> To Client's Email
                 item {
+                    val emailLabel = if (clientEmail.isNotBlank() && clientEmail != "Pending Discovery") "Email (${clientEmail.take(16)})" else "Email"
                     Button(
                         onClick = { LeadRadarRepository.dispatchEmailDirect(context, clientEmail, "Proposal: ${lead.title}", lead.draftedPitch) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -1576,12 +1578,13 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     ) {
                         Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(emailLabel, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // Call Button -> To Client's Phone
                 item {
+                    val callLabel = if (clientPhone.isNotBlank() && clientPhone != "Pending Discovery") "Call ($clientPhone)" else "Call"
                     OutlinedButton(
                         onClick = { LeadRadarRepository.dispatchCallDirect(context, clientPhone) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -1589,12 +1592,13 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     ) {
                         Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Call", fontSize = 10.sp)
+                        Text(callLabel, fontSize = 10.sp)
                     }
                 }
 
                 // SMS Button -> To Client's Phone
                 item {
+                    val smsLabel = if (clientPhone.isNotBlank() && clientPhone != "Pending Discovery") "SMS ($clientPhone)" else "SMS"
                     OutlinedButton(
                         onClick = { LeadRadarRepository.dispatchSmsDirect(context, clientPhone, lead.draftedPitch) },
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
@@ -1602,12 +1606,13 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("SMS", fontSize = 10.sp)
+                        Text(smsLabel, fontSize = 10.sp)
                     }
                 }
 
                 // LinkedIn Button -> To Client's / Company's LinkedIn Profile
                 item {
+                    val linkedInLabel = if (clientLinkedIn.isNotBlank()) "LinkedIn (Found)" else "LinkedIn"
                     OutlinedButton(
                         onClick = {
                             LeadRadarRepository.dispatchLinkedInDirect(
@@ -1621,7 +1626,7 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                     ) {
                         Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("LinkedIn", fontSize = 10.sp)
+                        Text(linkedInLabel, fontSize = 10.sp)
                     }
                 }
 
@@ -1938,6 +1943,7 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
             ) {
                 // WhatsApp Button -> Directly to client's WhatsApp
                 item {
+                    val waLabel = if (displayWhatsapp.isNotBlank() && displayWhatsapp != "Pending Discovery") "WA ($displayWhatsapp)" else "WhatsApp"
                     Button(
                         onClick = {
                             com.example.data.core.LeadRadarRepository.dispatchWhatsAppDirect(
@@ -1952,12 +1958,13 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("WhatsApp", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(waLabel, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // Email Button -> Directly to client's email
                 item {
+                    val emailLabel = if (displayEmail.isNotBlank() && displayEmail != "Pending Discovery") "Email (${displayEmail.take(16)})" else "Email"
                     Button(
                         onClick = {
                             com.example.data.core.LeadRadarRepository.dispatchEmailDirect(
@@ -1973,12 +1980,13 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     ) {
                         Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(12.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Email", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(emailLabel, fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 // Call Button -> Directly to client's phone
                 item {
+                    val callLabel = if (displayWhatsapp.isNotBlank() && displayWhatsapp != "Pending Discovery") "Call ($displayWhatsapp)" else "Call"
                     OutlinedButton(
                         onClick = {
                             com.example.data.core.LeadRadarRepository.dispatchCallDirect(
@@ -1991,12 +1999,13 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     ) {
                         Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Call", fontSize = 10.sp)
+                        Text(callLabel, fontSize = 10.sp)
                     }
                 }
 
                 // SMS / Direct Message Button -> Directly to client's phone
                 item {
+                    val smsLabel = if (displayWhatsapp.isNotBlank() && displayWhatsapp != "Pending Discovery") "SMS ($displayWhatsapp)" else "SMS"
                     OutlinedButton(
                         onClick = {
                             com.example.data.core.LeadRadarRepository.dispatchSmsDirect(
@@ -2010,12 +2019,13 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("SMS", fontSize = 10.sp)
+                        Text(smsLabel, fontSize = 10.sp)
                     }
                 }
 
                 // LinkedIn Button -> To client / company LinkedIn profile or search
                 item {
+                    val linkedInLabel = if (displayWebsite.contains("linkedin", ignoreCase = true)) "LinkedIn (Found)" else "LinkedIn"
                     OutlinedButton(
                         onClick = {
                             com.example.data.core.LeadRadarRepository.dispatchLinkedInDirect(
@@ -2029,7 +2039,7 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                     ) {
                         Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("LinkedIn", fontSize = 10.sp)
+                        Text(linkedInLabel, fontSize = 10.sp)
                     }
                 }
 

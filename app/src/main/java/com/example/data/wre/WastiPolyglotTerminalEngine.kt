@@ -38,7 +38,10 @@ enum class PolyglotLanguage {
     C_CPP,
     SYSTEM_DIAGNOSTIC,
     SOVEREIGN_KEYSTORE,
-    SOVEREIGN_TUNNEL
+    SOVEREIGN_TUNNEL,
+    LEAD_RADAR,
+    WEB_SCRAPER,
+    CRM_PIPELINE
 }
 
 data class PolyglotExecutionOutcome(
@@ -73,11 +76,12 @@ class WastiPolyglotTerminalEngine(
         "sql", "sqlite", "sqlite3", "query",
         "git", "pkg", "apt", "apt-get",
         "gcc", "clang", "g++", "clang++", "make", "rustc", "cargo",
-        "ffmpeg", "ffprobe", "mesh", "peers", "offload",
+        "ffmpeg", "ffprobe", "mesh", "peers", "offload", "net", "wifi", "p2p", "inet", "internet",
         "ssh", "ssh-keygen", "tmux",
         "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum",
         "sysinfo", "hardware", "keystore", "tunnel", "polyglot",
-        "search", "speak", "alternatives", "cognitive", "sensory", "face"
+        "search", "speak", "alternatives", "cognitive", "sensory", "face",
+        "lead", "hunt", "leads", "scrape", "crawl", "crm"
     )
 
     override suspend fun canExecute(request: ExecutionRequest): Boolean {
@@ -127,6 +131,7 @@ class WastiPolyglotTerminalEngine(
             "ffmpeg", "ffprobe" -> executeFfmpeg(firstToken, restOfCmd, workingDir)
             "mesh", "peers" -> executeMeshDiscovery()
             "offload" -> executeMeshOffload(restOfCmd, workingDir)
+            "net", "wifi", "p2p", "inet", "internet" -> executeConnectivityDiagnosis(raw)
             "ssh", "ssh-keygen" -> sshTmuxCompilerEngine.executeSsh(raw, workingDir)
             "tmux" -> sshTmuxCompilerEngine.executeTmux(restOfCmd, workingDir)
             "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum" ->
@@ -140,6 +145,9 @@ class WastiPolyglotTerminalEngine(
             "speak" -> executeSovereignSpeak(raw)
             "keystore" -> executeKeystoreCommand(raw)
             "tunnel" -> executeTunnelCommand(raw)
+            "lead", "hunt", "leads" -> executeLeadCommand(raw)
+            "scrape", "crawl" -> executeScrapeCommand(raw)
+            "crm" -> executeCrmCommand(raw)
             else -> executeShellProcess(raw)
         }
 
@@ -430,5 +438,246 @@ class WastiPolyglotTerminalEngine(
             return PolyglotExecutionOutcome(true, PolyglotLanguage.SYSTEM_DIAGNOSTIC, "Usage: offload <peer-ip> <command>")
         }
         return meshBridge.executeOnPeer(targetIp, cmd, workingDir.name)
+    }
+
+    private suspend fun executeConnectivityDiagnosis(cmd: String): PolyglotExecutionOutcome {
+        val provider = com.example.data.mesh.WastiSovereignConnectivityProvider.getInstance(context)
+        val tokens = cmd.trim().split(Regex("\\s+"))
+        
+        if (tokens.size > 1 && tokens[1] == "panel") {
+            provider.launchSystemInternetPanel()
+            return PolyglotExecutionOutcome(
+                isSuccess = true,
+                language = PolyglotLanguage.SYSTEM_DIAGNOSTIC,
+                stdout = "⚡ Launched Android Internet Connectivity Panel for quick network reconnect.",
+                verificationEvidence = "Settings panel displayed"
+            )
+        }
+        
+        if (tokens.size > 1 && tokens[1] == "sms") {
+            val phone = tokens.getOrNull(2) ?: "+10000000000"
+            val msg = tokens.drop(3).joinToString(" ").ifBlank { "TEST_PING" }
+            val sent = provider.sendEmergencySmsDatagram(phone, msg)
+            return PolyglotExecutionOutcome(
+                isSuccess = sent,
+                language = PolyglotLanguage.SYSTEM_DIAGNOSTIC,
+                stdout = if (sent) "Dispatched encrypted emergency SMS datagram to $phone" else "Failed to send SMS datagram",
+                verificationEvidence = "SMS datagram channel invoked"
+            )
+        }
+
+        provider.discoverNearbyP2pPeers()
+        val summary = provider.getDiagnosticSummary()
+        return PolyglotExecutionOutcome(
+            isSuccess = true,
+            language = PolyglotLanguage.SYSTEM_DIAGNOSTIC,
+            stdout = summary,
+            verificationEvidence = "Sovereign connectivity checked"
+        )
+    }
+
+    private suspend fun executeLeadCommand(cmd: String): PolyglotExecutionOutcome {
+        val trimmed = cmd.trim()
+        val tokens = trimmed.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val firstToken = tokens.getOrNull(0)?.lowercase() ?: "lead"
+        val subAction = if (firstToken == "hunt") "hunt" else tokens.getOrNull(1)?.lowercase() ?: "list"
+        val queryArg = if (firstToken == "hunt") {
+            tokens.drop(1).joinToString(" ")
+        } else {
+            tokens.drop(2).joinToString(" ")
+        }
+
+        return when (subAction) {
+            "hunt", "scan", "search" -> {
+                val effectiveQuery = queryArg.ifBlank { "Creative & Technical Services" }
+                val results = com.example.data.core.LeadRadarRepository.scanAndEvaluateLeads(context, effectiveQuery)
+                val sb = StringBuilder()
+                sb.appendLine("### ⚡ Wasti Sovereign Lead Radar & Web Scraper: SCAN COMPLETE")
+                sb.appendLine("Query: **$effectiveQuery** | Discovered: **${results.size} Genuine Leads**\n")
+                if (results.isEmpty()) {
+                    sb.appendLine("No live leads found from current web search / feeds for '$effectiveQuery'.")
+                } else {
+                    results.forEachIndexed { idx, lead ->
+                        sb.appendLine("---")
+                        sb.appendLine("#### #${idx + 1}. ${lead.title}")
+                        sb.appendLine("• **Match Score**: ${lead.matchScore}% | **Category**: ${lead.category}")
+                        if (lead.clientEmail.isNotBlank() && lead.clientEmail != "Pending Discovery") {
+                            sb.appendLine("• **Email**: `${lead.clientEmail}`")
+                        }
+                        if (lead.link.startsWith("http")) {
+                            sb.appendLine("• **Source URL**: ${lead.link}")
+                        }
+                        sb.appendLine("• **Key Skills**: ${lead.matchedSkills.joinToString(", ")}")
+                        sb.appendLine("\n**Drafted Pitch Proposal**:")
+                        sb.appendLine(lead.draftedPitch)
+                        sb.appendLine("")
+                    }
+                }
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.LEAD_RADAR,
+                    stdout = sb.toString(),
+                    verificationEvidence = "Scraped ${results.size} live leads for query: $effectiveQuery"
+                )
+            }
+            "list" -> {
+                val leads = com.example.data.core.LeadRadarRepository.leadsFlow.value
+                val sb = StringBuilder()
+                sb.appendLine("### ⚡ Wasti Lead Radar Pipeline (${leads.size} Total Leads)")
+                if (leads.isEmpty()) {
+                    sb.appendLine("Pipeline is empty. Run `lead hunt <query>` to discover live leads.")
+                } else {
+                    leads.take(15).forEachIndexed { idx, lead ->
+                        sb.appendLine("${idx + 1}. **${lead.title.take(45)}** [${lead.status.name}] (${lead.matchScore}% Match)")
+                        if (lead.clientEmail.isNotBlank() && lead.clientEmail != "Pending Discovery") {
+                            sb.appendLine("   Email: ${lead.clientEmail}")
+                        }
+                    }
+                }
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.LEAD_RADAR,
+                    stdout = sb.toString(),
+                    verificationEvidence = "Retrieved ${leads.size} pipeline leads"
+                )
+            }
+            "pitch" -> {
+                val leadIdOrIndex = tokens.getOrNull(2) ?: "1"
+                val leads = com.example.data.core.LeadRadarRepository.leadsFlow.value
+                val targetLead = leads.find { it.id == leadIdOrIndex } ?: leads.getOrNull(leadIdOrIndex.toIntOrNull()?.minus(1) ?: 0)
+                if (targetLead != null) {
+                    val out = """
+### ⚡ Tailored Client Outreach Pitch: ${targetLead.title}
+**Target Email**: ${targetLead.clientEmail.ifBlank { "Pending Discovery" }}
+**Match Score**: ${targetLead.matchScore}%
+
+${targetLead.draftedPitch}
+                    """.trimIndent()
+                    PolyglotExecutionOutcome(true, PolyglotLanguage.LEAD_RADAR, out, verificationEvidence = "Pitch retrieved for ${targetLead.title}")
+                } else {
+                    PolyglotExecutionOutcome(false, PolyglotLanguage.LEAD_RADAR, "Lead not found for identifier: $leadIdOrIndex", stderr = "Lead not found")
+                }
+            }
+            else -> {
+                val help = """
+### ⚡ Wasti Sovereign Lead Hunter CLI
+Commands:
+• `lead hunt <industry/niche>` — Live multi-lane web scraping & lead extraction (e.g. `lead hunt "AI Automation for Healthcare"`)
+• `lead list` — Display all active discovered leads in the pipeline
+• `lead pitch <leadIndex>` — View full tailored pitch for a lead
+• `scrape <url>` — Deep scrape any website for emails, phones, and intelligence
+• `crm list` — View CRM prospect database
+                """.trimIndent()
+                PolyglotExecutionOutcome(true, PolyglotLanguage.LEAD_RADAR, help)
+            }
+        }
+    }
+
+    private suspend fun executeScrapeCommand(cmd: String): PolyglotExecutionOutcome {
+        val tokens = cmd.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val targetUrl = tokens.getOrNull(1) ?: ""
+        if (targetUrl.isBlank() || (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://"))) {
+            return PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.WEB_SCRAPER,
+                stdout = "Usage: scrape <http/https URL>\nExample: scrape https://example.com/contact",
+                stderr = "Missing or invalid URL"
+            )
+        }
+
+        return try {
+            val content = com.example.data.ops.WebSearchEngine.scrapeWebPage(targetUrl)
+            val emails = Regex("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}").findAll(content).map { it.value }.toSet()
+            val phones = Regex("(?:\\+?\\d{1,4}[\\s.-]?)?\\(?\\d{2,4}\\)?[\\s.-]?\\d{3,4}[\\s.-]?\\d{3,5}").findAll(content).map { it.value.trim() }.filter { it.length in 8..20 }.toSet()
+            val linkedIn = Regex("https?://(?:[a-zA-Z0-9]+\\.)?linkedin\\.com/(?:company|in)/[a-zA-Z0-9_-]+").findAll(content).map { it.value }.toSet()
+
+            val sb = StringBuilder()
+            sb.appendLine("### ⚡ Web Intelligence Scraper: $targetUrl")
+            sb.appendLine("• Status: Scraped ${content.length} characters of authentic content")
+            sb.appendLine("• Discovered Emails: ${if (emails.isNotEmpty()) emails.joinToString(", ") else "None detected"}")
+            sb.appendLine("• Discovered Phones: ${if (phones.isNotEmpty()) phones.joinToString(", ") else "None detected"}")
+            sb.appendLine("• Discovered LinkedIn: ${if (linkedIn.isNotEmpty()) linkedIn.joinToString(", ") else "None detected"}")
+            sb.appendLine("\n**Page Content Extract (First 500 chars)**:\n")
+            sb.appendLine(content.take(500))
+
+            PolyglotExecutionOutcome(
+                isSuccess = true,
+                language = PolyglotLanguage.WEB_SCRAPER,
+                stdout = sb.toString(),
+                verificationEvidence = "Extracted ${emails.size} emails and ${phones.size} phones from $targetUrl"
+            )
+        } catch (e: Exception) {
+            PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.WEB_SCRAPER,
+                stdout = "Scraping failed: ${e.message}",
+                stderr = e.stackTraceToString()
+            )
+        }
+    }
+
+    private suspend fun executeCrmCommand(cmd: String): PolyglotExecutionOutcome {
+        val tokens = cmd.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val subAction = tokens.getOrNull(1)?.lowercase() ?: "list"
+
+        return when (subAction) {
+            "list" -> {
+                val db = WastiDatabase.getDatabase(context)
+                val prospects = db.prospectDao().getAllProspectsSync()
+                val sb = StringBuilder()
+                sb.appendLine("### ⚡ Wasti Sovereign CRM Prospect Database (${prospects.size} Prospects)")
+                if (prospects.isEmpty()) {
+                    sb.appendLine("No CRM records found. Add leads from Lead Radar or run `crm add <name> <email> <phone>`.")
+                } else {
+                    prospects.forEachIndexed { idx, p ->
+                        sb.appendLine("${idx + 1}. **${p.clientName}** [${p.status}]")
+                        if (p.companyName.isNotBlank() && p.companyName != "Pending Discovery") sb.appendLine("   Company: ${p.companyName}")
+                        if (p.email.isNotBlank() && p.email != "Pending Discovery") sb.appendLine("   Email: ${p.email}")
+                        if (p.phone.isNotBlank() && p.phone != "Pending Discovery") sb.appendLine("   Phone/WA: ${p.phone}")
+                        if (p.websiteUrl.isNotBlank() && p.websiteUrl != "Pending Discovery") sb.appendLine("   URL: ${p.websiteUrl}")
+                        sb.appendLine("   Nature: ${p.opportunityNature} | Source: ${p.leadSource}")
+                    }
+                }
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.CRM_PIPELINE,
+                    stdout = sb.toString(),
+                    verificationEvidence = "Retrieved ${prospects.size} CRM records"
+                )
+            }
+            "add" -> {
+                val name = tokens.getOrNull(2) ?: "Prospect"
+                val email = tokens.getOrNull(3) ?: "Pending Discovery"
+                val phone = tokens.getOrNull(4) ?: "Pending Discovery"
+                val company = tokens.getOrNull(5) ?: "Pending Discovery"
+
+                val db = WastiDatabase.getDatabase(context)
+                val newEntity = com.example.data.db.ProspectEntity(
+                    clientName = name,
+                    companyName = company,
+                    email = email,
+                    phone = phone,
+                    whatsappNumber = phone,
+                    status = "NEW",
+                    leadSource = "Terminal CLI",
+                    opportunityNature = "Creative, Digital & Technical Solutions",
+                    aiDraftedMessage = "Outreach pitch initialized from Terminal"
+                )
+                db.prospectDao().insertProspect(newEntity)
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.CRM_PIPELINE,
+                    stdout = "⚡ Ingested prospect '$name' ($company) into CRM database.",
+                    verificationEvidence = "Inserted prospect ${newEntity.id}"
+                )
+            }
+            else -> {
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.CRM_PIPELINE,
+                    stdout = "Usage:\n• `crm list` — View all prospects\n• `crm add <name> <email> <phone> <company>` — Add prospect"
+                )
+            }
+        }
     }
 }
