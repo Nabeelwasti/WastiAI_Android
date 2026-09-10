@@ -529,7 +529,8 @@ fun TerminalWorkspaceScreen(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 listOf(
-                    "neofetch", "pkg list", "pkg install htop", "pip list", "npm list",
+                    "neofetch", "pkg list", "rustc --version", "ffmpeg -version", "mesh",
+                    "pkg install htop", "pip list", "npm list",
                     "python3 -c \"import math; print(math.pi)\"",
                     "node -e \"console.log(process.versions)\"",
                     "git status", "gcc --version", "sqlite3 \".tables\"",
