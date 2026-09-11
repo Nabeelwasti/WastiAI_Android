@@ -11,52 +11,19 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-// --- Runtime Secret Injection (fix: CI reported secrets as "injected" but ---
-// --- none ever reached a real installed APK) --------------------------------
-// The CI workflow (.github/workflows/build-apk.yml) writes every configured
-// GitHub Actions secret into a `.env` file at the REPOSITORY ROOT. At runtime,
-// CredentialRegistry.getBuildConfigString() looks up secrets via reflection
-// into BuildConfig.<KEY_NAME> fields — but nothing in this module previously
-// generated those BuildConfig fields, so every lookup returned null on a real
-// device regardless of what the CI log said. This loader reads that root
-// .env (falling back to real OS environment variables for local `./gradlew`
-// runs) so every key below can be exposed as a genuine BuildConfig field.
-// This is additive only: it does not touch or reduce the user's own
-// EncryptedSharedPreferences secret vault, which remains fully intact as the
-// fallback path a user can use to add or override any key by hand.
-val wastiSecretsEnvFile = listOf(rootProject.file(".env"), project.file(".env")).firstOrNull { it.exists() }
-val wastiSecretsEnvProps = Properties().apply {
-  if (wastiSecretsEnvFile != null && wastiSecretsEnvFile.exists()) {
-    wastiSecretsEnvFile.inputStream().use { load(it) }
-  }
-}
-fun wastiSecret(key: String): String {
-  val raw = wastiSecretsEnvProps.getProperty(key) ?: System.getenv(key) ?: ""
-  return raw.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "").replace("\r", "")
-}
-// Canonical key names — kept in exact sync with every `inject_secret "KEY"`
-// call in .github/workflows/build-apk.yml. If a new secret is added to the
-// workflow, add its exact key name here too so it actually reaches the app.
-val wastiSecretKeys = listOf(
-  "ALLOWED_GITHUB_REPOS", "ALLOWED_ORIGINS", "ALLOWED_PATCH_BRANCHES", "ANTHROPIC_API_KEY",
-  "BACKEND_GEMINI_KEY", "BACKEND_GITHUB_PAT", "BACKEND_GROQ_VOICE", "BREVO_API_KEY",
-  "BREVO_MCP_SERVER_API_KEY", "BYTEZ_API_KEY", "CANVA_ACCESS_TOKEN", "CANVA_CLIENT_ID",
-  "CANVA_CLIENT_SECRET", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_KEY", "DEEPSEEK_API_KEY",
-  "DISCORD_BOT_ID", "DISCORD_BOT_KEY", "DRIVE_CLIENT_ID", "DRIVE_CLIENT_SECRET",
-  "ELEVENLABS_API_KEY", "GEMINI_API_KEY", "GMAIL_APP_PASSWORD", "GMAIL_OAUTH_REFRESH_TOKEN",
-  "GMAIL_OAUTH_TOKEN", "GMAIL_SENDER_EMAIL", "GOOGLE_ANDROID_CLIENT_ID", "GOOGLE_API_KEY",
-  "GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_REFRESH_TOKEN", "GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_CX",
-  "GOOGLE_WEB_CLIENT_ID", "GROQ_API_KEY", "HUBSPOT_CONNECTION_ID", "HUGGINGFACE_ACCESS_TOKEN",
-  "LINKEDIN_ACCESS_TOKEN", "LINKEDIN_AUTHOR_URN", "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET",
-  "LINKEDIN_OAUTH_REFRESH_TOKEN", "LINKEDIN_OAUTH_TOKEN", "LINKEDIN_REFRESH_TOKEN", "LOCAL_LLM_URL",
-  "NOTION_CONNECTION_ID", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "OUTREACH_APPROVAL_TOKEN",
-  "PUBLIC_API_BASE_URL", "PUBLIC_GOOGLE_ANDROID_CLIENT_ID", "PUBLIC_GOOGLE_WEB_CLIENT_ID", "SEARCH_API_KEY",
-  "SLACK_DOMAIN", "STRIPE_PUBLISHABLE_KEY", "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN", "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET", "UNSPLASH_ACCESS_KEY", "UNSPLASH_APP_ID", "UNSPLASH_SECRET_KEY",
-  "UPWORK_OAUTH_CLIENT_ID", "UPWORK_OAUTH_CLIENT_SECRET", "UPWORK_RSS_CUSTOM_URL", "WASTI_BACKEND_AUTH_SECRET",
-  "WASTI_BACKEND_URL", "WASTI_GIT_FINE_GRAINED_PAT", "WASTI_GIT_PAT", "XAI_API_KEY",
-  "ZAPIER_CONNECT_TOKEN", "ZAPIER_MCP_SHARE_LINK"
+// Wasti OS secret boundary:
+// - Long-lived/private credentials MUST NOT be compiled into the Android APK.
+// - User credentials are stored in CredentialRegistry's encrypted vault.
+// - Server-only credentials stay on the controlled backend/execution boundary.
+// - Only explicitly public configuration is allowed in BuildConfig.
+val wastiPublicConfig = mapOf(
+  "PUBLIC_API_BASE_URL" to (System.getenv("PUBLIC_API_BASE_URL") ?: ""),
+  "PUBLIC_GOOGLE_WEB_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_WEB_CLIENT_ID") ?: ""),
+  "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?: "")
 )
+
+fun wastiPublicValue(value: String): String =
+  value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "").replace("\r", "")
 
 android {
   namespace = "com.example"
@@ -72,15 +39,10 @@ android {
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // Expose every CI-injected secret (see wastiSecretKeys above) as a real
-    // BuildConfig.<KEY> string field so CredentialRegistry.getBuildConfigString()
-    // can actually find it on a real installed device. Resolves to an empty
-    // string when a given secret isn't configured for this build;
-    // CredentialRegistry already treats blank/placeholder values as "not set"
-    // and falls through to other sources, so this never breaks anything that
-    // previously worked.
-    wastiSecretKeys.forEach { key ->
-      buildConfigField("String", key, "\"${wastiSecret(key)}\"")
+    // Public configuration only. Never add API keys, OAuth secrets, PATs,
+    // webhook secrets, backend auth tokens, or other privileged credentials here.
+    wastiPublicConfig.forEach { (key, value) ->
+      buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
   }
 
@@ -179,20 +141,12 @@ java {
   }
 }
 
-// Configure the Secrets Gradle Plugin to use .env and .env.example files
-// to match the convention used in Web projects. These files live at the
-// REPOSITORY ROOT (one directory above this module, where the CI workflow
-// writes them), so the path is relative to app/. Fix: the paths previously
-// pointed inside app/ (where no such file ever existed), and
-// `ignoreList.add(".*")` was a regex that matches every possible key name,
-// silently excluding 100% of secrets from this plugin's own placeholder/
-// resource generation — both removed/corrected below. (BuildConfig field
-// generation for CredentialRegistry is handled separately above, since this
-// plugin only generates manifest placeholders and string resources.)
+// Keep the Secrets Gradle Plugin available for non-secret/public integration
+// metadata, but do not allow repository .env values to become APK resources.
+// CredentialRegistry is the authoritative encrypted vault for user credentials.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
-  ignoreList.add("sdk.dir")
   ignoreList.add(".*")
 }
 
