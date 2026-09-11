@@ -88,7 +88,7 @@ class WastiUniversalMeshBridge private constructor(
                 ?.split('.')
                 ?.takeIf { it.size == 4 }
                 ?.take(3)
-                ?.joinToString('.')
+                ?.joinToString(".")
                 ?: "192.168.1"
 
             val candidateIps = listOf(
