@@ -45,7 +45,7 @@ jobs:
           PY
 
           git diff --check
-          test "$(git diff -- app/src/main/java/com/example/ui/screens/OperationsDashboardScreen.kt | grep -c '^[-+]\s*.*OpenInNew' || true)" -eq 2
+          test "$(git diff -- app/src/main/java/com/example/ui/screens/OperationsDashboardScreen.kt | grep -c '^[-+]\s*.*OpenInNew' || true)" -eq 4
           git diff --stat
           git diff -- app/src/main/java/com/example/ui/screens/OperationsDashboardScreen.kt app/build.gradle.kts gradle/libs.versions.toml
       - name: Commit exact changes and remove one-time workflow
