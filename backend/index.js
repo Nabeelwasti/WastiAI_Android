@@ -559,6 +559,50 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
               status: 'SYNTAX_ERROR'
             };
           }
+        } else if (language === 'json') {
+          try {
+            JSON.parse(code);
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: true,
+              diagnostics: [],
+              status: 'SYNTAX_VERIFIED'
+            };
+          } catch (jsonErr) {
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: false,
+              diagnostics: [{ line: 1, message: jsonErr.message }],
+              status: 'SYNTAX_ERROR'
+            };
+          }
+        } else if (language === 'python' || language === 'py') {
+          const { spawnSync } = require('child_process');
+          const pyCheck = spawnSync('python3', ['-c', 'import ast, sys; ast.parse(sys.stdin.read())'], {
+            input: code,
+            encoding: 'utf-8',
+            timeout: 5000
+          });
+          if (pyCheck.status === 0) {
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: true,
+              diagnostics: [],
+              status: 'SYNTAX_VERIFIED'
+            };
+          } else {
+            const errOutput = pyCheck.stderr || pyCheck.stdout || 'Python syntax error';
+            resultData = {
+              language,
+              codeLengthBytes: Buffer.byteLength(code, 'utf-8'),
+              syntaxValid: false,
+              diagnostics: [{ line: 1, message: errOutput.trim() }],
+              status: 'SYNTAX_ERROR'
+            };
+          }
         } else {
           return res.status(501).json({
             success: false,

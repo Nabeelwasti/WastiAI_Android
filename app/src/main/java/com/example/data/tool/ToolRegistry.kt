@@ -348,6 +348,83 @@ class DeepResearchTool : WastiTool {
     }
 }
 
+class VaultCredentialTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "vault_credentials",
+        name = "Encrypted Vault & Key Sentinel",
+        category = "Security",
+        description = "Safely queries credential configuration status and manages encrypted vault keys without raw secret leakage."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val action = parameters["action"]?.toString() ?: "status"
+        val keyName = parameters["key"]?.toString() ?: parameters["key_name"]?.toString() ?: ""
+
+        return when (action.lowercase()) {
+            "status" -> {
+                if (keyName.isNotBlank()) {
+                    val isConfigured = com.example.data.credential.CredentialRegistry.isConfigured(keyName)
+                    "Credential [$keyName]: ${if (isConfigured) "CONFIGURED" else "NOT CONFIGURED"}"
+                } else {
+                    val keyStatuses = com.example.data.credential.CredentialRegistry.getAllKeyStatuses()
+                    val activeCount = keyStatuses.count { it.value }
+                    "Encrypted Vault Status:\nTotal Tracked Keys: ${keyStatuses.size}\nActive Configured Keys: $activeCount\n\n" +
+                            keyStatuses.entries.take(15).joinToString("\n") {
+                                "- ${it.key}: ${if (it.value) "CONFIGURED" else "NOT CONFIGURED"}"
+                            }
+                }
+            }
+            "last_rotated" -> {
+                if (keyName.isBlank()) "Error: 'key' parameter required."
+                else {
+                    val ctx = com.example.data.credential.CredentialRegistry.appContext ?: com.example.WastiApplication.instance
+                    val time = if (ctx != null) com.example.data.credential.CredentialRegistry.getLastRotatedTime(keyName, ctx) else 0L
+                    if (time <= 0L) "Key [$keyName] has not been rotated yet (or using default ingestion)."
+                    else "Key [$keyName] was last rotated at ${java.util.Date(time)} ($time)."
+                }
+            }
+            else -> "Unknown action '$action'. Available actions: status, last_rotated."
+        }
+    }
+}
+
+class DatasetStreamingTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "dataset_streamer",
+        name = "Dataset & High-Throughput Streamer",
+        category = "Data Engine",
+        description = "Streams massive datasets, database tables, and memory pressure metrics without memory limits or ANRs."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val action = parameters["action"]?.toString() ?: "metrics"
+
+        return when (action.lowercase()) {
+            "metrics", "pressure" -> {
+                val pressure = com.example.data.core.LargeDatasetEngine.getMemoryPressureLevel()
+                val runtime = Runtime.getRuntime()
+                val maxMb = runtime.maxMemory() / (1024 * 1024)
+                val totalMb = runtime.totalMemory() / (1024 * 1024)
+                val freeMb = runtime.freeMemory() / (1024 * 1024)
+                "System Memory & Streaming Metrics:\n" +
+                        "- Memory Pressure Level: $pressure\n" +
+                        "- Max Heap: ${maxMb} MB\n" +
+                        "- Total Allocated: ${totalMb} MB\n" +
+                        "- Free Heap: ${freeMb} MB\n" +
+                        "- Stream Buffer Size: ${com.example.data.core.LargeDatasetEngine.STREAM_BUFFER_SIZE / 1024} KB"
+            }
+            "count" -> {
+                val leadsCount = com.example.data.core.LeadRadarRepository.getLeadsCount()
+                val prospectsCount = com.example.data.core.LeadRadarRepository.getProspectsCount()
+                "Durable Database Records:\n" +
+                        "- Business Leads: $leadsCount\n" +
+                        "- CRM Prospects: $prospectsCount"
+            }
+            else -> "Unknown action '$action'. Available actions: metrics, count."
+        }
+    }
+}
+
 object ToolRegistry {
     private val toolsMap = java.util.concurrent.ConcurrentHashMap<String, WastiTool>()
 
@@ -363,6 +440,8 @@ object ToolRegistry {
         registerTool(SocialScraperTool())
         registerTool(OutreachTool())
         registerTool(DeepResearchTool())
+        registerTool(VaultCredentialTool())
+        registerTool(DatasetStreamingTool())
     }
 
     fun registerTool(tool: WastiTool) {

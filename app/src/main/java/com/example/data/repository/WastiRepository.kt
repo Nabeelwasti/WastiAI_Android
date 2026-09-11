@@ -1071,4 +1071,38 @@ $taskPipelineDigest
     suspend fun getAppSetting(key: String): String? {
         return db.settingDao().getSettingValue(key)
     }
+
+    suspend fun streamConversations(
+        batchSize: Int = 100,
+        onBatch: suspend (List<ConversationEntity>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        com.example.data.core.LargeDatasetEngine.processInBatches(
+            pageSize = batchSize,
+            fetchPage = { limit, offset -> db.conversationDao().getPagedConversations(limit, offset) },
+            onBatchProcessed = { chunk -> onBatch(chunk.items) }
+        )
+    }
+
+    suspend fun streamMessagesForConversation(
+        conversationId: String,
+        batchSize: Int = 150,
+        onBatch: suspend (List<MessageEntity>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        com.example.data.core.LargeDatasetEngine.processInBatches(
+            pageSize = batchSize,
+            fetchPage = { limit, offset -> db.messageDao().getPagedMessagesForConversation(conversationId, limit, offset) },
+            onBatchProcessed = { chunk -> onBatch(chunk.items) }
+        )
+    }
+
+    suspend fun streamMedia(
+        batchSize: Int = 100,
+        onBatch: suspend (List<MediaVaultEntity>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        com.example.data.core.LargeDatasetEngine.processInBatches(
+            pageSize = batchSize,
+            fetchPage = { limit, offset -> db.mediaVaultDao().getPagedMedia(limit, offset) },
+            onBatchProcessed = { chunk -> onBatch(chunk.items) }
+        )
+    }
 }

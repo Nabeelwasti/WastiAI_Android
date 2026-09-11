@@ -9,6 +9,13 @@ empty/preserved placeholders.
 import os
 import sys
 
+try:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import wasti_vault_bridge
+    HAS_VAULT_BRIDGE = True
+except Exception:
+    HAS_VAULT_BRIDGE = False
+
 def parse_env_file(filepath):
     secrets = {}
     if not os.path.exists(filepath):
@@ -31,8 +38,10 @@ def main():
     preserved_keys = []
 
     for key, val in sorted(secrets.items()):
-        # Consider non-empty and not dummy placeholder
-        if val and not val.startswith("your_") and val != "placeholder" and val != '""' and val != "''":
+        is_ph = wasti_vault_bridge.is_placeholder(val) if HAS_VAULT_BRIDGE else (
+            not val or str(val).strip().strip("\"'").upper() in ("YOUR_KEY", "PLACEHOLDER", "MY_KEY", "") or val.startswith("your_")
+        )
+        if not is_ph:
             injected_keys.append(key)
         else:
             preserved_keys.append(key)

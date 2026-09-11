@@ -100,6 +100,9 @@ def check_file_syntax(filepath):
 
             # Check for character literals
             if ch == '\'':
+                if i + 7 < n and line[i+1:i+3] == '\\u' and line[i+7] == '\'':
+                    i += 8
+                    continue
                 if i + 2 < n and line[i+1] != '\\' and line[i+2] == '\'':
                     i += 3
                     continue

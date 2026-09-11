@@ -1243,4 +1243,34 @@ object LeadRadarRepository {
         }
         return sb.toString()
     }
+
+    suspend fun streamAllLeads(
+        batchSize: Int = 100,
+        onBatch: suspend (List<LeadEntity>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        LargeDatasetEngine.processInBatches(
+            pageSize = batchSize,
+            fetchPage = { limit, offset -> db.leadDao().getPagedLeads(limit, offset) },
+            onBatchProcessed = { chunk -> onBatch(chunk.items) }
+        )
+    }
+
+    suspend fun streamAllProspects(
+        batchSize: Int = 100,
+        onBatch: suspend (List<ProspectEntity>) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        LargeDatasetEngine.processInBatches(
+            pageSize = batchSize,
+            fetchPage = { limit, offset -> db.prospectDao().getPagedProspects(limit, offset) },
+            onBatchProcessed = { chunk -> onBatch(chunk.items) }
+        )
+    }
+
+    suspend fun getLeadsCount(): Int = withContext(Dispatchers.IO) {
+        db.leadDao().getLeadsCount()
+    }
+
+    suspend fun getProspectsCount(): Int = withContext(Dispatchers.IO) {
+        db.prospectDao().getProspectsCount()
+    }
 }

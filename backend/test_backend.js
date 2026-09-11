@@ -157,21 +157,43 @@ test('stripe webhook: stripe_helper detects duplicate event IDs and stale timest
   }
 });
 
-// 8. Compute offload code compilation analysis with real Node.js vm.Script
-test('compute offload: verifies real JavaScript code syntax and catches errors', () => {
+// 8. Compute offload code compilation analysis with real Node.js vm.Script, JSON, and Python
+test('compute offload: verifies real JavaScript, JSON, and Python code syntax and catches errors', () => {
   const vm = require('vm');
+  const { spawnSync } = require('child_process');
   function analyzeCode(code, language = 'javascript') {
-    if (language !== 'javascript' && language !== 'js') {
+    const lang = (language || 'javascript').toLowerCase();
+    if (lang === 'javascript' || lang === 'js') {
+      try {
+        new vm.Script(code);
+        return { status: 'SYNTAX_VERIFIED', syntaxValid: true, diagnostics: [] };
+      } catch (err) {
+        return { status: 'SYNTAX_ERROR', syntaxValid: false, diagnostics: [{ message: err.message }] };
+      }
+    } else if (lang === 'json') {
+      try {
+        JSON.parse(code);
+        return { status: 'SYNTAX_VERIFIED', syntaxValid: true, diagnostics: [] };
+      } catch (err) {
+        return { status: 'SYNTAX_ERROR', syntaxValid: false, diagnostics: [{ message: err.message }] };
+      }
+    } else if (lang === 'python' || lang === 'py') {
+      const pyCheck = spawnSync('python3', ['-c', 'import ast, sys; ast.parse(sys.stdin.read())'], {
+        input: code,
+        encoding: 'utf-8',
+        timeout: 5000
+      });
+      if (pyCheck.status === 0) {
+        return { status: 'SYNTAX_VERIFIED', syntaxValid: true, diagnostics: [] };
+      } else {
+        return { status: 'SYNTAX_ERROR', syntaxValid: false, diagnostics: [{ message: pyCheck.stderr || 'Syntax error' }] };
+      }
+    } else {
       return { status: 'NOT_IMPLEMENTED', error: `Language '${language}' not supported in cloud sandbox` };
-    }
-    try {
-      new vm.Script(code);
-      return { status: 'SYNTAX_VERIFIED', syntaxValid: true, diagnostics: [] };
-    } catch (err) {
-      return { status: 'SYNTAX_ERROR', syntaxValid: false, diagnostics: [{ message: err.message }] };
     }
   }
 
+  // JS tests
   const validRes = analyzeCode('function add(a, b) { return a + b; }');
   assert.strictEqual(validRes.status, 'SYNTAX_VERIFIED');
   assert.strictEqual(validRes.syntaxValid, true);
@@ -181,6 +203,24 @@ test('compute offload: verifies real JavaScript code syntax and catches errors',
   assert.strictEqual(invalidRes.status, 'SYNTAX_ERROR');
   assert.strictEqual(invalidRes.syntaxValid, false);
   assert.ok(invalidRes.diagnostics.length > 0);
+
+  // JSON tests
+  const validJson = analyzeCode('{"key": "value", "num": 42}', 'json');
+  assert.strictEqual(validJson.status, 'SYNTAX_VERIFIED');
+  assert.strictEqual(validJson.syntaxValid, true);
+
+  const invalidJson = analyzeCode('{"key": "value", trailing}', 'json');
+  assert.strictEqual(invalidJson.status, 'SYNTAX_ERROR');
+  assert.strictEqual(invalidJson.syntaxValid, false);
+
+  // Python tests
+  const validPy = analyzeCode('def greet(name):\n    return f"Hello, {name}"\n', 'python');
+  assert.strictEqual(validPy.status, 'SYNTAX_VERIFIED');
+  assert.strictEqual(validPy.syntaxValid, true);
+
+  const invalidPy = analyzeCode('def greet(name)\n    return name\n', 'python');
+  assert.strictEqual(invalidPy.status, 'SYNTAX_ERROR');
+  assert.strictEqual(invalidPy.syntaxValid, false);
 
   const unsuppRes = analyzeCode('fn main() {}', 'rust');
   assert.strictEqual(unsuppRes.status, 'NOT_IMPLEMENTED');

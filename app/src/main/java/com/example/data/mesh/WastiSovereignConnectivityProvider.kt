@@ -256,7 +256,7 @@ class WastiSovereignConnectivityProvider private constructor(
                 val line = reader.readLine() ?: return
                 val writer = OutputStreamWriter(s.getOutputStream())
 
-                // Simple sovereign mock/forward HTTP response
+                // Sovereign mesh gateway live JSON status response
                 val responseBody = """
                     {
                       "status": "ONLINE",

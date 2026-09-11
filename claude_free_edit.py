@@ -156,9 +156,51 @@ def ask_claude_to_edit(target_file, prompt_instruction):
         response_data = response.json()
         new_code = response_data['choices'][0]['message']['content']
 
+        def strip_markdown_code_fences(text: str) -> str:
+            s = text.strip()
+            if s.startswith("```"):
+                lines = s.splitlines()
+                if len(lines) >= 2:
+                    lines = lines[1:]
+                    if lines and lines[-1].strip().startswith("```"):
+                        lines = lines[:-1]
+                    return "\n".join(lines).strip()
+            return s
+
+        cleaned_code = strip_markdown_code_fences(new_code)
+
         with open(target_file, "w", encoding="utf-8") as f:
-            f.write(new_code.strip())
+            f.write(cleaned_code)
         print(f"\n[Success] File '{target_file}' updated locally by Claude pipeline.")
+
+        # Pre-commit safety guard: Validate syntax integrity before Git commit
+        if target_file.endswith((".kt", ".kts")):
+            try:
+                from check_kotlin_syntax import check_file_syntax
+                syntax_err = check_file_syntax(target_file)
+                if syntax_err:
+                    print(f"\n[SYNTAX GUARD REVERT] Generated code has invalid Kotlin syntax: {syntax_err}")
+                    print("Reverting file to original content...")
+                    with open(target_file, "w", encoding="utf-8") as f:
+                        f.write(original_code)
+                    return
+            except Exception as e:
+                print(f"[Notice] Kotlin syntax check skipped: {e}")
+        elif target_file.endswith(".py"):
+            import py_compile
+            try:
+                py_compile.compile(target_file, doraise=True)
+            except Exception as pe:
+                print(f"\n[SYNTAX GUARD REVERT] Generated code has invalid Python syntax: {pe}")
+                with open(target_file, "w", encoding="utf-8") as f:
+                    f.write(original_code)
+                return
+
+        print("Validating pre-push quality gates...")
+        gate_res = os.system("bash scripts/pre-push.sh")
+        if gate_res != 0:
+            print("\n[Quality Gate Alert] Pre-push validation failed. Code retained locally for inspection without pushing.")
+            return
 
         print("Executing automated Git push sync via PAT Token configuration...")
         os.system("git add . && git commit -m 'Automated code tracking adjustment via free AI engine workflow' && git push origin main")
