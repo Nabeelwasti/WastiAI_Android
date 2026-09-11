@@ -709,6 +709,29 @@ object CredentialRegistry {
             return directBuildConfig
         }
 
+        // 3.5. Cross-Runtime Bridge: Unified CLI token directory (~/.wasti_ai/tokens/)
+        try {
+            val userHome = System.getProperty("user.home") ?: "/data/data/com.termux/files/home"
+            val tokenDir = java.io.File(userHome, ".wasti_ai/tokens")
+            if (tokenDir.exists() && tokenDir.isDirectory) {
+                val candidates = listOf(
+                    java.io.File(tokenDir, keyName),
+                    java.io.File(tokenDir, keyName.lowercase()),
+                    java.io.File(tokenDir, "${keyName.lowercase()}.token")
+                )
+                for (tf in candidates) {
+                    if (tf.isFile && tf.canRead()) {
+                        val fileVal = tf.readText().trim()
+                        if (fileVal.isNotBlank() && !isPlaceholder(fileVal)) {
+                            return fileVal
+                        }
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Ignore filesystem restrictions on sandboxed Android instances
+        }
+
         // 4. Fallback to System environment variables in production / non-test runner environments
         if (!isTestRunner) {
             val envVal = System.getenv(keyName)
@@ -922,6 +945,17 @@ object CredentialRegistry {
             val db = WastiDatabase.getDatabase(context)
             db.settingDao().deleteSetting(keyName.lowercase())
             db.settingDao().deleteSetting(keyName)
+
+            // Cross-Runtime Sync: Mirror to unified CLI tokens (~/.wasti_ai/tokens/) for Python CLI tools (claude_free_edit.py)
+            try {
+                val userHome = System.getProperty("user.home") ?: "/data/data/com.termux/files/home"
+                val tokenDir = java.io.File(userHome, ".wasti_ai/tokens")
+                if (!tokenDir.exists()) tokenDir.mkdirs()
+                java.io.File(tokenDir, keyName).writeText(newValue.trim())
+                java.io.File(tokenDir, keyName.lowercase()).writeText(newValue.trim())
+            } catch (_: Throwable) {
+                // Ignore if filesystem permissions are restricted
+            }
 
             refreshAll(context)
         }

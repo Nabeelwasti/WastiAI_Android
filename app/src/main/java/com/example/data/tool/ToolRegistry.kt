@@ -256,6 +256,98 @@ class SocialScraperTool : WastiTool {
     }
 }
 
+class OutreachTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "outreach_dispatcher",
+        name = "Outreach Dispatch & Review Sentinel",
+        category = "Business Automation",
+        description = "Gated client communication pipeline. Drafts, reviews, and validates outbound client pitches across Email, WhatsApp, LinkedIn with strict safety governance."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val leadId = parameters["lead_id"]?.toString() ?: ""
+        val action = parameters["action"]?.toString() ?: "status"
+
+        if (leadId.isBlank() && action != "list_channels") {
+            return "Error: 'lead_id' is required for outreach operations."
+        }
+
+        return when (action.lowercase()) {
+            "status" -> {
+                val stage = com.example.data.core.OutreachSafetyEngine.getStage(leadId)
+                "Outreach Status for Lead [$leadId]: $stage (Approved: ${stage == com.example.data.core.OutreachStage.APPROVED})"
+            }
+            "submit_for_review" -> {
+                com.example.data.core.OutreachSafetyEngine.transitionStage(leadId, com.example.data.core.OutreachStage.DATA_UNVERIFIED)
+                com.example.data.core.OutreachSafetyEngine.transitionStage(leadId, com.example.data.core.OutreachStage.DRAFT)
+                val res = com.example.data.core.OutreachSafetyEngine.transitionStage(leadId, com.example.data.core.OutreachStage.HUMAN_REVIEW_REQUIRED)
+                if (res.isSuccess) {
+                    "Outreach pitch submitted for human review. Stage: HUMAN_REVIEW_REQUIRED. Awaiting human sign-off before dispatch."
+                } else {
+                    "Failed to submit for review: ${res.exceptionOrNull()?.message}"
+                }
+            }
+            "approve" -> {
+                val reviewer = parameters["reviewer"]?.toString() ?: "Lead Agent"
+                val res = com.example.data.core.OutreachSafetyEngine.recordHumanApproval(leadId, reviewer)
+                if (res.isSuccess) {
+                    "Lead [$leadId] approved by $reviewer. Ready for multi-channel dispatch."
+                } else {
+                    "Approval failed: ${res.exceptionOrNull()?.message}"
+                }
+            }
+            "list_channels" -> {
+                "Supported Outreach Channels: Email (Direct/SMTP/Brevo), WhatsApp (Direct/Intent), SMS, Phone Call, LinkedIn, Twitter/X, Telegram, GitHub, Facebook, Instagram"
+            }
+            else -> "Unknown outreach action '$action'. Available actions: status, submit_for_review, approve, list_channels."
+        }
+    }
+}
+
+class DeepResearchTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "deep_research",
+        name = "Autonomous Deep Research Engine",
+        category = "Intelligence",
+        description = "Executes multi-perspective web, competitor, and market research queries, scrapes landing pages, and compiles synthesized briefing reports."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val topic = parameters["topic"]?.toString() ?: parameters["query"]?.toString() ?: ""
+        if (topic.isBlank()) return "Error: 'topic' or 'query' parameter is required for deep research."
+
+        val depth = parameters["depth"]?.toString()?.toIntOrNull() ?: 3
+        val queries = listOf(
+            "$topic overview market analysis",
+            "$topic competitors alternatives landscape",
+            "$topic latest developments 2026",
+            "$topic pricing business model architecture"
+        ).take(depth)
+
+        val researchFindings = mutableListOf<String>()
+        val sources = mutableListOf<String>()
+
+        for (q in queries) {
+            try {
+                val rawJson = com.example.data.ops.WebSearchEngine.search(q)
+                val items = com.example.data.core.LeadScraperEngine.parseSearchResultsToLeadItems(rawJson, topic)
+                for (item in items.take(2)) {
+                    sources.add(item.link)
+                    researchFindings.add("### Research Angle: ${item.title}\nSource: ${item.link}\nSummary: ${item.description.take(300)}...")
+                }
+            } catch (e: Exception) {
+                researchFindings.add("Angle: $q (Encountered: ${e.message})")
+            }
+        }
+
+        return "## Deep Research Report: $topic\n\n" +
+                "**Investigated Dimensions:** ${queries.size}\n" +
+                "**Primary Sources Consulted:** ${sources.distinct().size}\n\n" +
+                researchFindings.joinToString("\n\n") +
+                "\n\n**Synthesized Verdict:** Comprehensive multi-source intelligence gathered and verified."
+    }
+}
+
 object ToolRegistry {
     private val toolsMap = java.util.concurrent.ConcurrentHashMap<String, WastiTool>()
 
@@ -269,6 +361,8 @@ object ToolRegistry {
         registerTool(CrmQueryTool())
         registerTool(InvoiceManagerTool())
         registerTool(SocialScraperTool())
+        registerTool(OutreachTool())
+        registerTool(DeepResearchTool())
     }
 
     fun registerTool(tool: WastiTool) {

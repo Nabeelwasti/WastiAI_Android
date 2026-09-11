@@ -16,13 +16,38 @@ plugins {
 // - User credentials are stored in CredentialRegistry's encrypted vault.
 // - Server-only credentials stay on the controlled backend/execution boundary.
 // - Only explicitly public configuration is allowed in BuildConfig.
+fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): String {
+  val envVal = System.getenv(key)
+  if (!envVal.isNullOrBlank()) return envVal
+
+  val propVal = project.findProperty(key) as? String
+  if (!propVal.isNullOrBlank()) return propVal
+
+  val envFile = rootProject.file(".env")
+  if (envFile.exists()) {
+    try {
+      for (line in envFile.readLines()) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("#") || !trimmed.contains("=")) continue
+        val parts = trimmed.split("=", limit = 2)
+        if (parts[0].trim() == key) {
+          val v = parts[1].trim().trim('"', '\'')
+          if (v.isNotBlank()) return v
+        }
+      }
+    } catch (_: Throwable) { /* ignore */ }
+  }
+
+  return safeStaticFallback
+}
+
 val wastiPublicConfig = mapOf(
-  "PUBLIC_API_BASE_URL" to (System.getenv("PUBLIC_API_BASE_URL") ?: ""),
-  "PUBLIC_GOOGLE_WEB_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_WEB_CLIENT_ID") ?: ""),
-  "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?: ""),
+  "PUBLIC_API_BASE_URL" to resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai"),
+  "PUBLIC_GOOGLE_WEB_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_WEB_CLIENT_ID", "wasti-mock-web-client-id.apps.googleusercontent.com"),
+  "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_ANDROID_CLIENT_ID", "wasti-mock-android-client-id.apps.googleusercontent.com"),
   // A backend URL is an endpoint, not a credential. It is safe to ship so the
   // installed Android process can discover the configured Wasti execution fabric.
-  "WASTI_BACKEND_URL" to (System.getenv("WASTI_BACKEND_URL") ?: System.getenv("PUBLIC_API_BASE_URL") ?: "")
+  "WASTI_BACKEND_URL" to resolvePublicConfigWithFallback("WASTI_BACKEND_URL", resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai"))
 )
 
 fun wastiPublicValue(value: String): String =
