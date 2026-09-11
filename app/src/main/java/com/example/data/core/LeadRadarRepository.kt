@@ -473,6 +473,19 @@ object LeadRadarRepository {
     var appContext: Context? = null
 
     /**
+     * Resolves the live [WastiDatabase] instance from the initialized application context.
+     * Used by streaming/count operations that don't receive a Context parameter directly,
+     * mirroring the pattern already used by ingestToCrm(lead)/addDiscoveredLead/ingestProspect.
+     */
+    private fun requireDatabase(): WastiDatabase {
+        val ctx = appContext
+            ?: throw IllegalStateException(
+                "LeadRadarRepository: database accessed before initDatabase(context) was called."
+            )
+        return WastiDatabase.getDatabase(ctx)
+    }
+
+    /**
      * [P0-38] & [P0-39] Human Review Signoff:
      * Advances lead stage in OutreachSafetyEngine, verifies contact provenance, and updates status to APPROVED.
      */
@@ -1250,7 +1263,7 @@ object LeadRadarRepository {
     ) = withContext(Dispatchers.IO) {
         LargeDatasetEngine.processInBatches(
             pageSize = batchSize,
-            fetchPage = { limit, offset -> db.leadDao().getPagedLeads(limit, offset) },
+            fetchPage = { limit, offset -> requireDatabase().leadDao().getPagedLeads(limit, offset) },
             onBatchProcessed = { chunk -> onBatch(chunk.items) }
         )
     }
@@ -1261,16 +1274,16 @@ object LeadRadarRepository {
     ) = withContext(Dispatchers.IO) {
         LargeDatasetEngine.processInBatches(
             pageSize = batchSize,
-            fetchPage = { limit, offset -> db.prospectDao().getPagedProspects(limit, offset) },
+            fetchPage = { limit, offset -> requireDatabase().prospectDao().getPagedProspects(limit, offset) },
             onBatchProcessed = { chunk -> onBatch(chunk.items) }
         )
     }
 
     suspend fun getLeadsCount(): Int = withContext(Dispatchers.IO) {
-        db.leadDao().getLeadsCount()
+        requireDatabase().leadDao().getLeadsCount()
     }
 
     suspend fun getProspectsCount(): Int = withContext(Dispatchers.IO) {
-        db.prospectDao().getProspectsCount()
+        requireDatabase().prospectDao().getProspectsCount()
     }
 }
