@@ -1,7 +1,9 @@
 package com.example.data.mesh
 
 import android.content.Context
-import android.net.wifi.WifiManager
+import android.net.LinkProperties
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.example.data.node.AutonomousHardwareOffloader
 import com.example.data.node.NearbyHardwareNode
@@ -27,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * WastiUniversalMeshBridge:
  * Discovers and orchestrates computation across nearby hardware bodies:
- * 1. Automatic Wi-Fi Subnet Discovery (mDNS / UDP Broadcast & Port 8080/9090 probe).
+ * 1. Automatic Wi-Fi Subnet Discovery (mDNS / UDP Broadcast & UDP/HTTP probe).
  * 2. Bluetooth RFCOMM / BLE Service Discovery.
  * 3. Autonomous Remote Code Offloading: Compiles Rust, C/C++, runs heavy scripts on Desktop/Laptop seamlessly.
  * 4. P2P Workspace Sync: Transparently pushes files to remote node and collects output evidence.
@@ -70,18 +72,25 @@ class WastiUniversalMeshBridge private constructor(
     suspend fun discoverLocalNetworkPeers(): List<DiscoveredPeer> = withContext(Dispatchers.IO) {
         val peers = mutableListOf<DiscoveredPeer>()
         try {
-            val wifiManager = context.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-            val dhcp = wifiManager?.dhcpInfo
-            val gatewayIp = dhcp?.gateway ?: 0
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            val activeNetwork = connectivityManager?.activeNetwork
+            val capabilities = activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+            val linkProperties: LinkProperties? = activeNetwork?.let { connectivityManager.getLinkProperties(it) }
+            val hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val gatewayIp = linkProperties?.routes
+                ?.firstOrNull { it.gateway is InetAddress }
+                ?.gateway
+                ?.hostAddress
 
-            // Query common local subnet IPs (e.g. gateway, host PC)
-            val baseSubnet = if (gatewayIp != 0) {
-                "${gatewayIp and 0xFF}.${(gatewayIp shr 8) and 0xFF}.${(gatewayIp shr 16) and 0xFF}"
-            } else {
-                "192.168.1"
-            }
+            // Query common local subnet IPs (e.g. gateway, host PC). Prefer the
+            // platform network route instead of the deprecated WifiManager.dhcpInfo API.
+            val baseSubnet = gatewayIp
+                ?.split('.')
+                ?.takeIf { it.size == 4 }
+                ?.take(3)
+                ?.joinToString('.')
+                ?: "192.168.1"
 
-            // Quick probe local host addresses
             val candidateIps = listOf(
                 "127.0.0.1",
                 "10.0.2.2", // Android Emulator Host
@@ -105,7 +114,7 @@ class WastiUniversalMeshBridge private constructor(
                         availableCores = 16,
                         ramGigabytes = 32.0,
                         osName = "Linux / Windows / macOS",
-                        transport = "Wi-Fi LAN"
+                        transport = if (hasWifiTransport) "Wi-Fi LAN" else "LAN"
                     )
                     discoveredPeers[ip] = peer
                     peers.add(peer)
