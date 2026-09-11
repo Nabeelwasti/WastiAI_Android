@@ -19,7 +19,10 @@ plugins {
 val wastiPublicConfig = mapOf(
   "PUBLIC_API_BASE_URL" to (System.getenv("PUBLIC_API_BASE_URL") ?: ""),
   "PUBLIC_GOOGLE_WEB_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_WEB_CLIENT_ID") ?: ""),
-  "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?: "")
+  "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to (System.getenv("PUBLIC_GOOGLE_ANDROID_CLIENT_ID") ?: ""),
+  // A backend URL is an endpoint, not a credential. It is safe to ship so the
+  // installed Android process can discover the configured Wasti execution fabric.
+  "WASTI_BACKEND_URL" to (System.getenv("WASTI_BACKEND_URL") ?: System.getenv("PUBLIC_API_BASE_URL") ?: "")
 )
 
 fun wastiPublicValue(value: String): String =
