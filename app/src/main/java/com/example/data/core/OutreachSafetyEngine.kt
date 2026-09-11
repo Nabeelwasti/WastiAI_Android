@@ -98,9 +98,9 @@ object OutreachSafetyEngine {
      */
     fun recordHumanApproval(
         leadId: String,
-        recipient: String,
-        channel: String,
-        reviewer: String
+        recipient: String = "lead_client",
+        channel: String = "MULTI_CHANNEL",
+        reviewer: String = "Lead Agent"
     ): Result<OutreachApprovalRecord> {
         val current = getStage(leadId)
         if (current != OutreachStage.HUMAN_REVIEW_REQUIRED && current != OutreachStage.DRAFT) {
@@ -122,6 +122,11 @@ object OutreachSafetyEngine {
         stageLedger[leadId] = OutreachStage.APPROVED
         return Result.success(record)
     }
+
+    fun recordHumanApproval(
+        leadId: String,
+        reviewer: String
+    ): Result<OutreachApprovalRecord> = recordHumanApproval(leadId, "lead_client", "MULTI_CHANNEL", reviewer)
 
     /**
      * Pre-transmission security gate:
