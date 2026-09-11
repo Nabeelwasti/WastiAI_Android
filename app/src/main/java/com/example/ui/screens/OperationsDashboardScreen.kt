@@ -1565,7 +1565,7 @@ fun KanbanLeadCard(lead: LeadItemEntity, context: android.content.Context) {
                         "youtube" -> Icons.Default.PlayArrow
                         "reddit", "discord" -> Icons.Default.Forum
                         "facebook", "instagram", "twitter", "linkedin", "web" -> Icons.Default.Public
-                        else -> Icons.Default.OpenInNew
+                        else -> Icons.AutoMirrored.Filled.OpenInNew
                     }
                     if (channel.isPrimary) {
                         Button(
@@ -1900,7 +1900,7 @@ fun ProspectCard(prospect: com.example.data.db.ProspectEntity, context: android.
                         "youtube" -> Icons.Default.PlayArrow
                         "reddit", "discord" -> Icons.Default.Forum
                         "facebook", "instagram", "twitter", "linkedin", "web" -> Icons.Default.Public
-                        else -> Icons.Default.OpenInNew
+                        else -> Icons.AutoMirrored.Filled.OpenInNew
                     }
                     if (channel.isPrimary) {
                         Button(
