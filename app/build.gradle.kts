@@ -16,7 +16,21 @@ plugins {
 // - User credentials are stored in CredentialRegistry's encrypted vault.
 // - Server-only credentials stay on the controlled backend/execution boundary.
 // - Only explicitly public configuration is allowed in BuildConfig.
+val isTestTaskExecution = gradle.startParameter.taskNames.any { 
+  it.contains("test", ignoreCase = true) || it.contains("check", ignoreCase = true) 
+}
+
 fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): String {
+  // In test execution, enforce hermetic, secure fallback values to isolate tests from remote APIs
+  if (isTestTaskExecution) {
+    return when (key) {
+      "PUBLIC_API_BASE_URL" -> "https://mock.wasti.internal"
+      "WASTI_BACKEND_URL" -> "http://127.0.0.1:8080"
+      "BUILD_ENVIRONMENT" -> "test"
+      else -> safeStaticFallback
+    }
+  }
+
   val envVal = System.getenv(key)
   if (!envVal.isNullOrBlank()) return envVal
 
@@ -41,13 +55,16 @@ fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): St
   return safeStaticFallback
 }
 
+val activeEnvironment = if (isTestTaskExecution) "test" else (System.getenv("BUILD_ENVIRONMENT") ?: "development")
+
 val wastiPublicConfig = mapOf(
   "PUBLIC_API_BASE_URL" to resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai"),
   "PUBLIC_GOOGLE_WEB_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_WEB_CLIENT_ID", "wasti-mock-web-client-id.apps.googleusercontent.com"),
   "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_ANDROID_CLIENT_ID", "wasti-mock-android-client-id.apps.googleusercontent.com"),
   // A backend URL is an endpoint, not a credential. It is safe to ship so the
   // installed Android process can discover the configured Wasti execution fabric.
-  "WASTI_BACKEND_URL" to resolvePublicConfigWithFallback("WASTI_BACKEND_URL", resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai"))
+  "WASTI_BACKEND_URL" to resolvePublicConfigWithFallback("WASTI_BACKEND_URL", resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai")),
+  "BUILD_ENVIRONMENT" to activeEnvironment
 )
 
 fun wastiPublicValue(value: String): String =
@@ -141,6 +158,11 @@ android {
       isReturnDefaultValues = true
       all {
         it.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
+        it.systemProperty("ENVIRONMENT", "test")
+        it.systemProperty("WASTI_TEST_MODE", "true")
+        it.systemProperty("WASTI_ENV", "test")
+        it.environment("WASTI_ENV", "test")
+        it.environment("ENVIRONMENT", "test")
         it.testLogging {
           events("passed", "skipped", "failed", "standardError")
           showStandardStreams = true
@@ -265,4 +287,21 @@ tasks.register("validateReleaseSigning") {
 }
 tasks.matching { it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease") }.configureEach {
   dependsOn("validateReleaseSigning")
+}
+
+tasks.register("validateEnvironmentConfig") {
+  doLast {
+    val forbiddenPatterns = listOf("AIza", "sk-", "ghp_", "whsec_", "bearer", "private key")
+    wastiPublicConfig.forEach { (key, value) ->
+      forbiddenPatterns.forEach { pattern ->
+        if (value.contains(pattern, ignoreCase = true)) {
+          throw GradleException("Security violation: Public config key '$key' appears to contain a sensitive token pattern ('$pattern').")
+        }
+      }
+    }
+    logger.lifecycle("✔ Multi-environment configuration validated safely (active environment: $activeEnvironment).")
+  }
+}
+tasks.matching { it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
+  dependsOn("validateEnvironmentConfig")
 }

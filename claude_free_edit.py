@@ -7,7 +7,16 @@ import json
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 TARGET_MODEL = "openrouter/free"
 
+try:
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
+    import wasti_vault_bridge
+    HAS_VAULT_BRIDGE = True
+except Exception:
+    HAS_VAULT_BRIDGE = False
+
 def is_placeholder(val_str):
+    if HAS_VAULT_BRIDGE:
+        return wasti_vault_bridge.is_placeholder(val_str)
     if not val_str:
         return True
     upper = str(val_str).strip().upper()
@@ -21,13 +30,19 @@ def is_placeholder(val_str):
 
 def resolve_openrouter_key():
     """
-    Unifies API key resolution across both Kotlin (CredentialRegistry.kt:49) and Python runtimes:
+    Unifies API key resolution across both Kotlin (CredentialRegistry.kt) and Python runtimes
+    via scripts/wasti_vault_bridge.py:
     1. Direct environment variable (OPENROUTER_API_KEY)
     2. Encrypted Vault token directory: ~/.wasti_ai/tokens/ (matching CredentialRegistry IPC bridge)
     3. JSON credentials registry: ~/.wasti_ai/vault.json or ~/.wasti_ai/credentials.json
     4. Fallback workspace .env file
     """
-    # 1. Direct environment variable
+    if HAS_VAULT_BRIDGE:
+        val = wasti_vault_bridge.get_secret("OPENROUTER_API_KEY")
+        if val and not wasti_vault_bridge.is_placeholder(val):
+            return val
+
+    # Direct environment variable fallback
     env_val = os.environ.get("OPENROUTER_API_KEY")
     if env_val and not is_placeholder(env_val):
         return env_val.strip()

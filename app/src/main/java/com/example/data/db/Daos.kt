@@ -14,6 +14,9 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getConversationById(id: String): ConversationEntity?
 
+    @Query("SELECT * FROM conversations ORDER BY isPinned DESC, updatedTimestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getPagedConversations(limit: Int, offset: Int): List<ConversationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: ConversationEntity)
 
@@ -31,6 +34,9 @@ interface MessageDao {
 
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     suspend fun getMessagesListForConversation(conversationId: String): List<MessageEntity>
+
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC LIMIT :limit OFFSET :offset")
+    suspend fun getPagedMessagesForConversation(conversationId: String, limit: Int, offset: Int): List<MessageEntity>
 
     @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT :limit")
     suspend fun getGlobalRecentMessages(limit: Int = 30): List<MessageEntity>
@@ -215,6 +221,12 @@ interface LeadDao {
     @Query("SELECT * FROM leads ORDER BY timestamp DESC")
     suspend fun getAllLeadsSync(): List<LeadEntity>
 
+    @Query("SELECT * FROM leads ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getPagedLeads(limit: Int, offset: Int): List<LeadEntity>
+
+    @Query("SELECT COUNT(*) FROM leads")
+    suspend fun getLeadsCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLead(lead: LeadEntity)
 
@@ -257,6 +269,12 @@ interface ProspectDao {
     @Query("SELECT * FROM prospects ORDER BY timestamp DESC")
     suspend fun getAllProspectsSync(): List<ProspectEntity>
 
+    @Query("SELECT * FROM prospects ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getPagedProspects(limit: Int, offset: Int): List<ProspectEntity>
+
+    @Query("SELECT COUNT(*) FROM prospects")
+    suspend fun getProspectsCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProspect(prospect: ProspectEntity)
 
@@ -277,6 +295,9 @@ interface MediaVaultDao {
 
     @Query("SELECT * FROM media_vault WHERE conversationId = :conversationId ORDER BY timestamp DESC")
     fun getMediaForConversation(conversationId: String): Flow<List<MediaVaultEntity>>
+
+    @Query("SELECT * FROM media_vault ORDER BY timestamp DESC LIMIT :limit OFFSET :offset")
+    suspend fun getPagedMedia(limit: Int, offset: Int): List<MediaVaultEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMedia(media: MediaVaultEntity)

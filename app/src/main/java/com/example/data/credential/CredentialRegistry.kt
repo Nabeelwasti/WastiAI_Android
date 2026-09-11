@@ -960,4 +960,52 @@ object CredentialRegistry {
             refreshAll(context)
         }
     }
+
+    data class CredentialRotationRecord(
+        val keyName: String,
+        val rotatedTimestamp: Long,
+        val previousFingerprint: String,
+        val newFingerprint: String,
+        val reason: String
+    )
+
+    suspend fun rotateCredential(
+        keyName: String,
+        newValue: String,
+        context: Context,
+        reason: String = "User Initiated Rotation"
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val oldVal = getRawValue(keyName, context)
+        val oldHash = if (!oldVal.isNullOrBlank()) {
+            try {
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(oldVal.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+                    .take(12)
+            } catch (_: Throwable) { "unknown" }
+        } else "none"
+
+        val newHash = try {
+            java.security.MessageDigest.getInstance("SHA-256")
+                .digest(newValue.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+                .take(12)
+        } catch (_: Throwable) { "unknown" }
+
+        saveCredential(keyName, newValue, context)
+
+        val securePrefs = getSecureSharedPreferences(context)
+        val rotationLog = "[$keyName] Rotated at ${System.currentTimeMillis()} (old_sha=$oldHash, new_sha=$newHash, reason=$reason)"
+        securePrefs.edit()
+            .putString("rotation_audit_${keyName.lowercase()}", rotationLog)
+            .putLong("last_rotated_${keyName.lowercase()}", System.currentTimeMillis())
+            .apply()
+
+        Result.success("Credential [$keyName] rotated successfully. Fingerprint: $newHash")
+    }
+
+    fun getLastRotatedTime(keyName: String, context: Context): Long {
+        val securePrefs = getSecureSharedPreferences(context)
+        return securePrefs.getLong("last_rotated_${keyName.lowercase()}", 0L)
+    }
 }

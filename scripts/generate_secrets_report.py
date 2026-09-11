@@ -41,11 +41,21 @@ def main():
     firebase_json_path = "app/google-services.json"
     firebase_injected = os.path.exists(firebase_json_path) and os.path.getsize(firebase_json_path) > 10
 
+    # Cross-check with Unified Vault Bridge
+    vault_keys = []
+    tokens_dir = os.path.expanduser("~/.wasti_ai/tokens")
+    if os.path.isdir(tokens_dir):
+        for f in os.listdir(tokens_dir):
+            fpath = os.path.join(tokens_dir, f)
+            if os.path.isfile(fpath) and os.path.getsize(fpath) > 0:
+                vault_keys.append(f)
+
     print("=" * 68)
     print("      WASTI AI OS — SECRETS & CREDENTIALS INGESTION AUDIT")
     print("=" * 68)
     print(f"Total Tracked Environment Variables: {len(secrets)}")
     print(f"Active / Injected Variables: {len(injected_keys)}")
+    print(f"Active Vault Tokens (~/.wasti_ai/tokens/): {len(vault_keys)}")
     print(f"Preserved for Future Use (Empty/Unconfigured): {len(preserved_keys)}")
     print(f"Firebase Config (FIREBASE_GOOGLE_SERVICES_JSON): {'INJECTED & VERIFIED' if firebase_injected else 'PRESERVED (OPTIONAL)'}")
     print("-" * 68)
@@ -53,10 +63,13 @@ def main():
     print("\n[ACTIVE INJECTED SECRETS]")
     if firebase_injected:
         print("  + FIREBASE_GOOGLE_SERVICES_JSON        [CONFIGURED & INJECTED -> app/google-services.json]")
+    if vault_keys:
+        for vk in sorted(set(vault_keys)):
+            print(f"  + [VAULT] {vk:<30} [ENCRYPTED LOCAL TOKEN]")
     if injected_keys:
         for k in injected_keys:
             print(f"  + {k:<36} [CONFIGURED & INJECTED]")
-    elif not firebase_injected:
+    elif not firebase_injected and not vault_keys:
         print("  (None configured yet in current environment)")
 
     print("\n[PRESERVED FOR FUTURE USE / OPTIONAL]")

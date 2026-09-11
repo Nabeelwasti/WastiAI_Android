@@ -317,7 +317,7 @@ object LeadScraperEngine {
         return@withContext leads
     }
 
-    private fun parseSearchResultsToLeadItems(jsonString: String, defaultCategory: String): List<LeadItem> {
+    fun parseSearchResultsToLeadItems(jsonString: String, defaultCategory: String): List<LeadItem> {
         val leadItems = mutableListOf<LeadItem>()
         try {
             val json = JSONObject(jsonString)

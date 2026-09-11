@@ -93,6 +93,26 @@ class WorkspaceManager(context: Context) {
         }
     }
 
+    suspend fun streamLines(
+        relativePath: String,
+        offset: Int = 0,
+        limit: Int = Int.MAX_VALUE
+    ): Result<List<String>> {
+        val resolved = resolvePathSafely(relativePath).getOrNull()
+            ?: return Result.failure(SecurityException("Cannot access path '$relativePath'"))
+        return com.example.data.core.LargeDatasetEngine.streamFileLines(resolved, offset, limit)
+    }
+
+    suspend fun readFileChunk(
+        relativePath: String,
+        offsetBytes: Long,
+        chunkSize: Int = com.example.data.core.LargeDatasetEngine.STREAM_BUFFER_SIZE
+    ): Result<ByteArray> {
+        val resolved = resolvePathSafely(relativePath).getOrNull()
+            ?: return Result.failure(SecurityException("Cannot access path '$relativePath'"))
+        return com.example.data.core.LargeDatasetEngine.readFileChunk(resolved, offsetBytes, chunkSize)
+    }
+
     fun writeFile(relativePath: String, content: String, isAutonomous: Boolean = false, adminAuthToken: String? = null): Result<Unit> {
         return resolvePathSafely(relativePath).mapCatching { file ->
             val decision = SelfModificationSafetyEngine.evaluateModification(
