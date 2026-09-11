@@ -46,6 +46,12 @@ object LeadScraperEngine {
     private val INSTAGRAM_REGEX = Regex("https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE)
     private val TWITTER_REGEX = Regex("https?://(?:www\\.)?(?:twitter\\.com|x\\.com)/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE)
     private val FACEBOOK_REGEX = Regex("https?://(?:www\\.)?facebook\\.com/[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE)
+    private val GITHUB_REGEX = Regex("https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE)
+    private val TELEGRAM_REGEX = Regex("https?://(?:www\\.)?t\\.me/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE)
+    private val DISCORD_REGEX = Regex("https?://(?:www\\.)?(?:discord\\.gg|discord\\.com/invite)/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE)
+    private val YOUTUBE_REGEX = Regex("https?://(?:www\\.)?youtube\\.com/(?:@[a-zA-Z0-9_-]+|c/[a-zA-Z0-9_-]+|channel/[a-zA-Z0-9_-]+)", RegexOption.IGNORE_CASE)
+    private val TIKTOK_REGEX = Regex("https?://(?:www\\.)?tiktok\\.com/@[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE)
+    private val REDDIT_REGEX = Regex("https?://(?:www\\.)?reddit\\.com/(?:r|u|user)/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE)
 
     /**
      * Deep Multi-Source Business Lead Hunter & Web Scraper.
@@ -155,14 +161,23 @@ object LeadScraperEngine {
                         INSTAGRAM_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
                         TWITTER_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
                         FACEBOOK_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        GITHUB_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        TELEGRAM_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        DISCORD_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        YOUTUBE_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        TIKTOK_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
+                        REDDIT_REGEX.findAll(scrapedPage).take(2).forEach { socialProfiles.add(it.value) }
 
                         // Extract company name if pending
                         if (extractedCompany.isBlank() || extractedCompany == "Pending Discovery") {
                             extractedCompany = LeadRadarRepository.extractCompanyName(lead.title, scrapedPage.take(300))
                         }
 
+                        val socialSummary = if (socialProfiles.isNotEmpty()) "\nSocial Channels: " + socialProfiles.distinct().joinToString(" | ") else ""
                         if (scrapedPage.length > pageSnippet.length) {
-                            pageSnippet = (lead.description + "\n\n" + scrapedPage.take(600)).trim()
+                            pageSnippet = (lead.description + "\n\n" + scrapedPage.take(600) + socialSummary).trim()
+                        } else if (socialSummary.isNotBlank()) {
+                            pageSnippet = (pageSnippet + socialSummary).trim()
                         }
                     }
                 } catch (e: Exception) {

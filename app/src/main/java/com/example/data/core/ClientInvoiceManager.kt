@@ -126,6 +126,18 @@ object ClientInvoiceManager {
         _invoicesFlow.value = updated
     }
 
+    fun calculateTotalRevenueUsd(): Double {
+        return _invoicesFlow.value.sumOf { it.amountUsd }
+    }
+
+    fun calculateTotalPaidUsd(): Double {
+        return _invoicesFlow.value.filter { it.status == InvoiceStatus.PAID }.sumOf { it.amountUsd }
+    }
+
+    fun calculateTotalPendingUsd(): Double {
+        return _invoicesFlow.value.filter { it.status != InvoiceStatus.PAID }.sumOf { it.amountUsd }
+    }
+
     private fun ClientInvoiceItem.toRoomEntity(): InvoiceEntity {
         return InvoiceEntity(
             id = id,

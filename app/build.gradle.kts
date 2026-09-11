@@ -24,9 +24,9 @@ plugins {
 // This is additive only: it does not touch or reduce the user's own
 // EncryptedSharedPreferences secret vault, which remains fully intact as the
 // fallback path a user can use to add or override any key by hand.
-val wastiSecretsEnvFile = rootProject.file(".env")
+val wastiSecretsEnvFile = listOf(rootProject.file(".env"), project.file(".env")).firstOrNull { it.exists() }
 val wastiSecretsEnvProps = Properties().apply {
-  if (wastiSecretsEnvFile.exists()) {
+  if (wastiSecretsEnvFile != null && wastiSecretsEnvFile.exists()) {
     wastiSecretsEnvFile.inputStream().use { load(it) }
   }
 }
@@ -190,9 +190,10 @@ java {
 // generation for CredentialRegistry is handled separately above, since this
 // plugin only generates manifest placeholders and string resources.)
 secrets {
-  propertiesFileName = "../.env"
-  defaultPropertiesFileName = "../.env.example"
+  propertiesFileName = ".env"
+  defaultPropertiesFileName = ".env.example"
   ignoreList.add("sdk.dir")
+  ignoreList.add(".*")
 }
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }

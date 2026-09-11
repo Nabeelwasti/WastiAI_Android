@@ -56,6 +56,17 @@ enum class LeadStatus {
     }
 }
 
+data class ClientActionChannel(
+    val id: String,
+    val platformName: String,
+    val label: String,
+    val iconType: String,
+    val targetData: String,
+    val isPrimary: Boolean = false,
+    val colorHex: Long = 0xFF6366F1,
+    val onDispatch: (Context) -> Unit
+)
+
 data class LeadItemEntity(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
@@ -369,6 +380,36 @@ object LeadRadarRepository {
             initDatabase(context)
             val db = WastiDatabase.getDatabase(context)
             db.prospectDao().updateProspectStatus(prospectId, newStatus)
+        }
+    }
+
+    fun addDiscoveredLead(lead: LeadItemEntity) {
+        val targetContext = appContext
+        if (targetContext != null) {
+            scope.launch {
+                val db = WastiDatabase.getDatabase(targetContext)
+                db.leadDao().insertLead(lead.toRoomEntity())
+            }
+        }
+        val current = _leadsFlow.value.toMutableList()
+        if (current.none { it.id == lead.id }) {
+            current.add(0, lead)
+            _leadsFlow.value = current
+        }
+    }
+
+    fun ingestProspect(prospect: ProspectEntity) {
+        val targetContext = appContext
+        if (targetContext != null) {
+            scope.launch {
+                val db = WastiDatabase.getDatabase(targetContext)
+                db.prospectDao().insertProspect(prospect)
+            }
+        }
+        val current = _prospectsFlow.value.toMutableList()
+        if (current.none { it.id == prospect.id }) {
+            current.add(0, prospect)
+            _prospectsFlow.value = current
         }
     }
 
@@ -710,6 +751,447 @@ object LeadRadarRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Error copying to clipboard", e)
         }
+    }
+
+    // Dynamic Multi-Platform Action Channels
+    fun dispatchFacebookDirect(context: Context, identifierOrUrl: String) {
+        val targetUrl = when {
+            identifierOrUrl.contains("facebook.com", ignoreCase = true) -> identifierOrUrl
+            identifierOrUrl.isNotBlank() && identifierOrUrl != "Pending Discovery" -> {
+                val clean = identifierOrUrl.replace("@", "").trim()
+                "https://www.facebook.com/$clean"
+            }
+            else -> "https://www.facebook.com"
+        }
+        openUrlIntent(context, targetUrl, "Facebook")
+    }
+
+    fun dispatchInstagramDirect(context: Context, handleOrUrl: String) {
+        val targetUrl = when {
+            handleOrUrl.contains("instagram.com", ignoreCase = true) -> handleOrUrl
+            handleOrUrl.isNotBlank() && handleOrUrl != "Pending Discovery" -> {
+                val clean = handleOrUrl.replace("@", "").trim()
+                "https://www.instagram.com/$clean/"
+            }
+            else -> "https://www.instagram.com"
+        }
+        openUrlIntent(context, targetUrl, "Instagram")
+    }
+
+    fun dispatchTwitterDirect(context: Context, handleOrUrl: String) {
+        val targetUrl = when {
+            handleOrUrl.contains("twitter.com", ignoreCase = true) || handleOrUrl.contains("x.com", ignoreCase = true) -> handleOrUrl
+            handleOrUrl.isNotBlank() && handleOrUrl != "Pending Discovery" -> {
+                val clean = handleOrUrl.replace("@", "").trim()
+                "https://x.com/$clean"
+            }
+            else -> "https://x.com"
+        }
+        openUrlIntent(context, targetUrl, "Twitter / X")
+    }
+
+    fun dispatchGitHubDirect(context: Context, usernameOrUrl: String) {
+        val targetUrl = when {
+            usernameOrUrl.contains("github.com", ignoreCase = true) -> usernameOrUrl
+            usernameOrUrl.isNotBlank() && usernameOrUrl != "Pending Discovery" -> {
+                val clean = usernameOrUrl.replace("@", "").trim()
+                "https://github.com/$clean"
+            }
+            else -> "https://github.com"
+        }
+        openUrlIntent(context, targetUrl, "GitHub")
+    }
+
+    fun dispatchTelegramDirect(context: Context, usernameOrPhone: String, message: String = "") {
+        val clean = usernameOrPhone.replace("@", "").replace("+", "").trim()
+        val encodedMsg = Uri.encode(message)
+        val targetUrl = when {
+            usernameOrPhone.contains("t.me", ignoreCase = true) -> usernameOrPhone
+            clean.isNotBlank() && clean != "Pending Discovery" -> {
+                if (encodedMsg.isNotBlank()) "https://t.me/$clean?text=$encodedMsg" else "https://t.me/$clean"
+            }
+            else -> "https://t.me"
+        }
+        openUrlIntent(context, targetUrl, "Telegram")
+    }
+
+    fun dispatchDiscordDirect(context: Context, inviteOrUser: String) {
+        val targetUrl = when {
+            inviteOrUser.contains("discord.gg", ignoreCase = true) || inviteOrUser.contains("discord.com", ignoreCase = true) -> inviteOrUser
+            inviteOrUser.isNotBlank() && inviteOrUser != "Pending Discovery" -> "https://discord.com/users/$inviteOrUser"
+            else -> "https://discord.com"
+        }
+        openUrlIntent(context, targetUrl, "Discord")
+    }
+
+    fun dispatchYouTubeDirect(context: Context, channelOrUrl: String) {
+        val targetUrl = when {
+            channelOrUrl.contains("youtube.com", ignoreCase = true) || channelOrUrl.contains("youtu.be", ignoreCase = true) -> channelOrUrl
+            channelOrUrl.isNotBlank() && channelOrUrl != "Pending Discovery" -> "https://www.youtube.com/$channelOrUrl"
+            else -> "https://www.youtube.com"
+        }
+        openUrlIntent(context, targetUrl, "YouTube")
+    }
+
+    fun dispatchTikTokDirect(context: Context, handleOrUrl: String) {
+        val targetUrl = when {
+            handleOrUrl.contains("tiktok.com", ignoreCase = true) -> handleOrUrl
+            handleOrUrl.isNotBlank() && handleOrUrl != "Pending Discovery" -> {
+                val clean = if (handleOrUrl.startsWith("@")) handleOrUrl else "@$handleOrUrl"
+                "https://www.tiktok.com/$clean"
+            }
+            else -> "https://www.tiktok.com"
+        }
+        openUrlIntent(context, targetUrl, "TikTok")
+    }
+
+    fun dispatchRedditDirect(context: Context, userOrSubreddit: String) {
+        val targetUrl = when {
+            userOrSubreddit.contains("reddit.com", ignoreCase = true) -> userOrSubreddit
+            userOrSubreddit.startsWith("u/") || userOrSubreddit.startsWith("r/") -> "https://www.reddit.com/$userOrSubreddit"
+            userOrSubreddit.isNotBlank() && userOrSubreddit != "Pending Discovery" -> "https://www.reddit.com/user/$userOrSubreddit"
+            else -> "https://www.reddit.com"
+        }
+        openUrlIntent(context, targetUrl, "Reddit")
+    }
+
+    private fun openUrlIntent(context: Context, url: String, platformName: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error launching $platformName intent: $url", e)
+            Toast.makeText(context, "Unable to open $platformName", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Dynamically constructs the list of available, customized outreach and intelligence channels
+     * for a lead item based on detected contact points, social profiles, and online presence.
+     */
+    fun getDynamicActionChannels(lead: LeadItemEntity): List<ClientActionChannel> {
+        val channels = mutableListOf<ClientActionChannel>()
+        val fullText = "${lead.title} ${lead.description} ${lead.link}"
+        val pitch = lead.draftedPitch.ifBlank { "Hello, I noticed your business opportunity: ${lead.title} and would love to collaborate." }
+        val subject = "Collaboration Inquiry: ${lead.title}"
+
+        // 1. WhatsApp Channel
+        val phone = extractPhone(fullText)
+        if (phone != "Pending Discovery" && phone.isNotBlank()) {
+            channels.add(
+                ClientActionChannel(
+                    id = "whatsapp",
+                    platformName = "WhatsApp",
+                    label = "WhatsApp ($phone)",
+                    iconType = "whatsapp",
+                    targetData = phone,
+                    isPrimary = true,
+                    colorHex = 0xFF25D366,
+                    onDispatch = { ctx -> dispatchWhatsAppDirect(ctx, phone, pitch) }
+                )
+            )
+            // 2. Call / Phone Channel
+            channels.add(
+                ClientActionChannel(
+                    id = "phone",
+                    platformName = "Call",
+                    label = "Call ($phone)",
+                    iconType = "phone",
+                    targetData = phone,
+                    isPrimary = false,
+                    colorHex = 0xFF3B82F6,
+                    onDispatch = { ctx -> dispatchCallDirect(ctx, phone) }
+                )
+            )
+            // 3. SMS Channel
+            channels.add(
+                ClientActionChannel(
+                    id = "sms",
+                    platformName = "SMS",
+                    label = "SMS ($phone)",
+                    iconType = "sms",
+                    targetData = phone,
+                    isPrimary = false,
+                    colorHex = 0xFF10B981,
+                    onDispatch = { ctx -> dispatchSmsDirect(ctx, phone, pitch) }
+                )
+            )
+        } else {
+            // General WhatsApp Pitch Dispatcher
+            channels.add(
+                ClientActionChannel(
+                    id = "whatsapp_general",
+                    platformName = "WhatsApp",
+                    label = "WhatsApp Pitch",
+                    iconType = "whatsapp",
+                    targetData = "",
+                    isPrimary = true,
+                    colorHex = 0xFF25D366,
+                    onDispatch = { ctx -> dispatchViaWhatsApp(ctx, pitch) }
+                )
+            )
+        }
+
+        // 4. Email Channel
+        val email = if (lead.clientEmail.isNotBlank() && lead.clientEmail != "Pending Discovery") {
+            lead.clientEmail
+        } else {
+            extractEmail(fullText)
+        }
+        if (email != "Pending Discovery" && email.isNotBlank()) {
+            channels.add(
+                ClientActionChannel(
+                    id = "email",
+                    platformName = "Email",
+                    label = "Email ($email)",
+                    iconType = "email",
+                    targetData = email,
+                    isPrimary = true,
+                    colorHex = 0xFFEA4335,
+                    onDispatch = { ctx -> dispatchEmailDirect(ctx, email, subject, pitch) }
+                )
+            )
+        } else {
+            channels.add(
+                ClientActionChannel(
+                    id = "email_general",
+                    platformName = "Email",
+                    label = "Draft Email",
+                    iconType = "email",
+                    targetData = "",
+                    isPrimary = false,
+                    colorHex = 0xFFEA4335,
+                    onDispatch = { ctx -> dispatchViaEmail(ctx, subject, pitch, "") }
+                )
+            )
+        }
+
+        // 5. LinkedIn Channel
+        val linkedInUrl = extractLinkedInUrl(fullText)
+        val companyName = extractCompanyName(lead.title, lead.description)
+        channels.add(
+            ClientActionChannel(
+                id = "linkedin",
+                platformName = "LinkedIn",
+                label = if (companyName.isNotBlank() && companyName != "Pending Discovery") "LinkedIn ($companyName)" else "LinkedIn",
+                iconType = "linkedin",
+                targetData = linkedInUrl.ifBlank { companyName },
+                isPrimary = false,
+                colorHex = 0xFF0A66C2,
+                onDispatch = { ctx -> dispatchLinkedInDirect(ctx, companyName, linkedInUrl) }
+            )
+        )
+
+        // 6. Facebook Channel (if detected in text)
+        val fbMatch = Regex("https?://(?:www\\.)?facebook\\.com/[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE).find(fullText)
+        if (fbMatch != null) {
+            channels.add(
+                ClientActionChannel(
+                    id = "facebook",
+                    platformName = "Facebook",
+                    label = "Facebook",
+                    iconType = "facebook",
+                    targetData = fbMatch.value,
+                    isPrimary = false,
+                    colorHex = 0xFF1877F2,
+                    onDispatch = { ctx -> dispatchFacebookDirect(ctx, fbMatch.value) }
+                )
+            )
+        }
+
+        // 7. Instagram Channel (if detected)
+        val igMatch = Regex("https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE).find(fullText)
+        if (igMatch != null) {
+            channels.add(
+                ClientActionChannel(
+                    id = "instagram",
+                    platformName = "Instagram",
+                    label = "Instagram",
+                    iconType = "instagram",
+                    targetData = igMatch.value,
+                    isPrimary = false,
+                    colorHex = 0xFFE4405F,
+                    onDispatch = { ctx -> dispatchInstagramDirect(ctx, igMatch.value) }
+                )
+            )
+        }
+
+        // 8. Twitter / X Channel
+        val twMatch = Regex("https?://(?:www\\.)?(?:twitter\\.com|x\\.com)/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE).find(fullText)
+        if (twMatch != null) {
+            channels.add(
+                ClientActionChannel(
+                    id = "twitter",
+                    platformName = "X / Twitter",
+                    label = "X (Twitter)",
+                    iconType = "twitter",
+                    targetData = twMatch.value,
+                    isPrimary = false,
+                    colorHex = 0xFF1DA1F2,
+                    onDispatch = { ctx -> dispatchTwitterDirect(ctx, twMatch.value) }
+                )
+            )
+        }
+
+        // 9. Telegram Channel
+        val tgMatch = Regex("https?://(?:www\\.)?t\\.me/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE).find(fullText)
+        if (tgMatch != null) {
+            channels.add(
+                ClientActionChannel(
+                    id = "telegram",
+                    platformName = "Telegram",
+                    label = "Telegram",
+                    iconType = "telegram",
+                    targetData = tgMatch.value,
+                    isPrimary = false,
+                    colorHex = 0xFF229ED9,
+                    onDispatch = { ctx -> dispatchTelegramDirect(ctx, tgMatch.value, pitch) }
+                )
+            )
+        }
+
+        // 10. GitHub Channel
+        val ghMatch = Regex("https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE).find(fullText)
+        if (ghMatch != null) {
+            channels.add(
+                ClientActionChannel(
+                    id = "github",
+                    platformName = "GitHub",
+                    label = "GitHub",
+                    iconType = "github",
+                    targetData = ghMatch.value,
+                    isPrimary = false,
+                    colorHex = 0xFF333333,
+                    onDispatch = { ctx -> dispatchGitHubDirect(ctx, ghMatch.value) }
+                )
+            )
+        }
+
+        // 11. Website / Portfolio link
+        if (lead.link.startsWith("http://") || lead.link.startsWith("https://")) {
+            channels.add(
+                ClientActionChannel(
+                    id = "website",
+                    platformName = "Website",
+                    label = "Visit Link",
+                    iconType = "web",
+                    targetData = lead.link,
+                    isPrimary = false,
+                    colorHex = 0xFF8B5CF6,
+                    onDispatch = { ctx -> dispatchWebsiteDirect(ctx, lead.link) }
+                )
+            )
+        }
+
+        return channels
+    }
+
+    /**
+     * Dynamically constructs the list of outreach channels for a ProspectEntity.
+     */
+    fun getDynamicActionChannels(prospect: com.example.data.db.ProspectEntity): List<ClientActionChannel> {
+        val channels = mutableListOf<ClientActionChannel>()
+        val pitch = prospect.aiDraftedMessage.ifBlank { prospect.draftedPitch.ifBlank { "Hello ${prospect.clientName}, I am reaching out regarding ${prospect.opportunityNature}." } }
+        val subject = "Inquiry regarding ${prospect.opportunityNature} - ${prospect.companyName}"
+
+        // WhatsApp
+        val wa = prospect.whatsappNumber.ifBlank { prospect.phone }
+        if (wa.isNotBlank() && wa != "Pending Discovery") {
+            channels.add(
+                ClientActionChannel(
+                    id = "whatsapp",
+                    platformName = "WhatsApp",
+                    label = "WhatsApp ($wa)",
+                    iconType = "whatsapp",
+                    targetData = wa,
+                    isPrimary = true,
+                    colorHex = 0xFF25D366,
+                    onDispatch = { ctx -> dispatchWhatsAppDirect(ctx, wa, pitch) }
+                )
+            )
+        }
+
+        // Phone / Call
+        if (prospect.phone.isNotBlank() && prospect.phone != "Pending Discovery") {
+            channels.add(
+                ClientActionChannel(
+                    id = "phone",
+                    platformName = "Call",
+                    label = "Call (${prospect.phone})",
+                    iconType = "phone",
+                    targetData = prospect.phone,
+                    isPrimary = false,
+                    colorHex = 0xFF3B82F6,
+                    onDispatch = { ctx -> dispatchCallDirect(ctx, prospect.phone) }
+                )
+            )
+            channels.add(
+                ClientActionChannel(
+                    id = "sms",
+                    platformName = "SMS",
+                    label = "SMS (${prospect.phone})",
+                    iconType = "sms",
+                    targetData = prospect.phone,
+                    isPrimary = false,
+                    colorHex = 0xFF10B981,
+                    onDispatch = { ctx -> dispatchSmsDirect(ctx, prospect.phone, pitch) }
+                )
+            )
+        }
+
+        // Email
+        val email = prospect.email.ifBlank { prospect.clientEmail }
+        if (email.isNotBlank() && email != "Pending Discovery") {
+            channels.add(
+                ClientActionChannel(
+                    id = "email",
+                    platformName = "Email",
+                    label = "Email ($email)",
+                    iconType = "email",
+                    targetData = email,
+                    isPrimary = true,
+                    colorHex = 0xFFEA4335,
+                    onDispatch = { ctx -> dispatchEmailDirect(ctx, email, subject, pitch) }
+                )
+            )
+        }
+
+        // LinkedIn
+        val companyOrClient = prospect.companyName.ifBlank { prospect.clientName }
+        if (companyOrClient.isNotBlank() && companyOrClient != "Pending Discovery") {
+            channels.add(
+                ClientActionChannel(
+                    id = "linkedin",
+                    platformName = "LinkedIn",
+                    label = "LinkedIn ($companyOrClient)",
+                    iconType = "linkedin",
+                    targetData = companyOrClient,
+                    isPrimary = false,
+                    colorHex = 0xFF0A66C2,
+                    onDispatch = { ctx -> dispatchLinkedInDirect(ctx, companyOrClient) }
+                )
+            )
+        }
+
+        // Website
+        if (prospect.websiteUrl.isNotBlank() && prospect.websiteUrl != "Pending Discovery") {
+            channels.add(
+                ClientActionChannel(
+                    id = "website",
+                    platformName = "Website",
+                    label = "Website",
+                    iconType = "web",
+                    targetData = prospect.websiteUrl,
+                    isPrimary = false,
+                    colorHex = 0xFF8B5CF6,
+                    onDispatch = { ctx -> dispatchWebsiteDirect(ctx, prospect.websiteUrl) }
+                )
+            )
+        }
+
+        return channels
     }
 
     fun exportLeadsToCsv(leads: List<LeadItemEntity>): String {

@@ -107,6 +107,155 @@ class LeadRadarTool : WastiTool {
     }
 }
 
+class LeadScraperTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "lead_scraper",
+        name = "Lead Scraper & Contact Hunter",
+        category = "Business Automation",
+        description = "Deep multi-source web and social scraper that hunts real leads, extracts emails, phones, social channels, and auto-drafts pitches."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val query = parameters["query"]?.toString() ?: "Mobile App Development"
+        return try {
+            val leads = com.example.data.core.LeadScraperEngine.fetchLeadsForQuery(query)
+            if (leads.isEmpty()) {
+                "No new leads discovered for query: $query"
+            } else {
+                for (lead in leads) {
+                    com.example.data.core.LeadRadarRepository.addDiscoveredLead(lead)
+                }
+                "Discovered and ingested ${leads.size} real business leads for '$query':\n" +
+                        leads.joinToString("\n") { "- ${it.title} | Email: ${it.clientEmail.ifBlank { "Pending" }} | Match: ${it.matchScore}%" }
+            }
+        } catch (e: Exception) {
+            "Lead Scraper Error: ${e.message}"
+        }
+    }
+}
+
+class CrmIngestTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "crm_ingest",
+        name = "CRM Prospect Ingestion",
+        category = "CRM",
+        description = "Ingests a verified client lead or opportunity into the Room CRM database."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val clientName = parameters["client_name"]?.toString() ?: parameters["name"]?.toString() ?: "New Client"
+        val email = parameters["email"]?.toString() ?: ""
+        val phone = parameters["phone"]?.toString() ?: ""
+        val company = parameters["company"]?.toString() ?: ""
+        val pitch = parameters["pitch"]?.toString() ?: "Hello, we would love to collaborate on your project."
+        val source = parameters["source"]?.toString() ?: "AI Agent"
+
+        val prospect = com.example.data.db.ProspectEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            clientName = clientName,
+            companyName = company,
+            email = email,
+            phone = phone,
+            aiDraftedMessage = pitch,
+            leadSource = source,
+            status = "NEW",
+            timestamp = System.currentTimeMillis()
+        )
+        return try {
+            com.example.data.core.LeadRadarRepository.ingestProspect(prospect)
+            "Successfully ingested prospect '$clientName' (${company.ifBlank { "Direct" }}) into CRM."
+        } catch (e: Exception) {
+            "CRM Ingest Error: ${e.message}"
+        }
+    }
+}
+
+class CrmQueryTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "crm_query",
+        name = "CRM Pipeline Query",
+        category = "CRM",
+        description = "Queries current CRM prospects, pipeline stages, and active business leads."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val prospects = com.example.data.core.LeadRadarRepository.prospectsFlow.value
+        val leads = com.example.data.core.LeadRadarRepository.leadsFlow.value
+        return "CRM Summary:\nActive Prospects: ${prospects.size}\nDiscovered Leads: ${leads.size}\n\nRecent Prospects:\n" +
+                prospects.take(5).joinToString("\n") { "- ${it.clientName} (${it.companyName}) | Status: ${it.status} | Contact: ${it.email.ifBlank { it.phone }}" }
+    }
+}
+
+class InvoiceManagerTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "invoice_manager",
+        name = "Invoice & Billing Ledger",
+        category = "Finance",
+        description = "Creates client invoices, updates billing statuses, and formats accounting ledger summaries."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val action = parameters["action"]?.toString() ?: "summary"
+        val clientName = parameters["client_name"]?.toString() ?: ""
+        val milestone = parameters["milestone"]?.toString() ?: "General Services"
+        val amount = parameters["amount"]?.toString()?.toDoubleOrNull() ?: 250.0
+        val currency = parameters["currency"]?.toString() ?: "USD"
+
+        return when (action.lowercase()) {
+            "create" -> {
+                if (clientName.isBlank()) "Error: client_name is required to draft an invoice."
+                else {
+                    com.example.data.core.ClientInvoiceManager.createInvoice(clientName, milestone, amount, currency)
+                    "Drafted invoice for '$clientName' of amount $currency $amount for milestone '$milestone'."
+                }
+            }
+            "mark_paid" -> {
+                val invoiceId = parameters["invoice_id"]?.toString() ?: ""
+                if (invoiceId.isBlank()) "Error: invoice_id is required."
+                else {
+                    com.example.data.core.ClientInvoiceManager.updateStatus(invoiceId, com.example.data.core.InvoiceStatus.PAID)
+                    "Updated invoice $invoiceId status to PAID."
+                }
+            }
+            else -> {
+                val invoices = com.example.data.core.ClientInvoiceManager.invoicesFlow.value
+                val totalRevenue = com.example.data.core.ClientInvoiceManager.calculateTotalRevenueUsd()
+                val totalPaid = com.example.data.core.ClientInvoiceManager.calculateTotalPaidUsd()
+                val totalPending = com.example.data.core.ClientInvoiceManager.calculateTotalPendingUsd()
+                "Ledger Summary:\nTotal Invoiced: USD $totalRevenue\nPaid Received: USD $totalPaid\nPending Due: USD $totalPending\nTotal Invoices: ${invoices.size}"
+            }
+        }
+    }
+}
+
+class SocialScraperTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "social_scraper",
+        name = "Social Profile & Channel Scraper",
+        category = "Intelligence",
+        description = "Extracts verified multi-platform social media and messaging links (LinkedIn, GitHub, Twitter/X, Instagram, Telegram, etc.) from target web pages."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val targetUrl = parameters["url"]?.toString() ?: ""
+        if (targetUrl.isBlank()) return "Error: target url is required."
+        return try {
+            val content = com.example.data.ops.WebSearchEngine.scrapeWebPage(targetUrl)
+            if (content.startsWith("Error")) return content
+            val channels = mutableListOf<String>()
+            Regex("https?://(?:[a-zA-Z0-9]+\\.)?linkedin\\.com/(?:company|in)/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE).findAll(content).forEach { channels.add("LinkedIn: ${it.value}") }
+            Regex("https?://(?:www\\.)?github\\.com/[a-zA-Z0-9_-]+", RegexOption.IGNORE_CASE).findAll(content).forEach { channels.add("GitHub: ${it.value}") }
+            Regex("https?://(?:www\\.)?(?:twitter\\.com|x\\.com)/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE).findAll(content).forEach { channels.add("Twitter/X: ${it.value}") }
+            Regex("https?://(?:www\\.)?t\\.me/[a-zA-Z0-9_]+", RegexOption.IGNORE_CASE).findAll(content).forEach { channels.add("Telegram: ${it.value}") }
+            Regex("https?://(?:www\\.)?instagram\\.com/[a-zA-Z0-9_.]+", RegexOption.IGNORE_CASE).findAll(content).forEach { channels.add("Instagram: ${it.value}") }
+            if (channels.isEmpty()) "No social channels directly extracted from $targetUrl."
+            else "Extracted Social Channels from $targetUrl:\n" + channels.distinct().joinToString("\n")
+        } catch (e: Exception) {
+            "Social Scraper Error: ${e.message}"
+        }
+    }
+}
+
 object ToolRegistry {
     private val toolsMap = java.util.concurrent.ConcurrentHashMap<String, WastiTool>()
 
@@ -115,6 +264,11 @@ object ToolRegistry {
         registerTool(DeviceControlTool())
         registerTool(TerminalTool())
         registerTool(LeadRadarTool())
+        registerTool(LeadScraperTool())
+        registerTool(CrmIngestTool())
+        registerTool(CrmQueryTool())
+        registerTool(InvoiceManagerTool())
+        registerTool(SocialScraperTool())
     }
 
     fun registerTool(tool: WastiTool) {
