@@ -3,6 +3,7 @@ package com.example.data.cloud
 import android.content.Context
 import android.util.Log
 import com.example.data.ai.engine.HardwareCapabilityDetector
+import com.example.data.core.WastiRuntimeConfig
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -48,10 +49,8 @@ data class ComputeTaskOutcome(
 
 /**
  * Stage 10+: Firebase Heavy Compute Offloader.
- * Protects cheap and low-RAM mobile devices from thermal throttling, battery degradation,
- * and memory damage by automatically offloading compute-intensive operations
- * (batch embeddings, code synthesis, large-scale multi-model consensus) to Google Firebase
- * and cloud backend infrastructure.
+ * Routes heavy work to the configured cloud execution fabric when available and
+ * keeps a genuine bounded local fallback for offline operation.
  */
 object FirebaseComputeOffloader {
 
@@ -62,37 +61,23 @@ object FirebaseComputeOffloader {
         return WastiFirebaseIntegrity.getSafeFirestore(ctx)
     }
 
-    /**
-     * Determines whether a given task should be offloaded to cloud compute
-     * to protect device hardware from thermal/memory damage.
-     */
     fun shouldOffload(context: Context?, task: ComputeTaskRequest): Boolean {
         if (context == null) return false
         val specs = HardwareCapabilityDetector.detectHardwareEnvironment(context)
-
-        // If device has < 3GB RAM or task requires more than 30% of total RAM, offload
         val isRamConstrained = specs.totalRamMb < 3072 || task.requiredRamMb > (specs.totalRamMb * 0.35f)
-        
-        // Heavy multi-node consensus or large batch operations should always prefer cloud offload
         val isHeavyTask = task.type == ComputeTaskType.BATCH_EMBEDDINGS ||
                 task.type == ComputeTaskType.MULTI_MODEL_CONSENSUS ||
                 task.type == ComputeTaskType.CODE_COMPILATION_AND_ANALYSIS
-
         return isRamConstrained || isHeavyTask
     }
 
-    /**
-     * Executes compute task: routes to Firebase Firestore task queue, backend HTTP,
-     * or safe local throttled execution if offline.
-     */
     suspend fun executeTask(
         context: Context?,
         task: ComputeTaskRequest
     ): ComputeTaskOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
 
-        // 1. Try Firebase Firestore Task Queue
-        val firestore = getFirestore()
+        val firestore = getFirestore(context)
         if (firestore != null) {
             val firestoreOutcome = withTimeoutOrNull(task.timeoutMs) {
                 try {
@@ -108,7 +93,6 @@ object FirebaseComputeOffloader {
                         .set(taskData, SetOptions.merge()).awaitTask()
 
                     Log.i(TAG, "Task ${task.taskId} successfully enqueued in Firebase compute_tasks queue.")
-
                     ComputeTaskOutcome(
                         taskId = task.taskId,
                         success = true,
@@ -124,13 +108,11 @@ object FirebaseComputeOffloader {
             if (firestoreOutcome != null) return@withContext firestoreOutcome
         }
 
-        // 2. Try Cloud Backend HTTP endpoint (/compute/offload)
-        val httpOutcome = executeCloudBackendHttp(task)
+        val httpOutcome = executeCloudBackendHttp(context, task)
         if (httpOutcome != null) {
             return@withContext httpOutcome.copy(durationMs = System.currentTimeMillis() - startTime)
         }
 
-        // 3. Safe Local Throttled Fallback (Genuine local bounded computation)
         val (isSuccess, localOutput) = executeSafeLocalThrottled(context, task)
         val duration = System.currentTimeMillis() - startTime
 
@@ -144,11 +126,14 @@ object FirebaseComputeOffloader {
         )
     }
 
-    private suspend fun executeCloudBackendHttp(task: ComputeTaskRequest): ComputeTaskOutcome? {
-        val backendUrl = System.getenv("WASTI_BACKEND_URL") ?: return null
+    private suspend fun executeCloudBackendHttp(
+        context: Context?,
+        task: ComputeTaskRequest
+    ): ComputeTaskOutcome? {
+        val backendUrl = WastiRuntimeConfig.backendBaseUrl(context) ?: return null
         val trimmed = backendUrl.trim().trimEnd('/')
         if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-            Log.w(TAG, "Invalid WASTI_BACKEND_URL: '$backendUrl'")
+            Log.w(TAG, "Invalid Wasti backend URL: '$backendUrl'")
             return null
         }
         return try {
@@ -156,20 +141,23 @@ object FirebaseComputeOffloader {
             val conn = url.openConnection() as java.net.HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
-            val authToken = System.getenv("WASTI_SERVER_SECRET") ?: System.getenv("WASTI_ADMIN_TOKEN")
-            if (authToken != null) {
+            val authToken = WastiRuntimeConfig.backendUserAuthToken(context)
+            if (!authToken.isNullOrBlank()) {
                 conn.setRequestProperty("Authorization", "Bearer $authToken")
+                conn.setRequestProperty("x-wasti-auth-token", authToken)
             }
             conn.doOutput = true
             conn.connectTimeout = 10000
             conn.readTimeout = task.timeoutMs.toInt().coerceAtMost(30000)
 
             val body = JSONObject().apply {
+                put("taskId", task.taskId)
                 put("taskType", task.type.name)
                 put("payload", JSONObject(task.payload))
+                put("priority", task.priority)
             }.toString()
 
-            conn.outputStream.use { it.write(body.toByteArray()) }
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
 
             val code = conn.responseCode
             if (code in 200..299) {
@@ -196,43 +184,30 @@ object FirebaseComputeOffloader {
             when (task.type) {
                 ComputeTaskType.MULTI_MODEL_CONSENSUS -> {
                     val prompt = task.payload["prompt"] as? String
-                    if (prompt.isNullOrBlank()) {
-                        return false to "Missing or empty prompt for MULTI_MODEL_CONSENSUS."
-                    }
+                    if (prompt.isNullOrBlank()) return false to "Missing or empty prompt for MULTI_MODEL_CONSENSUS."
                     val consensus = com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt)
                     true to "Consensus Evaluated (${consensus.consensusType.name}): ${consensus.finalSynthesis}"
                 }
                 ComputeTaskType.BATCH_EMBEDDINGS -> {
                     @Suppress("UNCHECKED_CAST")
                     val texts = (task.payload["texts"] as? List<String>) ?: emptyList()
-                    if (texts.isEmpty()) {
-                        return false to "Missing or empty texts list for BATCH_EMBEDDINGS."
-                    }
+                    if (texts.isEmpty()) return false to "Missing or empty texts list for BATCH_EMBEDDINGS."
                     val results = texts.map { text ->
                         val res = com.example.data.ai.runtime.WastiEmbeddingRuntime.encodeDetailed(text)
-                        mapOf(
-                            "text" to text,
-                            "dimension" to res.vector.size,
-                            "isNeural" to res.isNeural,
-                            "model" to res.modelIdentifier
-                        )
+                        mapOf("text" to text, "dimension" to res.vector.size, "isNeural" to res.isNeural, "model" to res.modelIdentifier)
                     }
                     true to "Computed batch of ${results.size} deterministic fallback embeddings (384-dim)."
                 }
                 ComputeTaskType.HEAVY_FILE_TRANSFORM -> {
                     val content = task.payload["content"] as? String
-                    if (content == null) {
-                        return false to "Missing content for HEAVY_FILE_TRANSFORM."
-                    }
+                    if (content == null) return false to "Missing content for HEAVY_FILE_TRANSFORM."
                     val digest = java.security.MessageDigest.getInstance("SHA-256")
                     val hash = digest.digest(content.toByteArray()).joinToString("") { "%02x".format(it) }
                     true to "Transformed content (${content.length} chars). SHA-256: $hash"
                 }
                 ComputeTaskType.CODE_COMPILATION_AND_ANALYSIS -> {
                     val code = task.payload["code"] as? String
-                    if (code == null) {
-                        return false to "Missing code for CODE_COMPILATION_AND_ANALYSIS."
-                    }
+                    if (code == null) return false to "Missing code for CODE_COMPILATION_AND_ANALYSIS."
                     val stack = mutableListOf<Char>()
                     var valid = true
                     for (c in code) {
