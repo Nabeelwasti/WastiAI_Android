@@ -1,6 +1,7 @@
 package com.example.data.core
 
 import android.content.Context
+import com.example.BuildConfig
 import com.example.data.credential.CredentialRegistry
 
 /**
@@ -20,7 +21,14 @@ object WastiRuntimeConfig {
             return vaultValue.trim().trimEnd('/')
         }
 
-        val buildValue = runCatching { BuildConfig.WASTI_BACKEND_URL }.getOrNull()
+        val buildValue: String? = runCatching {
+            try {
+                BuildConfig.WASTI_BACKEND_URL
+            } catch (_: Throwable) {
+                val field = BuildConfig::class.java.getField("WASTI_BACKEND_URL")
+                field.get(null) as? String
+            }
+        }.getOrNull()
         if (!buildValue.isNullOrBlank() && !CredentialRegistry.isPlaceholder(buildValue)) {
             return buildValue.trim().trimEnd('/')
         }

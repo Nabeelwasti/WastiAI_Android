@@ -3,7 +3,7 @@ import sys
 import requests
 
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY")
-API_URL = "https://openrouter.ai"
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
 TARGET_MODEL = "openrouter/free"
 
 def ask_claude_to_edit(target_file, prompt_instruction):
@@ -52,7 +52,7 @@ def ask_claude_to_edit(target_file, prompt_instruction):
             return
 
         response_data = response.json()
-        new_code = response_data['choices']['message']['content']
+        new_code = response_data['choices'][0]['message']['content']
         
         with open(target_file, "w") as f:
             f.write(new_code.strip())
