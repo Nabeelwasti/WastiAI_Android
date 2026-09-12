@@ -5,8 +5,15 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate-test-build:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -20,29 +27,31 @@ jobs:
           java-version: '21'
           cache: gradle
 
-      - name: Set up Node.js
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
-      - name: Validate Gradle wrapper
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Validate Gradle Wrapper
         uses: gradle/actions/wrapper-validation@v4
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
-      - name: Restore Firebase config
+      - name: Restore google-services.json
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-          else
+          elif [ ! -f app/google-services.json ]; then
             printf '%s\n' '{"project_info":{"project_number":"0","project_id":"wasti-ci","storage_bucket":"wasti-ci.appspot.com"},"client":[]}' > app/google-services.json
           fi
 
-      - name: Restore environment configuration
+      - name: Restore environment and repository secrets
         env:
           SECRET_GEMINI: ${{ secrets.GEMINI_API_KEY }}
           SECRET_GROQ: ${{ secrets.GROQ_API_KEY }}
@@ -113,24 +122,13 @@ jobs:
           SECRET_DISCORD_BOT_ID: ${{ secrets.DISCORD_BOT_ID }}
           SECRET_DISCORD_BOT_KEY: ${{ secrets.DISCORD_BOT_KEY }}
         run: |
-          if [ -f ".env.example" ]; then
-            cp .env.example .env
-          else
-            touch .env
-          fi
-
+          if [ -f ".env.example" ]; then cp .env.example .env; else touch .env; fi
           inject_secret() {
-            local key="$1"
-            local val="$2"
+            local key="$1"; local val="$2"
             if [ -n "$val" ]; then
-              if grep -q "^${key}=" .env; then
-                sed -i "s|^${key}=.*|${key}=${val}|" .env
-              else
-                echo "${key}=${val}" >> .env
-              fi
+              if grep -q "^${key}=" .env; then sed -i "s|^${key}=.*|${key}=${val}|" .env; else echo "${key}=${val}" >> .env; fi
             fi
           }
-
           inject_secret "GEMINI_API_KEY" "$SECRET_GEMINI"
           inject_secret "GROQ_API_KEY" "$SECRET_GROQ"
           inject_secret "OPENAI_API_KEY" "$SECRET_OPENAI"
@@ -244,15 +242,6 @@ jobs:
           unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in APK"; exit 1; }
           FOUND=0
           for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
-            if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then
-              echo "SUCCESS: WastiApplication class descriptor verified in $DEX"
-              FOUND=1
-            elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
-              echo "INFO: WastiApplication reference found in $DEX"
-              FOUND=1
-            fi
+            if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then echo "SUCCESS: WastiApplication class descriptor verified in $DEX"; FOUND=1; elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then echo "INFO: WastiApplication reference found in $DEX"; FOUND=1; fi
           done
-          if [ "$FOUND" -ne 1 ]; then
-            echo "ERROR: WastiApplication not found in DEX"
-            exit 1
-          fi
+          if [ "$FOUND" -ne 1 ]; then echo "ERROR: WastiApplication not found in DEX"; exit 1; fi
