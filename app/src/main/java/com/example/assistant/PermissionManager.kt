@@ -6,6 +6,7 @@ import android.app.AlarmManager
 import android.content.Context
 import android.content.DialogInterface
 import android.content.pm.PackageManager
+import android.content.res.AssetManager
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.result.ActivityResultLauncher
@@ -21,6 +22,7 @@ import androidx.core.content.ContextCompat
 object PermissionManager {
     private const val PREFS_NAME = "wasti_permission_policy"
     private const val CONSENT_PREFIX = "consent::"
+    private const val ANDROID_MANIFEST_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
     @Volatile
     private var applicationContext: Context? = null
@@ -186,6 +188,15 @@ object PermissionManager {
         Manifest.permission.VIBRATE
     )
 
+    /**
+     * Truthfully determines whether this application's merged manifest declares a permission.
+     *
+     * Primary source is PackageManager's requestedPermissions list. Some JVM/Robolectric
+     * configurations do not expose the merged permission list consistently through that API,
+     * so we additionally inspect the application's actual packaged AndroidManifest.xml when
+     * an APK/source package is available. The fallback still reads the real manifest; it never
+     * treats a hard-coded permission allow-list as declaration evidence.
+     */
     fun isDeclaredInManifest(context: Context, permission: String): Boolean {
         return try {
             val pm = context.packageManager
@@ -194,25 +205,66 @@ object PermissionManager {
                 context.applicationInfo.packageName,
                 com.example.BuildConfig.APPLICATION_ID
             )
-            packageNames.any { packageName ->
-                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    try {
-                        pm.getPackageInfo(
-                            packageName,
-                            PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-                        )
-                    } catch (_: Throwable) {
-                        @Suppress("DEPRECATION")
-                        pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
-                    }
-                } else {
-                    @Suppress("DEPRECATION")
-                    pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+
+            if (packageNames.any { packageName ->
+                    val packageInfo = getPackageInfoWithPermissions(pm, packageName)
+                    packageInfo?.requestedPermissions?.contains(permission) == true
+                }) {
+                true
+            } else {
+                packageNames.any { packageName ->
+                    val packageInfo = getPackageInfoWithPermissions(pm, packageName)
+                    val sourceDir = packageInfo?.applicationInfo?.sourceDir
+                        ?: runCatching { pm.getApplicationInfo(packageName, 0).sourceDir }.getOrNull()
+                    sourceDir != null && manifestInApkDeclaresPermission(sourceDir, permission)
                 }
-                packageInfo.requestedPermissions?.contains(permission) == true
             }
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun getPackageInfoWithPermissions(
+        packageManager: PackageManager,
+        packageName: String
+    ): android.content.pm.PackageInfo? = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+            )
+        } else {
+            packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
+    private fun manifestInApkDeclaresPermission(sourceDir: String, permission: String): Boolean {
+        if (sourceDir.isBlank()) return false
+        var assets: AssetManager? = null
+        var parser: org.xmlpull.v1.XmlPullParser? = null
+        return try {
+            assets = AssetManager()
+            val cookie = assets.addAssetPath(sourceDir)
+            if (cookie == 0) return false
+            parser = assets.openXmlResourceParser(cookie, "AndroidManifest.xml")
+            var event = parser.eventType
+            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+                if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "uses-permission") {
+                    if (parser.getAttributeValue(ANDROID_MANIFEST_NAMESPACE, "name") == permission) {
+                        return true
+                    }
+                }
+                event = parser.next()
+            }
+            false
+        } catch (_: Throwable) {
+            false
+        } finally {
+            runCatching { parser?.close() }
+            runCatching { assets?.close() }
         }
     }
 
