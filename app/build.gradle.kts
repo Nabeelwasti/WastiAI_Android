@@ -174,9 +174,12 @@ android {
         // and global emergency-stop state. Keep JVM test classes isolated by process
         // order rather than introducing cross-class races in CI.
         test.maxParallelForks = 1
-        test.failFast = false
-        // Safety ceiling for the Gradle test task; the workflow provides the final guard.
-        test.timeout.set(Duration.ofMinutes(25))
+        // Stop at the first real test failure so CI never burns the remaining budget
+        // after the suite has already established a failing state.
+        test.failFast = true
+        // Short CI safety ceiling. This applies only to JVM test execution in CI;
+        // it does not restrict Wasti OS runtime execution on a real device.
+        test.timeout.set(Duration.ofMinutes(4))
       }
     }
   }
