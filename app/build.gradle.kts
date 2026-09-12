@@ -152,22 +152,16 @@ android {
       isIncludeAndroidResources = false
       isReturnDefaultValues = true
       all {
-        // Keep execution deterministic: the suite contains tests that bind fixed local ports
-        // and touch shared runtime resources, so do not enable unsafe fork-level parallelism.
-        maxHeapSize = "2g"
-        jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
-        systemProperty("ENVIRONMENT", "test")
-        systemProperty("WASTI_TEST_MODE", "true")
-        systemProperty("WASTI_ENV", "test")
-        environment("WASTI_ENV", "test")
-        environment("ENVIRONMENT", "test")
-
-        // CI must retain truthful failure reporting without spending the test budget printing
-        // every successful assertion. Full diagnostics remain available from Gradle XML/HTML
-        // reports and are emitted when a test actually fails.
-        testLogging {
-          events("failed", "skipped")
-          showStandardStreams = false
+        it.maxHeapSize = "2g"
+        it.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
+        it.systemProperty("ENVIRONMENT", "test")
+        it.systemProperty("WASTI_TEST_MODE", "true")
+        it.systemProperty("WASTI_ENV", "test")
+        it.environment("WASTI_ENV", "test")
+        it.environment("ENVIRONMENT", "test")
+        it.testLogging {
+          events("passed", "skipped", "failed", "standardError")
+          showStandardStreams = true
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
           showExceptions = true
           showCauses = true
