@@ -425,6 +425,47 @@ class DatasetStreamingTool : WastiTool {
     }
 }
 
+class ToolSynthesizerTool : WastiTool {
+    override val definition = ToolDefinition(
+        id = "tool_synthesizer",
+        name = "Dynamic Tool Invention & Synthesis Engine",
+        category = "Capability Acquisition",
+        description = "Dynamically synthesizes, verifies, and registers custom executable tools in Python, Node.js, Shell, or binaries."
+    )
+
+    override suspend fun execute(parameters: Map<String, Any>): String {
+        val toolId = parameters["tool_id"]?.toString() ?: parameters["id"]?.toString() ?: ""
+        val toolName = parameters["tool_name"]?.toString() ?: parameters["name"]?.toString() ?: toolId
+        val description = parameters["description"]?.toString() ?: "Synthesized tool"
+        val languageStr = parameters["language"]?.toString() ?: "python"
+        val sourceCode = parameters["source_code"]?.toString() ?: parameters["code"]?.toString() ?: ""
+
+        if (toolId.isBlank() || sourceCode.isBlank()) {
+            return "Error: 'tool_id' and 'source_code' are required parameters."
+        }
+
+        val lang = when (languageStr.lowercase()) {
+            "python", "py" -> com.example.data.wre.PolyglotLanguage.PYTHON
+            "javascript", "js", "node" -> com.example.data.wre.PolyglotLanguage.NODE_JAVASCRIPT
+            "shell", "sh", "bash" -> com.example.data.wre.PolyglotLanguage.SHELL
+            else -> com.example.data.wre.PolyglotLanguage.PYTHON
+        }
+
+        val ctx = com.example.data.credential.CredentialRegistry.appContext ?: com.example.WastiApplication.instance
+        if (ctx == null) {
+            return "Error: Application context unavailable for dynamic tool synthesis."
+        }
+
+        val synth = WastiAutonomousToolSynthesizer(ctx, com.example.data.wre.WreWorkspaceManager.getInstance(ctx))
+        val res = synth.synthesizeAndRegisterTool(toolId, toolName, description, lang, sourceCode)
+        return if (res.isSuccess) {
+            "✔ Tool [$toolId] successfully synthesized and registered into ToolRegistry at ${res.executablePath}."
+        } else {
+            "❌ Failed to synthesize tool [$toolId]: ${res.errorMessage}"
+        }
+    }
+}
+
 object ToolRegistry {
     private val toolsMap = java.util.concurrent.ConcurrentHashMap<String, WastiTool>()
 
@@ -442,6 +483,7 @@ object ToolRegistry {
         registerTool(DeepResearchTool())
         registerTool(VaultCredentialTool())
         registerTool(DatasetStreamingTool())
+        registerTool(ToolSynthesizerTool())
     }
 
     fun registerTool(tool: WastiTool) {

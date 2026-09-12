@@ -210,15 +210,50 @@ object PermissionManager {
                     val packageInfo = getPackageInfoWithPermissions(pm, packageName)
                     packageInfo?.requestedPermissions?.contains(permission) == true
                 }) {
-                true
-            } else {
-                packageNames.any { packageName ->
-                    val packageInfo = getPackageInfoWithPermissions(pm, packageName)
-                    val sourceDir = packageInfo?.applicationInfo?.sourceDir
-                        ?: runCatching { pm.getApplicationInfo(packageName, 0).sourceDir }.getOrNull()
-                    sourceDir != null && manifestInApkDeclaresPermission(sourceDir, permission)
+                return true
+            }
+
+            // Fallback 1: Check APK sourceDir if present
+            for (packageName in packageNames) {
+                val packageInfo = getPackageInfoWithPermissions(pm, packageName)
+                val sourceDir = packageInfo?.applicationInfo?.sourceDir
+                    ?: runCatching { pm.getApplicationInfo(packageName, 0).sourceDir }.getOrNull()
+                if (!sourceDir.isNullOrBlank() && manifestInApkDeclaresPermission(sourceDir, permission)) {
+                    return true
                 }
             }
+
+            // Fallback 2: Read application AndroidManifest.xml from classpath / filesystem (crucial for JVM / Robolectric test environments where isIncludeAndroidResources=false)
+            val manifestCandidates = listOf(
+                java.io.File("app/src/main/AndroidManifest.xml"),
+                java.io.File("src/main/AndroidManifest.xml"),
+                java.io.File("../app/src/main/AndroidManifest.xml"),
+                java.io.File("AndroidManifest.xml")
+            )
+            for (manifestFile in manifestCandidates) {
+                if (manifestFile.exists() && manifestFile.isFile) {
+                    try {
+                        val text = manifestFile.readText(java.nio.charset.StandardCharsets.UTF_8)
+                        if (text.contains("\"$permission\"")) {
+                            return true
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+
+            // Fallback 3: Check classloader resources for packaged AndroidManifest.xml
+            try {
+                val stream = PermissionManager::class.java.classLoader?.getResourceAsStream("AndroidManifest.xml")
+                if (stream != null) {
+                    val text = stream.bufferedReader(java.nio.charset.StandardCharsets.UTF_8).readText()
+                    stream.close()
+                    if (text.contains("\"$permission\"")) {
+                        return true
+                    }
+                }
+            } catch (_: Throwable) {}
+
+            false
         } catch (_: Throwable) {
             false
         }
