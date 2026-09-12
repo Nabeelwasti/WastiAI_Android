@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test_backend.js",
+    "test": "node --test test_backend.js test_admin_patch_auth.js",
     "verify:deployment": "node verify_backend_deployment.js"
   },
   "dependencies": {
