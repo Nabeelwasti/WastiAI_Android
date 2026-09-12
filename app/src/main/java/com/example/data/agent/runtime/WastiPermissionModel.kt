@@ -1,11 +1,18 @@
 package com.example.data.agent.runtime
 
+import android.content.Context
+
 /**
  * Platform-independent PermissionModel implementation.
  * Mediates user and biometric approval requests without direct coupling to Compose UI or Android BiometricPrompt.
  * Privileged authorization is never permanently cached.
+ *
+ * When an Android Context is supplied, consent is persisted through PermissionManager's
+ * canonical context-aware store. JVM tests may omit the context and use the local test
+ * consent map without touching deprecated Android compatibility APIs.
  */
 class WastiPermissionModel(
+    private val context: Context? = null,
     private var autoApproveControlledForTesting: Boolean = false,
     private var autoApproveBiometricForTesting: Boolean = false
 ) : PermissionModel {
@@ -26,17 +33,18 @@ class WastiPermissionModel(
 
     fun setCapabilityConsent(capabilityName: String, consented: Boolean) {
         capabilityConsentMap[capabilityName] = consented
-        com.example.assistant.PermissionManager.setUserConsent(capabilityName, consented)
+        context?.let { com.example.assistant.PermissionManager.setUserConsent(it, capabilityName, consented) }
     }
 
     fun hasCapabilityConsent(capabilityName: String): Boolean {
         return capabilityConsentMap[capabilityName]
-            ?: com.example.assistant.PermissionManager.hasUserConsent(capabilityName)
+            ?: context?.let { com.example.assistant.PermissionManager.hasUserConsent(it, capabilityName) }
+            ?: false
     }
 
     fun revokeAllConsents() {
         capabilityConsentMap.clear()
-        com.example.assistant.PermissionManager.clearUserConsents()
+        context?.let { com.example.assistant.PermissionManager.clearUserConsents(it) }
     }
 
     override suspend fun requestUserApproval(
@@ -54,4 +62,3 @@ class WastiPermissionModel(
         return autoApproveBiometricForTesting
     }
 }
-
