@@ -261,4 +261,7 @@ sealed class AgentEvent(
     data class MeshFailoverTriggered(override val taskId: TaskId = TaskId("mesh_failover"), val proactiveTaskId: String, val fromNodeId: String, val toNodeId: String, val reason: String) : AgentEvent(taskId = taskId)
     data class MeshNodeRecovered(override val taskId: TaskId = TaskId("mesh_recovery"), val nodeId: String, val healthyCapCount: Int) : AgentEvent(taskId = taskId)
     data class MeshDiagnosticUpdated(override val taskId: TaskId = TaskId("mesh_diagnostics"), val nodeId: String, val isEligible: Boolean, val reasonCount: Int) : AgentEvent(taskId = taskId)
+
+    // Dynamic Tool Synthesis & Sandbox Execution
+    data class DynamicToolSynthesized(override val taskId: TaskId = TaskId("tool_synthesis"), val toolId: String, val toolName: String, val language: String, val executablePath: String) : AgentEvent(taskId = taskId)
 }

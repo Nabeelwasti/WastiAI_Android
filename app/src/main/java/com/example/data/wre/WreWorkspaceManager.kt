@@ -125,4 +125,15 @@ class WreWorkspaceManager(context: Context) {
             verifiedChecksumsCount = checksumsVerified
         )
     }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: WreWorkspaceManager? = null
+
+        fun getInstance(context: Context): WreWorkspaceManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: WreWorkspaceManager(context.applicationContext ?: context).also { INSTANCE = it }
+            }
+        }
+    }
 }

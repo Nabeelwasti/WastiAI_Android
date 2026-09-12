@@ -11,6 +11,7 @@ sealed class WastiEvent {
     data class DatabaseMigrationCompleted(val oldVersion: Int, val newVersion: Int) : WastiEvent()
     data class SyncCompleted(val serviceName: String, val success: Boolean) : WastiEvent()
     data class PluginInstalled(val pluginId: String, val pluginName: String) : WastiEvent()
+    data class ToolSynthesized(val toolId: String, val toolName: String, val language: String, val executablePath: String) : WastiEvent()
     data class SystemAlert(val level: String, val message: String) : WastiEvent()
 }
 

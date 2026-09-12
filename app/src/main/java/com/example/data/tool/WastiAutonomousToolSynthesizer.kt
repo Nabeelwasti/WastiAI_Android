@@ -10,6 +10,12 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.bus.WastiEvent
+import com.example.data.bus.WastiEventBus
+import kotlinx.coroutines.withTimeoutOrNull
+
 /**
  * [The Eternal Manifesto: The Capability Acquisition Law & Dynamic Invention Engine]
  *
@@ -18,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 1. Writes script/binary (Python, Bash, Node.js) to private `workspace/bin/` with `chmod 755/700`.
  * 2. Runs verification test to ensure non-zero exit code, valid output schema, and correct behaviour.
  * 3. Registers tool dynamically in `ToolRegistry` so the entire OS (Chat, Voice, Bubble, WorkManager) can immediately utilize it.
+ * 4. Hardened with 30s execution timeouts and broadcast notification across WastiEventBus and AgentEventBus.
  */
 class WastiAutonomousToolSynthesizer(
     private val context: Context,
@@ -26,6 +33,7 @@ class WastiAutonomousToolSynthesizer(
 
     companion object {
         private const val TAG = "ToolSynthesizer"
+        private const val DEFAULT_TIMEOUT_MS = 30_000L
     }
 
     private val binDirectory: File by lazy {
@@ -75,25 +83,30 @@ class WastiAutonomousToolSynthesizer(
 
                 override suspend fun execute(parameters: Map<String, Any>): String = withContext(Dispatchers.IO) {
                     try {
-                        val cmdArray = when (language) {
-                            PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
-                            PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
-                            PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
-                            else -> arrayOf(scriptFile.absolutePath)
+                        val result = withTimeoutOrNull(DEFAULT_TIMEOUT_MS) {
+                            val cmdArray = when (language) {
+                                PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
+                                PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
+                                PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
+                                else -> arrayOf(scriptFile.absolutePath)
+                            }
+
+                            val envList = arrayOf(
+                                "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
+                                "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
+                            )
+
+                            val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
+                            val outDeferred = kotlinx.coroutines.async(Dispatchers.IO) { process.inputStream.bufferedReader().readText() }
+                            val errDeferred = kotlinx.coroutines.async(Dispatchers.IO) { process.errorStream.bufferedReader().readText() }
+                            val code = process.waitFor()
+                            val out = outDeferred.await()
+                            val err = errDeferred.await()
+
+                            if (code == 0) out.ifBlank { "Tool '$toolId' executed with code 0." }
+                            else "Tool execution error (exit $code): $err"
                         }
-
-                        val envList = arrayOf(
-                            "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
-                            "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
-                        )
-
-                        val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
-                        val out = process.inputStream.bufferedReader().readText()
-                        val err = process.errorStream.bufferedReader().readText()
-                        val code = process.waitFor()
-
-                        if (code == 0) out.ifBlank { "Tool '$toolId' executed with code 0." }
-                        else "Tool execution error (exit $code): $err"
+                        result ?: "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
                     } catch (e: Exception) {
                         "Dynamic Tool Execution Failed: ${e.message}"
                     }
@@ -103,6 +116,25 @@ class WastiAutonomousToolSynthesizer(
             // Verify with test execution
             val verifyOut = dynamicTool.execute(testParameters)
             ToolRegistry.registerTool(dynamicTool)
+
+            // Proactive IPC & Event Bus Dispatch
+            WastiEventBus.tryEmit(
+                WastiEvent.ToolSynthesized(
+                    toolId = toolId,
+                    toolName = toolName,
+                    language = language.name,
+                    executablePath = scriptFile.absolutePath
+                )
+            )
+            AgentEventBus.getInstance().tryEmit(
+                AgentEvent.DynamicToolSynthesized(
+                    toolId = toolId,
+                    toolName = toolName,
+                    language = language.name,
+                    executablePath = scriptFile.absolutePath
+                )
+            )
+
             Log.i(TAG, "Successfully synthesized and registered tool [$toolId] at ${scriptFile.absolutePath}")
 
             ToolSynthesisResult(

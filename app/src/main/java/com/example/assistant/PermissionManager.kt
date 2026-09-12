@@ -278,29 +278,35 @@ object PermissionManager {
 
     private fun manifestInApkDeclaresPermission(sourceDir: String, permission: String): Boolean {
         if (sourceDir.isBlank()) return false
-        var assets: AssetManager? = null
-        var parser: org.xmlpull.v1.XmlPullParser? = null
         return try {
-            assets = AssetManager()
-            val cookie = assets.addAssetPath(sourceDir)
-            if (cookie == 0) return false
-            parser = assets.openXmlResourceParser(cookie, "AndroidManifest.xml")
-            var event = parser.eventType
-            while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
-                if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name == "uses-permission") {
-                    if (parser.getAttributeValue(ANDROID_MANIFEST_NAMESPACE, "name") == permission) {
-                        return true
-                    }
-                }
-                event = parser.next()
+            val apkFile = java.io.File(sourceDir)
+            if (!apkFile.exists() || !apkFile.isFile) return false
+            java.util.zip.ZipFile(apkFile).use { zip ->
+                val entry = zip.getEntry("AndroidManifest.xml") ?: return false
+                val bytes = zip.getInputStream(entry).use { it.readBytes() }
+                val permBytesUtf8 = permission.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+                val permBytesUtf16 = permission.toByteArray(java.nio.charset.StandardCharsets.UTF_16LE)
+                containsSubarray(bytes, permBytesUtf8) || containsSubarray(bytes, permBytesUtf16)
             }
-            false
         } catch (_: Throwable) {
             false
-        } finally {
-            runCatching { parser?.close() }
-            runCatching { assets?.close() }
         }
+    }
+
+    private fun containsSubarray(array: ByteArray, target: ByteArray): Boolean {
+        if (target.isEmpty() || array.size < target.size) return false
+        val max = array.size - target.size
+        for (i in 0..max) {
+            var found = true
+            for (j in target.indices) {
+                if (array[i + j] != target[j]) {
+                    found = false
+                    break
+                }
+            }
+            if (found) return true
+        }
+        return false
     }
 
     fun isAllFilesAccessGranted(context: Context): Boolean = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
