@@ -11,9 +11,9 @@ import com.example.data.wre.WreWorkspaceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.TimeoutCancellationException
 import java.io.File
 
 /**
@@ -21,7 +21,10 @@ import java.io.File
  *
  * Synthesis is not verification. A generated tool is promoted into the shared
  * ToolRegistry only after a real execution probe completes with exit code 0.
- * Timeout/failure is fail-closed and never emits a successful synthesis event.
+ *
+ * Execution has no fixed wall-clock kill switch here. Long-running work is
+ * allowed to continue while Wasti observes it and publishes truthful progress.
+ * Cancellation remains an explicit user/system action, not an automatic timeout.
  */
 class WastiAutonomousToolSynthesizer(
     private val context: Context,
@@ -30,7 +33,7 @@ class WastiAutonomousToolSynthesizer(
 
     companion object {
         private const val TAG = "ToolSynthesizer"
-        private const val DEFAULT_TIMEOUT_MS = 30_000L
+        private const val PROGRESS_HEARTBEAT_MS = 5_000L
     }
 
     private val binDirectory: File by lazy {
@@ -49,9 +52,9 @@ class WastiAutonomousToolSynthesizer(
         val exitCode: Int?,
         val stdout: String,
         val stderr: String,
-        val timedOut: Boolean = false
+        val durationMs: Long
     ) {
-        val succeeded: Boolean get() = exitCode == 0 && !timedOut
+        val succeeded: Boolean get() = exitCode == 0
     }
 
     /**
@@ -93,20 +96,18 @@ class WastiAutonomousToolSynthesizer(
                 )
 
                 override suspend fun execute(parameters: Map<String, Any>): String {
-                    val probe = executeScript(language, scriptFile, parameters)
+                    val probe = executeScript(language, scriptFile, parameters, toolId)
                     return when {
                         probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
-                        probe.timedOut -> "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
                         else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
                     }
                 }
             }
 
             // This is an execution probe, not independent reality verification.
-            val probe = executeScript(language, scriptFile, testParameters)
+            val probe = executeScript(language, scriptFile, testParameters, toolId)
             val probeOutput = when {
                 probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
-                probe.timedOut -> "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
                 else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
             }
 
@@ -163,48 +164,66 @@ class WastiAutonomousToolSynthesizer(
     private suspend fun executeScript(
         language: PolyglotLanguage,
         scriptFile: File,
-        parameters: Map<String, Any>
+        parameters: Map<String, Any>,
+        toolId: String
     ): ExecutionProbe {
-        var process: Process? = null
-        return try {
-            withTimeout(DEFAULT_TIMEOUT_MS) {
-                coroutineScope {
-                    val cmdArray = when (language) {
-                        PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
-                        PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
-                        PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
-                        else -> arrayOf(scriptFile.absolutePath)
-                    }
+        val startedAt = System.currentTimeMillis()
+        val cmdArray = when (language) {
+            PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
+            PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
+            PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
+            else -> arrayOf(scriptFile.absolutePath)
+        }
+        val envList = arrayOf(
+            "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
+            "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
+        )
 
-                    val envList = arrayOf(
-                        "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
-                        "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
-                    )
+        val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
+        WastiEventBus.tryEmit(WastiEvent.ExecutionStateChanged(
+            taskId = toolId,
+            state = "RUNNING",
+            details = "Dynamic tool probe started; no fixed execution timeout is applied."
+        ))
 
-                    process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
-                    val runningProcess = process ?: error("Failed to create process")
-                    val outDeferred = async(Dispatchers.IO) {
-                        runningProcess.inputStream.bufferedReader().use { it.readText() }
+        return coroutineScope {
+            val outDeferred = async(Dispatchers.IO) {
+                process.inputStream.bufferedReader().use { it.readText() }
+            }
+            val errDeferred = async(Dispatchers.IO) {
+                process.errorStream.bufferedReader().use { it.readText() }
+            }
+            val heartbeat = launch(Dispatchers.IO) {
+                while (process.isAlive) {
+                    delay(PROGRESS_HEARTBEAT_MS)
+                    if (process.isAlive) {
+                        val elapsed = System.currentTimeMillis() - startedAt
+                        AgentEventBus.getInstance().tryEmit(
+                            AgentEvent.ExecutionStateChanged(
+                                taskId = com.example.data.agent.runtime.TaskId(toolId),
+                                state = "RUNNING",
+                                details = "Dynamic tool still executing; elapsed=${elapsed}ms. Wasti is observing rather than terminating it."
+                            )
+                        )
                     }
-                    val errDeferred = async(Dispatchers.IO) {
-                        runningProcess.errorStream.bufferedReader().use { it.readText() }
-                    }
-                    val code = runningProcess.waitFor()
-                    ExecutionProbe(
-                        exitCode = code,
-                        stdout = outDeferred.await(),
-                        stderr = errDeferred.await()
-                    )
                 }
             }
-        } catch (_: TimeoutCancellationException) {
-            process?.runCatching { destroyForcibly() }
-            ExecutionProbe(
-                exitCode = null,
-                stdout = "",
-                stderr = "Process forcibly terminated after ${DEFAULT_TIMEOUT_MS / 1000}s timeout.",
-                timedOut = true
-            )
+
+            try {
+                val code = process.waitFor()
+                val stdout = outDeferred.await()
+                val stderr = errDeferred.await()
+                val duration = System.currentTimeMillis() - startedAt
+                AgentEventBus.getInstance().tryEmit(
+                    AgentEvent.ExecutionCompleted(
+                        taskId = com.example.data.agent.runtime.TaskId(toolId),
+                        exitCode = code
+                    )
+                )
+                ExecutionProbe(code, stdout, stderr, duration)
+            } finally {
+                heartbeat.cancel()
+            }
         }
     }
 }
