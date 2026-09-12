@@ -60,8 +60,8 @@ class LocalAndroidProvider(
             try { process.outputStream.close() } catch (_: Exception) {}
             var stdout = ""
             var stderr = ""
-            val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes) }
-            val stderrThread = Thread { stderr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes) }
+            val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process!!.inputStream, maxOutputSizeBytes) }
+            val stderrThread = Thread { stderr = readStreamWithSizeLimit(process!!.errorStream, maxOutputSizeBytes) }
             stdoutThread.start(); stderrThread.start()
 
             // request.timeoutMs is retained for compatibility and telemetry only.
@@ -88,10 +88,10 @@ class LocalAndroidProvider(
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
-            ExecutionResult("", "EXECUTION_CANCELLED: ${e.message ?: "Execution thread interrupted"}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_CANCELLED"), ExecutionErrorType.CANCELLED)
+            return@withContext ExecutionResult("", "EXECUTION_CANCELLED: ${e.message ?: "Execution thread interrupted"}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_CANCELLED"), ExecutionErrorType.CANCELLED)
         } catch (e: Exception) {
             process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
-            ExecutionResult("", "EXECUTION_ERROR: ${e.message}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"), ExecutionErrorType.RUNTIME)
+            return@withContext ExecutionResult("", "EXECUTION_ERROR: ${e.message}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"), ExecutionErrorType.RUNTIME)
         }
     }
 
