@@ -2,31 +2,26 @@ package com.example.data.tool
 
 import android.content.Context
 import android.util.Log
-import com.example.data.wre.PolyglotExecutionOutcome
-import com.example.data.wre.PolyglotLanguage
-import com.example.data.wre.WreWorkspaceManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.concurrent.ConcurrentHashMap
-
 import com.example.data.agent.runtime.AgentEvent
 import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.bus.WastiEvent
 import com.example.data.bus.WastiEventBus
+import com.example.data.wre.PolyglotLanguage
+import com.example.data.wre.WreWorkspaceManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import java.io.File
 
 /**
- * [The Eternal Manifesto: The Capability Acquisition Law & Dynamic Invention Engine]
+ * The Eternal Manifesto: Dynamic Capability Acquisition.
  *
- * WastiAutonomousToolSynthesizer:
- * Enables the AI Brain to dynamically synthesize, verify, and register executable tools at runtime:
- * 1. Writes script/binary (Python, Bash, Node.js) to private `workspace/bin/` with `chmod 755/700`.
- * 2. Runs verification test to ensure non-zero exit code, valid output schema, and correct behaviour.
- * 3. Registers tool dynamically in `ToolRegistry` so the entire OS (Chat, Voice, Bubble, WorkManager) can immediately utilize it.
- * 4. Hardened with 30s execution timeouts and broadcast notification across WastiEventBus and AgentEventBus.
+ * Synthesis is not verification. A generated tool is promoted into the shared
+ * ToolRegistry only after a real execution probe completes with exit code 0.
+ * Timeout/failure is fail-closed and never emits a successful synthesis event.
  */
 class WastiAutonomousToolSynthesizer(
     private val context: Context,
@@ -50,8 +45,18 @@ class WastiAutonomousToolSynthesizer(
         val errorMessage: String? = null
     )
 
+    private data class ExecutionProbe(
+        val exitCode: Int?,
+        val stdout: String,
+        val stderr: String,
+        val timedOut: Boolean = false
+    ) {
+        val succeeded: Boolean get() = exitCode == 0 && !timedOut
+    }
+
     /**
-     * Synthesizes and registers an autonomous tool on the fly.
+     * Synthesizes a tool, probes it against the supplied test parameters, and
+     * registers it only when the real process exits successfully.
      */
     suspend fun synthesizeAndRegisterTool(
         toolId: String,
@@ -62,6 +67,10 @@ class WastiAutonomousToolSynthesizer(
         testParameters: Map<String, Any> = emptyMap()
     ): ToolSynthesisResult = withContext(Dispatchers.IO) {
         try {
+            require(toolId.isNotBlank()) { "toolId must not be blank" }
+            require(toolName.isNotBlank()) { "toolName must not be blank" }
+            require(sourceCode.isNotBlank()) { "sourceCode must not be blank" }
+
             val fileName = when (language) {
                 PolyglotLanguage.PYTHON -> "$toolId.py"
                 PolyglotLanguage.NODE_JAVASCRIPT -> "$toolId.js"
@@ -69,12 +78,12 @@ class WastiAutonomousToolSynthesizer(
                 else -> "$toolId.bin"
             }
 
-            val scriptFile = File(binDirectory, fileName)
+            val scriptFile = File(binDirectory, fileName).canonicalFile
+            require(scriptFile.parentFile == binDirectory.canonicalFile) { "Invalid synthesized tool path" }
             scriptFile.writeText(sourceCode)
             scriptFile.setExecutable(true, false)
             scriptFile.setReadable(true, false)
 
-            // Dynamic Wrapper WastiTool
             val dynamicTool = object : WastiTool {
                 override val definition = ToolDefinition(
                     id = toolId,
@@ -83,45 +92,37 @@ class WastiAutonomousToolSynthesizer(
                     description = description
                 )
 
-                override suspend fun execute(parameters: Map<String, Any>): String = withContext(Dispatchers.IO) {
-                    try {
-                        val result = withTimeoutOrNull(DEFAULT_TIMEOUT_MS) {
-                            coroutineScope {
-                                val cmdArray = when (language) {
-                                    PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
-                                    PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
-                                    PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
-                                    else -> arrayOf(scriptFile.absolutePath)
-                                }
-
-                                val envList = arrayOf(
-                                    "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
-                                    "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
-                                )
-
-                                val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
-                                val outDeferred = async(Dispatchers.IO) { process.inputStream.bufferedReader().readText() }
-                                val errDeferred = async(Dispatchers.IO) { process.errorStream.bufferedReader().readText() }
-                                val code = process.waitFor()
-                                val out = outDeferred.await()
-                                val err = errDeferred.await()
-
-                                if (code == 0) out.ifBlank { "Tool '$toolId' executed with code 0." }
-                                else "Tool execution error (exit $code): $err"
-                            }
-                        }
-                        result ?: "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
-                    } catch (e: Exception) {
-                        "Dynamic Tool Execution Failed: ${e.message}"
+                override suspend fun execute(parameters: Map<String, Any>): String {
+                    val probe = executeScript(language, scriptFile, parameters)
+                    return when {
+                        probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
+                        probe.timedOut -> "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
+                        else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
                     }
                 }
             }
 
-            // Verify with test execution
-            val verifyOut = dynamicTool.execute(testParameters)
+            // This is an execution probe, not independent reality verification.
+            val probe = executeScript(language, scriptFile, testParameters)
+            val probeOutput = when {
+                probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
+                probe.timedOut -> "Error: Tool execution timed out after ${DEFAULT_TIMEOUT_MS / 1000}s."
+                else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
+            }
+
+            if (!probe.succeeded) {
+                Log.w(TAG, "Dynamic tool [$toolId] was synthesized but NOT promoted: $probeOutput")
+                return@withContext ToolSynthesisResult(
+                    isSuccess = false,
+                    toolId = toolId,
+                    executablePath = scriptFile.absolutePath,
+                    verificationOutput = probeOutput,
+                    errorMessage = probeOutput
+                )
+            }
+
             ToolRegistry.registerTool(dynamicTool)
 
-            // Proactive IPC & Event Bus Dispatch
             WastiEventBus.tryEmit(
                 WastiEvent.ToolSynthesized(
                     toolId = toolId,
@@ -139,13 +140,13 @@ class WastiAutonomousToolSynthesizer(
                 )
             )
 
-            Log.i(TAG, "Successfully synthesized and registered tool [$toolId] at ${scriptFile.absolutePath}")
+            Log.i(TAG, "Synthesized and promoted tool [$toolId] at ${scriptFile.absolutePath}; independent verification remains required.")
 
             ToolSynthesisResult(
                 isSuccess = true,
                 toolId = toolId,
                 executablePath = scriptFile.absolutePath,
-                verificationOutput = verifyOut
+                verificationOutput = probeOutput
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to synthesize dynamic tool $toolId", e)
@@ -155,6 +156,54 @@ class WastiAutonomousToolSynthesizer(
                 executablePath = "",
                 verificationOutput = "",
                 errorMessage = e.message
+            )
+        }
+    }
+
+    private suspend fun executeScript(
+        language: PolyglotLanguage,
+        scriptFile: File,
+        parameters: Map<String, Any>
+    ): ExecutionProbe {
+        var process: Process? = null
+        return try {
+            withTimeout(DEFAULT_TIMEOUT_MS) {
+                coroutineScope {
+                    val cmdArray = when (language) {
+                        PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
+                        PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
+                        PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
+                        else -> arrayOf(scriptFile.absolutePath)
+                    }
+
+                    val envList = arrayOf(
+                        "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
+                        "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
+                    )
+
+                    process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
+                    val runningProcess = process ?: error("Failed to create process")
+                    val outDeferred = async(Dispatchers.IO) {
+                        runningProcess.inputStream.bufferedReader().use { it.readText() }
+                    }
+                    val errDeferred = async(Dispatchers.IO) {
+                        runningProcess.errorStream.bufferedReader().use { it.readText() }
+                    }
+                    val code = runningProcess.waitFor()
+                    ExecutionProbe(
+                        exitCode = code,
+                        stdout = outDeferred.await(),
+                        stderr = errDeferred.await()
+                    )
+                }
+            }
+        } catch (_: TimeoutCancellationException) {
+            process?.runCatching { destroyForcibly() }
+            ExecutionProbe(
+                exitCode = null,
+                stdout = "",
+                stderr = "Process forcibly terminated after ${DEFAULT_TIMEOUT_MS / 1000}s timeout.",
+                timedOut = true
             )
         }
     }
