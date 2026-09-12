@@ -2,6 +2,7 @@ package com.example.data.tool
 
 import android.content.Context
 import android.util.Log
+import com.example.data.agent.runtime.AdaptiveExecutionIntelligence
 import com.example.data.agent.runtime.AgentEvent
 import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.bus.WastiEvent
@@ -65,10 +66,30 @@ class WastiAutonomousToolSynthesizer(
         sourceCode: String,
         testParameters: Map<String, Any> = emptyMap()
     ): ToolSynthesisResult = withContext(Dispatchers.IO) {
+        val startedAt = System.currentTimeMillis()
         try {
             require(toolId.isNotBlank()) { "toolId must not be blank" }
             require(toolName.isNotBlank()) { "toolName must not be blank" }
             require(sourceCode.isNotBlank()) { "sourceCode must not be blank" }
+
+            AdaptiveExecutionIntelligence.save(
+                AdaptiveExecutionIntelligence.Checkpoint(
+                    taskId = toolId,
+                    objective = "Synthesize and safely promote dynamic tool '$toolName'",
+                    stage = "SYNTHESIZING",
+                    health = AdaptiveExecutionIntelligence.Health.ACTIVE_PROGRESS,
+                    strategy = "DYNAMIC_TOOL_SYNTHESIS",
+                    provider = null,
+                    runtime = language.name,
+                    actions = listOf("write synthesized source", "prepare execution probe"),
+                    observations = emptyList(),
+                    errors = emptyList(),
+                    evidence = emptyList(),
+                    nextAction = "execute real probe",
+                    resumePoint = "after source materialization",
+                    startedAt = startedAt
+                )
+            )
 
             val fileName = when (language) {
                 PolyglotLanguage.PYTHON -> "$toolId.py"
@@ -82,6 +103,16 @@ class WastiAutonomousToolSynthesizer(
             scriptFile.writeText(sourceCode)
             scriptFile.setExecutable(true, false)
             scriptFile.setReadable(true, false)
+
+            AdaptiveExecutionIntelligence.save(
+                AdaptiveExecutionIntelligence.current(toolId)!!.copy(
+                    stage = "EXECUTING_PROBE",
+                    health = AdaptiveExecutionIntelligence.Health.ACTIVE_PROGRESS,
+                    actions = listOf("write synthesized source", "prepare execution probe", "start real probe"),
+                    nextAction = "observe probe until actual completion or explicit cancellation",
+                    resumePoint = "probe execution"
+                )
+            )
 
             val dynamicTool = object : WastiTool {
                 override val definition = ToolDefinition(
@@ -110,6 +141,17 @@ class WastiAutonomousToolSynthesizer(
             }
 
             if (!probe.succeeded) {
+                AdaptiveExecutionIntelligence.save(
+                    AdaptiveExecutionIntelligence.current(toolId)!!.copy(
+                        stage = "PROBE_FAILED",
+                        health = AdaptiveExecutionIntelligence.Health.FAILED,
+                        observations = listOf("probe exited with code ${probe.exitCode}"),
+                        errors = listOf(probe.stderr.ifBlank { probe.stdout }),
+                        evidence = listOf("real process exit code ${probe.exitCode}"),
+                        nextAction = "diagnose, adapt strategy, or retry from checkpoint",
+                        resumePoint = "probe failure"
+                    )
+                )
                 Log.w(TAG, "Dynamic tool [$toolId] was synthesized but NOT promoted: $probeOutput")
                 return@withContext ToolSynthesisResult(
                     isSuccess = false,
@@ -121,6 +163,16 @@ class WastiAutonomousToolSynthesizer(
             }
 
             ToolRegistry.registerTool(dynamicTool)
+            AdaptiveExecutionIntelligence.save(
+                AdaptiveExecutionIntelligence.current(toolId)!!.copy(
+                    stage = "PROMOTED_PENDING_VERIFICATION",
+                    health = AdaptiveExecutionIntelligence.Health.ACTIVE_WAITING,
+                    observations = listOf("probe exited with code 0"),
+                    evidence = listOf("real process exit code 0"),
+                    nextAction = "independently observe and verify capability",
+                    resumePoint = "post-probe verification"
+                )
+            )
 
             WastiEventBus.tryEmit(
                 WastiEvent.ToolSynthesized(
@@ -148,6 +200,16 @@ class WastiAutonomousToolSynthesizer(
                 verificationOutput = probeOutput
             )
         } catch (e: Exception) {
+            AdaptiveExecutionIntelligence.current(toolId)?.let { checkpoint ->
+                AdaptiveExecutionIntelligence.save(
+                    checkpoint.copy(
+                        stage = "SYNTHESIS_EXCEPTION",
+                        health = AdaptiveExecutionIntelligence.Health.FAILED,
+                        errors = checkpoint.errors + (e.message ?: e.javaClass.simpleName),
+                        nextAction = "diagnose and resume from latest truthful checkpoint"
+                    )
+                )
+            }
             Log.e(TAG, "Failed to synthesize dynamic tool $toolId", e)
             ToolSynthesisResult(
                 isSuccess = false,
@@ -199,6 +261,16 @@ class WastiAutonomousToolSynthesizer(
                     delay(PROGRESS_HEARTBEAT_MS)
                     if (process.isAlive) {
                         val elapsed = System.currentTimeMillis() - startedAt
+                        AdaptiveExecutionIntelligence.current(toolId)?.let { checkpoint ->
+                            AdaptiveExecutionIntelligence.save(
+                                checkpoint.copy(
+                                    stage = "EXECUTING_PROBE",
+                                    health = AdaptiveExecutionIntelligence.Health.ACTIVE_PROGRESS,
+                                    observations = (checkpoint.observations + "process still alive; elapsed=${elapsed}ms").takeLast(20),
+                                    nextAction = "continue observing live process"
+                                )
+                            )
+                        }
                         AgentEventBus.getInstance().tryEmit(
                             AgentEvent.ExecutionStateChanged(
                                 taskId = task,
