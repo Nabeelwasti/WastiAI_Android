@@ -12,6 +12,7 @@ const brevo = require('./brevo');
 const stripeHelper = require('./stripe_helper');
 const firebaseHelper = require('./firebase_helper');
 const wakewordQueue = require('./wakeword_queue');
+const { isValidAdminCredential } = require('./auth_helper');
 
 const app = express();
 
@@ -29,7 +30,7 @@ app.use(cors({
     return callback(new Error('Blocked by CORS policy: Origin not allowed'));
   },
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-approval-token', 'stripe-signature']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-wasti-auth-token', 'x-api-key', 'x-wasti-admin-token', 'x-approval-token', 'stripe-signature']
 }));
 
 // Basic Rate Limiting / Request Throttling In-Memory Counter
@@ -245,7 +246,6 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
       return res.status(400).json({ error: 'At least one file change required to create patch' });
     }
 
-    // Validate repo ownership against allowlist (default to official repository to fail closed)
     const allowedRepos = process.env.ALLOWED_GITHUB_REPOS
       ? process.env.ALLOWED_GITHUB_REPOS.split(',').map(r => r.trim().toLowerCase())
       : ['nabeelwasti/wastiai_android'];
@@ -253,7 +253,6 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
       return res.status(403).json({ error: 'Repository not in authorized allowlist for automated patches' });
     }
 
-    // Validate base branch against allowlist to prevent unauthorized branch tampering
     const allowedBranches = (process.env.ALLOWED_PATCH_BRANCHES || 'main,master,develop')
       .split(',')
       .map(b => b.trim())
@@ -262,7 +261,6 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
       return res.status(400).json({ error: `Base branch '${base}' is not allowed for automated patches` });
     }
 
-    // Validate file paths against directory traversal
     for (const c of changes) {
       if (!c.path || typeof c.path !== 'string') {
         return res.status(400).json({ error: 'Invalid change: path must be a non-empty string' });
@@ -275,19 +273,18 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
       }
     }
 
-    // [P0-40] Protected path enforcement: Never allow autonomous modification of security core or release signing without admin token
+    // [P0-40] Protected path enforcement: require an explicitly configured admin credential.
     const touchesProtectedPath = changes.some(c =>
       PROTECTED_PATCH_PATTERNS.some(pattern => pattern.test(c.path))
     );
-    const adminToken = req.body.adminAuthToken || req.headers['x-wasti-admin-token'];
-    if (touchesProtectedPath && !adminToken) {
+    const adminToken = req.headers['x-wasti-admin-token'] || req.body.adminAuthToken;
+    if (touchesProtectedPath && !isValidAdminCredential(adminToken)) {
       return res.status(403).json({
-        error: 'Security violation: Automated patch touches protected security/signing paths and requires explicit admin authorization',
+        error: 'Security violation: Protected security/signing paths require a valid explicit admin credential',
         protected: true
       });
     }
 
-    // Bounded policy: Limit maximum files and payload size
     if (changes.length > 20) {
       return res.status(400).json({ error: 'Patch exceeds maximum allowed file count (20)' });
     }
@@ -330,7 +327,6 @@ app.post('/email/send', requireScope(SCOPES.EMAIL), async (req, res) => {
       return res.status(400).json({ error: 'Invalid recipient email address format' });
     }
 
-    // Validate email domain against optional allowlist
     const allowedEmailDomains = process.env.ALLOWED_EMAIL_DOMAINS
       ? process.env.ALLOWED_EMAIL_DOMAINS.split(',').map(d => d.trim().toLowerCase()).filter(Boolean)
       : null;
@@ -341,7 +337,6 @@ app.post('/email/send', requireScope(SCOPES.EMAIL), async (req, res) => {
       }
     }
 
-    // Require approval token header for safety - fail closed if not configured
     const approval = req.headers['x-approval-token'];
     if (!process.env.OUTREACH_APPROVAL_TOKEN) {
       return res.status(503).json({ error: 'Outreach approval token not configured on server' });
@@ -368,7 +363,6 @@ app.post('/wakeword', requireScope(SCOPES.WAKEWORD), async (req, res) => {
         const out = await firebaseHelper.sendPush(payload.token, { wakeword: JSON.stringify(payload.event) });
         return res.json({ status: 'pushed', detail: out });
       }
-      // Preserve event in buffer pending device token registration so it is not lost
       const queuedItem = wakewordQueue.enqueueEvent(payload.event, { awaitingToken: true });
       return res.status(202).json({
         status: 'QUEUED_AWAITING_DEVICE_TOKEN',
@@ -392,7 +386,6 @@ app.post('/wakeword', requireScope(SCOPES.WAKEWORD), async (req, res) => {
   }
 });
 
-// Observable wakeword queue inspection endpoint
 app.get('/wakeword/queue', requireScope(SCOPES.WAKEWORD), (req, res) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit, 10) : 20;
@@ -407,7 +400,6 @@ app.get('/wakeword/queue', requireScope(SCOPES.WAKEWORD), (req, res) => {
   }
 });
 
-// Dequeue events in FIFO order
 app.post('/wakeword/dequeue', requireScope(SCOPES.WAKEWORD), (req, res) => {
   try {
     const limit = req.body?.limit || req.query?.limit || 10;
@@ -423,7 +415,6 @@ app.post('/wakeword/dequeue', requireScope(SCOPES.WAKEWORD), (req, res) => {
   }
 });
 
-// Acknowledge processed events by ID
 app.post('/wakeword/ack', requireScope(SCOPES.WAKEWORD), (req, res) => {
   try {
     const { eventIds = [] } = req.body || {};
@@ -674,4 +665,3 @@ module.exports = {
   wakewordQueue,
   stripeHelper
 };
-
