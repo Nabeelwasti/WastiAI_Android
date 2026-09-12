@@ -21,7 +21,6 @@ class WastiCapabilityRegistry : CapabilityRegistry {
     private val enabledCapabilities = ConcurrentHashMap<String, Boolean>()
 
     init {
-        // Canonical operational defaults for Wasti AI OS
         enabledCapabilities[WastiCapability.FILES.capabilityName] = true
         enabledCapabilities[WastiCapability.CODING.capabilityName] = true
         enabledCapabilities[WastiCapability.TERMINAL.capabilityName] = true
@@ -32,9 +31,7 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         enabledCapabilities[WastiCapability.CLOUD.capabilityName] = true
     }
 
-    override fun getSupportedCapabilities(): List<String> {
-        return WastiCapability.entries.map { it.capabilityName }
-    }
+    override fun getSupportedCapabilities(): List<String> = WastiCapability.entries.map { it.capabilityName }
 
     override fun isCapabilityEnabled(capabilityName: String): Boolean {
         if (enabledCapabilities[capabilityName] == false) return false
@@ -42,19 +39,15 @@ class WastiCapabilityRegistry : CapabilityRegistry {
 
         val reality = UnifiedExecutionFabric.instance.realityRegistry.getCapabilityReality(capabilityName)
         return reality.executionStatus == CapabilityExecutionStatus.OPERATIONAL &&
-                (reality.realityState == CapabilityRealityState.NATIVE ||
-                 reality.realityState == CapabilityRealityState.LIVE_CONNECTED ||
-                 reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED)
+            (reality.realityState == CapabilityRealityState.NATIVE ||
+                reality.realityState == CapabilityRealityState.LIVE_CONNECTED ||
+                reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED)
     }
 
     fun setCapabilityEnabled(capabilityName: String, enabled: Boolean) {
         enabledCapabilities[capabilityName] = enabled
     }
 
-    /**
-     * [P0-36] Structured representation of capability permission truth.
-     * Segregates configured default enablement from actual OS runtime authorization and user consent.
-     */
     data class CapabilityPermissionTruth(
         val capabilityName: String,
         val isConfiguredEnabled: Boolean,
@@ -64,10 +57,6 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         val notes: String
     )
 
-    /**
-     * Evaluates whether a capability is not merely configured in software,
-     * but has live OS permissions and user consent required for execution.
-     */
     fun verifyCapabilityPermissionTruth(
         capabilityName: String,
         context: Any? = null
@@ -84,8 +73,6 @@ class WastiCapabilityRegistry : CapabilityRegistry {
             )
         }
 
-        // For non-device capabilities (FILES, CODING, TERMINAL, RESEARCH, WEB, CLOUD),
-        // internal runtime execution is permitted within sandbox boundary.
         if (capabilityName != WastiCapability.ANDROID_CONTROL.capabilityName &&
             capabilityName != "device_control"
         ) {
@@ -99,15 +86,13 @@ class WastiCapabilityRegistry : CapabilityRegistry {
             )
         }
 
-        // For ANDROID_CONTROL / device_control:
-        // Declared or configured != Granted by OS.
         val appContext = context as? android.content.Context ?: com.example.WastiApplication.instance
         if (appContext == null) {
             return CapabilityPermissionTruth(
                 capabilityName = capabilityName,
                 isConfiguredEnabled = true,
                 isOsPermissionGranted = false,
-                isUserConsentGranted = com.example.assistant.PermissionManager.hasUserConsent(capabilityName),
+                isUserConsentGranted = false,
                 canExecuteLive = false,
                 notes = "BLOCKED_HOST_OR_NULL_CONTEXT: Android OS Context required to verify runtime permissions"
             )
@@ -117,7 +102,6 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         val accessibilityActive = com.example.service.WastiAccessibilityService.isServiceActive
         val userConsented = com.example.assistant.PermissionManager.hasUserConsent(appContext, capabilityName)
         val osGranted = overlayGranted || accessibilityActive
-
         val canExecute = osGranted && userConsented
 
         val notes = when {
@@ -136,4 +120,3 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         )
     }
 }
-
