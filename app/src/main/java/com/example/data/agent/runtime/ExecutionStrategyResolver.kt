@@ -36,6 +36,9 @@ class ExecutionStrategyResolver(
     fun resolveStrategy(requiredCapability: String, isUrgent: Boolean = false): ExecutionStrategyDecision {
         val reality = realityRegistry.getCapabilityReality(requiredCapability)
 
+        val historicalSuccess = WastiSelfEvolutionEngine.successRate(requiredCapability)
+        val successSuffix = if (historicalSuccess > 0.0) " [Adaptive Evolution Success Rate: ${(historicalSuccess * 100).toInt()}%]" else ""
+
         // 1. Priority 1: NATIVE
         if (reality.realityState == CapabilityRealityState.NATIVE ||
             (reality.realityState == CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED &&
@@ -43,7 +46,7 @@ class ExecutionStrategyResolver(
         ) {
             return ExecutionStrategyDecision(
                 strategy = ExecutionStrategy.NATIVE,
-                reasoning = "Capability [$requiredCapability] is natively available in Wasti OS workspace runtime.",
+                reasoning = "Capability [$requiredCapability] is natively available in Wasti OS workspace runtime.$successSuffix",
                 selectedCapability = requiredCapability,
                 estimatedTimeMs = 50,
                 executorProvider = reality.provider
@@ -56,7 +59,7 @@ class ExecutionStrategyResolver(
         ) {
             return ExecutionStrategyDecision(
                 strategy = ExecutionStrategy.LOCAL,
-                reasoning = "Capability [$requiredCapability] resolved to verified local runtime executor.",
+                reasoning = "Capability [$requiredCapability] resolved to verified local runtime executor.$successSuffix",
                 selectedCapability = requiredCapability,
                 estimatedTimeMs = 200,
                 executorProvider = reality.provider
@@ -67,7 +70,7 @@ class ExecutionStrategyResolver(
         if (reality.supportedOperations.isNotEmpty() && (reality.category == "TOOL" || reality.category == "DYNAMIC_WRE" || reality.category == "SYNTHESIZED_TOOL" || reality.category.contains("TOOL", ignoreCase = true))) {
             return ExecutionStrategyDecision(
                 strategy = ExecutionStrategy.INSTALLED_TOOL,
-                reasoning = "Capability [$requiredCapability] dispatched to registered system tool.",
+                reasoning = "Capability [$requiredCapability] dispatched to registered system tool.$successSuffix",
                 selectedCapability = requiredCapability,
                 estimatedTimeMs = 300,
                 executorProvider = reality.provider

@@ -7,6 +7,9 @@ import com.example.data.memory.MemoryManager
 import com.example.data.memory.model.MemorySearchQuery
 import com.example.data.ops.WebSearchEngine
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -94,6 +97,8 @@ class UnifiedExecutionFabric(
     val verificationEngine: WastiVerificationEngine = verificationEngine ?: WastiVerificationEngine()
     private val customExecutors = ConcurrentHashMap<String, UnifiedExecutor>()
     private val activeExecutionHashes = ConcurrentHashMap.newKeySet<String>()
+    private val _telemetryStream = MutableStateFlow<List<UnifiedExecutionResult>>(emptyList())
+    val telemetryStream: StateFlow<List<UnifiedExecutionResult>> = _telemetryStream.asStateFlow()
 
     private fun normalizedCapabilityId(capabilityId: String): String =
         capabilityId.trim().lowercase(Locale.ROOT)
@@ -1925,6 +1930,10 @@ class UnifiedExecutionFabric(
 
     private suspend fun emitEventAndAudit(request: UnifiedExecutionRequest, result: UnifiedExecutionResult) {
         val taskId = TaskId(request.taskId)
+        try {
+            _telemetryStream.value = (listOf(result) + _telemetryStream.value).take(100)
+        } catch (_: Throwable) {}
+
         if (result.status == UnifiedExecutionStatus.COMPLETED || result.status == UnifiedExecutionStatus.VERIFIED) {
             eventBus?.emit(AgentEvent.ToolCompleted(taskId, request.capabilityId, isSuccess = true))
             eventBus?.emit(AgentEvent.ObservationReceived(taskId, result.output.take(150)))

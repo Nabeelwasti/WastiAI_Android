@@ -126,6 +126,38 @@ class WreWorkspaceManager(context: Context) {
         )
     }
 
+    data class CachedToolScript(
+        val toolId: String,
+        val file: File,
+        val lastAccessedAt: Long,
+        val checksum: String
+    )
+
+    private val toolScriptCache = java.util.concurrent.ConcurrentHashMap<String, CachedToolScript>()
+    private val MAX_CACHED_SCRIPTS = 50
+
+    fun recordToolAccess(toolId: String, scriptFile: File) {
+        if (!scriptFile.exists()) return
+        val checksum = try { scriptFile.readBytes().fold(0L) { acc, b -> acc * 31 + b }.toString(16) } catch (_: Throwable) { "0" }
+        toolScriptCache[toolId] = CachedToolScript(
+            toolId = toolId,
+            file = scriptFile,
+            lastAccessedAt = System.currentTimeMillis(),
+            checksum = checksum
+        )
+        if (toolScriptCache.size > MAX_CACHED_SCRIPTS) {
+            val oldest = toolScriptCache.entries.minByOrNull { it.value.lastAccessedAt }
+            if (oldest != null) toolScriptCache.remove(oldest.key)
+        }
+    }
+
+    fun hasScriptChanged(toolId: String, scriptFile: File): Boolean {
+        val cached = toolScriptCache[toolId] ?: return true
+        if (!scriptFile.exists()) return true
+        val currentChecksum = try { scriptFile.readBytes().fold(0L) { acc, b -> acc * 31 + b }.toString(16) } catch (_: Throwable) { "0" }
+        return cached.checksum != currentChecksum
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: WreWorkspaceManager? = null

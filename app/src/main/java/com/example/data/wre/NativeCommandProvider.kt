@@ -21,7 +21,11 @@ class NativeCommandProvider(
         "pwd", "cd", "ls", "mkdir", "touch", "cat", "echo", "rm", "cp", "mv",
         "grep", "find", "env", "which", "date", "whoami", "uname", "status",
         "ps", "jobs", "kill", "help", "clear", "wre", "python", "python3", "node",
-        "exit", "set", "export", "true", "false", "[", "test"
+        "exit", "set", "export", "true", "false", "[", "test",
+        "head", "tail", "wc", "sort", "uniq", "diff", "sed", "awk", "tr", "cut",
+        "chmod", "stat", "tar", "gzip", "gunzip", "zip", "unzip", "curl", "wget",
+        "git", "ping", "netstat", "ip", "ifconfig", "uptime", "du", "df", "free",
+        "killall", "base64", "md5sum", "sha256sum", "nano", "vim", "tmux", "ssh", "tree", "htop"
     )
 
     override suspend fun canExecute(request: ExecutionRequest): Boolean {
@@ -34,7 +38,8 @@ class NativeCommandProvider(
         val cmd = trimmed.split("\\s+".toRegex())[0]
         return supportedCommands.contains(cmd) ||
                 packageManager?.getPackage(cmd) != null ||
-                isExecutableScriptInBin(cmd)
+                isExecutableScriptInBin(cmd) ||
+                findSystemOrTermuxBinary(cmd) != null
     }
 
     private fun findScriptFile(entryPoint: String, workingDir: File): File? {
@@ -64,6 +69,62 @@ class NativeCommandProvider(
             workspaceManager.resolve("bin/$cmd").getOrNull()
         )
         return candidates.any { it != null && it.exists() && it.isFile }
+    }
+
+    private fun findSystemOrTermuxBinary(cmd: String, workingDir: File? = null): File? {
+        if (cmd.isBlank()) return null
+
+        // 1. Direct path check
+        if (cmd.contains("/") || cmd.contains("\\")) {
+            val directFile = File(cmd)
+            if (directFile.exists() && directFile.isFile) return directFile
+            if (workingDir != null) {
+                val relFile = File(workingDir, cmd)
+                if (relFile.exists() && relFile.isFile) return relFile
+            }
+            val resolved = workspaceManager.resolve(cmd).getOrNull()
+            if (resolved != null && resolved.exists() && resolved.isFile) return resolved
+        }
+
+        // 2. Sandboxed Workspace Bin Directories
+        val workspaceCandidates = listOf(
+            workspaceManager.resolve("home/wasti/bin/$cmd").getOrNull(),
+            workspaceManager.resolve("bin/$cmd").getOrNull(),
+            if (workingDir != null) File(workingDir, "bin/$cmd") else null,
+            if (workingDir != null) File(workingDir, cmd) else null
+        )
+        val wsFound = workspaceCandidates.firstOrNull { it != null && it.exists() && it.isFile }
+        if (wsFound != null) return wsFound
+
+        // 3. Termux Toolchain Binaries
+        val termuxCandidates = listOf(
+            File("/data/data/com.termux/files/usr/bin", cmd),
+            File("/data/data/com.termux/files/usr/bin/applets", cmd)
+        )
+        val termuxFound = termuxCandidates.firstOrNull { it.exists() && it.isFile }
+        if (termuxFound != null) return termuxFound
+
+        // 4. Android System / Apex Binaries
+        val systemCandidates = listOf(
+            File("/system/bin", cmd),
+            File("/system/xbin", cmd),
+            File("/vendor/bin", cmd),
+            File("/apex/com.android.runtime/bin", cmd),
+            File("/apex/com.android.art/bin", cmd)
+        )
+        val sysFound = systemCandidates.firstOrNull { it.exists() && it.isFile }
+        if (sysFound != null) return sysFound
+
+        // 5. System PATH exploration
+        val pathVar = System.getenv("PATH") ?: ""
+        for (p in pathVar.split(':')) {
+            if (p.isNotBlank()) {
+                val f = File(p.trim(), cmd)
+                if (f.exists() && f.isFile) return f
+            }
+        }
+
+        return null
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult {
@@ -860,8 +921,18 @@ class NativeCommandProvider(
             }
 
             else -> {
-                stderr.append("wsh: command not found: $cmd")
-                exitCode = 127
+                val binFile = findSystemOrTermuxBinary(cmd, workingDir)
+                if (binFile != null && binFile.exists()) {
+                    val execRes = executeNativeBinary(binFile, cmd, args, workingDir, request, stdin)
+                    stdout.append(execRes.stdout)
+                    stderr.append(execRes.stderr)
+                    exitCode = execRes.exitCode
+                    verified = execRes.verified
+                    verificationEvidence = execRes.verificationEvidence
+                } else {
+                    stderr.append("wsh: command not found: $cmd")
+                    exitCode = 127
+                }
             }
         }
 
@@ -877,6 +948,79 @@ class NativeCommandProvider(
             status = status,
             verified = verified,
             verificationEvidence = verificationEvidence
+        )
+    }
+
+    private fun executeNativeBinary(
+        binFile: File,
+        cmd: String,
+        args: List<String>,
+        workingDir: File,
+        request: ExecutionRequest,
+        stdin: String?
+    ): ExecutionResult {
+        val startTime = System.currentTimeMillis()
+        val stdout = StringBuilder()
+        val stderr = StringBuilder()
+        var exitCode = 0
+
+        try {
+            val cmdList = mutableListOf(binFile.absolutePath).apply { addAll(args) }
+            val pb = ProcessBuilder(cmdList).apply {
+                directory(workingDir)
+                val env = environment()
+                environmentManager.getAll().forEach { (k, v) -> env[k] = v }
+                val currentPath = env["PATH"] ?: System.getenv("PATH") ?: "/system/bin"
+                env["PATH"] = "${workspaceManager.rootDir.absolutePath}/home/wasti/bin:/data/data/com.termux/files/usr/bin:$currentPath"
+                env["HOME"] = "${workspaceManager.rootDir.absolutePath}/home/wasti"
+                env["TMPDIR"] = "${workspaceManager.rootDir.absolutePath}/tmp"
+            }
+
+            val process = pb.start()
+            if (!stdin.isNullOrEmpty()) {
+                try {
+                    process.outputStream.bufferedWriter().use { it.write(stdin); it.flush() }
+                } catch (_: Exception) {}
+            } else {
+                try { process.outputStream.close() } catch (_: Exception) {}
+            }
+
+            val outThread = Thread {
+                try {
+                    process.inputStream.bufferedReader().use { r ->
+                        r.forEachLine { line -> stdout.append(line).append("\n") }
+                    }
+                } catch (_: Exception) {}
+            }
+            val errThread = Thread {
+                try {
+                    process.errorStream.bufferedReader().use { r ->
+                        r.forEachLine { line -> stderr.append(line).append("\n") }
+                    }
+                } catch (_: Exception) {}
+            }
+            outThread.start()
+            errThread.start()
+
+            exitCode = process.waitFor()
+            outThread.join()
+            errThread.join()
+        } catch (e: Exception) {
+            stderr.append("Native Execution Failed [$cmd]: ${e.message}")
+            exitCode = 1
+        }
+
+        val duration = System.currentTimeMillis() - startTime
+        return ExecutionResult(
+            executionId = request.executionId,
+            command = request.command,
+            exitCode = exitCode,
+            stdout = stdout.toString().trimEnd(),
+            stderr = stderr.toString().trimEnd(),
+            durationMs = duration,
+            status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
+            verified = (exitCode == 0),
+            verificationEvidence = if (exitCode == 0) "Native binary '${binFile.name}' executed with exit code 0" else null
         )
     }
 

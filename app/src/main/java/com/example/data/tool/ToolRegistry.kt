@@ -502,8 +502,29 @@ object ToolRegistry {
 
     fun getAllWastiTools(): List<WastiTool> = toolsMap.values.toList()
 
+    fun validateParameters(toolDef: ToolDefinition, parameters: Map<String, Any>): Pair<Boolean, String?> {
+        if (toolDef.parametersJsonSchema.isBlank() || toolDef.parametersJsonSchema == "{}") return Pair(true, null)
+        try {
+            val schemaObj = org.json.JSONObject(toolDef.parametersJsonSchema)
+            val required = schemaObj.optJSONArray("required")
+            if (required != null) {
+                for (i in 0 until required.length()) {
+                    val key = required.getString(i)
+                    if (!parameters.containsKey(key) || parameters[key]?.toString().isNullOrBlank()) {
+                        return Pair(false, "Missing required parameter: '$key'")
+                    }
+                }
+            }
+        } catch (_: Throwable) {}
+        return Pair(true, null)
+    }
+
     suspend fun executeTool(id: String, parameters: Map<String, Any>): String {
         val tool = toolsMap[id] ?: return "Error: Tool [$id] not found in ToolRegistry."
+        val (valid, errorMsg) = validateParameters(tool.definition, parameters)
+        if (!valid) {
+            return "Error: Tool [$id] parameter validation failed: $errorMsg"
+        }
         return try {
             tool.execute(parameters)
         } catch (e: Exception) {
