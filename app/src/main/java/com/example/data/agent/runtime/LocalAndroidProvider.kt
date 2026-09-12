@@ -62,29 +62,24 @@ class LocalAndroidProvider(
             var stderr = ""
             val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process!!.inputStream, maxOutputSizeBytes) }
             val stderrThread = Thread { stderr = readStreamWithSizeLimit(process!!.errorStream, maxOutputSizeBytes) }
-            stdoutThread.start(); stderrThread.start()
+            stdoutThread.start()
+            stderrThread.start()
 
-            // request.timeoutMs is retained for compatibility and telemetry only.
-            // A long task continues until real completion, explicit cancellation, emergency stop,
-            // or an actual process/runtime failure. There is no duration-based kill switch here.
-            while (true) {
-                try {
-                    val exitCode = process.exitValue()
-                    stdoutThread.join(1000)
-                    stderrThread.join(1000)
-                    val ok = exitCode == 0
-                    return@withContext ExecutionResult(
-                        stdout,
-                        stderr,
-                        exitCode,
-                        System.currentTimeMillis() - startTime,
-                        ExecutionStatus(ok, if (ok) "Process completed successfully" else "Process failed with exit code $exitCode"),
-                        if (ok) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
-                    )
-                } catch (_: IllegalThreadStateException) {
-                    Thread.sleep(250)
-                }
-            }
+            // request.timeoutMs remains compatibility telemetry only. A long task continues
+            // until real completion, explicit cancellation, emergency stop, or runtime failure.
+            // waitFor() gives Kotlin a single unambiguous ExecutionResult return path.
+            val exitCode = process.waitFor()
+            stdoutThread.join()
+            stderrThread.join()
+            val ok = exitCode == 0
+            return@withContext ExecutionResult(
+                stdout,
+                stderr,
+                exitCode,
+                System.currentTimeMillis() - startTime,
+                ExecutionStatus(ok, if (ok) "Process completed successfully" else "Process failed with exit code $exitCode"),
+                if (ok) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
+            )
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
@@ -95,19 +90,25 @@ class LocalAndroidProvider(
         }
     }
 
-    private fun invalidRequest(message: String) = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.INVALID_REQUEST)
-    private fun securityBlocked(message: String) = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.SECURITY)
+    private fun invalidRequest(message: String): ExecutionResult = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.INVALID_REQUEST)
+
+    private fun securityBlocked(message: String): ExecutionResult = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.SECURITY)
 
     private fun readStreamWithSizeLimit(inputStream: InputStream, maxBytes: Int): String {
-        val buffer = ByteArray(4096); val sb = StringBuilder(); var total = 0
+        val buffer = ByteArray(4096)
+        val sb = StringBuilder()
+        var total = 0
         while (true) {
-            val n = inputStream.read(buffer); if (n == -1) break
+            val n = inputStream.read(buffer)
+            if (n == -1) break
             if (total + n > maxBytes) {
                 val allowed = maxBytes - total
                 if (allowed > 0) sb.append(String(buffer, 0, allowed, Charsets.UTF_8))
-                sb.append("\n[OUTPUT TRUNCATED: Exceeded $maxBytes bytes limit]"); break
+                sb.append("\n[OUTPUT TRUNCATED: Exceeded $maxBytes bytes limit]")
+                break
             }
-            sb.append(String(buffer, 0, n, Charsets.UTF_8)); total += n
+            sb.append(String(buffer, 0, n, Charsets.UTF_8))
+            total += n
         }
         return sb.toString()
     }
