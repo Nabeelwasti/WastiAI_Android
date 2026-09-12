@@ -30,14 +30,18 @@ class WastiPermissionModel(
         autoApproveBiometricForTesting = autoApprove
     }
 
+    private val effectiveContext: Context?
+        get() = context ?: com.example.WastiApplication.instance
+
     /* ---------------------------------------------------------------------- */
     /* [P0-36] & [P0-48] PERMISSION-TRUTH: Unified Capability Consent Store   */
     /* ---------------------------------------------------------------------- */
 
     fun setCapabilityConsent(capabilityName: String, consented: Boolean) {
         capabilityConsentMap[capabilityName] = consented
-        if (context != null) {
-            com.example.assistant.PermissionManager.setUserConsent(context, capabilityName, consented)
+        val targetCtx = effectiveContext
+        if (targetCtx != null) {
+            com.example.assistant.PermissionManager.setUserConsent(targetCtx, capabilityName, consented)
         } else {
             // Compatibility fallback for JVM/legacy callers with no Android Context.
             // This is intentionally process-local and never represents OS permission truth.
@@ -47,8 +51,9 @@ class WastiPermissionModel(
 
     fun hasCapabilityConsent(capabilityName: String): Boolean {
         capabilityConsentMap[capabilityName]?.let { return it }
-        return if (context != null) {
-            com.example.assistant.PermissionManager.hasUserConsent(context, capabilityName)
+        val targetCtx = effectiveContext
+        return if (targetCtx != null) {
+            com.example.assistant.PermissionManager.hasUserConsent(targetCtx, capabilityName)
         } else {
             // Secondary compatibility source when no Context is available.
             com.example.assistant.PermissionManager.hasUserConsent(capabilityName)
@@ -57,8 +62,9 @@ class WastiPermissionModel(
 
     fun revokeAllConsents() {
         capabilityConsentMap.clear()
-        if (context != null) {
-            com.example.assistant.PermissionManager.clearUserConsents(context)
+        val targetCtx = effectiveContext
+        if (targetCtx != null) {
+            com.example.assistant.PermissionManager.clearUserConsents(targetCtx)
         } else {
             com.example.assistant.PermissionManager.clearUserConsents()
         }

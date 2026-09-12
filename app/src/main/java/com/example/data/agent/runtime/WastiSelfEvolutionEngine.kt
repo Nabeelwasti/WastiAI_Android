@@ -41,7 +41,7 @@ object WastiSelfEvolutionEngine {
         val rationale: String
     )
 
-    private val outcomes = ConcurrentHashMap<String, MutableList<Boolean>>()
+    private val outcomes = ConcurrentHashMap<String, java.util.concurrent.CopyOnWriteArrayList<Boolean>>()
 
     fun plan(problem: Problem): EvolutionPlan {
         val candidates = linkedMapOf<String, Strategy>()
@@ -114,7 +114,7 @@ object WastiSelfEvolutionEngine {
     }
 
     fun recordOutcome(taskId: String, verifiedSuccess: Boolean) {
-        outcomes.computeIfAbsent(taskId) { mutableListOf() }.add(verifiedSuccess)
+        outcomes.computeIfAbsent(taskId) { java.util.concurrent.CopyOnWriteArrayList() }.add(verifiedSuccess)
     }
 
     fun successRate(taskId: String): Double {

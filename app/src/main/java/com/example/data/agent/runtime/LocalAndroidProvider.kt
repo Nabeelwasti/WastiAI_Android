@@ -17,12 +17,14 @@ class LocalAndroidProvider(
     private val maxOutputSizeBytes: Int = DEFAULT_MAX_OUTPUT_SIZE_BYTES
 ) : CodeExecutionProvider {
     companion object {
-        val DEFAULT_ALLOWED_EXECUTABLES = setOf("sh", "dalvikvm", "kotlinc", "javac", "java", "python3", "echo", "cat", "ls", "pwd", "true")
+        val DEFAULT_ALLOWED_EXECUTABLES = setOf("sh", "bash", "dalvikvm", "kotlinc", "javac", "java", "python3", "python", "node", "nodejs", "git", "echo", "cat", "ls", "pwd", "true", "mkdir", "rm", "cp", "mv", "touch", "grep")
         const val DEFAULT_MAX_OUTPUT_SIZE_BYTES = 1048576
         private val TRUSTED_EXECUTABLE_PATHS = setOf(
             "/system/bin/sh", "/bin/sh", "/usr/bin/sh", "/system/bin/dalvikvm", "/system/bin/python3", "/system/bin/python",
             "/data/local/tmp/python3", "/system/bin/node", "/data/local/tmp/node", "/system/bin/git", "/usr/bin/git", "/bin/echo", "/usr/bin/echo",
-            "/bin/cat", "/usr/bin/cat", "/bin/ls", "/usr/bin/ls", "/bin/pwd", "/usr/bin/pwd", "/bin/true", "/usr/bin/true"
+            "/bin/cat", "/usr/bin/cat", "/bin/ls", "/usr/bin/ls", "/bin/pwd", "/usr/bin/pwd", "/bin/true", "/usr/bin/true",
+            "/data/data/com.termux/files/usr/bin/bash", "/data/data/com.termux/files/usr/bin/sh", "/data/data/com.termux/files/usr/bin/python3",
+            "/data/data/com.termux/files/usr/bin/python", "/data/data/com.termux/files/usr/bin/node", "/data/data/com.termux/files/usr/bin/git"
         )
         private val DISALLOWED_ENV_KEYS = setOf(
             "PATH", "CLASSPATH", "JAVA_HOME", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "PYTHONPATH", "PYTHONHOME",
@@ -40,7 +42,9 @@ class LocalAndroidProvider(
         val execName = File(requested).name.lowercase()
         val approvedName = allowedExecutables.contains(execName) || allowedExecutables.contains("*")
         val approvedPath = TRUSTED_EXECUTABLE_PATHS.contains(requested)
-        if ((!isPath && !approvedName) || (isPath && !approvedPath)) {
+        val isWorkspaceExecutable = isPath && workspaceManager.resolvePathSafely(requested).isSuccess
+        val isTermuxTrusted = isPath && requested.startsWith("/data/data/com.termux/files/usr/bin/")
+        if ((!isPath && !approvedName) || (isPath && !approvedPath && !isWorkspaceExecutable && !isTermuxTrusted)) {
             return@withContext invalidRequest("INVALID_REQUEST: UNSUPPORTED_EXECUTABLE: '$requested' is not an approved executable")
         }
 

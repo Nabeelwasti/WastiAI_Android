@@ -30,6 +30,7 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val engine = WastiProactiveAutonomousEngine.getInstance(appContext)
                 val recoveredCount = engine.recoverOnBootOrProcessStart()
+                com.example.data.device.AccessibilityRecoveryCoordinator.resumeFromCheckpoint(appContext)
                 Log.i("BootReceiver", "Boot recovery finished: $recoveredCount tasks reconciled.")
             } catch (e: Exception) {
                 Log.e("BootReceiver", "Boot task recovery failed: ${e.message}", e)
