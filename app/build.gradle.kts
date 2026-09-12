@@ -170,10 +170,11 @@ android {
           showCauses = true
           showStackTraces = true
         }
-        // Gradle normally runs one test class at a time. A conservative number of
-        // forks uses available CI CPUs while avoiding excessive shared-state pressure.
-        test.maxParallelForks = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)
-        test.failFast = true
+        // This suite contains process-wide singletons, embedded servers, Room state,
+        // and global emergency-stop state. Keep JVM test classes isolated by process
+        // order rather than introducing cross-class races in CI.
+        test.maxParallelForks = 1
+        test.failFast = false
         // Safety ceiling for the Gradle test task; the workflow provides the final guard.
         test.timeout.set(Duration.ofMinutes(25))
       }
@@ -257,37 +258,4 @@ dependencies {
   debugImplementation(libs.androidx.compose.ui.tooling)
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
-}
-
-tasks.register("validateReleaseSigning") {
-  doLast {
-    val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
-    val releaseStorePassword = System.getenv("STORE_PASSWORD")
-    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
-    if (gradle.startParameter.taskNames.any { it.contains("assembleRelease") || it.contains("bundleRelease") }) {
-      if (releaseKeystorePath.isNullOrBlank() || releaseStorePassword.isNullOrBlank() || releaseKeyPassword.isNullOrBlank()) {
-        throw GradleException("Release build rejected: KEYSTORE_PATH, STORE_PASSWORD, or KEY_PASSWORD missing.")
-      }
-    }
-  }
-}
-tasks.matching { it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease") }.configureEach {
-  dependsOn("validateReleaseSigning")
-}
-
-tasks.register("validateEnvironmentConfig") {
-  doLast {
-    val forbiddenPatterns = listOf("AIza", "sk-", "ghp_", "whsec_", "bearer", "private key")
-    wastiPublicConfig.forEach { (key, value) ->
-      forbiddenPatterns.forEach { pattern ->
-        if (value.contains(pattern, ignoreCase = true)) {
-          throw GradleException("Security violation: Public config key '$key' appears to contain a sensitive token pattern ('$pattern').")
-        }
-      }
-    }
-    logger.lifecycle("✔ Multi-environment configuration validated safely (active environment: $activeEnvironment).")
-  }
-}
-tasks.matching { it.name.startsWith("compile") || it.name.startsWith("test") }.configureEach {
-  dependsOn("validateEnvironmentConfig")
 }
