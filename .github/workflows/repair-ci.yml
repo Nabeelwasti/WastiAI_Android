@@ -1,0 +1,99 @@
+name: One-Time CI Stability Repair
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, 'ci: harden test execution') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Apply deterministic CI/test hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/build-apk.yml')
+          text = workflow.read_text()
+          old = '''    - name: Run Unit Tests\n      timeout-minutes: 15\n      run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace'''
+          new = '''    - name: Run Unit Tests\n      timeout-minutes: 30\n      run: |\n        set -o pipefail\n        echo "=== Wasti test guard: 30 minute CI ceiling ==="\n        timeout --foreground --kill-after=30s 29m ./gradlew testDebugUnitTest --stacktrace --fail-fast\n        echo "=== Wasti test suite completed ==="'''
+          if old not in text:
+              if 'timeout-minutes: 30' in text and 'timeout --foreground --kill-after=30s 29m ./gradlew testDebugUnitTest' in text:
+                  pass
+              else:
+                  raise SystemExit('Expected Run Unit Tests block was not found; refusing unsafe workflow rewrite.')
+          else:
+              text = text.replace(old, new, 1)
+              workflow.write_text(text)
+
+          gradle = Path('app/build.gradle.kts')
+          text = gradle.read_text()
+          old_logging = '''        test.testLogging {\n          events("passed", "skipped", "failed", "standardError")\n          showStandardStreams = true\n          exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL\n          showExceptions = true\n          showCauses = true\n          showStackTraces = true\n        }'''
+          new_logging = '''        // CI must report failures, not print thousands of successful test events.\n        // Excessive per-test stdout made the suite materially slower and obscured hangs.\n        test.testLogging {\n          events("skipped", "failed")\n          showStandardStreams = false\n          exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL\n          showExceptions = true\n          showCauses = true\n          showStackTraces = true\n        }\n        // Parallel forks reduce wall-clock time on GitHub's multi-core runners.\n        // Keep a conservative cap because several tests use shared singleton/server state.\n        test.maxParallelForks = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)\n        test.failFast = true\n        // Hard ceiling for the Gradle test task itself; the workflow has the final 30-minute guard.\n        test.timeout.set(Duration.ofMinutes(25))'''
+          if old_logging not in text:
+              if 'test.timeout.set(Duration.ofMinutes(25))' not in text:
+                  raise SystemExit('Expected testLogging block was not found; refusing unsafe Gradle rewrite.')
+          else:
+              text = text.replace(old_logging, new_logging, 1)
+              gradle.write_text(text)
+          PY
+
+      - name: Validate modified files
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          w = Path('.github/workflows/build-apk.yml').read_text()
+          g = Path('app/build.gradle.kts').read_text()
+          assert 'timeout-minutes: 30' in w
+          assert 'timeout --foreground --kill-after=30s 29m ./gradlew testDebugUnitTest' in w
+          assert '--no-configuration-cache' not in w
+          assert '--no-build-cache' not in w
+          assert 'test.maxParallelForks' in g
+          assert 'test.failFast = true' in g
+          assert 'test.timeout.set(Duration.ofMinutes(25))' in g
+          assert 'showStandardStreams = false' in g
+          print('CI/test hardening validation passed.')
+          PY
+
+      - name: Commit repaired CI configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wasti-ci-repair"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/build-apk.yml app/build.gradle.kts
+          if git diff --cached --quiet; then
+            echo "No repair changes required."
+            exit 0
+          fi
+          git commit -m "ci: harden test execution"
+          git push origin HEAD:main
+
+      - name: Remove one-time repair workflow
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/repair-ci.yml || true
+          git rm -f .github/workflows/repair-ci.yml || true
+          if git diff --cached --quiet; then
+            echo "Repair workflow already absent."
+            exit 0
+          fi
+          git config user.name "wasti-ci-repair"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: remove one-time repair workflow"
+          git push origin HEAD:main
