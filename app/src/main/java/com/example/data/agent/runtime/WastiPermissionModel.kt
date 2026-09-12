@@ -7,10 +7,13 @@ import android.content.Context
  * Mediates user and biometric approval requests without direct coupling to Compose UI or Android BiometricPrompt.
  * Privileged authorization is never permanently cached.
  *
- * When an Android Context is supplied, consent is persisted through PermissionManager's
- * canonical context-aware store. JVM tests may omit the context and use the local test
- * consent map without touching deprecated Android compatibility APIs.
+ * Consent resolution is deliberately multi-path:
+ * 1) canonical context-aware persistent PermissionManager storage when Context exists;
+ * 2) process-local compatibility storage for JVM/legacy callers when Context is unavailable;
+ * 3) the local map remains a fast, request-scoped cache of explicit decisions.
+ * The compatibility path is never used by the normal Android service-locator path.
  */
+@Suppress("DEPRECATION")
 class WastiPermissionModel(
     private val context: Context? = null,
     private var autoApproveControlledForTesting: Boolean = false,
@@ -33,18 +36,32 @@ class WastiPermissionModel(
 
     fun setCapabilityConsent(capabilityName: String, consented: Boolean) {
         capabilityConsentMap[capabilityName] = consented
-        context?.let { com.example.assistant.PermissionManager.setUserConsent(it, capabilityName, consented) }
+        if (context != null) {
+            com.example.assistant.PermissionManager.setUserConsent(context, capabilityName, consented)
+        } else {
+            // Compatibility fallback for JVM/legacy callers with no Android Context.
+            // This is intentionally process-local and never represents OS permission truth.
+            com.example.assistant.PermissionManager.setUserConsent(capabilityName, consented)
+        }
     }
 
     fun hasCapabilityConsent(capabilityName: String): Boolean {
-        return capabilityConsentMap[capabilityName]
-            ?: context?.let { com.example.assistant.PermissionManager.hasUserConsent(it, capabilityName) }
-            ?: false
+        capabilityConsentMap[capabilityName]?.let { return it }
+        return if (context != null) {
+            com.example.assistant.PermissionManager.hasUserConsent(context, capabilityName)
+        } else {
+            // Secondary compatibility source when no Context is available.
+            com.example.assistant.PermissionManager.hasUserConsent(capabilityName)
+        }
     }
 
     fun revokeAllConsents() {
         capabilityConsentMap.clear()
-        context?.let { com.example.assistant.PermissionManager.clearUserConsents(it) }
+        if (context != null) {
+            com.example.assistant.PermissionManager.clearUserConsents(context)
+        } else {
+            com.example.assistant.PermissionManager.clearUserConsents()
+        }
     }
 
     override suspend fun requestUserApproval(
