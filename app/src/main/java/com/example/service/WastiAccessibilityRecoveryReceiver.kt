@@ -6,15 +6,16 @@ import android.content.Intent
 import com.example.data.device.AccessibilityRecoveryCoordinator
 
 /**
- * Receives recovery/retry signals without replacing the canonical execution fabric.
- * When a gesture is dispatched while Accessibility is unavailable, this receiver
- * creates a durable recovery checkpoint and prompts the user while alternatives run.
+ * Recovery body for capability-unavailable states. It never replaces the main executor:
+ * it preserves the objective, requests the Android-controlled capability, and keeps
+ * alternative discovery/research alive while the user decides.
  */
 class WastiAccessibilityRecoveryReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_RETRY = "com.wasti.os.ACTION_ACCESSIBILITY_RECOVERY_RETRY"
         const val ACTION_CHECK = "com.wasti.os.ACTION_ACCESSIBILITY_RECOVERY_CHECK"
         private const val ACTION_EXECUTE_GESTURE = "com.wasti.os.ACTION_EXECUTE_GESTURE"
+        private const val ACTION_BOOT_COMPLETED = "android.intent.action.BOOT_COMPLETED"
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
@@ -43,6 +44,7 @@ class WastiAccessibilityRecoveryReceiver : BroadcastReceiver() {
                 }
             }
             ACTION_CHECK -> AccessibilityRecoveryCoordinator.resumeFromCheckpoint(app)
+            ACTION_BOOT_COMPLETED -> AccessibilityRecoveryCoordinator.resumeFromCheckpoint(app)
         }
     }
 }
