@@ -17,6 +17,7 @@ object BiometricSecurityManager {
     private const val KEY_BIOMETRIC_LOGIN_ENABLED = "biometric_login_enabled"
     private const val KEY_DEV_MODE_UNLOCKED = "dev_mode_unlocked"
 
+    /** Secure storage boundary: encryption/Keystore failure is always fail-closed. */
     private fun getPrefs(context: Context) = try {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -29,61 +30,42 @@ object BiometricSecurityManager {
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
         )
     } catch (e: Exception) {
-        Log.w(TAG, "EncryptedSharedPreferences failed, falling back to standard prefs: ${e.message}")
-        context.getSharedPreferences(PREF_FILE_NAME, Context.MODE_PRIVATE)
+        Log.e(TAG, "Secure preference initialization failed; refusing plaintext fallback", e)
+        throw SecurityException("Wasti secure storage unavailable; sensitive state cannot be accessed safely", e)
     }
 
-    fun isPinConfigured(context: Context): Boolean {
-        val prefs = getPrefs(context)
-        return !prefs.getString(KEY_PIN, null).isNullOrBlank()
-    }
+    fun isPinConfigured(context: Context): Boolean = !getPrefs(context).getString(KEY_PIN, null).isNullOrBlank()
 
-    fun getPin(context: Context): String? {
-        val prefs = getPrefs(context)
-        return prefs.getString(KEY_PIN, null)
-    }
+    fun getPin(context: Context): String? = getPrefs(context).getString(KEY_PIN, null)
 
     fun setPin(context: Context, newPin: String) {
+        require(newPin.length in 4..10 && newPin.all { it.isDigit() }) { "PIN must contain 4-10 numeric digits" }
         getPrefs(context).edit().putString(KEY_PIN, newPin).apply()
     }
 
     fun verifyPin(context: Context, inputPin: String): Boolean {
         val stored = getPin(context)
-        return if (stored != null) {
-            inputPin == stored
-        } else {
-            // If no PIN is yet configured, allow initial setup with 4-to-10 digit numeric PIN
-            if (inputPin.length in 4..10 && inputPin.all { it.isDigit() }) {
-                setPin(context, inputPin)
-                true
-            } else {
-                false
-            }
-        }
+        return if (stored != null) inputPin == stored else if (inputPin.length in 4..10 && inputPin.all { it.isDigit() }) {
+            setPin(context, inputPin)
+            true
+        } else false
     }
 
-    fun isBiometricLoginEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_BIOMETRIC_LOGIN_ENABLED, false)
-    }
+    fun isBiometricLoginEnabled(context: Context): Boolean = getPrefs(context).getBoolean(KEY_BIOMETRIC_LOGIN_ENABLED, false)
 
     fun setBiometricLoginEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_BIOMETRIC_LOGIN_ENABLED, enabled).apply()
     }
 
-    fun isDevModeUnlocked(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_DEV_MODE_UNLOCKED, false)
-    }
+    fun isDevModeUnlocked(context: Context): Boolean = getPrefs(context).getBoolean(KEY_DEV_MODE_UNLOCKED, false)
 
     fun setDevModeUnlocked(context: Context, unlocked: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_DEV_MODE_UNLOCKED, unlocked).apply()
     }
 
-    fun canAuthenticate(context: Context): Int {
-        val biometricManager = BiometricManager.from(context)
-        return biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        )
-    }
+    fun canAuthenticate(context: Context): Int = BiometricManager.from(context).canAuthenticate(
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
+    )
 
     fun authenticate(
         activity: FragmentActivity,
@@ -96,12 +78,9 @@ object BiometricSecurityManager {
         val canAuth = canAuthenticate(activity)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS && canAuth != BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED) {
             if (com.example.BuildConfig.DEBUG) {
-                // In Debug / Robolectric testing environments, permit graceful developer progression with audit log
-                Log.i(TAG, "Biometrics hardware not fully enrolled (Code: $canAuth). High-trust debug bypass allowed.")
+                Log.i(TAG, "Biometrics unavailable (Code: $canAuth); debug progression path used")
                 onSuccess()
-            } else {
-                onError("Biometric or device credential authentication is not enrolled or available on this device.")
-            }
+            } else onError("Biometric or device credential authentication is not enrolled or available on this device.")
             return
         }
 
@@ -117,19 +96,12 @@ object BiometricSecurityManager {
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
                     Log.w(TAG, "Biometric error [$errorCode]: $errString")
-                    if (errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS ||
-                        errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE ||
-                        errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT
-                    ) {
+                    if (errorCode == BiometricPrompt.ERROR_NO_BIOMETRICS || errorCode == BiometricPrompt.ERROR_HW_UNAVAILABLE || errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT) {
                         if (com.example.BuildConfig.DEBUG) {
-                            // Fallback authorization pass for testing/emulators in Debug builds only
+                            Log.i(TAG, "Biometric hardware unavailable; debug progression path used")
                             onSuccess()
-                        } else {
-                            onError("Biometric authentication unavailable on this hardware.")
-                        }
-                    } else {
-                        onError(errString.toString())
-                    }
+                        } else onError("Biometric authentication unavailable on this hardware.")
+                    } else onError(errString.toString())
                 }
 
                 override fun onAuthenticationFailed() {
@@ -141,21 +113,12 @@ object BiometricSecurityManager {
             val promptInfo = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(title)
                 .setSubtitle(subtitle)
-                .setAllowedAuthenticators(
-                    BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                )
+                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                 .build()
-
-            val biometricPrompt = BiometricPrompt(activity, executor, callback)
-            biometricPrompt.authenticate(promptInfo)
+            BiometricPrompt(activity, executor, callback).authenticate(promptInfo)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch BiometricPrompt: ${e.message}", e)
-            if (com.example.BuildConfig.DEBUG) {
-                // Fallback for emulator compatibility in debug builds only
-                onSuccess()
-            } else {
-                onError("Failed to initialize security verification: ${e.message}")
-            }
+            if (com.example.BuildConfig.DEBUG) onSuccess() else onError("Failed to initialize security verification: ${e.message}")
         }
     }
 }

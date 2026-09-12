@@ -9,8 +9,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Stage 3 Task 2: Local Android Execution Provider.
- * Implements local process execution using ProcessBuilder for explicitly authorized requests.
- * Execution is strictly bounded within the Wasti-controlled workspace.
+ * Uses ProcessBuilder for explicitly authorized requests inside the Wasti workspace.
+ * This is software containment, not a kernel/OS sandbox; callers must not label it as one.
  */
 class LocalAndroidProvider(
     private val workspaceManager: WorkspaceManager,
@@ -23,31 +23,37 @@ class LocalAndroidProvider(
             "sh", "dalvikvm", "kotlinc", "javac", "java", "python3", "echo", "cat", "ls", "pwd", "true"
         )
         const val DEFAULT_MAX_OUTPUT_SIZE_BYTES = 1048576 // 1 MB
+
+        // Environment variables that can alter interpreter/class-loader behavior or
+        // redirect executable resolution are never accepted from an execution request.
         private val DISALLOWED_ENV_KEYS = setOf(
-            "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES"
+            "PATH", "CLASSPATH", "JAVA_HOME", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS",
+            "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "NODE_OPTIONS", "NODE_PATH", "RUBYLIB", "PERL5LIB",
+            "BASH_ENV", "ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "DYLD_INSERT_LIBRARIES",
+            "DYLD_LIBRARY_PATH"
         )
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
 
-        // 1. Validate Executable Capability
-        val execName = File(request.executable).name.lowercase()
-        if (!allowedExecutables.contains(execName) && !allowedExecutables.contains("*")) {
+        // Executable names are capability identifiers. Do not allow a caller to supply
+        // an arbitrary path whose basename merely happens to match an approved name.
+        val requestedExecutable = request.executable.trim()
+        val execName = File(requestedExecutable).name.lowercase()
+        if (requestedExecutable.isBlank() || requestedExecutable.contains('/') || requestedExecutable.contains('\\') ||
+            !allowedExecutables.contains(execName) && !allowedExecutables.contains("*")) {
             return@withContext ExecutionResult(
                 stdout = "",
-                stderr = "UNSUPPORTED_EXECUTABLE: Executable '${request.executable}' is not in the approved execution capability catalogue.",
+                stderr = "SECURITY_BLOCKED: Executable must be an approved command name; arbitrary executable paths are not permitted.",
                 exitCode = -1,
                 executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(
-                    isSuccess = false,
-                    message = "UNSUPPORTED_EXECUTABLE: Executable not allowed"
-                ),
-                errorType = ExecutionErrorType.INVALID_REQUEST
+                status = ExecutionStatus(false, "SECURITY_BLOCKED: Executable not allowed"),
+                errorType = ExecutionErrorType.SECURITY
             )
         }
 
-        // 2. Validate Working Directory Containment in Workspace
+        // Workspace containment is canonicalized by WorkspaceManager.
         val workDirResult = workspaceManager.resolvePathSafely(request.workingDirectory)
         if (workDirResult.isFailure) {
             return@withContext ExecutionResult(
@@ -55,55 +61,41 @@ class LocalAndroidProvider(
                 stderr = "SECURITY_BLOCKED: Working directory '${request.workingDirectory}' escapes workspace boundary.",
                 exitCode = -1,
                 executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(
-                    isSuccess = false,
-                    message = "SECURITY_BLOCKED: Directory outside workspace"
-                ),
+                status = ExecutionStatus(false, "SECURITY_BLOCKED: Directory outside workspace"),
                 errorType = ExecutionErrorType.SECURITY
             )
         }
         val targetDirectory = workDirResult.getOrThrow()
 
-        // 3. Construct ProcessBuilder safely
         val command = mutableListOf<String>().apply {
-            add(request.executable)
+            add(requestedExecutable)
             addAll(request.arguments)
         }
 
         val processBuilder = ProcessBuilder(command).apply {
             directory(targetDirectory)
-            // Sanitize environment overrides
+            // Preserve the trusted process environment and reject request-controlled
+            // variables that can redirect interpreters, class loaders, or command lookup.
             val env = environment()
             request.environment.forEach { (key, value) ->
-                if (!DISALLOWED_ENV_KEYS.contains(key.uppercase())) {
-                    env[key] = value
-                }
+                if (!DISALLOWED_ENV_KEYS.contains(key.uppercase())) env[key] = value
             }
         }
 
         var process: Process? = null
         try {
             process = processBuilder.start()
-            try {
-                process.outputStream.close()
-            } catch (_: Exception) {}
+            try { process.outputStream.close() } catch (_: Exception) {}
 
             var stdoutStr = ""
             var stderrStr = ""
-            var completedInTime = false
 
-            // Read process output stream asynchronously with size limits
-            val stdoutThread = Thread {
-                stdoutStr = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes)
-            }
-            val stderrThread = Thread {
-                stderrStr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes)
-            }
-
+            val stdoutThread = Thread { stdoutStr = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes) }
+            val stderrThread = Thread { stderrStr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes) }
             stdoutThread.start()
             stderrThread.start()
 
-            completedInTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val completedInTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS)
             } else {
                 val checkInterval = 50L
@@ -114,7 +106,7 @@ class LocalAndroidProvider(
                         process.exitValue()
                         finished = true
                         break
-                    } catch (e: IllegalThreadStateException) {
+                    } catch (_: IllegalThreadStateException) {
                         Thread.sleep(checkInterval)
                         elapsed += checkInterval
                     }
@@ -123,62 +115,41 @@ class LocalAndroidProvider(
             }
 
             if (!completedInTime) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    process.destroyForcibly()
-                } else {
-                    process.destroy()
-                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) process.destroyForcibly() else process.destroy()
                 stdoutThread.join(500)
                 stderrThread.join(500)
-
                 return@withContext ExecutionResult(
                     stdout = stdoutStr,
                     stderr = "$stderrStr\nTIMEOUT: Process exceeded maximum execution time of ${request.timeoutMs}ms and was cancelled.",
                     exitCode = -1,
                     executionTimeMs = System.currentTimeMillis() - startTime,
-                    status = ExecutionStatus(
-                        isSuccess = false,
-                        message = "TIMEOUT: Execution timed out"
-                    ),
+                    status = ExecutionStatus(false, "TIMEOUT: Execution timed out"),
                     errorType = ExecutionErrorType.TIMEOUT
                 )
             }
 
             stdoutThread.join(1000)
             stderrThread.join(1000)
-
             val exitCode = process.exitValue()
             val executionDuration = System.currentTimeMillis() - startTime
-            val isSuccess = (exitCode == 0)
+            val isSuccess = exitCode == 0
 
             ExecutionResult(
                 stdout = stdoutStr,
                 stderr = stderrStr,
                 exitCode = exitCode,
                 executionTimeMs = executionDuration,
-                status = ExecutionStatus(
-                    isSuccess = isSuccess,
-                    message = if (isSuccess) "Process completed successfully" else "Process failed with exit code $exitCode"
-                ),
+                status = ExecutionStatus(isSuccess, if (isSuccess) "Process completed successfully" else "Process failed with exit code $exitCode"),
                 errorType = if (isSuccess) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
             )
         } catch (e: Exception) {
-            if (process != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    process.destroyForcibly()
-                } else {
-                    process.destroy()
-                }
-            }
+            process?.let { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() }
             ExecutionResult(
                 stdout = "",
                 stderr = "EXECUTION_ERROR: ${e.message}",
                 exitCode = -1,
                 executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(
-                    isSuccess = false,
-                    message = "EXECUTION_ERROR: ${e.message}"
-                ),
+                status = ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"),
                 errorType = ExecutionErrorType.RUNTIME
             )
         }
@@ -192,9 +163,7 @@ class LocalAndroidProvider(
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
             if (totalRead + bytesRead > maxBytes) {
                 val allowed = maxBytes - totalRead
-                if (allowed > 0) {
-                    sb.append(String(buffer, 0, allowed, Charsets.UTF_8))
-                }
+                if (allowed > 0) sb.append(String(buffer, 0, allowed, Charsets.UTF_8))
                 sb.append("\n[OUTPUT TRUNCATED: Exceeded $maxBytes bytes limit]")
                 break
             } else {
