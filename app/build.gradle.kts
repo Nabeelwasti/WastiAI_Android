@@ -160,14 +160,22 @@ android {
         test.systemProperty("WASTI_ENV", "test")
         test.environment("WASTI_ENV" to "test")
         test.environment("ENVIRONMENT" to "test")
+        // CI must report failures, not print thousands of successful test events.
+        // Excessive per-test stdout makes the suite slower and obscures hangs.
         test.testLogging {
-          events("passed", "skipped", "failed", "standardError")
-          showStandardStreams = true
+          events("skipped", "failed")
+          showStandardStreams = false
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
           showExceptions = true
           showCauses = true
           showStackTraces = true
         }
+        // Gradle normally runs one test class at a time. A conservative number of
+        // forks uses available CI CPUs while avoiding excessive shared-state pressure.
+        test.maxParallelForks = maxOf(1, Runtime.getRuntime().availableProcessors() / 2)
+        test.failFast = true
+        // Safety ceiling for the Gradle test task; the workflow provides the final guard.
+        test.timeout.set(Duration.ofMinutes(25))
       }
     }
   }
