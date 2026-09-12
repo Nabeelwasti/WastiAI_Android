@@ -515,7 +515,11 @@ class UnifiedExecutionFabric(
             capId in listOf("python_bridge", "termux_bridge") ->
                 executeBridgeOperations(request, capId, ctx, startedAt)
 
-            capId.startsWith("wre_tool_") || com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null || capId in listOf(
+            com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null ||
+            com.example.data.tool.ToolRegistry.getTool(capId) != null ->
+                executeToolRegistryOperation(request, startedAt)
+
+            capId.startsWith("wre_tool_") || capId in listOf(
                 "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",
                 "bash", "python", "python3", "python_runtime", "node", "nodejs",
                 "node_runtime", "javascript", "npm"
@@ -1839,6 +1843,54 @@ class UnifiedExecutionFabric(
             verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: "VERIFIED" else "UNVERIFIED",
             exitCode = wreResult.exitCode
         )
+    }
+
+    private suspend fun executeToolRegistryOperation(
+        request: UnifiedExecutionRequest,
+        startedAt: Long
+    ): UnifiedExecutionResult {
+        val tool = com.example.data.tool.ToolRegistry.getTool(request.capabilityId)
+            ?: com.example.data.tool.ToolRegistry.getTool(normalizedCapabilityId(request.capabilityId))
+        if (tool == null) {
+            return createResult(
+                request = request,
+                status = UnifiedExecutionStatus.NOT_IMPLEMENTED,
+                output = "Tool '${request.capabilityId}' not found in ToolRegistry.",
+                error = "Tool not found in ToolRegistry",
+                executor = "ToolRegistry",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
+
+        return try {
+            val output = tool.execute(request.parameters)
+            val isError = output.startsWith("Error:", ignoreCase = true) ||
+                    output.startsWith("❌", ignoreCase = true) ||
+                    output.contains("Execution Error", ignoreCase = true) ||
+                    output.contains("Execution Failed", ignoreCase = true)
+
+            createResult(
+                request = request,
+                status = if (isError) UnifiedExecutionStatus.FAILED else UnifiedExecutionStatus.VERIFIED,
+                output = output,
+                error = if (isError) output else null,
+                executor = "ToolRegistry:${tool.definition.id}",
+                startedAt = startedAt,
+                verificationStatus = if (isError) UnifiedVerificationStatus.FAILED else UnifiedVerificationStatus.VERIFIED,
+                verificationEvidence = if (!isError) "Tool execution verified with non-error response" else null
+            )
+        } catch (e: Exception) {
+            createResult(
+                request = request,
+                status = UnifiedExecutionStatus.FAILED,
+                output = "Tool execution failed: ${e.message}",
+                error = e.message,
+                executor = "ToolRegistry:${tool.definition.id}",
+                startedAt = startedAt,
+                verificationStatus = UnifiedVerificationStatus.FAILED
+            )
+        }
     }
 
     private fun createResult(

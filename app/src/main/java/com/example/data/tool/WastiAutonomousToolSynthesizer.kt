@@ -5,6 +5,13 @@ import android.util.Log
 import com.example.data.agent.runtime.AdaptiveExecutionIntelligence
 import com.example.data.agent.runtime.AgentEvent
 import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.CapabilityAuthStatus
+import com.example.data.agent.runtime.CapabilityExecutionStatus
+import com.example.data.agent.runtime.CapabilityReality
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.ImplementationStatus
+import com.example.data.agent.runtime.LiveConnectionStatus
+import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.bus.WastiEvent
 import com.example.data.bus.WastiEventBus
 import com.example.data.wre.PolyglotLanguage
@@ -18,10 +25,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The Eternal Manifesto: Dynamic Capability Acquisition.
+ * The Eternal Manifesto: Dynamic Capability Acquisition & Autonomous Tool Synthesis.
  *
  * Synthesis is not verification. A generated tool is promoted into the shared
- * ToolRegistry only after a real execution probe completes with exit code 0.
+ * ToolRegistry and CapabilityRealityRegistry only after a real execution probe completes with exit code 0.
  *
  * Execution has no fixed wall-clock kill switch here. Long-running work is
  * allowed to continue while Wasti observes it and publishes truthful progress.
@@ -38,7 +45,8 @@ class WastiAutonomousToolSynthesizer(
     }
 
     private val binDirectory: File by lazy {
-        File(context.filesDir, "workspace/bin").apply { mkdirs() }
+        workspaceManager.getDirectory("home/wasti/bin").getOrNull()
+            ?: File(context.filesDir, "workspace/bin").apply { mkdirs() }
     }
 
     data class ToolSynthesisResult(
@@ -163,6 +171,25 @@ class WastiAutonomousToolSynthesizer(
             }
 
             ToolRegistry.registerTool(dynamicTool)
+
+            // Register into Capability Reality Registry
+            UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
+                CapabilityReality(
+                    capabilityId = toolId,
+                    category = "SYNTHESIZED_TOOL",
+                    implementationStatus = ImplementationStatus.READY,
+                    liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                    executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                    authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                    provider = "WastiAutonomousToolSynthesizer",
+                    supportedOperations = listOf("execute"),
+                    limitations = emptyList(),
+                    lastVerifiedAt = System.currentTimeMillis(),
+                    verificationMethod = "SYNTHESIS_EXECUTION_TEST",
+                    realityState = CapabilityRealityState.LIVE_AND_VERIFIED
+                )
+            )
+
             AdaptiveExecutionIntelligence.save(
                 AdaptiveExecutionIntelligence.current(toolId)!!.copy(
                     stage = "PROMOTED_PENDING_VERIFICATION",
@@ -174,6 +201,7 @@ class WastiAutonomousToolSynthesizer(
                 )
             )
 
+            // Proactive IPC & Event Bus Dispatch
             WastiEventBus.tryEmit(
                 WastiEvent.ToolSynthesized(
                     toolId = toolId,
@@ -191,7 +219,7 @@ class WastiAutonomousToolSynthesizer(
                 )
             )
 
-            Log.i(TAG, "Synthesized and promoted tool [$toolId] at ${scriptFile.absolutePath}; independent verification remains required.")
+            Log.i(TAG, "Synthesized and promoted tool [$toolId] at ${scriptFile.absolutePath}; registered into ToolRegistry and CapabilityRealityRegistry.")
 
             ToolSynthesisResult(
                 isSuccess = true,
@@ -231,72 +259,88 @@ class WastiAutonomousToolSynthesizer(
         val cmdArray = when (language) {
             PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
             PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
-            PolyglotLanguage.SHELL -> arrayOf("/system/bin/sh", scriptFile.absolutePath)
+            PolyglotLanguage.SHELL -> {
+                if (File("/data/data/com.termux/files/usr/bin/bash").exists()) {
+                    arrayOf("/data/data/com.termux/files/usr/bin/bash", scriptFile.absolutePath)
+                } else {
+                    arrayOf("/system/bin/sh", scriptFile.absolutePath)
+                }
+            }
             else -> arrayOf(scriptFile.absolutePath)
         }
         val envList = arrayOf(
-            "PATH=${binDirectory.absolutePath}:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
+            "PATH=${binDirectory.absolutePath}:/data/data/com.termux/files/usr/bin:/system/bin:/system/xbin:${System.getenv("PATH") ?: ""}",
             "TOOL_PARAMS=${org.json.JSONObject(parameters)}"
         )
 
-        val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
-        return coroutineScope {
-            val task = com.example.data.agent.runtime.TaskId(toolId)
-            AgentEventBus.getInstance().tryEmit(
-                AgentEvent.ExecutionStateChanged(
-                    taskId = task,
-                    state = "RUNNING",
-                    details = "Dynamic tool probe started; no fixed execution timeout is applied."
+        var process: Process? = null
+        return try {
+            val proc = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
+            process = proc
+            coroutineScope {
+                val task = com.example.data.agent.runtime.TaskId(toolId)
+                AgentEventBus.getInstance().tryEmit(
+                    AgentEvent.ExecutionStateChanged(
+                        taskId = task,
+                        state = "RUNNING",
+                        details = "Dynamic tool probe started; observing live process."
+                    )
                 )
-            )
 
-            val outDeferred = async(Dispatchers.IO) {
-                process.inputStream.bufferedReader().use { it.readText() }
-            }
-            val errDeferred = async(Dispatchers.IO) {
-                process.errorStream.bufferedReader().use { it.readText() }
-            }
-            val heartbeat = launch(Dispatchers.IO) {
-                while (process.isAlive) {
-                    delay(PROGRESS_HEARTBEAT_MS)
-                    if (process.isAlive) {
-                        val elapsed = System.currentTimeMillis() - startedAt
-                        AdaptiveExecutionIntelligence.current(toolId)?.let { checkpoint ->
-                            AdaptiveExecutionIntelligence.save(
-                                checkpoint.copy(
-                                    stage = "EXECUTING_PROBE",
-                                    health = AdaptiveExecutionIntelligence.Health.ACTIVE_PROGRESS,
-                                    observations = (checkpoint.observations + "process still alive; elapsed=${elapsed}ms").takeLast(20),
-                                    nextAction = "continue observing live process"
+                val outDeferred = async(Dispatchers.IO) {
+                    proc.inputStream.bufferedReader().use { it.readText() }
+                }
+                val errDeferred = async(Dispatchers.IO) {
+                    proc.errorStream.bufferedReader().use { it.readText() }
+                }
+                val heartbeat = launch(Dispatchers.IO) {
+                    while (proc.isAlive) {
+                        delay(PROGRESS_HEARTBEAT_MS)
+                        if (proc.isAlive) {
+                            val elapsed = System.currentTimeMillis() - startedAt
+                            AdaptiveExecutionIntelligence.current(toolId)?.let { checkpoint ->
+                                AdaptiveExecutionIntelligence.save(
+                                    checkpoint.copy(
+                                        stage = "EXECUTING_PROBE",
+                                        health = AdaptiveExecutionIntelligence.Health.ACTIVE_PROGRESS,
+                                        observations = (checkpoint.observations + "process still alive; elapsed=${elapsed}ms").takeLast(20),
+                                        nextAction = "continue observing live process"
+                                    )
+                                )
+                            }
+                            AgentEventBus.getInstance().tryEmit(
+                                AgentEvent.ExecutionStateChanged(
+                                    taskId = task,
+                                    state = "RUNNING",
+                                    details = "Dynamic tool still executing; elapsed=${elapsed}ms. Wasti is observing progress."
                                 )
                             )
                         }
-                        AgentEventBus.getInstance().tryEmit(
-                            AgentEvent.ExecutionStateChanged(
-                                taskId = task,
-                                state = "RUNNING",
-                                details = "Dynamic tool still executing; elapsed=${elapsed}ms. Wasti is observing rather than terminating it."
-                            )
-                        )
                     }
                 }
-            }
 
-            try {
-                val code = process.waitFor()
-                val stdout = outDeferred.await()
-                val stderr = errDeferred.await()
-                val duration = System.currentTimeMillis() - startedAt
-                AgentEventBus.getInstance().tryEmit(
-                    AgentEvent.ExecutionCompleted(
-                        taskId = task,
-                        exitCode = code
+                try {
+                    val code = proc.waitFor()
+                    val stdout = outDeferred.await()
+                    val stderr = errDeferred.await()
+                    val duration = System.currentTimeMillis() - startedAt
+                    AgentEventBus.getInstance().tryEmit(
+                        AgentEvent.ExecutionCompleted(
+                            taskId = task,
+                            exitCode = code
+                        )
                     )
-                )
-                ExecutionProbe(code, stdout, stderr, duration)
-            } finally {
-                heartbeat.cancel()
+                    ExecutionProbe(code, stdout, stderr, duration)
+                } finally {
+                    heartbeat.cancel()
+                }
             }
+        } finally {
+            try {
+                if (process?.isAlive == true) {
+                    process.destroy()
+                }
+            } catch (_: Throwable) {}
         }
     }
 }

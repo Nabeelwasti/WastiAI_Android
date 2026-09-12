@@ -64,7 +64,7 @@ class ExecutionStrategyResolver(
         }
 
         // 3. Priority 3: INSTALLED_TOOL (Registered tools in ToolRegistry)
-        if (reality.supportedOperations.isNotEmpty() && reality.category == "TOOL") {
+        if (reality.supportedOperations.isNotEmpty() && (reality.category == "TOOL" || reality.category == "DYNAMIC_WRE" || reality.category == "SYNTHESIZED_TOOL" || reality.category.contains("TOOL", ignoreCase = true))) {
             return ExecutionStrategyDecision(
                 strategy = ExecutionStrategy.INSTALLED_TOOL,
                 reasoning = "Capability [$requiredCapability] dispatched to registered system tool.",

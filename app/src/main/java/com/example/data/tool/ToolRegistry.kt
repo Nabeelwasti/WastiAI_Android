@@ -457,7 +457,9 @@ class ToolSynthesizerTool : WastiTool {
         }
 
         val synth = WastiAutonomousToolSynthesizer(ctx, com.example.data.wre.WreWorkspaceManager.getInstance(ctx))
-        val res = synth.synthesizeAndRegisterTool(toolId, toolName, description, lang, sourceCode)
+        @Suppress("UNCHECKED_CAST")
+        val testParams = (parameters["test_parameters"] ?: parameters["test_params"] ?: parameters["params"]) as? Map<String, Any> ?: emptyMap()
+        val res = synth.synthesizeAndRegisterTool(toolId, toolName, description, lang, sourceCode, testParams)
         return if (res.isSuccess) {
             "✔ Tool [$toolId] successfully synthesized and registered into ToolRegistry at ${res.executablePath}."
         } else {

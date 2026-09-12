@@ -22,7 +22,6 @@ import androidx.core.content.ContextCompat
 object PermissionManager {
     private const val PREFS_NAME = "wasti_permission_policy"
     private const val CONSENT_PREFIX = "consent::"
-    private const val ANDROID_MANIFEST_NAMESPACE = "http://schemas.android.com/apk/res/android"
 
     @Volatile
     private var applicationContext: Context? = null
@@ -213,12 +212,19 @@ object PermissionManager {
                 return true
             }
 
-            // Fallback 1: Check APK sourceDir if present
+            // Fallback 1: Check APK sourceDir / packageCodePath if present
+            val apkCandidates = linkedSetOf<String>()
+            runCatching { context.packageCodePath?.let { apkCandidates.add(it) } }
+            runCatching { context.packageResourcePath?.let { apkCandidates.add(it) } }
             for (packageName in packageNames) {
                 val packageInfo = getPackageInfoWithPermissions(pm, packageName)
                 val sourceDir = packageInfo?.applicationInfo?.sourceDir
                     ?: runCatching { pm.getApplicationInfo(packageName, 0).sourceDir }.getOrNull()
-                if (!sourceDir.isNullOrBlank() && manifestInApkDeclaresPermission(sourceDir, permission)) {
+                if (!sourceDir.isNullOrBlank()) apkCandidates.add(sourceDir)
+                packageInfo?.applicationInfo?.splitSourceDirs?.filterNotNull()?.forEach { apkCandidates.add(it) }
+            }
+            for (apkPath in apkCandidates) {
+                if (apkPath.isNotBlank() && manifestInApkDeclaresPermission(apkPath, permission)) {
                     return true
                 }
             }
