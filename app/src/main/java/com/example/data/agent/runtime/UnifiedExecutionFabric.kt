@@ -520,15 +520,15 @@ class UnifiedExecutionFabric(
             capId in listOf("python_bridge", "termux_bridge") ->
                 executeBridgeOperations(request, capId, ctx, startedAt)
 
-            com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null ||
-            com.example.data.tool.ToolRegistry.getTool(capId) != null ->
-                executeToolRegistryOperation(request, startedAt)
-
             capId.startsWith("wre_tool_") || capId in listOf(
                 "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",
                 "bash", "python", "python3", "python_runtime", "node", "nodejs",
                 "node_runtime", "javascript", "npm"
             ) -> executeTerminalOperations(request, capId, ctx, startedAt)
+
+            com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null ||
+            com.example.data.tool.ToolRegistry.getTool(capId) != null ->
+                executeToolRegistryOperation(request, startedAt)
 
             capId in listOf(
                 "local_neural_inference", "local_neural", "local_ai", "neural_inference",

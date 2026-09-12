@@ -1219,10 +1219,10 @@ class EternalManifestoAndTruthAuditTest {
         assertFalse(undeclaredTruth.canExecute)
 
         // 3. User Consent Policy Invariant: OS grant without user consent cannot execute
-        pm.setUserConsent("ANDROID_CONTROL", false)
-        assertFalse("User consent must be false when explicitly retracted", pm.hasUserConsent("ANDROID_CONTROL"))
-        pm.setUserConsent("ANDROID_CONTROL", true)
-        assertTrue("User consent must be true when explicitly granted", pm.hasUserConsent("ANDROID_CONTROL"))
+        pm.setUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL", false)
+        assertFalse("User consent must be false when explicitly retracted", pm.hasUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL"))
+        pm.setUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL", true)
+        assertTrue("User consent must be true when explicitly granted", pm.hasUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL"))
 
         // 4. PluginSandbox Truth: Declared permission in plugin manifest is NOT auto-granted
         val testManifest = com.example.data.plugin.PluginManifest(
@@ -1303,8 +1303,8 @@ class EternalManifestoAndTruthAuditTest {
         evidenceTracker.clearEvidenceForTesting()
 
         // 1. Consent Gate: When user consent is false, device control must be BLOCKED_NO_CONSENT
-        com.example.assistant.PermissionManager.setUserConsent("ANDROID_CONTROL", false)
-        com.example.assistant.PermissionManager.setUserConsent("ACCESSIBILITY", false)
+        com.example.assistant.PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL", false)
+        com.example.assistant.PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), "ACCESSIBILITY", false)
 
         val unconsentedOpen = com.example.data.device.WastiDeviceController.openApp(context, "whatsapp")
         assertFalse("openApp must fail when user consent is not granted", unconsentedOpen.success)
@@ -1329,8 +1329,8 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue("Evidence must contain BLOCKED_NO_CONSENT details", unconsentedEvidence.any { it.details == "BLOCKED_NO_CONSENT" })
 
         // 2. Emergency Stop Gate: When emergency stop is active, all device actions must ABORT
-        com.example.assistant.PermissionManager.setUserConsent("ANDROID_CONTROL", true)
-        com.example.assistant.PermissionManager.setUserConsent("ACCESSIBILITY", true)
+        com.example.assistant.PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), "ANDROID_CONTROL", true)
+        com.example.assistant.PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), "ACCESSIBILITY", true)
         stopController.triggerEmergencyStop("Safety audit triggered emergency stop")
 
         val stoppedOpen = com.example.data.device.WastiDeviceController.openApp(context, "whatsapp")
