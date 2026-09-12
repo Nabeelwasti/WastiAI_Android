@@ -1008,4 +1008,16 @@ object CredentialRegistry {
         val securePrefs = getSecureSharedPreferences(context)
         return securePrefs.getLong("last_rotated_${keyName.lowercase()}", 0L)
     }
+
+    fun isConfigured(keyName: String, context: Context? = null): Boolean {
+        val v = getRawValue(keyName, context)
+        return !v.isNullOrBlank() && !isPlaceholder(v)
+    }
+
+    fun getAllKeyStatuses(context: Context? = null): Map<String, Boolean> {
+        val targetCtx = context ?: appContext
+        return ALL_CREDENTIALS.associate { entry ->
+            entry.keyName to isConfigured(entry.keyName, targetCtx)
+        }
+    }
 }

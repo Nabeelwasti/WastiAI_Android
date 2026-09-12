@@ -1257,33 +1257,56 @@ object LeadRadarRepository {
         return sb.toString()
     }
 
+    private fun getDb(): WastiDatabase? {
+        val ctx = appContext ?: com.example.WastiApplication.instance
+        return if (ctx != null) WastiDatabase.getDatabase(ctx) else null
+    }
+
     suspend fun streamAllLeads(
         batchSize: Int = 100,
         onBatch: suspend (List<LeadEntity>) -> Unit
     ) = withContext(Dispatchers.IO) {
-        LargeDatasetEngine.processInBatches(
-            pageSize = batchSize,
-            fetchPage = { limit, offset -> requireDatabase().leadDao().getPagedLeads(limit, offset) },
-            onBatchProcessed = { chunk -> onBatch(chunk.items) }
-        )
+        val database = getDb()
+        if (database != null) {
+            LargeDatasetEngine.processInBatches(
+                pageSize = batchSize,
+                fetchPage = { limit, offset -> database.leadDao().getPagedLeads(limit, offset) },
+                onBatchProcessed = { chunk -> onBatch(chunk.items) }
+            )
+        } else {
+            val inMemory = _leadsFlow.value.map { it.toRoomEntity() }
+            inMemory.chunked(batchSize).forEach { chunk ->
+                onBatch(chunk)
+            }
+        }
     }
 
     suspend fun streamAllProspects(
         batchSize: Int = 100,
         onBatch: suspend (List<ProspectEntity>) -> Unit
     ) = withContext(Dispatchers.IO) {
-        LargeDatasetEngine.processInBatches(
-            pageSize = batchSize,
-            fetchPage = { limit, offset -> requireDatabase().prospectDao().getPagedProspects(limit, offset) },
-            onBatchProcessed = { chunk -> onBatch(chunk.items) }
-        )
+        val database = getDb()
+        if (database != null) {
+            LargeDatasetEngine.processInBatches(
+                pageSize = batchSize,
+                fetchPage = { limit, offset -> database.prospectDao().getPagedProspects(limit, offset) },
+                onBatchProcessed = { chunk -> onBatch(chunk.items) }
+            )
+        } else {
+            val inMemory = _prospectsFlow.value
+            inMemory.chunked(batchSize).forEach { chunk ->
+                onBatch(chunk)
+            }
+        }
     }
 
     suspend fun getLeadsCount(): Int = withContext(Dispatchers.IO) {
-        requireDatabase().leadDao().getLeadsCount()
+        val database = getDb()
+        database?.leadDao()?.getLeadsCount() ?: _leadsFlow.value.size
     }
 
     suspend fun getProspectsCount(): Int = withContext(Dispatchers.IO) {
-        requireDatabase().prospectDao().getProspectsCount()
+        val database = getDb()
+        database?.prospectDao()?.getProspectsCount() ?: _prospectsFlow.value.size
     }
 }
