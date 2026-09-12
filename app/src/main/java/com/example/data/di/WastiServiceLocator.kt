@@ -39,14 +39,13 @@ object WastiServiceLocator {
     }
 
     val permissionModel: WastiPermissionModel by lazy {
-        WastiPermissionModel()
+        WastiPermissionModel(requireContext())
     }
 
     val auditLogger: WastiAuditLogger by lazy {
         WastiAuditLogger()
     }
 
-    // Database & Repository
     val database: WastiDatabase by lazy {
         val ctx = requireContext()
         WastiDatabase.getDatabase(ctx)
@@ -61,7 +60,6 @@ object WastiServiceLocator {
         WreManager.getInstance(ctx)
     }
 
-    // Execution & Runtime Managers
     val runtimeManager: WastiRuntimeManager by lazy {
         val ctx = requireContext()
         WastiRuntimeManager(ctx, workspaceManager)
