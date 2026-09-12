@@ -3,13 +3,16 @@ package com.example.data.agent.runtime
 import android.os.Build
 import java.io.File
 import java.io.InputStream
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
  * Wasti's local process provider. This is workspace-constrained software containment,
  * not an OS/kernel sandbox. Canonical system runtime paths are explicitly allowlisted.
+ *
+ * Execution duration is observational telemetry only. A long-running process is not
+ * killed merely because a caller supplied timeoutMs. Explicit cancellation, emergency
+ * stop, or an actual process/runtime failure remains the termination authority.
  */
 class LocalAndroidProvider(
     private val workspaceManager: WorkspaceManager,
@@ -66,25 +69,34 @@ class LocalAndroidProvider(
             val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes) }
             val stderrThread = Thread { stderr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes) }
             stdoutThread.start(); stderrThread.start()
-            val completed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS) else {
-                val deadline = System.currentTimeMillis() + request.timeoutMs
-                var done = false
-                while (System.currentTimeMillis() < deadline) {
-                    try { process.exitValue(); done = true; break } catch (_: IllegalThreadStateException) { Thread.sleep(50) }
+
+            // IMPORTANT: timeoutMs is retained as caller telemetry/configuration for compatibility,
+            // but is never a blind process-kill deadline. Observe until the real process exits.
+            while (true) {
+                try {
+                    val exitCode = process.exitValue()
+                    stdoutThread.join(1000)
+                    stderrThread.join(1000)
+                    val ok = exitCode == 0
+                    return@withContext ExecutionResult(
+                        stdout,
+                        stderr,
+                        exitCode,
+                        System.currentTimeMillis() - startTime,
+                        ExecutionStatus(ok, if (ok) "Process completed successfully" else "Process failed with exit code $exitCode"),
+                        if (ok) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
+                    )
+                } catch (_: IllegalThreadStateException) {
+                    Thread.sleep(250)
                 }
-                done
             }
-            if (!completed) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) process.destroyForcibly() else process.destroy()
-                stdoutThread.join(500); stderrThread.join(500)
-                return@withContext ExecutionResult(stdout, "$stderr\nTIMEOUT: Process exceeded maximum execution time of ${request.timeoutMs}ms and was cancelled.", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "TIMEOUT: Execution timed out"), ExecutionErrorType.TIMEOUT)
-            }
-            stdoutThread.join(1000); stderrThread.join(1000)
-            val exitCode = process.exitValue()
-            val ok = exitCode == 0
-            ExecutionResult(stdout, stderr, exitCode, System.currentTimeMillis() - startTime, ExecutionStatus(ok, if (ok) "Process completed successfully" else "Process failed with exit code $exitCode"), if (ok) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME)
-        } catch (e: Exception) {
+        } catch (e: InterruptedException) {
+            // Interruption is an explicit cancellation/termination signal, not a duration timeout.
+            Thread.currentThread().interrupt()
             process?.let { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() }
+            ExecutionResult("", "EXECUTION_CANCELLED: ${e.message ?: "Execution thread interrupted"}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_CANCELLED"), ExecutionErrorType.TIMEOUT)
+        } catch (e: Exception) {
+            process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
             ExecutionResult("", "EXECUTION_ERROR: ${e.message}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"), ExecutionErrorType.RUNTIME)
         }
     }
