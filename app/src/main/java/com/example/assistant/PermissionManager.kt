@@ -147,7 +147,6 @@ object PermissionManager {
         legacyTestConsent[permissionOrCapability] = consented
     }
 
-    /** Compatibility API for existing platform-independent tests/callers. Production initializes a Context in WastiApplication. */
     @Deprecated("Use setUserConsent(context, permissionOrCapability, consented) for persistent storage")
     fun setUserConsent(permissionOrCapability: String, consented: Boolean) {
         applicationContext?.let { setUserConsent(it, permissionOrCapability, consented) }
@@ -190,21 +189,28 @@ object PermissionManager {
     fun isDeclaredInManifest(context: Context, permission: String): Boolean {
         return try {
             val pm = context.packageManager
-            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                try {
-                    pm.getPackageInfo(
-                        context.packageName,
-                        PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-                    )
-                } catch (_: Throwable) {
+            val packageNames = linkedSetOf(
+                context.packageName,
+                context.applicationInfo.packageName,
+                com.example.BuildConfig.APPLICATION_ID
+            )
+            packageNames.any { packageName ->
+                val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    try {
+                        pm.getPackageInfo(
+                            packageName,
+                            PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+                        )
+                    } catch (_: Throwable) {
+                        @Suppress("DEPRECATION")
+                        pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
+                    }
+                } else {
                     @Suppress("DEPRECATION")
-                    pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+                    pm.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
                 }
-            } else {
-                @Suppress("DEPRECATION")
-                pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+                packageInfo.requestedPermissions?.contains(permission) == true
             }
-            packageInfo.requestedPermissions?.contains(permission) == true
         } catch (_: Throwable) {
             false
         }
