@@ -113,17 +113,47 @@ object WastiSelfEvolutionEngine {
         )
     }
 
-    fun recordOutcome(taskId: String, verifiedSuccess: Boolean) {
+    fun recordOutcome(taskId: String, verifiedSuccess: Boolean, context: android.content.Context? = null) {
         outcomes.computeIfAbsent(taskId) { java.util.concurrent.CopyOnWriteArrayList() }.add(verifiedSuccess)
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx != null) {
+            try {
+                val prefs = ctx.applicationContext.getSharedPreferences("wasti_evolution_history", android.content.Context.MODE_PRIVATE)
+                val key = "outcomes_$taskId"
+                val existing = prefs.getString(key, "") ?: ""
+                val updated = if (existing.isEmpty()) (if (verifiedSuccess) "1" else "0") else "$existing,${if (verifiedSuccess) "1" else "0"}"
+                prefs.edit().putString(key, updated).apply()
+            } catch (_: Throwable) {}
+        }
     }
 
-    fun successRate(taskId: String): Double {
-        val history = outcomes[taskId] ?: return 0.0
-        if (history.isEmpty()) return 0.0
-        return history.count { it }.toDouble() / history.size.toDouble()
+    fun successRate(taskId: String, context: android.content.Context? = null): Double {
+        val history = outcomes[taskId]
+        if (history != null && history.isNotEmpty()) {
+            return history.count { it }.toDouble() / history.size.toDouble()
+        }
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx != null) {
+            try {
+                val prefs = ctx.applicationContext.getSharedPreferences("wasti_evolution_history", android.content.Context.MODE_PRIVATE)
+                val str = prefs.getString("outcomes_$taskId", null) ?: return 0.0
+                val tokens = str.split(',').filter { it.isNotBlank() }
+                if (tokens.isEmpty()) return 0.0
+                val successes = tokens.count { it == "1" }
+                return successes.toDouble() / tokens.size.toDouble()
+            } catch (_: Throwable) {}
+        }
+        return 0.0
     }
 
-    fun clear(taskId: String) {
+    fun clear(taskId: String, context: android.content.Context? = null) {
         outcomes.remove(taskId)
+        val ctx = context ?: com.example.WastiApplication.instance
+        if (ctx != null) {
+            try {
+                val prefs = ctx.applicationContext.getSharedPreferences("wasti_evolution_history", android.content.Context.MODE_PRIVATE)
+                prefs.edit().remove("outcomes_$taskId").apply()
+            } catch (_: Throwable) {}
+        }
     }
 }
