@@ -39,7 +39,8 @@ data class RollbackSnapshot(
     val filePath: String,
     val originalContent: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val contentHash: String
+    val contentHash: String,
+    val targetExisted: Boolean
 )
 
 data class ModificationOutcome(
@@ -91,13 +92,8 @@ object SelfModificationSafetyEngine {
     // Rollback storage: snapshotId -> RollbackSnapshot
     private val rollbackVault = ConcurrentHashMap<String, RollbackSnapshot>()
 
-    // Admin authorization tokens: valid active tokens
+    // Admin authorization tokens: valid active tokens. No implicit/default authority is ever created.
     private val activeAdminTokens = ConcurrentHashMap.newKeySet<String>()
-
-    init {
-        // Register default initial admin authorization token for testing/admin sessions
-        activeAdminTokens.add("ADMIN_ROOT_AUTHORIZED_${UUID.randomUUID().toString().take(8)}")
-    }
 
     fun registerAdminToken(token: String) {
         if (token.isNotBlank()) {
@@ -137,25 +133,27 @@ object SelfModificationSafetyEngine {
      */
     fun isMutationLoopDetected(filePath: String, newContentHash: String): Boolean {
         val history = mutationHistory[filePath] ?: return false
-        val now = System.currentTimeMillis()
+        synchronized(history) {
+            val now = System.currentTimeMillis()
 
-        // Prune entries older than sliding window
-        history.removeAll { now - it.first > MUTATION_WINDOW_MS }
+            // Prune entries older than sliding window
+            history.removeAll { now - it.first > MUTATION_WINDOW_MS }
 
-        // Rule 1: Exceeded maximum attempts in sliding window
-        if (history.size >= MAX_MUTATIONS_PER_WINDOW) {
-            Log.w(TAG, "Mutation loop detected on $filePath: Exceeded $MAX_MUTATIONS_PER_WINDOW mutations in 30min")
-            return true
+            // Rule 1: Exceeded maximum attempts in sliding window
+            if (history.size >= MAX_MUTATIONS_PER_WINDOW) {
+                Log.w(TAG, "Mutation loop detected on $filePath: Exceeded $MAX_MUTATIONS_PER_WINDOW mutations in 30min")
+                return true
+            }
+
+            // Rule 2: Oscillation detection (re-attempting exact content previously tried)
+            val identicalPastAttempts = history.count { it.second == newContentHash }
+            if (identicalPastAttempts >= 2) {
+                Log.w(TAG, "Oscillation loop detected on $filePath: Proposing identical hash $newContentHash repeatedly")
+                return true
+            }
+
+            return false
         }
-
-        // Rule 2: Oscillation detection (re-attempting exact content previously tried)
-        val identicalPastAttempts = history.count { it.second == newContentHash }
-        if (identicalPastAttempts >= 2) {
-            Log.w(TAG, "Oscillation loop detected on $filePath: Proposing identical hash $newContentHash repeatedly")
-            return true
-        }
-
-        return false
     }
 
     /**
@@ -198,11 +196,13 @@ object SelfModificationSafetyEngine {
      * Creates a rollback snapshot of a file prior to modification.
      */
     fun createRollbackSnapshot(targetFile: File): RollbackSnapshot {
-        val originalText = if (targetFile.exists()) targetFile.readText() else ""
+        val existed = targetFile.exists()
+        val originalText = if (existed) targetFile.readText() else ""
         val snapshot = RollbackSnapshot(
             filePath = targetFile.absolutePath,
             originalContent = originalText,
-            contentHash = computeHash(originalText)
+            contentHash = computeHash(originalText),
+            targetExisted = existed
         )
         rollbackVault[snapshot.snapshotId] = snapshot
         return snapshot
@@ -210,16 +210,31 @@ object SelfModificationSafetyEngine {
 
     /**
      * Reverts a file from an existing rollback snapshot.
+     * Protected targets require the same explicit admin authority boundary as mutation.
+     * Snapshot integrity is checked before any filesystem write/delete occurs.
      */
-    fun rollback(snapshotId: String): Boolean {
+    fun rollback(snapshotId: String, adminAuthToken: String? = null): Boolean {
         val snapshot = rollbackVault[snapshotId] ?: return false
+        if (isProtectedPath(snapshot.filePath) && !isValidAdminToken(adminAuthToken)) {
+            Log.w(TAG, "Rollback of protected path '${snapshot.filePath}' BLOCKED without admin authorization token")
+            return false
+        }
+
+        if (computeHash(snapshot.originalContent) != snapshot.contentHash) {
+            Log.e(TAG, "Rollback snapshot integrity check failed for $snapshotId")
+            return false
+        }
+
         return try {
             val file = File(snapshot.filePath)
-            if (snapshot.originalContent.isEmpty()) {
-                if (file.exists()) file.delete()
-            } else {
+            if (snapshot.targetExisted) {
                 file.parentFile?.mkdirs()
                 file.writeText(snapshot.originalContent)
+            } else if (file.exists()) {
+                if (!file.delete()) {
+                    Log.e(TAG, "Failed deleting newly-created file during rollback: ${snapshot.filePath}")
+                    return false
+                }
             }
             Log.i(TAG, "Successfully rolled back '${snapshot.filePath}' to snapshot $snapshotId")
             true
@@ -283,14 +298,18 @@ object SelfModificationSafetyEngine {
             }
 
             if (!isValid) {
-                // Validation failed -> execute immediate automatic rollback
-                val rolledBack = rollback(snapshot.snapshotId)
+                // Validation failed -> execute immediate automatic rollback with the same authority context
+                val rolledBack = rollback(snapshot.snapshotId, adminAuthToken)
                 return ModificationOutcome(
                     status = ModificationOutcomeStatus.ROLLED_BACK,
                     filePath = targetFile.absolutePath,
                     decision = decision,
                     rollbackPerformed = rolledBack,
-                    errorDetails = "Staged verification failed. Automatically rolled back to pre-mutation snapshot.",
+                    errorDetails = if (rolledBack) {
+                        "Staged verification failed. Automatically rolled back to pre-mutation snapshot."
+                    } else {
+                        "Staged verification failed and rollback was blocked or failed. Manual recovery required."
+                    },
                     snapshotId = snapshot.snapshotId
                 )
             }
@@ -298,7 +317,9 @@ object SelfModificationSafetyEngine {
 
         // 4. Record successful mutation into history for loop detection
         val list = mutationHistory.getOrPut(targetFile.absolutePath) { mutableListOf() }
-        list.add(Pair(System.currentTimeMillis(), computeHash(newContent)))
+        synchronized(list) {
+            list.add(Pair(System.currentTimeMillis(), computeHash(newContent)))
+        }
 
         return ModificationOutcome(
             status = ModificationOutcomeStatus.APPLIED_VERIFIED,
@@ -315,5 +336,6 @@ object SelfModificationSafetyEngine {
     fun resetForTesting() {
         mutationHistory.clear()
         rollbackVault.clear()
+        activeAdminTokens.clear()
     }
 }
