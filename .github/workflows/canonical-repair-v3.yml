@@ -1,0 +1,60 @@
+name: Deterministic Wasti repair verifier
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.issue.title == 'CANONICAL_WASTI_REPAIR_V3'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - name: Repair canonical dispatch and deprecated APIs
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt')
+          s=p.read_text()
+          terminal='''            capId.startsWith("wre_tool_") || capId in listOf(\n                "terminal", "execute_code", "execute_command", "run_script", "sh", "cmd",\n                "bash", "python", "python3", "python_runtime", "node", "nodejs",\n                "node_runtime", "javascript", "npm"\n            ) -> executeTerminalOperations(request, capId, ctx, startedAt)\n\n'''
+          registry='''            com.example.data.tool.ToolRegistry.getTool(request.capabilityId) != null ||\n            com.example.data.tool.ToolRegistry.getTool(capId) != null ->\n                executeToolRegistryOperation(request, startedAt)\n\n'''
+          if terminal not in s or registry not in s: raise SystemExit('canonical blocks not found')
+          if s.index(terminal) > s.index(registry): s=s.replace(registry+terminal,terminal+registry,1)
+          p.write_text(s)
+          for name in ['app/src/test/java/com/example/data/core/EternalManifestoAndTruthAuditTest.kt','app/src/test/java/com/example/data/agent/runtime/Stage6ObservationVerificationTest.kt']:
+            q=Path(name)
+            if not q.exists(): continue
+            t=q.read_text()
+            t=t.replace('pm.setUserConsent("','pm.setUserConsent(ApplicationProvider.getApplicationContext(), "')
+            t=t.replace('pm.hasUserConsent("','pm.hasUserConsent(ApplicationProvider.getApplicationContext(), "')
+            t=t.replace('PermissionManager.setUserConsent("','PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), "')
+            q.write_text(t)
+      - name: Assert dispatch invariant
+        run: python -c "from pathlib import Path; s=Path('app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt').read_text(); assert s.index('capId.startsWith(\"wre_tool_\")') < s.index('ToolRegistry.getTool(request.capabilityId)')"
+      - name: Run exact Stage 14 failing test
+        run: ./gradlew :app:testDebugUnitTest --tests 'com.example.Stage14SelfEvolvingCapabilityEngineTest.testF_CapabilityPromotionAndUnifiedExecution' --no-configuration-cache --stacktrace
+        timeout-minutes: 8
+      - name: Compile and lint
+        run: ./gradlew :app:compileDebugKotlin :app:lintDebug --no-configuration-cache --stacktrace
+        timeout-minutes: 10
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt app/src/test/java/com/example/data/agent/runtime/Stage6ObservationVerificationTest.kt app/src/test/java/com/example/data/core/EternalManifestoAndTruthAuditTest.kt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix(execution): make terminal dispatch non-recursive and modernize consent APIs'
+          git push origin HEAD:main
