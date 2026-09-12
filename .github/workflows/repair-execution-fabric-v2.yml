@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   repair:
-    if: ${{ !startsWith(github.event.head_commit.message, 'fix(execution):') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -51,11 +50,11 @@ jobs:
 
           replacements = {
               'app/src/test/java/com/example/data/core/EternalManifestoAndTruthAuditTest.kt': [
-                  (r'pm\\.setUserConsent\\(("[^"]+"),\\s*(true|false)\\)', r'pm.setUserConsent(ApplicationProvider.getApplicationContext(), \\1, \\2)'),
-                  (r'pm\\.hasUserConsent\\(("[^"]+")\\)', r'pm.hasUserConsent(ApplicationProvider.getApplicationContext(), \\1)'),
+                  (r'pm\.setUserConsent\(("[^"]+"),\s*(true|false)\)', r'pm.setUserConsent(ApplicationProvider.getApplicationContext(), \1, \2)'),
+                  (r'pm\.hasUserConsent\(("[^"]+")\)', r'pm.hasUserConsent(ApplicationProvider.getApplicationContext(), \1)'),
               ],
               'app/src/test/java/com/example/data/agent/runtime/Stage6ObservationVerificationTest.kt': [
-                  (r'PermissionManager\\.setUserConsent\\(("[^"]+"),\\s*(true|false)\\)', r'PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), \\1, \\2)'),
+                  (r'PermissionManager\.setUserConsent\(("[^"]+"),\s*(true|false)\)', r'PermissionManager.setUserConsent(ApplicationProvider.getApplicationContext(), \1, \2)'),
               ],
           }
           for name, rules in replacements.items():
