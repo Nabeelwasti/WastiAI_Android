@@ -7,19 +7,11 @@ import android.util.Log
 import com.example.data.di.WastiServiceLocator
 import com.example.data.proactive.WastiProactiveAutonomousEngine
 import com.example.data.worker.ProactiveReconciliationWorker
-import com.example.service.WastiForegroundExecutionService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-/**
- * Boot recovery entry point for Wasti AI OS.
- *
- * Boot receivers must not blindly start a foreground service. Android imposes background-start
- * and foreground-service-type restrictions, especially on recent releases. Durable work is
- * scheduled through WorkManager; reconciliation runs under goAsync() so the receiver lifecycle
- * remains valid until the recovery coroutine finishes.
- */
+/** Boot recovery entry point. Durable recovery uses WorkManager; receiver work uses goAsync(). */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED || context == null) return
@@ -29,10 +21,10 @@ class BootReceiver : BroadcastReceiver() {
         WastiServiceLocator.init(appContext)
 
         val scheduled = ProactiveReconciliationWorker.schedulePeriodicReconciliation(appContext)
-        if (!scheduled) {
-            Log.w("BootReceiver", "WorkManager reconciliation was not scheduled; recovery remains deferred.")
-        }
+        if (!scheduled) Log.w("BootReceiver", "WorkManager reconciliation was not scheduled; recovery remains deferred.")
 
+        // Robolectric's host BroadcastReceiver may not provide a real PendingResult.
+        // Production Android does; null-safe cleanup keeps the lifecycle contract truthful in both.
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -42,7 +34,7 @@ class BootReceiver : BroadcastReceiver() {
             } catch (e: Exception) {
                 Log.e("BootReceiver", "Boot task recovery failed: ${e.message}", e)
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }

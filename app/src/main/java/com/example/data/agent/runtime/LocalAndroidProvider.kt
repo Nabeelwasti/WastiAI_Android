@@ -8,168 +8,100 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Stage 3 Task 2: Local Android Execution Provider.
- * Uses ProcessBuilder for explicitly authorized requests inside the Wasti workspace.
- * This is software containment, not a kernel/OS sandbox; callers must not label it as one.
+ * Wasti's local process provider. This is workspace-constrained software containment,
+ * not an OS/kernel sandbox. Canonical system runtime paths are explicitly allowlisted.
  */
 class LocalAndroidProvider(
     private val workspaceManager: WorkspaceManager,
     private val allowedExecutables: Set<String> = DEFAULT_ALLOWED_EXECUTABLES,
     private val maxOutputSizeBytes: Int = DEFAULT_MAX_OUTPUT_SIZE_BYTES
 ) : CodeExecutionProvider {
-
     companion object {
-        val DEFAULT_ALLOWED_EXECUTABLES = setOf(
-            "sh", "dalvikvm", "kotlinc", "javac", "java", "python3", "echo", "cat", "ls", "pwd", "true"
+        val DEFAULT_ALLOWED_EXECUTABLES = setOf("sh", "dalvikvm", "kotlinc", "javac", "java", "python3", "echo", "cat", "ls", "pwd", "true")
+        const val DEFAULT_MAX_OUTPUT_SIZE_BYTES = 1048576
+        private val TRUSTED_EXECUTABLE_PATHS = setOf(
+            "/system/bin/sh", "/bin/sh", "/usr/bin/sh",
+            "/system/bin/dalvikvm", "/system/bin/python3", "/system/bin/python",
+            "/data/local/tmp/python3", "/system/bin/node", "/data/local/tmp/node",
+            "/system/bin/git", "/usr/bin/git", "/bin/echo", "/usr/bin/echo",
+            "/bin/cat", "/usr/bin/cat", "/bin/ls", "/usr/bin/ls", "/bin/pwd", "/usr/bin/pwd",
+            "/bin/true", "/usr/bin/true"
         )
-        const val DEFAULT_MAX_OUTPUT_SIZE_BYTES = 1048576 // 1 MB
-
-        // Environment variables that can alter interpreter/class-loader behavior or
-        // redirect executable resolution are never accepted from an execution request.
         private val DISALLOWED_ENV_KEYS = setOf(
             "PATH", "CLASSPATH", "JAVA_HOME", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS",
             "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "NODE_OPTIONS", "NODE_PATH", "RUBYLIB", "PERL5LIB",
-            "BASH_ENV", "ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "DYLD_INSERT_LIBRARIES",
-            "DYLD_LIBRARY_PATH"
+            "BASH_ENV", "ENV", "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH"
         )
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        val requested = request.executable.trim()
+        if (requested.isBlank()) return@withContext invalidRequest("INVALID_REQUEST: UNSUPPORTED_EXECUTABLE: executable is empty")
 
-        // Executable names are capability identifiers. Do not allow a caller to supply
-        // an arbitrary path whose basename merely happens to match an approved name.
-        val requestedExecutable = request.executable.trim()
-        val execName = File(requestedExecutable).name.lowercase()
-        if (requestedExecutable.isBlank() || requestedExecutable.contains('/') || requestedExecutable.contains('\\') ||
-            !allowedExecutables.contains(execName) && !allowedExecutables.contains("*")) {
-            return@withContext ExecutionResult(
-                stdout = "",
-                stderr = "SECURITY_BLOCKED: Executable must be an approved command name; arbitrary executable paths are not permitted.",
-                exitCode = -1,
-                executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(false, "SECURITY_BLOCKED: Executable not allowed"),
-                errorType = ExecutionErrorType.SECURITY
-            )
+        val isPath = requested.contains('/') || requested.contains('\\')
+        val execName = File(requested).name.lowercase()
+        val approvedName = allowedExecutables.contains(execName) || allowedExecutables.contains("*")
+        val approvedPath = TRUSTED_EXECUTABLE_PATHS.contains(requested)
+        if ((!isPath && !approvedName) || (isPath && !approvedPath)) {
+            return@withContext invalidRequest("INVALID_REQUEST: UNSUPPORTED_EXECUTABLE: '$requested' is not an approved executable")
         }
 
-        // Workspace containment is canonicalized by WorkspaceManager.
-        val workDirResult = workspaceManager.resolvePathSafely(request.workingDirectory)
-        if (workDirResult.isFailure) {
-            return@withContext ExecutionResult(
-                stdout = "",
-                stderr = "SECURITY_BLOCKED: Working directory '${request.workingDirectory}' escapes workspace boundary.",
-                exitCode = -1,
-                executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(false, "SECURITY_BLOCKED: Directory outside workspace"),
-                errorType = ExecutionErrorType.SECURITY
-            )
-        }
-        val targetDirectory = workDirResult.getOrThrow()
+        val workDir = workspaceManager.resolvePathSafely(request.workingDirectory)
+            .getOrElse { return@withContext securityBlocked("SECURITY_BLOCKED: Working directory escapes workspace boundary") }
 
-        val command = mutableListOf<String>().apply {
-            add(requestedExecutable)
-            addAll(request.arguments)
-        }
-
+        val command = mutableListOf(requested).apply { addAll(request.arguments) }
         val processBuilder = ProcessBuilder(command).apply {
-            directory(targetDirectory)
-            // Preserve the trusted process environment and reject request-controlled
-            // variables that can redirect interpreters, class loaders, or command lookup.
+            directory(workDir)
             val env = environment()
-            request.environment.forEach { (key, value) ->
-                if (!DISALLOWED_ENV_KEYS.contains(key.uppercase())) env[key] = value
-            }
+            request.environment.forEach { (key, value) -> if (!DISALLOWED_ENV_KEYS.contains(key.uppercase())) env[key] = value }
         }
 
         var process: Process? = null
         try {
             process = processBuilder.start()
             try { process.outputStream.close() } catch (_: Exception) {}
-
-            var stdoutStr = ""
-            var stderrStr = ""
-
-            val stdoutThread = Thread { stdoutStr = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes) }
-            val stderrThread = Thread { stderrStr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes) }
-            stdoutThread.start()
-            stderrThread.start()
-
-            val completedInTime = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS)
-            } else {
-                val checkInterval = 50L
-                var elapsed = 0L
-                var finished = false
-                while (elapsed < request.timeoutMs) {
-                    try {
-                        process.exitValue()
-                        finished = true
-                        break
-                    } catch (_: IllegalThreadStateException) {
-                        Thread.sleep(checkInterval)
-                        elapsed += checkInterval
-                    }
+            var stdout = ""
+            var stderr = ""
+            val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process.inputStream, maxOutputSizeBytes) }
+            val stderrThread = Thread { stderr = readStreamWithSizeLimit(process.errorStream, maxOutputSizeBytes) }
+            stdoutThread.start(); stderrThread.start()
+            val completed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) process.waitFor(request.timeoutMs, TimeUnit.MILLISECONDS) else {
+                val deadline = System.currentTimeMillis() + request.timeoutMs
+                var done = false
+                while (System.currentTimeMillis() < deadline) {
+                    try { process.exitValue(); done = true; break } catch (_: IllegalThreadStateException) { Thread.sleep(50) }
                 }
-                finished
+                done
             }
-
-            if (!completedInTime) {
+            if (!completed) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) process.destroyForcibly() else process.destroy()
-                stdoutThread.join(500)
-                stderrThread.join(500)
-                return@withContext ExecutionResult(
-                    stdout = stdoutStr,
-                    stderr = "$stderrStr\nTIMEOUT: Process exceeded maximum execution time of ${request.timeoutMs}ms and was cancelled.",
-                    exitCode = -1,
-                    executionTimeMs = System.currentTimeMillis() - startTime,
-                    status = ExecutionStatus(false, "TIMEOUT: Execution timed out"),
-                    errorType = ExecutionErrorType.TIMEOUT
-                )
+                stdoutThread.join(500); stderrThread.join(500)
+                return@withContext ExecutionResult(stdout, "$stderr\nTIMEOUT: Process exceeded maximum execution time of ${request.timeoutMs}ms and was cancelled.", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "TIMEOUT: Execution timed out"), ExecutionErrorType.TIMEOUT)
             }
-
-            stdoutThread.join(1000)
-            stderrThread.join(1000)
+            stdoutThread.join(1000); stderrThread.join(1000)
             val exitCode = process.exitValue()
-            val executionDuration = System.currentTimeMillis() - startTime
-            val isSuccess = exitCode == 0
-
-            ExecutionResult(
-                stdout = stdoutStr,
-                stderr = stderrStr,
-                exitCode = exitCode,
-                executionTimeMs = executionDuration,
-                status = ExecutionStatus(isSuccess, if (isSuccess) "Process completed successfully" else "Process failed with exit code $exitCode"),
-                errorType = if (isSuccess) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME
-            )
+            val ok = exitCode == 0
+            ExecutionResult(stdout, stderr, exitCode, System.currentTimeMillis() - startTime, ExecutionStatus(ok, if (ok) "Process completed successfully" else "Process failed with exit code $exitCode"), if (ok) ExecutionErrorType.NONE else ExecutionErrorType.RUNTIME)
         } catch (e: Exception) {
             process?.let { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() }
-            ExecutionResult(
-                stdout = "",
-                stderr = "EXECUTION_ERROR: ${e.message}",
-                exitCode = -1,
-                executionTimeMs = System.currentTimeMillis() - startTime,
-                status = ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"),
-                errorType = ExecutionErrorType.RUNTIME
-            )
+            ExecutionResult("", "EXECUTION_ERROR: ${e.message}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"), ExecutionErrorType.RUNTIME)
         }
     }
 
+    private fun invalidRequest(message: String) = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.INVALID_REQUEST)
+    private fun securityBlocked(message: String) = ExecutionResult("", message, -1, 0L, ExecutionStatus(false, message), ExecutionErrorType.SECURITY)
+
     private fun readStreamWithSizeLimit(inputStream: InputStream, maxBytes: Int): String {
-        val buffer = ByteArray(4096)
-        val sb = StringBuilder()
-        var totalRead = 0
-        var bytesRead: Int
-        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-            if (totalRead + bytesRead > maxBytes) {
-                val allowed = maxBytes - totalRead
+        val buffer = ByteArray(4096); val sb = StringBuilder(); var total = 0
+        while (true) {
+            val n = inputStream.read(buffer); if (n == -1) break
+            if (total + n > maxBytes) {
+                val allowed = maxBytes - total
                 if (allowed > 0) sb.append(String(buffer, 0, allowed, Charsets.UTF_8))
-                sb.append("\n[OUTPUT TRUNCATED: Exceeded $maxBytes bytes limit]")
-                break
-            } else {
-                sb.append(String(buffer, 0, bytesRead, Charsets.UTF_8))
-                totalRead += bytesRead
+                sb.append("\n[OUTPUT TRUNCATED: Exceeded $maxBytes bytes limit]"); break
             }
+            sb.append(String(buffer, 0, n, Charsets.UTF_8)); total += n
         }
         return sb.toString()
     }
