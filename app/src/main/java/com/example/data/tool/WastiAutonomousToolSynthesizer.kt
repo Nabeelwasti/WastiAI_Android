@@ -172,7 +172,8 @@ class WastiAutonomousToolSynthesizer(
 
             ToolRegistry.registerTool(dynamicTool)
 
-            // Register into Capability Reality Registry
+            // Register into Capability Reality Registry.
+            // LIVE_CONNECTED is the canonical live/verified state in the current registry.
             UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
                 CapabilityReality(
                     capabilityId = toolId,
@@ -186,7 +187,7 @@ class WastiAutonomousToolSynthesizer(
                     limitations = emptyList(),
                     lastVerifiedAt = System.currentTimeMillis(),
                     verificationMethod = "SYNTHESIS_EXECUTION_TEST",
-                    realityState = CapabilityRealityState.LIVE_AND_VERIFIED
+                    realityState = CapabilityRealityState.LIVE_CONNECTED
                 )
             )
 
@@ -201,7 +202,6 @@ class WastiAutonomousToolSynthesizer(
                 )
             )
 
-            // Proactive IPC & Event Bus Dispatch
             WastiEventBus.tryEmit(
                 WastiEvent.ToolSynthesized(
                     toolId = toolId,
