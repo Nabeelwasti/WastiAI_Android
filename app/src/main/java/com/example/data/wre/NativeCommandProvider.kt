@@ -282,13 +282,24 @@ class NativeCommandProvider(
         if (installedPkg != null) {
             val scriptFile = findScriptFile(installedPkg.entryPoint, workingDir)
             if (scriptFile != null && scriptFile.exists()) {
+                workspaceManager.recordToolAccess(cmd, scriptFile)
                 val scriptContent = scriptFile.readText()
                 return executeScriptContent(scriptContent, installedPkg.runtime, args, request, startTime, stdin)
             }
         } else {
             val binScript = findBinScript(cmd, workingDir)
             if (binScript != null && binScript.exists()) {
-                return executeScriptContent(binScript.readText(), "sh", args, request, startTime, stdin)
+                workspaceManager.recordToolAccess(cmd, binScript)
+                val runtime = when {
+                    binScript.name.endsWith(".py", ignoreCase = true) -> "python"
+                    binScript.name.endsWith(".js", ignoreCase = true) -> "node"
+                    else -> "sh"
+                }
+                return if (runtime == "sh") {
+                    executeScriptContent(binScript.readText(), runtime, args, request, startTime, stdin)
+                } else {
+                    executeNativeBinary(binScript, cmd, args, workingDir, request, stdin)
+                }
             }
         }
 

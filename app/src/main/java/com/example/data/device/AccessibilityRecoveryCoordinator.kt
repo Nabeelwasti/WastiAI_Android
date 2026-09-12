@@ -55,6 +55,13 @@ object AccessibilityRecoveryCoordinator {
         if (!isAccessibilityEnabled(app)) {
             showRecoveryNotification(app, objective, target)
             researchAlternativesInBackground(app, objective, target)
+            com.example.data.agent.runtime.AgentEventBus.getInstance().tryEmit(
+                com.example.data.agent.runtime.AgentEvent.CapabilityUnavailable(
+                    taskId = com.example.data.agent.runtime.TaskId("recovery-$target"),
+                    capability = "accessibility",
+                    reason = "Accessibility service unavailable for '$objective'. Recovery initiated across alternative routes."
+                )
+            )
         }
         return RecoveryPlan(objective, target, isAccessibilityEnabled(app), routes)
     }

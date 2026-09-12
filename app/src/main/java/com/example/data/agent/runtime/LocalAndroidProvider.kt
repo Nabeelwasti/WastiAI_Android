@@ -42,9 +42,17 @@ class LocalAndroidProvider(
         val execName = File(requested).name.lowercase()
         val approvedName = allowedExecutables.contains(execName) || allowedExecutables.contains("*")
         val approvedPath = TRUSTED_EXECUTABLE_PATHS.contains(requested)
+        val isSystemBinary = isPath && (
+            requested.startsWith("/system/bin/") ||
+            requested.startsWith("/system/xbin/") ||
+            requested.startsWith("/vendor/bin/") ||
+            requested.startsWith("/apex/") ||
+            requested.startsWith("/bin/") ||
+            requested.startsWith("/usr/bin/")
+        ) && approvedName
         val isWorkspaceExecutable = isPath && workspaceManager.resolvePathSafely(requested).isSuccess
         val isTermuxTrusted = isPath && requested.startsWith("/data/data/com.termux/files/usr/bin/")
-        if ((!isPath && !approvedName) || (isPath && !approvedPath && !isWorkspaceExecutable && !isTermuxTrusted)) {
+        if ((!isPath && !approvedName) || (isPath && !approvedPath && !isSystemBinary && !isWorkspaceExecutable && !isTermuxTrusted)) {
             return@withContext invalidRequest("INVALID_REQUEST: UNSUPPORTED_EXECUTABLE: '$requested' is not an approved executable")
         }
 
@@ -60,19 +68,20 @@ class LocalAndroidProvider(
 
         var process: Process? = null
         try {
-            process = processBuilder.start()
-            try { process.outputStream.close() } catch (_: Exception) {}
+            val proc = processBuilder.start()
+            process = proc
+            try { proc.outputStream.close() } catch (_: Exception) {}
             var stdout = ""
             var stderr = ""
-            val stdoutThread = Thread { stdout = readStreamWithSizeLimit(process!!.inputStream, maxOutputSizeBytes) }
-            val stderrThread = Thread { stderr = readStreamWithSizeLimit(process!!.errorStream, maxOutputSizeBytes) }
+            val stdoutThread = Thread { stdout = readStreamWithSizeLimit(proc.inputStream, maxOutputSizeBytes) }
+            val stderrThread = Thread { stderr = readStreamWithSizeLimit(proc.errorStream, maxOutputSizeBytes) }
             stdoutThread.start()
             stderrThread.start()
 
             // request.timeoutMs remains compatibility telemetry only. A long task continues
             // until real completion, explicit cancellation, emergency stop, or runtime failure.
             // waitFor() gives Kotlin a single unambiguous ExecutionResult return path.
-            val exitCode = process.waitFor()
+            val exitCode = proc.waitFor()
             stdoutThread.join()
             stderrThread.join()
             val ok = exitCode == 0
