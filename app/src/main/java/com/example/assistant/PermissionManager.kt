@@ -106,6 +106,7 @@ object PermissionManager {
         "SCHEDULE_EXACT_ALARM" to canScheduleExactAlarms(context),
         "READ_CALENDAR" to isPermissionGrantedByOs(context, Manifest.permission.READ_CALENDAR),
         "WRITE_CALENDAR" to isPermissionGrantedByOs(context, Manifest.permission.WRITE_CALENDAR),
+        "CALENDAR" to hasCalendarPermissions(context),
         "BLUETOOTH" to hasBluetoothPermissions(context),
         "BLUETOOTH_CONNECT" to isPermissionGrantedByOs(context, Manifest.permission.BLUETOOTH_CONNECT),
         "BLUETOOTH_SCAN" to isPermissionGrantedByOs(context, Manifest.permission.BLUETOOTH_SCAN),
@@ -165,14 +166,17 @@ object PermissionManager {
         return legacyTestConsent[permissionOrCapability] ?: defaultConsentFor(permissionOrCapability)
     }
 
-    fun clearUserConsents(context: Context) {
-        prefs(context).edit().clear().apply()
-        legacyTestConsent.clear()
-    }
+    private fun hasStoredUserConsent(context: Context, permissionOrCapability: String): Boolean =
+        prefs(context).contains(CONSENT_PREFIX + permissionOrCapability)
 
     @Deprecated("Use clearUserConsents(context)")
     fun clearUserConsents() {
         applicationContext?.let { clearUserConsents(it) } ?: legacyTestConsent.clear()
+    }
+
+    fun clearUserConsents(context: Context) {
+        prefs(context).edit().clear().apply()
+        legacyTestConsent.clear()
     }
 
     private fun defaultConsentFor(permissionOrCapability: String): Boolean = permissionOrCapability in setOf(
@@ -186,16 +190,21 @@ object PermissionManager {
     fun isDeclaredInManifest(context: Context, permission: String): Boolean {
         return try {
             val pm = context.packageManager
-            val info = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                pm.getPackageInfo(
-                    context.packageName,
-                    PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
-                )
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                try {
+                    pm.getPackageInfo(
+                        context.packageName,
+                        PackageManager.PackageInfoFlags.of(PackageManager.GET_PERMISSIONS.toLong())
+                    )
+                } catch (_: Throwable) {
+                    @Suppress("DEPRECATION")
+                    pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
+                }
             } else {
                 @Suppress("DEPRECATION")
                 pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
             }
-            info.requestedPermissions?.contains(permission) == true
+            packageInfo.requestedPermissions?.contains(permission) == true
         } catch (_: Throwable) {
             false
         }
@@ -219,9 +228,11 @@ object PermissionManager {
         val declared = isDeclaredInManifest(context, permission)
         val osGranted = isPermissionGrantedByOs(context, permission)
         val consentGranted = hasUserConsent(context, permission)
+        val hasExplicitPolicyDecision = hasStoredUserConsent(context, permission)
 
         val status = when {
             !declared -> PermissionTruthStatus.NOT_DECLARED
+            !osGranted && !hasExplicitPolicyDecision -> PermissionTruthStatus.DECLARED_ONLY
             !osGranted -> PermissionTruthStatus.DENIED_BY_OS
             !consentGranted -> PermissionTruthStatus.DENIED_BY_USER_POLICY
             else -> PermissionTruthStatus.FULLY_AUTHORIZED
@@ -230,7 +241,7 @@ object PermissionManager {
         val canExecute = declared && osGranted && consentGranted
         val details = when (status) {
             PermissionTruthStatus.NOT_DECLARED -> "Permission [$permission] is NOT declared in AndroidManifest.xml"
-            PermissionTruthStatus.DECLARED_ONLY -> "Permission [$permission] is declared but not yet authorized"
+            PermissionTruthStatus.DECLARED_ONLY -> "Permission [$permission] is declared but not yet authorized by Android OS or Wasti user policy"
             PermissionTruthStatus.DENIED_BY_OS -> "Permission [$permission] is declared but NOT currently granted by Android OS"
             PermissionTruthStatus.DENIED_BY_USER_POLICY -> "Permission [$permission] is OS-granted but blocked by Wasti user policy"
             PermissionTruthStatus.FULLY_AUTHORIZED -> "Permission [$permission] is declared, OS-granted, and explicitly authorized by Wasti user policy"
