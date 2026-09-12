@@ -1,4 +1,5 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
+import org.gradle.api.tasks.testing.Test
 import java.time.Duration
 import java.util.Properties
 
@@ -151,15 +152,15 @@ android {
     unitTests {
       isIncludeAndroidResources = false
       isReturnDefaultValues = true
-      all {
-        it.maxHeapSize = "2g"
-        it.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
-        it.systemProperty("ENVIRONMENT", "test")
-        it.systemProperty("WASTI_TEST_MODE", "true")
-        it.systemProperty("WASTI_ENV", "test")
-        it.environment("WASTI_ENV", "test")
-        it.environment("ENVIRONMENT", "test")
-        it.testLogging {
+      all { test: Test ->
+        test.maxHeapSize = "2g"
+        test.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
+        test.systemProperty("ENVIRONMENT", "test")
+        test.systemProperty("WASTI_TEST_MODE", "true")
+        test.systemProperty("WASTI_ENV", "test")
+        test.environment("WASTI_ENV" to "test")
+        test.environment("ENVIRONMENT" to "test")
+        test.testLogging {
           events("passed", "skipped", "failed", "standardError")
           showStandardStreams = true
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
