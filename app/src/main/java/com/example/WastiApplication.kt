@@ -7,6 +7,7 @@ import androidx.work.Configuration
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.assistant.PermissionManager
 import com.example.assistant.sync.SyncWorker
 import com.example.data.core.AppStartupManager
 import com.example.data.core.AppStartupState
@@ -41,10 +42,10 @@ class WastiApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        PermissionManager.initialize(this)
         com.example.data.di.WastiServiceLocator.init(this)
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
-        // [P0-34] Register Emergency Stop cancellation hooks for WorkManager & Foreground Services
         try {
             val stopController = com.example.data.di.WastiServiceLocator.emergencyStopController
             stopController.registerWorkManagerCancellation { reason ->
@@ -73,7 +74,6 @@ class WastiApplication : Application(), Configuration.Provider {
             Log.w("WastiApplication", "Firebase auto-initialization skipped/deferred: ${e.message}")
         }
 
-        // Install Global Uncaught Exception Handler for Crash Telemetry & Debugging
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e("WastiOS_CrashTelemetry", "FATAL UNCAUGHT EXCEPTION in thread [${thread.name}]", throwable)
@@ -89,7 +89,6 @@ class WastiApplication : Application(), Configuration.Provider {
             var currentStage = StartupStage.CREDENTIALS
 
             try {
-                // Critical Phase 1: Security, Credentials & Database Foundation
                 currentStage = StartupStage.CREDENTIALS
                 AppStartupManager.updateStageProgress(currentStage, "Initializing Credentials & Security...", 0.20f)
                 val t1 = System.currentTimeMillis()
@@ -102,7 +101,6 @@ class WastiApplication : Application(), Configuration.Provider {
                 }
                 AppStartupManager.recordStageCompletion(currentStage, System.currentTimeMillis() - t1)
 
-                // Critical Phase 2: Room DB Warmup
                 currentStage = StartupStage.DATABASE
                 AppStartupManager.updateStageProgress(currentStage, "Checking Database & Persistence...", 0.35f)
                 val tDb = System.currentTimeMillis()
@@ -117,7 +115,6 @@ class WastiApplication : Application(), Configuration.Provider {
                 }
                 AppStartupManager.recordStageCompletion(currentStage, System.currentTimeMillis() - tDb)
 
-                // Parallel Phase: Concurrently warm up independent subsystems (AI Engine, Memory, Voice, Operations, Workers)
                 AppStartupManager.updateStageProgress(StartupStage.AI_ENGINE, "Warming subsystems concurrently...", 0.60f)
 
                 kotlinx.coroutines.coroutineScope {
@@ -179,21 +176,13 @@ class WastiApplication : Application(), Configuration.Provider {
                             val wm = WastiWorkManagerHelper.getWorkManager(this@WastiApplication)
                             if (wm != null) {
                                 val syncRequest = PeriodicWorkRequestBuilder<SyncWorker>(4, TimeUnit.HOURS).build()
-                                wm.enqueueUniquePeriodicWork(
-                                    "wasti_sync_worker",
-                                    ExistingPeriodicWorkPolicy.KEEP,
-                                    syncRequest
-                                )
+                                wm.enqueueUniquePeriodicWork("wasti_sync_worker", ExistingPeriodicWorkPolicy.KEEP, syncRequest)
                                 com.example.data.worker.LeadSyncWorker.schedulePeriodicSync(this@WastiApplication)
                                 com.example.data.worker.SelfEnhancementWorker.schedulePeriodicSelfEnhancement(this@WastiApplication)
                                 com.example.data.worker.ProactiveReconciliationWorker.schedulePeriodicReconciliation(this@WastiApplication)
                                 com.example.data.worker.MemoryDreamingWorker.schedulePeriodicDreaming(this@WastiApplication)
                                 val cachePruneReq = PeriodicWorkRequestBuilder<com.example.data.wre.WastiCachePruningWorker>(24, TimeUnit.HOURS).build()
-                                wm.enqueueUniquePeriodicWork(
-                                    com.example.data.wre.WastiCachePruningWorker.WORK_NAME,
-                                    ExistingPeriodicWorkPolicy.KEEP,
-                                    cachePruneReq
-                                )
+                                wm.enqueueUniquePeriodicWork(com.example.data.wre.WastiCachePruningWorker.WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, cachePruneReq)
                             } else {
                                 AppStartupManager.recordWarning(StartupStage.SYNC_WORKER, "WorkManager unavailable on host environment")
                             }
@@ -214,24 +203,18 @@ class WastiApplication : Application(), Configuration.Provider {
                         }
                     }
 
-                    // Await all parallel warmup jobs
                     kotlinx.coroutines.awaitAll(aiJob, opsJob, voiceJob, memoryJob, workerJob, fabricMeshJob)
                 }
 
-                // Stage 8: Complete
                 currentStage = StartupStage.COMPLETE
                 AppStartupManager.updateStageProgress(currentStage, "Wasti AI OS Core Ready", 1.0f)
-                delay(100) // Smooth transition feel
+                delay(100)
                 AppStartupManager.setReady()
                 when (val finalState = AppStartupManager.startupState.value) {
-                    is AppStartupState.Ready ->
-                        Log.i("WastiApplication", "All core subsystems initialized with full verification.")
-                    is AppStartupState.CoreReadyDegraded ->
-                        Log.w("WastiApplication", "Core ready in degraded mode (Degraded: ${finalState.degradedSubsystems.joinToString { it.name }}).")
-                    is AppStartupState.FatalError ->
-                        Log.e("WastiApplication", "Startup blocked due to critical subsystem failure: ${finalState.message}")
-                    else ->
-                        Log.d("WastiApplication", "Startup completed with state: ${finalState::class.simpleName}")
+                    is AppStartupState.Ready -> Log.i("WastiApplication", "All core subsystems initialized with full verification.")
+                    is AppStartupState.CoreReadyDegraded -> Log.w("WastiApplication", "Core ready in degraded mode (Degraded: ${finalState.degradedSubsystems.joinToString { it.name }}).")
+                    is AppStartupState.FatalError -> Log.e("WastiApplication", "Startup blocked due to critical subsystem failure: ${finalState.message}")
+                    else -> Log.d("WastiApplication", "Startup completed with state: ${finalState::class.simpleName}")
                 }
             } catch (e: Throwable) {
                 Log.e("WastiApplication", "Error during startup in stage [${currentStage.name}]", e)
@@ -245,5 +228,3 @@ class WastiApplication : Application(), Configuration.Provider {
         }
     }
 }
-
-
