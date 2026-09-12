@@ -16,12 +16,11 @@ plugins {
 // - User credentials are stored in CredentialRegistry's encrypted vault.
 // - Server-only credentials stay on the controlled backend/execution boundary.
 // - Only explicitly public configuration is allowed in BuildConfig.
-val isTestTaskExecution = gradle.startParameter.taskNames.any { 
-  it.contains("test", ignoreCase = true) || it.contains("check", ignoreCase = true) 
+val isTestTaskExecution = gradle.startParameter.taskNames.any {
+  it.contains("test", ignoreCase = true) || it.contains("check", ignoreCase = true)
 }
 
 fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): String {
-  // In test execution, enforce hermetic, secure fallback values to isolate tests from remote APIs
   if (isTestTaskExecution) {
     return when (key) {
       "PUBLIC_API_BASE_URL" -> "https://mock.wasti.internal"
@@ -61,8 +60,6 @@ val wastiPublicConfig = mapOf(
   "PUBLIC_API_BASE_URL" to resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai"),
   "PUBLIC_GOOGLE_WEB_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_WEB_CLIENT_ID", "wasti-mock-web-client-id.apps.googleusercontent.com"),
   "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_ANDROID_CLIENT_ID", "wasti-mock-android-client-id.apps.googleusercontent.com"),
-  // A backend URL is an endpoint, not a credential. It is safe to ship so the
-  // installed Android process can discover the configured Wasti execution fabric.
   "WASTI_BACKEND_URL" to resolvePublicConfigWithFallback("WASTI_BACKEND_URL", resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai")),
   "BUILD_ENVIRONMENT" to activeEnvironment
 )
@@ -81,11 +78,8 @@ android {
     versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
     versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
     multiDexEnabled = true
-
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-    // Public configuration only. Never add API keys, OAuth secrets, PATs,
-    // webhook secrets, backend auth tokens, or other privileged credentials here.
     wastiPublicConfig.forEach { (key, value) ->
       buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
@@ -125,9 +119,7 @@ android {
       isCrunchPngs = false
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      if (releaseSigningReady) {
-        signingConfig = signingConfigs.getByName("release")
-      }
+      if (releaseSigningReady) signingConfig = signingConfigs.getByName("release")
     }
     debug {
       val debugKs = file("${rootDir}/debug.keystore")
@@ -136,14 +128,17 @@ android {
       }
     }
   }
+
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
   }
+
   buildFeatures {
     compose = true
     buildConfig = true
   }
+
   lint {
     abortOnError = false
     checkReleaseBuilds = true
@@ -157,15 +152,22 @@ android {
       isIncludeAndroidResources = false
       isReturnDefaultValues = true
       all {
-        it.jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
-        it.systemProperty("ENVIRONMENT", "test")
-        it.systemProperty("WASTI_TEST_MODE", "true")
-        it.systemProperty("WASTI_ENV", "test")
-        it.environment("WASTI_ENV", "test")
-        it.environment("ENVIRONMENT", "test")
-        it.testLogging {
-          events("passed", "skipped", "failed", "standardError")
-          showStandardStreams = true
+        // Keep execution deterministic: the suite contains tests that bind fixed local ports
+        // and touch shared runtime resources, so do not enable unsafe fork-level parallelism.
+        maxHeapSize = "2g"
+        jvmArgs("-XX:+UseG1GC", "-Drobolectric.logging=stdout")
+        systemProperty("ENVIRONMENT", "test")
+        systemProperty("WASTI_TEST_MODE", "true")
+        systemProperty("WASTI_ENV", "test")
+        environment("WASTI_ENV", "test")
+        environment("ENVIRONMENT", "test")
+
+        // CI must retain truthful failure reporting without spending the test budget printing
+        // every successful assertion. Full diagnostics remain available from Gradle XML/HTML
+        // reports and are emitted when a test actually fails.
+        testLogging {
+          events("failed", "skipped")
+          showStandardStreams = false
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
           showExceptions = true
           showCauses = true
@@ -186,14 +188,9 @@ android {
 }
 
 java {
-  toolchain {
-    languageVersion.set(JavaLanguageVersion.of(21))
-  }
+  toolchain { languageVersion.set(JavaLanguageVersion.of(21)) }
 }
 
-// Keep the Secrets Gradle Plugin available for non-secret/public integration
-// metadata, but do not allow repository .env values to become APK resources.
-// CredentialRegistry is the authoritative encrypted vault for user credentials.
 secrets {
   propertiesFileName = ".env"
   defaultPropertiesFileName = ".env.example"
@@ -202,17 +199,10 @@ secrets {
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
-// Some unused dependencies are commented out below instead of being removed.
-// This makes it easy to add them back in the future if needed.
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
-  // implementation(libs.accompanist.permissions)
   implementation(libs.androidx.activity.compose)
-  // implementation(libs.androidx.camera.camera2)
-  // implementation(libs.androidx.camera.core)
-  // implementation(libs.androidx.camera.lifecycle)
-  // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
   implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
@@ -222,11 +212,9 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.security.crypto)
   implementation(libs.androidx.biometric)
-  // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.lifecycle.viewmodel.compose)
-  // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
   implementation(libs.coil.compose)
@@ -234,8 +222,6 @@ dependencies {
   implementation(libs.firebase.ai)
   implementation(libs.firebase.analytics)
   implementation(libs.firebase.firestore)
-
-  // Credential Manager & Auth dependencies for Google Drive & Sign-In:
   implementation(libs.firebase.auth)
   implementation(libs.androidx.credentials)
   implementation(libs.androidx.credentials.play.services)
@@ -246,11 +232,8 @@ dependencies {
   implementation(libs.logging.interceptor)
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
-  // implementation(libs.play.services.location)
   implementation(libs.retrofit)
-  // WorkManager for scheduling background syncs (required for WastiApplication)
   implementation("androidx.work:work-runtime-ktx:2.8.1")
-  // AppCompat for AlertDialog used in PermissionManager
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.alphacephei:vosk-android:0.3.47")
   testImplementation(libs.androidx.compose.ui.test.junit4)
