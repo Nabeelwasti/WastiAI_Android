@@ -32,6 +32,10 @@ import com.example.data.core.ProductionReadinessAssessment
 import com.example.data.core.ProductionReadinessGate
 import com.example.data.core.ProductionReadinessState
 import com.example.data.db.*
+import com.example.data.di.WastiServiceLocator
+import com.example.data.agent.runtime.AgenticState
+import com.example.data.agent.runtime.UniversalCapabilityFoundry
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.ui.components.AnimatedAiOrb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -126,6 +130,11 @@ fun DashboardScreen(
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Primary Live Execution Truth Sentinel Pill
+                    ExecutionTruthSentinelPill(onNavigateTab = onNavigateTab)
 
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
@@ -904,6 +913,107 @@ fun MeshSwarmFederationCard() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun ExecutionTruthSentinelPill(
+    onNavigateTab: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val activeContext by WastiServiceLocator.wastiOSRuntime.activeContext.collectAsState()
+    val synthesizedCaps by UniversalCapabilityFoundry.synthesizedCapabilities.collectAsState()
+    val isEmergencyStopped = WastiEmergencyStopController.isEmergencyStopped
+
+    val (statusLabel, statusDetail, indicatorColor) = when {
+        isEmergencyStopped -> Triple(
+            "FAIL-CLOSED",
+            "Emergency Stop Active • Execution Suspended",
+            Color(0xFFEF4444)
+        )
+        activeContext.agenticState !is AgenticState.Idle -> {
+            val stateName = activeContext.agenticState::class.simpleName?.uppercase() ?: "ACTIVE"
+            val stateMsg = activeContext.agenticState.message
+            val col = when (activeContext.agenticState) {
+                is AgenticState.Planning, is AgenticState.Analyzing -> Color(0xFFF59E0B)
+                is AgenticState.Executing, is AgenticState.Editing -> Color(0xFF3B82F6)
+                is AgenticState.Verification, is AgenticState.Testing -> Color(0xFF06B6D4)
+                is AgenticState.Failed, is AgenticState.SecurityBlocked -> Color(0xFFEF4444)
+                is AgenticState.Completed -> Color(0xFF10B981)
+                else -> Color(0xFF8B5CF6)
+            }
+            Triple(stateName, stateMsg, col)
+        }
+        synthesizedCaps.isNotEmpty() -> Triple(
+            "SYNTHESIZED TOOLS",
+            "${synthesizedCaps.size} Runtime Primitives Verified & Active",
+            Color(0xFF06B6D4)
+        )
+        else -> Triple(
+            "TRUTH SENTINEL",
+            "Idle • Reality Synchronized • Zero Fabrication",
+            Color(0xFF10B981)
+        )
+    }
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, indicatorColor.copy(alpha = 0.4f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable { onNavigateTab("operations") }
+            .testTag("execution_truth_sentinel")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(indicatorColor)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = statusLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = indicatorColor,
+                            letterSpacing = 0.4.sp
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Security,
+                            contentDescription = "Truth Verified",
+                            tint = indicatorColor,
+                            modifier = Modifier.size(11.dp)
+                        )
+                    }
+                    Text(
+                        text = statusDetail,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                }
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                contentDescription = "View Operations Telemetry",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.size(11.dp)
+            )
         }
     }
 }

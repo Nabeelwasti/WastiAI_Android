@@ -206,7 +206,7 @@ class WakeWordVoskService : Service() {
     private fun startAudioRecordBufferLoop() {
         serviceScope.launch {
             if (ContextCompat.checkSelfPermission(this@WakeWordVoskService, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ||
-                !com.example.assistant.PermissionManager.hasUserConsent("RECORD_AUDIO") ||
+                !com.example.assistant.PermissionManager.hasUserConsent(this@WakeWordVoskService, "RECORD_AUDIO") ||
                 !com.example.assistant.PermissionManager.hasRecordAudio(this@WakeWordVoskService)
             ) {
                 Log.e(TAG, "RECORD_AUDIO permission or user consent not granted")

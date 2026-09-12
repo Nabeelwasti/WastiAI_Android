@@ -76,7 +76,13 @@ class WastiAccessibilityService : AccessibilityService() {
                 }
 
                 // [P0-37] Explicit User Consent Guard
-                if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+                val hasConsent = if (context != null) {
+                    PermissionManager.hasUserConsent(context, "ANDROID_CONTROL") || PermissionManager.hasUserConsent(context, "ACCESSIBILITY")
+                } else {
+                    @Suppress("DEPRECATION")
+                    PermissionManager.hasUserConsent("ANDROID_CONTROL") || PermissionManager.hasUserConsent("ACCESSIBILITY")
+                }
+                if (!hasConsent) {
                     Log.w(TAG, "WastiCommandReceiver rejecting action $actionType: User consent not granted for device control")
                     DeviceControlEvidenceTracker.recordAction(actionType, "IPC_COMMAND", false, "BLOCKED_NO_CONSENT")
                     return
@@ -464,7 +470,7 @@ class WastiAccessibilityService : AccessibilityService() {
         }
 
         // [P0-37] Explicit User Consent Guard
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+        if (!PermissionManager.hasUserConsent(this, "ANDROID_CONTROL") && !PermissionManager.hasUserConsent(this, "ACCESSIBILITY")) {
             Log.w(TAG, "clickElement rejected: User consent not granted for device control")
             DeviceControlEvidenceTracker.recordAction("CLICK_ELEMENT", targetTextOrId, false, "BLOCKED_NO_CONSENT")
             return false
@@ -677,7 +683,7 @@ class WastiAccessibilityService : AccessibilityService() {
             DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", false, "ABORTED_EMERGENCY_STOP")
             return false
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+        if (!PermissionManager.hasUserConsent(this, "ANDROID_CONTROL") && !PermissionManager.hasUserConsent(this, "ACCESSIBILITY")) {
             Log.w(TAG, "performSwipe rejected: User consent not granted for device control")
             DeviceControlEvidenceTracker.recordAction("SWIPE", "($startX, $startY)->($endX, $endY)", false, "BLOCKED_NO_CONSENT")
             return false
@@ -722,7 +728,7 @@ class WastiAccessibilityService : AccessibilityService() {
             DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", false, "ABORTED_EMERGENCY_STOP")
             return false
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+        if (!PermissionManager.hasUserConsent(this, "ANDROID_CONTROL") && !PermissionManager.hasUserConsent(this, "ACCESSIBILITY")) {
             Log.w(TAG, "performTapAt rejected: User consent not granted for device control")
             DeviceControlEvidenceTracker.recordAction("TAP_COORD", "($x, $y)", false, "BLOCKED_NO_CONSENT")
             return false
@@ -792,7 +798,7 @@ class WastiAccessibilityService : AccessibilityService() {
             DeviceControlEvidenceTracker.recordAction("TYPE_TEXT", targetElement ?: "FOCUSED", false, "ABORTED_EMERGENCY_STOP")
             return false
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+        if (!PermissionManager.hasUserConsent(this, "ANDROID_CONTROL") && !PermissionManager.hasUserConsent(this, "ACCESSIBILITY")) {
             Log.w(TAG, "typeText rejected: User consent not granted for device control")
             DeviceControlEvidenceTracker.recordAction("TYPE_TEXT", targetElement ?: "FOCUSED", false, "BLOCKED_NO_CONSENT")
             return false

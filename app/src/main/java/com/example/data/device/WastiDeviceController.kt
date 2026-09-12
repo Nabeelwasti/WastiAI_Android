@@ -37,7 +37,7 @@ object WastiDeviceController {
         }
 
         // [P0-37] Explicit User Consent Guard
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+        if (!PermissionManager.hasUserConsent(context, "ANDROID_CONTROL")) {
             DeviceControlEvidenceTracker.recordAction("OPEN_APP", target, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
@@ -171,7 +171,7 @@ object WastiDeviceController {
             DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
             return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+        if (!PermissionManager.hasUserConsent(context, "ANDROID_CONTROL")) {
             DeviceControlEvidenceTracker.recordAction("WHATSAPP_SEND", recipient, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
@@ -196,7 +196,7 @@ object WastiDeviceController {
             DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
             return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+        if (!PermissionManager.hasUserConsent(context, "ANDROID_CONTROL")) {
             DeviceControlEvidenceTracker.recordAction("EMAIL_SEND", recipient, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
@@ -223,7 +223,7 @@ object WastiDeviceController {
             DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, false, "ABORTED_EMERGENCY_STOP")
             return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+        if (!PermissionManager.hasUserConsent(context, "ANDROID_CONTROL")) {
             DeviceControlEvidenceTracker.recordAction("SMS_SEND", recipient, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
@@ -248,7 +248,7 @@ object WastiDeviceController {
             DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, false, "ABORTED_EMERGENCY_STOP")
             return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL")) {
+        if (!PermissionManager.hasUserConsent(context, "ANDROID_CONTROL")) {
             DeviceControlEvidenceTracker.recordAction("SOCIAL_POST", platform, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
@@ -306,12 +306,17 @@ object WastiDeviceController {
             DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, false, "ABORTED_EMERGENCY_STOP")
             return DeviceCommandResult(false, "Action aborted: Emergency stop is active", "ABORTED_EMERGENCY_STOP")
         }
-        if (!PermissionManager.hasUserConsent("ANDROID_CONTROL") && !PermissionManager.hasUserConsent("ACCESSIBILITY")) {
+        val ctx = context ?: com.example.WastiApplication.instance
+        val hasConsent = if (ctx != null) {
+            PermissionManager.hasUserConsent(ctx, "ANDROID_CONTROL") || PermissionManager.hasUserConsent(ctx, "ACCESSIBILITY")
+        } else {
+            @Suppress("DEPRECATION")
+            PermissionManager.hasUserConsent("ANDROID_CONTROL") || PermissionManager.hasUserConsent("ACCESSIBILITY")
+        }
+        if (!hasConsent) {
             DeviceControlEvidenceTracker.recordAction("SIMULATE_TAP", targetElement, false, "BLOCKED_NO_CONSENT")
             return DeviceCommandResult(false, "Action blocked: Explicit user consent required for device control", "BLOCKED_NO_CONSENT")
         }
-
-        val ctx = context ?: com.example.WastiApplication.instance
 
         // Send IPC broadcast intent to WastiCommandReceiver
         val intent = Intent("com.wasti.os.ACTION_EXECUTE_GESTURE").apply {
