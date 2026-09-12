@@ -57,10 +57,6 @@ class WastiAutonomousToolSynthesizer(
         val succeeded: Boolean get() = exitCode == 0
     }
 
-    /**
-     * Synthesizes a tool, probes it against the supplied test parameters, and
-     * registers it only when the real process exits successfully.
-     */
     suspend fun synthesizeAndRegisterTool(
         toolId: String,
         toolName: String,
@@ -97,18 +93,20 @@ class WastiAutonomousToolSynthesizer(
 
                 override suspend fun execute(parameters: Map<String, Any>): String {
                     val probe = executeScript(language, scriptFile, parameters, toolId)
-                    return when {
-                        probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
-                        else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
+                    return if (probe.succeeded) {
+                        probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
+                    } else {
+                        "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
                     }
                 }
             }
 
             // This is an execution probe, not independent reality verification.
             val probe = executeScript(language, scriptFile, testParameters, toolId)
-            val probeOutput = when {
-                probe.succeeded -> probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
-                else -> "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
+            val probeOutput = if (probe.succeeded) {
+                probe.stdout.ifBlank { "Tool '$toolId' executed with code 0." }
+            } else {
+                "Tool execution error (exit ${probe.exitCode}): ${probe.stderr.ifBlank { probe.stdout }}"
             }
 
             if (!probe.succeeded) {
@@ -180,13 +178,16 @@ class WastiAutonomousToolSynthesizer(
         )
 
         val process = Runtime.getRuntime().exec(cmdArray, envList, binDirectory)
-        WastiEventBus.tryEmit(WastiEvent.ExecutionStateChanged(
-            taskId = toolId,
-            state = "RUNNING",
-            details = "Dynamic tool probe started; no fixed execution timeout is applied."
-        ))
-
         return coroutineScope {
+            val task = com.example.data.agent.runtime.TaskId(toolId)
+            AgentEventBus.getInstance().tryEmit(
+                AgentEvent.ExecutionStateChanged(
+                    taskId = task,
+                    state = "RUNNING",
+                    details = "Dynamic tool probe started; no fixed execution timeout is applied."
+                )
+            )
+
             val outDeferred = async(Dispatchers.IO) {
                 process.inputStream.bufferedReader().use { it.readText() }
             }
@@ -200,7 +201,7 @@ class WastiAutonomousToolSynthesizer(
                         val elapsed = System.currentTimeMillis() - startedAt
                         AgentEventBus.getInstance().tryEmit(
                             AgentEvent.ExecutionStateChanged(
-                                taskId = com.example.data.agent.runtime.TaskId(toolId),
+                                taskId = task,
                                 state = "RUNNING",
                                 details = "Dynamic tool still executing; elapsed=${elapsed}ms. Wasti is observing rather than terminating it."
                             )
@@ -216,7 +217,7 @@ class WastiAutonomousToolSynthesizer(
                 val duration = System.currentTimeMillis() - startedAt
                 AgentEventBus.getInstance().tryEmit(
                     AgentEvent.ExecutionCompleted(
-                        taskId = com.example.data.agent.runtime.TaskId(toolId),
+                        taskId = task,
                         exitCode = code
                     )
                 )
