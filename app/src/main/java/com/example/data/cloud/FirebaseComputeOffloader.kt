@@ -139,6 +139,7 @@ object FirebaseComputeOffloader {
         return try {
             val url = java.net.URL("$trimmed/compute/offload")
             val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.instanceFollowRedirects = false
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
             val authToken = WastiRuntimeConfig.backendUserAuthToken(context)
@@ -162,12 +163,25 @@ object FirebaseComputeOffloader {
             val code = conn.responseCode
             if (code in 200..299) {
                 val responseText = conn.inputStream.bufferedReader().use { it.readText() }
-                ComputeTaskOutcome(
-                    taskId = task.taskId,
-                    success = true,
-                    executionTier = ComputeExecutionTier.CLOUD_BACKEND_HTTP,
-                    output = responseText
-                )
+                // Validate that backend returned a valid JSON object matching the compute offload contract
+                val isValidJson = try {
+                    val parsed = JSONObject(responseText)
+                    parsed.optBoolean("success", false) || parsed.has("output") || parsed.has("taskId")
+                } catch (_: Exception) {
+                    false
+                }
+
+                if (isValidJson) {
+                    ComputeTaskOutcome(
+                        taskId = task.taskId,
+                        success = true,
+                        executionTier = ComputeExecutionTier.CLOUD_BACKEND_HTTP,
+                        output = responseText
+                    )
+                } else {
+                    Log.w(TAG, "Backend HTTP compute offload returned non-contract response")
+                    null
+                }
             } else {
                 Log.w(TAG, "Backend HTTP compute offload returned HTTP $code")
                 null

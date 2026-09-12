@@ -113,6 +113,8 @@ object BackendClient {
             }
 
             val healthClient = client.newBuilder()
+                .followRedirects(false)
+                .followSslRedirects(false)
                 .connectTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .readTimeout(timeoutMs, TimeUnit.MILLISECONDS)
                 .build()
@@ -124,10 +126,12 @@ object BackendClient {
                 if (resp.isSuccessful) {
                     try {
                         val json = JSONObject(body)
+                        val statusStr = json.optString("status", "")
+                        val isOk = statusStr.equals("ok", ignoreCase = true)
                         BackendHealthStatus(
-                            isReachable = true,
+                            isReachable = isOk,
                             httpCode = resp.code,
-                            status = json.optString("status", "ok"),
+                            status = if (statusStr.isNotBlank()) statusStr else "ok",
                             timestamp = json.optLong("timestamp", System.currentTimeMillis()),
                             latencyMs = latency,
                             githubConfigured = json.optBoolean("githubConfigured", false),
@@ -138,7 +142,7 @@ object BackendClient {
                         )
                     } catch (e: Exception) {
                         BackendHealthStatus(
-                            isReachable = true,
+                            isReachable = false,
                             httpCode = resp.code,
                             status = "non_json_response",
                             latencyMs = latency,

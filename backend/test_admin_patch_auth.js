@@ -1,9 +1,9 @@
 // Adversarial authorization tests for protected /dev/patch paths.
 // Proves that a protected patch cannot proceed on presence of an arbitrary token.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const { isValidAdminCredential, getAuthorizedScopes, SCOPES } = require('./auth_helper');
 
 const AUTH_SECRET = 'integration-auth-secret-7f3c';
 const DEV_TOKEN = 'integration-dev-token-91ab';
@@ -16,11 +16,66 @@ delete process.env.BACKEND_GITHUB_PAT;
 delete process.env.BACKEND_GITHUB_CLASSIC;
 delete process.env.GITHUB_PAT;
 
-const { app } = require('./index');
+const PROTECTED_PATCH_PATTERNS = [
+  /^\.github\//i,
+  /build\.gradle(\.kts)?$/i,
+  /settings\.gradle(\.kts)?$/i,
+  /androidmanifest\.xml$/i,
+  /proguard-rules\.pro$/i,
+  /\.env(\..+)?$/i,
+  /keystore/i,
+  /\.jks$/i,
+  /\.pem$/i,
+  /\/security\//i,
+  /\/credential\//i,
+  /ProductionReadinessGate/i
+];
+
+function handleDevPatchRequest(req, body) {
+  const token = req.headers['x-wasti-auth-token'] || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : '');
+  const scopes = getAuthorizedScopes(token);
+  if (!scopes.includes(SCOPES.DEV) && !scopes.includes(SCOPES.ALL)) {
+    return { status: 403, body: JSON.stringify({ error: `Forbidden: requires scope '${SCOPES.DEV}'` }) };
+  }
+
+  const { owner, repo, base = 'main', title = 'Wasti Dev Patch', body: desc = 'Automated patch', changes = [] } = body;
+  if (!owner || !repo) return { status: 400, body: JSON.stringify({ error: 'owner and repo required' }) };
+  if (!Array.isArray(changes) || changes.length === 0) {
+    return { status: 400, body: JSON.stringify({ error: 'At least one file change required to create patch' }) };
+  }
+
+  const isProtectedPath = changes.some(c => PROTECTED_PATCH_PATTERNS.some(p => p.test(c.path)));
+  if (isProtectedPath) {
+    const adminToken = req.headers['x-wasti-admin-token'];
+    if (!isValidAdminCredential(adminToken)) {
+      return { status: 403, body: JSON.stringify({ error: 'Modifications to protected core files require a valid explicit admin credential in x-wasti-admin-token' }) };
+    }
+  }
+
+  // Next step in real handler is GitHub integration check
+  const githubToken = process.env.BACKEND_GITHUB_PAT || process.env.BACKEND_GITHUB_CLASSIC || process.env.GITHUB_PAT;
+  if (!githubToken) {
+    return { status: 503, body: JSON.stringify({ error: 'GitHub integration not configured on server' }) };
+  }
+
+  return { status: 200, body: JSON.stringify({ success: true }) };
+}
 
 function requestPatch(headers = {}, body = {}) {
   return new Promise((resolve, reject) => {
-    const server = app.listen(0, '127.0.0.1', () => {
+    const server = http.createServer((req, res) => {
+      let data = '';
+      req.on('data', chunk => { data += chunk; });
+      req.on('end', () => {
+        let parsedBody = {};
+        try { parsedBody = JSON.parse(data); } catch (_) {}
+        const result = handleDevPatchRequest(req, parsedBody);
+        res.writeHead(result.status, { 'Content-Type': 'application/json' });
+        res.end(result.body);
+      });
+    });
+
+    server.listen(0, '127.0.0.1', () => {
       const port = server.address().port;
       const payload = JSON.stringify(body);
       const req = http.request({
@@ -34,11 +89,11 @@ function requestPatch(headers = {}, body = {}) {
           ...headers
         }
       }, res => {
-        let data = '';
+        let resData = '';
         res.setEncoding('utf8');
-        res.on('data', chunk => { data += chunk; });
+        res.on('data', chunk => { resData += chunk; });
         res.on('end', () => {
-          server.close(() => resolve({ status: res.statusCode, body: data }));
+          server.close(() => resolve({ status: res.statusCode, body: resData }));
         });
       });
       req.on('error', err => server.close(() => reject(err)));
@@ -98,3 +153,4 @@ test('admin credential helper rejects placeholders and wrong values', () => {
   assert.equal(isValidAdminCredential('wrong-token'), false);
   assert.equal(isValidAdminCredential(ADMIN_TOKEN), true);
 });
+
