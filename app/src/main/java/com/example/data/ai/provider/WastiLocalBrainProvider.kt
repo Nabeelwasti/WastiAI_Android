@@ -94,21 +94,27 @@ class WastiLocalBrainProvider(
         val startTime = System.currentTimeMillis()
         val appCtx = com.example.WastiApplication.instance
 
+        val adaptedSystemInstruction = com.example.data.agent.runtime.WastiAgentLearningPreserver.getAdaptedSystemPrompt(
+            basePrompt = request.systemInstruction,
+            appId = id
+        )
+        val adaptedRequest = request.copy(systemInstruction = adaptedSystemInstruction)
+
         val (content, isRealNeural) = if (appCtx != null && isNeuralInferenceActive) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
             val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
             val result = runtime.executeInferenceDetailed(
                 modelId = id,
-                prompt = request.prompt,
-                systemInstruction = request.systemInstruction
+                prompt = adaptedRequest.prompt,
+                systemInstruction = adaptedRequest.systemInstruction
             )
             if (result.status == com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS) {
                 result.output to true
             } else {
-                tryLocalServerOrHuggingFace(request) ?: (executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false)
+                tryLocalServerOrHuggingFace(adaptedRequest) ?: (executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction) to false)
             }
         } else {
-            tryLocalServerOrHuggingFace(request) ?: (executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false)
+            tryLocalServerOrHuggingFace(adaptedRequest) ?: (executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction) to false)
         }
 
         val latency = System.currentTimeMillis() - startTime

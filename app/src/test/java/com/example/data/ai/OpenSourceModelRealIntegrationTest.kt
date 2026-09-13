@@ -113,4 +113,72 @@ class OpenSourceModelRealIntegrationTest {
         assertNotNull(hf)
         assertEquals("HUGGINGFACE_AI", hf.capabilityId)
     }
+
+    @Test
+    fun testAllTwelveOpenSourceModelsManifestsExistAndValid() {
+        val allModels = com.example.data.ai.model.OpenSourceModelCatalog.ALL_MODELS
+        assertEquals(12, allModels.size)
+
+        for (model in allModels) {
+            val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest(model.id)
+            assertNotNull("Manifest for ${model.id} must exist in ModelArtifactManager", manifest)
+            manifest?.let {
+                assertEquals(model.id, it.modelId)
+                assertTrue("Expected SHA-256 must be 64 characters for ${it.modelId}", it.expectedSha256.length == 64)
+                assertTrue("Must pass isTrustedSha256 for ${it.modelId}", WastiModelDownloader.isTrustedSha256(it.expectedSha256))
+                assertTrue("Must have positive byte size for ${it.modelId}", it.byteSize > 0)
+                assertTrue("Download URL must be secure HTTPS for ${it.modelId}", WastiModelDownloader.isSecureDownloadUrl(it.downloadUrl))
+                assertNotNull("Mirror download URL must be present for ${it.modelId}", it.mirrorDownloadUrl)
+                assertTrue("Mirror download URL must be secure HTTPS for ${it.modelId}", WastiModelDownloader.isSecureDownloadUrl(it.mirrorDownloadUrl!!))
+                assertTrue("Checksum must be published for ${it.modelId}", it.isChecksumVerifiedPublished)
+            }
+        }
+    }
+
+    @Test
+    fun testCodingEnvironmentInstallerBridgeScriptGeneration() {
+        val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest("wasti-llama")
+        assertNotNull(manifest)
+
+        val script = com.example.data.ai.runtime.CodingEnvironmentInstallerBridge.generateTermuxInstallScript(null, manifest!!)
+        assertTrue(script.startsWith("#!/usr/bin/env bash"))
+        assertTrue(script.contains("sha256sum"))
+        assertTrue(script.contains(manifest.expectedSha256))
+        assertTrue(script.contains(manifest.downloadUrl))
+        assertTrue(script.contains(manifest.mirrorDownloadUrl ?: ""))
+        assertTrue(script.contains("curl -L -C -"))
+
+        val plan = com.example.data.ai.runtime.CodingEnvironmentInstallerBridge.planResolution(null, "wasti-llama", "Device storage constrained")
+        assertEquals("wasti-llama", plan.modelId)
+        assertTrue(plan.suggestedStrategy.contains("Coding environment"))
+        assertTrue(plan.commandLineSnippet.contains("install_wasti_agent.sh"))
+        assertTrue(plan.fallbackProvidersAvailable.isNotEmpty())
+    }
+
+    @Test
+    fun testWastiAgentLearningPreserverCrossAppRetention() {
+        val preserver = com.example.data.agent.runtime.WastiAgentLearningPreserver
+        preserver.resetForTesting()
+
+        val basePrompt = "You are Wasti AI OS."
+        val initialPrompt = preserver.getAdaptedSystemPrompt(basePrompt, "chat")
+        assertEquals(basePrompt, initialPrompt)
+
+        // Record cross-app learning
+        preserver.recordLearnedSkill(
+            skillName = "SafeFileRead",
+            targetAppId = "general",
+            promptDirective = "Always verify path boundary before reading files",
+            executionEvidence = "Verified 15 execution runs"
+        )
+
+        val adaptedPrompt = preserver.getAdaptedSystemPrompt(basePrompt, "coding")
+        assertTrue(adaptedPrompt.contains("PERSISTENT WASTI TRAINING & ACCUMULATED LEARNING"))
+        assertTrue(adaptedPrompt.contains("SafeFileRead"))
+        assertTrue(adaptedPrompt.contains("Always verify path boundary before reading files"))
+
+        val skills = preserver.getAllLearnedSkills()
+        assertEquals(1, skills.size)
+        assertEquals("SafeFileRead", skills[0].skillName)
+    }
 }

@@ -49,7 +49,7 @@ object WastiModelDownloader {
             val host = uri.host?.lowercase() ?: return false
             if (host == "localhost" || host == "127.0.0.1" || host == "::1") return false
             if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return false
-            val allowedSuffixes = listOf("huggingface.co", "github.com", "githubusercontent.com")
+            val allowedSuffixes = listOf("huggingface.co", "github.com", "githubusercontent.com", "hf-mirror.com")
             allowedSuffixes.any { host == it || host.endsWith(".$it") }
         } catch (_: Throwable) {
             false
@@ -133,92 +133,126 @@ object WastiModelDownloader {
         )
         ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.DOWNLOADING)
 
+        val candidateUrls = mutableListOf(manifest.downloadUrl)
+        manifest.mirrorDownloadUrl?.let { mirror ->
+            if (mirror.isNotBlank() && mirror != manifest.downloadUrl && isSecureDownloadUrl(mirror)) {
+                candidateUrls.add(mirror)
+            }
+        }
+
         var connection: HttpURLConnection? = null
+        var downloadSucceeded = false
+        var lastErrorMsg = "Unable to initiate download"
+
         try {
-            val url = URL(manifest.downloadUrl)
-            connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
-            connection.requestMethod = "GET"
-
-            val responseCode = connection.responseCode
-            if (responseCode !in 200..299) {
-                val errorMsg = "HTTP error $responseCode while downloading model."
-                Log.e(TAG, errorMsg)
-                updateProgress(
-                    ModelDownloadProgress(
-                        modelId = modelId,
-                        bytesDownloaded = 0L,
-                        totalBytes = manifest.byteSize,
-                        progressFraction = 0.0f,
-                        statusText = "Download failed",
-                        isFailed = true,
-                        errorMessage = errorMsg
+            for ((index, currentUrl) in candidateUrls.withIndex()) {
+            try {
+                if (index > 0) {
+                    Log.i(TAG, "Attempting fallback mirror download for $modelId: $currentUrl")
+                    updateProgress(
+                        ModelDownloadProgress(
+                            modelId = modelId,
+                            bytesDownloaded = 0L,
+                            totalBytes = manifest.byteSize,
+                            progressFraction = 0.0f,
+                            statusText = "Switching to mirror CDN..."
+                        )
                     )
-                )
-                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
-                return@withContext false
-            }
+                }
 
-            val totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
-            val digest = MessageDigest.getInstance("SHA-256")
-            var downloadedBytes = 0L
+                val url = URL(currentUrl)
+                connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.requestMethod = "GET"
 
-            if (tempFile.exists()) {
-                tempFile.delete()
-            }
+                val responseCode = connection.responseCode
+                if (responseCode !in 200..299) {
+                    lastErrorMsg = "HTTP error $responseCode while downloading from $currentUrl"
+                    Log.w(TAG, lastErrorMsg)
+                    connection.disconnect()
+                    connection = null
+                    continue
+                }
 
-            connection.inputStream.use { input ->
-                FileOutputStream(tempFile).use { output ->
-                    val buffer = ByteArray(32768)
-                    var bytesRead: Int
-                    var lastUpdate = System.currentTimeMillis()
+                val totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
+                val digest = MessageDigest.getInstance("SHA-256")
+                var downloadedBytes = 0L
 
-                    while (input.read(buffer).also { bytesRead = it } != -1) {
-                        output.write(buffer, 0, bytesRead)
-                        digest.update(buffer, 0, bytesRead)
-                        downloadedBytes += bytesRead
+                if (tempFile.exists()) {
+                    tempFile.delete()
+                }
 
-                        val now = System.currentTimeMillis()
-                        if (now - lastUpdate > 300) {
-                            val fraction = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0.0f
-                            updateProgress(
-                                ModelDownloadProgress(
-                                    modelId = modelId,
-                                    bytesDownloaded = downloadedBytes,
-                                    totalBytes = totalBytes,
-                                    progressFraction = fraction,
-                                    statusText = "Downloading: ${(fraction * 100).toInt()}% (${downloadedBytes / (1024 * 1024)}MB / ${totalBytes / (1024 * 1024)}MB)"
+                connection.inputStream.use { input ->
+                    FileOutputStream(tempFile).use { output ->
+                        val buffer = ByteArray(32768)
+                        var bytesRead: Int
+                        var lastUpdate = System.currentTimeMillis()
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            digest.update(buffer, 0, bytesRead)
+                            downloadedBytes += bytesRead
+
+                            val now = System.currentTimeMillis()
+                            if (now - lastUpdate > 300) {
+                                val fraction = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0.0f
+                                updateProgress(
+                                    ModelDownloadProgress(
+                                        modelId = modelId,
+                                        bytesDownloaded = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                        progressFraction = fraction,
+                                        statusText = "Downloading: ${(fraction * 100).toInt()}% (${downloadedBytes / (1024 * 1024)}MB / ${totalBytes / (1024 * 1024)}MB)"
+                                    )
                                 )
-                            )
-                            lastUpdate = now
+                                lastUpdate = now
+                            }
                         }
                     }
                 }
-            }
 
-            // Verify Exact Checksum (Reject synthetic/prefix/wildcard hashes)
-            val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
-            val isExactMatch = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)
+                // Verify Exact Checksum (Reject synthetic/prefix/wildcard hashes)
+                val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
+                val isExactMatch = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)
 
-            if (!isExactMatch) {
-                val mismatchMsg = "SHA-256 integrity verification failed for $modelId. Expected: ${manifest.expectedSha256}, Calculated: $calculatedSha"
-                Log.e(TAG, mismatchMsg)
+                if (!isExactMatch) {
+                    lastErrorMsg = "SHA-256 integrity verification failed for $modelId. Expected: ${manifest.expectedSha256}, Calculated: $calculatedSha"
+                    Log.e(TAG, lastErrorMsg)
+                    if (tempFile.exists()) tempFile.delete()
+                    connection.disconnect()
+                    connection = null
+                    continue
+                }
+
+                downloadSucceeded = true
+                break
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastErrorMsg = e.message ?: "Unknown download error on $currentUrl"
+                Log.w(TAG, "Candidate URL $currentUrl failed: ${e.message}")
                 if (tempFile.exists()) tempFile.delete()
-                updateProgress(
-                    ModelDownloadProgress(
-                        modelId = modelId,
-                        bytesDownloaded = downloadedBytes,
-                        totalBytes = totalBytes,
-                        progressFraction = 0.0f,
-                        statusText = "Integrity check failed: Checksum mismatch",
-                        isFailed = true,
-                        errorMessage = mismatchMsg
-                    )
-                )
-                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.FAILED_INITIALIZATION)
-                return@withContext false
+                connection?.disconnect()
+                connection = null
             }
+        }
+
+        if (!downloadSucceeded) {
+            updateProgress(
+                ModelDownloadProgress(
+                    modelId = modelId,
+                    bytesDownloaded = 0L,
+                    totalBytes = manifest.byteSize,
+                    progressFraction = 0.0f,
+                    statusText = "Download failed across all mirrors",
+                    isFailed = true,
+                    errorMessage = lastErrorMsg
+                )
+            )
+            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
+            return@withContext false
+        }
 
             // Atomic move only after successful cryptographic verification
             if (tempFile.exists()) {

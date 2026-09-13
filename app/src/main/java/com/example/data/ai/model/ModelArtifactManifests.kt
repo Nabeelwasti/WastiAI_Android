@@ -31,7 +31,8 @@ data class ModelArtifactManifest(
     val license: String,
     val minRamRequiredMb: Int,
     val requiredHardwareBackend: LocalExecutionBackend,
-    val isChecksumVerifiedPublished: Boolean = false
+    val isChecksumVerifiedPublished: Boolean = false,
+    val mirrorDownloadUrl: String? = null
 )
 
 enum class AcceleratorExecutionStatus {

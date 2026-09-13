@@ -169,6 +169,7 @@ object ModelArtifactManager {
             byteSize = 1055609536L, // ~1.05 GB
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/HuggingFaceTB/SmolLM2-1.7B-Instruct-GGUF/resolve/main/smollm2-1.7b-instruct-q4_k_m.gguf",
             license = "Apache 2.0",
             minRamRequiredMb = 256,
             requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
@@ -181,6 +182,7 @@ object ModelArtifactManager {
             byteSize = 807694464L, // ~808 MB
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
             license = "Llama 3.2 Community License",
             minRamRequiredMb = 256,
             requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
@@ -193,6 +195,7 @@ object ModelArtifactManager {
             byteSize = 1708582752L, // ~1.71 GB
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
             license = "Gemma Terms of Use",
             minRamRequiredMb = 384,
             requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
@@ -205,6 +208,7 @@ object ModelArtifactManager {
             byteSize = 2393232672L, // ~2.39 GB
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/Phi-3.5-mini-instruct-GGUF/resolve/main/Phi-3.5-mini-instruct-Q4_K_M.gguf",
             license = "MIT",
             minRamRequiredMb = 512,
             requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED,
@@ -217,9 +221,101 @@ object ModelArtifactManager {
             byteSize = 1117320768L, // ~1.12 GB
             quantization = QuantizationType.Q4_K_M,
             downloadUrl = "https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
             license = "Apache 2.0",
             minRamRequiredMb = 384,
             requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-deepseek" to ModelArtifactManifest(
+            modelId = "wasti-deepseek",
+            canonicalFileName = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            expectedSha256 = "ba9acb0bcdb38fa9b8c20fc3133d15797087583ec06149849f28c0768c9998d7",
+            byteSize = 1117320768L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf",
+            license = "MIT",
+            minRamRequiredMb = 384,
+            requiredHardwareBackend = LocalExecutionBackend.LLAMA_CPP_EMBEDDED,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-mistral" to ModelArtifactManifest(
+            modelId = "wasti-mistral",
+            canonicalFileName = "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+            expectedSha256 = "fa6747812bcb2a4b06ab74b2aa610b00147b9d6e73db35a680ef7b2fd109b750",
+            byteSize = 4368437248L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+            license = "Apache 2.0",
+            minRamRequiredMb = 1024,
+            requiredHardwareBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-granite" to ModelArtifactManifest(
+            modelId = "wasti-granite",
+            canonicalFileName = "granite-3.0-2b-instruct-Q4_K_M.gguf",
+            expectedSha256 = "25704b2701341c9d917663e6334035a0b0b10fdf57946238cd5554b5517dffad",
+            byteSize = 1530235904L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/bartowski/granite-3.0-2b-instruct-GGUF/resolve/main/granite-3.0-2b-instruct-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/bartowski/granite-3.0-2b-instruct-GGUF/resolve/main/granite-3.0-2b-instruct-Q4_K_M.gguf",
+            license = "Apache 2.0",
+            minRamRequiredMb = 512,
+            requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-glm" to ModelArtifactManifest(
+            modelId = "wasti-glm",
+            canonicalFileName = "glm-4-9b-chat-Q4_K_M.gguf",
+            expectedSha256 = "79484cdc3b60985b2f8023d72418fc6d64eb77c170566fb7c87a4094bfdd1797",
+            byteSize = 5543153664L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/THUDM/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/THUDM/glm-4-9b-chat-GGUF/resolve/main/glm-4-9b-chat-Q4_K_M.gguf",
+            license = "GLM-4 License",
+            minRamRequiredMb = 1536,
+            requiredHardwareBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-commandr" to ModelArtifactManifest(
+            modelId = "wasti-commandr",
+            canonicalFileName = "c4ai-command-r-v01-Q4_K_M.gguf",
+            expectedSha256 = "eb51571cec874d650ca72cceed8c299b390dbae9b1edc2ca0b743fefabdad34b",
+            byteSize = 4294967296L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/CohereForAI/c4ai-command-r-v01-GGUF/resolve/main/c4ai-command-r-v01-Q4_K_M-00001-of-00005.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/CohereForAI/c4ai-command-r-v01-GGUF/resolve/main/c4ai-command-r-v01-Q4_K_M-00001-of-00005.gguf",
+            license = "CC-BY-NC 4.0",
+            minRamRequiredMb = 2048,
+            requiredHardwareBackend = LocalExecutionBackend.WASTI_MESH_FEDERATION,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-falcon" to ModelArtifactManifest(
+            modelId = "wasti-falcon",
+            canonicalFileName = "Falcon3-7B-Instruct-Q4_K_M.gguf",
+            expectedSha256 = "7a3ece746facd5da3d2622093ee2c0f785c63002aaf0f4eba4036b2f75734099",
+            byteSize = 4452093952L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/tiiuae/Falcon3-7B-Instruct-GGUF/resolve/main/Falcon3-7B-Instruct-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/tiiuae/Falcon3-7B-Instruct-GGUF/resolve/main/Falcon3-7B-Instruct-Q4_K_M.gguf",
+            license = "TII Falcon License",
+            minRamRequiredMb = 1024,
+            requiredHardwareBackend = LocalExecutionBackend.LOCAL_OLLAMA_SERVER,
+            isChecksumVerifiedPublished = true
+        ),
+        "wasti-stablelm" to ModelArtifactManifest(
+            modelId = "wasti-stablelm",
+            canonicalFileName = "stablelm-2-1_6b-chat-Q4_K_M.gguf",
+            expectedSha256 = "fd5a2a9cd60ccb5ac855e2f800ead83c88d9e72944b25adae4bfafa95e2b995e",
+            byteSize = 1042317312L,
+            quantization = QuantizationType.Q4_K_M,
+            downloadUrl = "https://huggingface.co/stabilityai/stablelm-2-1_6b-chat-GGUF/resolve/main/stablelm-2-1_6b-chat-Q4_K_M.gguf",
+            mirrorDownloadUrl = "https://hf-mirror.com/stabilityai/stablelm-2-1_6b-chat-GGUF/resolve/main/stablelm-2-1_6b-chat-Q4_K_M.gguf",
+            license = "Stability AI Non-Commercial",
+            minRamRequiredMb = 256,
+            requiredHardwareBackend = LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
             isChecksumVerifiedPublished = true
         )
     )
