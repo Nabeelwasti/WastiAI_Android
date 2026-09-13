@@ -109,7 +109,7 @@ class LocalAndroidProvider(
                     stdout = stdout,
                     stderr = "EXECUTION_TIMEOUT: Process exceeded requested timeout of ${request.timeoutMs}ms",
                     exitCode = -1,
-                    durationMs = duration,
+                    executionTimeMs = duration,
                     status = ExecutionStatus(false, "EXECUTION_TIMEOUT: Process exceeded requested timeout of ${request.timeoutMs}ms"),
                     errorType = ExecutionErrorType.TIMEOUT
                 )
@@ -143,11 +143,7 @@ class LocalAndroidProvider(
     private fun terminateProcess(process: Process?) {
         if (process == null) return
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                process.destroyForcibly()
-            } else {
-                process.destroy()
-            }
+            process.destroyForcibly()
         } catch (_: Throwable) {
             try { process.destroy() } catch (_: Throwable) {}
         }
