@@ -92,7 +92,7 @@ object AccessibilityRecoveryCoordinator {
         "System API / foreground-service route where Android permits it",
         "IPC / broadcast / provider route where the target exposes one",
         "Web or app-native workflow route when the objective can be completed without UI automation",
-        "Another registered Wasti execution body or node when available",
+        "Remote or peer registered Wasti execution body or node when available",
         "Native Wasti execution/runtime capability discovery and synthesis"
     )
 

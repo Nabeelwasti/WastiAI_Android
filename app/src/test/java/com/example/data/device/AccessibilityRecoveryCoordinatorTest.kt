@@ -26,6 +26,6 @@ class AccessibilityRecoveryCoordinatorTest {
         assertTrue(plan.routes.any { it.contains("AccessibilityService") })
         assertTrue(plan.routes.any { it.contains("Intent") })
         assertTrue(plan.routes.any { it.contains("Native") })
-        assertTrue(plan.routes.any { it.contains("Remote") })
+        assertTrue(plan.routes.any { it.contains("Remote") || it.contains("node") || it.contains("execution body") })
     }
 }

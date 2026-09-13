@@ -102,6 +102,8 @@
         <receiver android:name="com.example.service.WastiAccessibilityRecoveryReceiver" android:enabled="true" android:exported="false">
             <intent-filter>
                 <action android:name="com.wasti.os.ACTION_EXECUTE_GESTURE" />
+                <action android:name="com.wasti.os.ACTION_ACCESSIBILITY_RECOVERY_RETRY" />
+                <action android:name="com.wasti.os.ACTION_ACCESSIBILITY_RECOVERY_CHECK" />
             </intent-filter>
         </receiver>
 
