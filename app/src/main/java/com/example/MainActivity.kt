@@ -246,7 +246,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 }
                             )
                             "operations" -> OperationsDashboardScreen()
-                            "capabilities" -> CapabilityCenterScreen()
+                            "capabilities" -> CapabilityCenterScreen(onNavigateBack = { viewModel.selectTab("dashboard") })
                             "chat" -> ChatWorkspaceScreen(
                                 conversations = conversations,
                                 activeConversationId = activeConversationId,
@@ -317,7 +317,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 wreManager = viewModel.wreManager,
                                 onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
-                            "code" -> CodePromptWorkspaceScreen(
+                            "code" -> com.example.ui.screens.CodeStudioScreen(
+                                viewModel = viewModel,
+                                wreManager = viewModel.wreManager,
                                 activeCodeContext = activeCodeContext,
                                 onCodeContextChange = { viewModel.setActiveCodeContext(it) },
                                 onSendMessageToChat = { prompt, codeCtx ->
@@ -327,6 +329,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     viewModel.sendMessage(prompt, codeCtx)
                                 }
                             )
+
                             "integrations" -> IntegrationsLogsScreen(
                                 integrations = integrations,
                                 logs = logs,

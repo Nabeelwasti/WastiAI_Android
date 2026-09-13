@@ -338,7 +338,7 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 QuickActionCard("AI Chat", Icons.AutoMirrored.Filled.Chat, Modifier.weight(1f)) { onNavigateTab("chat") }
-                QuickActionCard("Lead Radar", Icons.Default.Radar, Modifier.weight(1f)) { onNavigateTab("chat") }
+                QuickActionCard("Lead Radar", Icons.Default.Radar, Modifier.weight(1f)) { onNavigateTab("operations") }
                 QuickActionCard("Operations", Icons.Default.Tune, Modifier.weight(1f)) { onNavigateTab("operations") }
                 QuickActionCard("Memory", Icons.Default.Memory, Modifier.weight(1f)) { onNavigateTab("memory") }
                 QuickActionCard("Projects", Icons.Default.AccountTree, Modifier.weight(1f)) { onNavigateTab("projects") }

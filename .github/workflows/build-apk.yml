@@ -136,14 +136,21 @@ jobs:
 
     - name: Securely Inject and Validate Firebase Configuration
       env:
-        FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON }}
+        FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON || secrets.GOOGLE_SERVICES_JSON || secrets.FIREBASE_SERVICES_JSON || secrets.GOOGLE_SERVICES || secrets.FIREBASE_JSON || secrets.GOOGLE_SERVICES_BASE64 || secrets.FIREBASE_GOOGLE_SERVICES_JSON_BASE64 || secrets.FIREBASE_CONFIG || secrets.FIREBASE_CONFIG_JSON || secrets.FIREBASE_SA_BASE64 || secrets.GOOGLE_SERVICES_JSON_RAW }}
       run: |
         if [ -n "$FIREBASE_CONFIG_SECRET" ]; then
-          # Safely write authentic Google Services configuration to app/google-services.json without echoing to logs
-          printf '%s' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+          # Safely write authentic Google Services configuration to app/google-services.json (handle raw JSON or Base64)
+          if echo "$FIREBASE_CONFIG_SECRET" | grep -q '^\s*{' ; then
+            printf '%s\n' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+          else
+            echo "$FIREBASE_CONFIG_SECRET" | base64 -d > app/google-services.json 2>/dev/null || printf '%s\n' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+          fi
 
           # Validate JSON format, project info, and package name without printing secrets
-          python3 scripts/validate_google_services_json.py
+          python3 scripts/validate_google_services_json.py app/google-services.json || {
+            echo "WARNING: google-services.json validation failed; falling back to fail-closed standalone runtime."
+            rm -f app/google-services.json
+          }
         else
           echo "NOTICE: FIREBASE_GOOGLE_SERVICES_JSON secret not configured. Standalone and fail-closed cloud runtime preserved."
         fi
@@ -151,84 +158,85 @@ jobs:
     - name: Generate Safe .env and Configuration for APK Build
       env:
         # AI & Model Providers
-        SECRET_GEMINI: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY }}
-        SECRET_GROQ: ${{ secrets.GROQ_API_KEY }}
-        SECRET_OPENAI: ${{ secrets.OPENAI_API_KEY }}
-        SECRET_ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY }}
-        SECRET_DEEPSEEK: ${{ secrets.DEEPSEEK_API_KEY }}
-        SECRET_XAI: ${{ secrets.XAI_API_KEY }}
-        SECRET_OPENROUTER: ${{ secrets.OPENROUTER_API_KEY }}
-        SECRET_HUGGINGFACE: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN || secrets.HUGGINGFACE_API_KEY }}
-        SECRET_BYTEZ: ${{ secrets.BYTEZ_API_KEY }}
+        SECRET_GEMINI: ${{ secrets.GEMINI_API_KEY || secrets.GOOGLE_API_KEY || secrets.GEMINI_KEY || secrets.GOOGLE_GEMINI_KEY || secrets.AI_GEMINI_KEY }}
+        SECRET_GROQ: ${{ secrets.GROQ_API_KEY || secrets.GROQ_KEY || secrets.GROQ_API }}
+        SECRET_OPENAI: ${{ secrets.OPENAI_API_KEY || secrets.OPENAI_KEY || secrets.OPEN_AI_KEY }}
+        SECRET_ANTHROPIC: ${{ secrets.ANTHROPIC_API_KEY || secrets.ANTHROPIC_KEY || secrets.CLAUDE_API_KEY }}
+        SECRET_DEEPSEEK: ${{ secrets.DEEPSEEK_API_KEY || secrets.DEEPSEEK_KEY }}
+        SECRET_XAI: ${{ secrets.XAI_API_KEY || secrets.XAI_KEY || secrets.GROK_API_KEY }}
+        SECRET_OPENROUTER: ${{ secrets.OPENROUTER_API_KEY || secrets.OPENROUTER_KEY || secrets.OPEN_ROUTER_KEY }}
+        SECRET_HUGGINGFACE: ${{ secrets.HUGGINGFACE_ACCESS_TOKEN || secrets.HUGGINGFACE_API_KEY || secrets.HF_TOKEN || secrets.HF_API_KEY }}
+        SECRET_BYTEZ: ${{ secrets.BYTEZ_API_KEY || secrets.BYTEZ_KEY }}
         SECRET_LOCAL_LLM_URL: ${{ secrets.LOCAL_LLM_URL }}
 
         # Google OAuth, Drive & Gmail
         SECRET_GOOGLE_WEB_CLIENT_ID: ${{ secrets.PUBLIC_GOOGLE_WEB_CLIENT_ID || secrets.GOOGLE_WEB_CLIENT_ID }}
         SECRET_GOOGLE_ANDROID_CLIENT_ID: ${{ secrets.PUBLIC_GOOGLE_ANDROID_CLIENT_ID || secrets.GOOGLE_ANDROID_CLIENT_ID }}
-        SECRET_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        SECRET_GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || secrets.GOOGLE_SEARCH_API_KEY }}
         SECRET_DRIVE_CLIENT_ID: ${{ secrets.DRIVE_CLIENT_ID }}
         SECRET_DRIVE_CLIENT_SECRET: ${{ secrets.DRIVE_CLIENT_SECRET }}
-        SECRET_GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL }}
-        SECRET_GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        SECRET_GMAIL_SENDER_EMAIL: ${{ secrets.GMAIL_SENDER_EMAIL || secrets.GMAIL_EMAIL }}
+        SECRET_GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD || secrets.GMAIL_PASSWORD }}
         SECRET_GMAIL_OAUTH_TOKEN: ${{ secrets.GMAIL_OAUTH_TOKEN }}
         SECRET_GMAIL_OAUTH_REFRESH_TOKEN: ${{ secrets.GMAIL_OAUTH_REFRESH_TOKEN }}
         SECRET_GOOGLE_OAUTH_ACCESS_TOKEN: ${{ secrets.GOOGLE_OAUTH_ACCESS_TOKEN }}
         SECRET_GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-        SECRET_GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
-        SECRET_SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY }}
-        SECRET_GOOGLE_SEARCH_CX: ${{ secrets.GOOGLE_SEARCH_CX }}
+        SECRET_GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY || secrets.GOOGLE_API_KEY }}
+        SECRET_SEARCH_API_KEY: ${{ secrets.SEARCH_API_KEY || secrets.GOOGLE_SEARCH_API_KEY }}
+        SECRET_GOOGLE_SEARCH_CX: ${{ secrets.GOOGLE_SEARCH_CX || secrets.SEARCH_CX }}
 
         # Business, Stripe & Brevo
-        SECRET_STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
-        SECRET_STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
-        SECRET_STRIPE_WEBHOOK: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
-        SECRET_STRIPE_SANDBOX_KEY: ${{ secrets.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN }}
-        SECRET_BREVO: ${{ secrets.BREVO_API_KEY }}
-        SECRET_BREVO_MCP_SERVER_KEY: ${{ secrets.BREVO_MCP_SERVER_API_KEY }}
-        SECRET_HUBSPOT: ${{ secrets.HUBSPOT_CONNECTION_ID }}
-        SECRET_UPWORK_CLIENT_ID: ${{ secrets.UPWORK_OAUTH_CLIENT_ID }}
-        SECRET_UPWORK_CLIENT_SECRET: ${{ secrets.UPWORK_OAUTH_CLIENT_SECRET }}
-        SECRET_UPWORK_RSS_URL: ${{ secrets.UPWORK_RSS_CUSTOM_URL }}
+        SECRET_STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY || secrets.STRIPE_KEY || secrets.STRIPE_API_KEY }}
+        SECRET_STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY || secrets.STRIPE_PUB_KEY }}
+        SECRET_STRIPE_WEBHOOK: ${{ secrets.STRIPE_WEBHOOK_SECRET || secrets.STRIPE_WEBHOOK }}
+        SECRET_STRIPE_SANDBOX_KEY: ${{ secrets.STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN || secrets.STRIPE_SANDBOX_KEY }}
+        SECRET_BREVO: ${{ secrets.BREVO_API_KEY || secrets.BREVO_KEY || secrets.SENDINBLUE_API_KEY }}
+        SECRET_BREVO_MCP_SERVER_KEY: ${{ secrets.BREVO_MCP_SERVER_API_KEY || secrets.BREVO_MCP_KEY }}
+        SECRET_HUBSPOT: ${{ secrets.HUBSPOT_CONNECTION_ID || secrets.HUBSPOT_API_KEY || secrets.HUBSPOT_KEY }}
+        SECRET_UPWORK_CLIENT_ID: ${{ secrets.UPWORK_OAUTH_CLIENT_ID || secrets.UPWORK_CLIENT_ID }}
+        SECRET_UPWORK_CLIENT_SECRET: ${{ secrets.UPWORK_OAUTH_CLIENT_SECRET || secrets.UPWORK_CLIENT_SECRET }}
+        SECRET_UPWORK_RSS_URL: ${{ secrets.UPWORK_RSS_CUSTOM_URL || secrets.UPWORK_RSS_URL }}
 
         # Code & Git Repositories
-        SECRET_WASTI_GIT_FINE_GRAINED_PAT: ${{ secrets.WASTI_GIT_FINE_GRAINED_PAT }}
-        SECRET_WASTI_GIT_PAT: ${{ secrets.WASTI_GIT_PAT }}
-        SECRET_BACKEND_GITHUB_PAT: ${{ secrets.BACKEND_GITHUB_PAT }}
+        SECRET_WASTI_GIT_FINE_GRAINED_PAT: ${{ secrets.WASTI_GIT_FINE_GRAINED_PAT || secrets.GH_PAT || secrets.GIT_PAT }}
+        SECRET_WASTI_GIT_PAT: ${{ secrets.WASTI_GIT_PAT || secrets.GITHUB_PAT || secrets.GIT_PAT || secrets.PERSONAL_ACCESS_TOKEN }}
+        SECRET_BACKEND_GITHUB_PAT: ${{ secrets.BACKEND_GITHUB_PAT || secrets.GITHUB_PAT }}
         SECRET_ALLOWED_GITHUB_REPOS: ${{ secrets.ALLOWED_GITHUB_REPOS }}
         SECRET_ALLOWED_PATCH_BRANCHES: ${{ secrets.ALLOWED_PATCH_BRANCHES }}
 
         # Assets & Infrastructure
-        SECRET_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_KEY }}
+        SECRET_CLOUDFLARE: ${{ secrets.CLOUDFLARE_API_KEY || secrets.CLOUDFLARE_KEY }}
         SECRET_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         SECRET_UNSPLASH_APP_ID: ${{ secrets.UNSPLASH_APP_ID }}
-        SECRET_UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
+        SECRET_UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY || secrets.UNSPLASH_KEY }}
         SECRET_UNSPLASH_SECRET_KEY: ${{ secrets.UNSPLASH_SECRET_KEY }}
         SECRET_CANVA_CLIENT_ID: ${{ secrets.CANVA_CLIENT_ID }}
         SECRET_CANVA_CLIENT_SECRET: ${{ secrets.CANVA_CLIENT_SECRET }}
-        SECRET_CANVA_ACCESS_TOKEN: ${{ secrets.CANVA_ACCESS_TOKEN }}
-        SECRET_BACKEND_AUTH: ${{ secrets.WASTI_BACKEND_AUTH_SECRET }}
-        SECRET_PUBLIC_API_URL: ${{ secrets.PUBLIC_API_BASE_URL }}
-        SECRET_WASTI_BACKEND_URL: ${{ secrets.WASTI_BACKEND_URL }}
-        SECRET_BACKEND_GEMINI_KEY: ${{ secrets.BACKEND_GEMINI_KEY }}
-        SECRET_BACKEND_GROQ_VOICE: ${{ secrets.BACKEND_GROQ_VOICE }}
+        SECRET_CANVA_ACCESS_TOKEN: ${{ secrets.CANVA_ACCESS_TOKEN || secrets.CANVA_TOKEN }}
+        SECRET_BACKEND_AUTH: ${{ secrets.WASTI_BACKEND_AUTH_SECRET || secrets.BACKEND_AUTH_SECRET }}
+        SECRET_PUBLIC_API_URL: ${{ secrets.PUBLIC_API_BASE_URL || secrets.API_BASE_URL }}
+        SECRET_WASTI_BACKEND_URL: ${{ secrets.WASTI_BACKEND_URL || secrets.BACKEND_URL }}
+        SECRET_BACKEND_GEMINI_KEY: ${{ secrets.BACKEND_GEMINI_KEY || secrets.GEMINI_API_KEY }}
+        SECRET_BACKEND_GROQ_VOICE: ${{ secrets.BACKEND_GROQ_VOICE || secrets.GROQ_API_KEY }}
         SECRET_OUTREACH_APPROVAL_TOKEN: ${{ secrets.OUTREACH_APPROVAL_TOKEN }}
         SECRET_ALLOWED_ORIGINS: ${{ secrets.ALLOWED_ORIGINS }}
 
         # Automation & Communications
-        SECRET_ELEVENLABS: ${{ secrets.ELEVENLABS_API_KEY }}
+        SECRET_ELEVENLABS: ${{ secrets.ELEVENLABS_API_KEY || secrets.ELEVENLABS_KEY || secrets.ELEVEN_LABS_API_KEY }}
         SECRET_LINKEDIN_CLIENT_ID: ${{ secrets.LINKEDIN_CLIENT_ID }}
         SECRET_LINKEDIN_CLIENT_SECRET: ${{ secrets.LINKEDIN_CLIENT_SECRET }}
         SECRET_LINKEDIN_OAUTH_TOKEN: ${{ secrets.LINKEDIN_OAUTH_TOKEN }}
-        SECRET_LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+        SECRET_LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN || secrets.LINKEDIN_TOKEN }}
         SECRET_LINKEDIN_OAUTH_REFRESH_TOKEN: ${{ secrets.LINKEDIN_OAUTH_REFRESH_TOKEN }}
         SECRET_LINKEDIN_REFRESH_TOKEN: ${{ secrets.LINKEDIN_REFRESH_TOKEN }}
         SECRET_LINKEDIN_AUTHOR_URN: ${{ secrets.LINKEDIN_AUTHOR_URN }}
-        SECRET_ZAPIER_CONNECT_TOKEN: ${{ secrets.ZAPIER_CONNECT_TOKEN }}
+        SECRET_ZAPIER_CONNECT_TOKEN: ${{ secrets.ZAPIER_CONNECT_TOKEN || secrets.ZAPIER_TOKEN }}
         SECRET_ZAPIER_MCP_SHARE_LINK: ${{ secrets.ZAPIER_MCP_SHARE_LINK }}
-        SECRET_NOTION_CONNECTION_ID: ${{ secrets.NOTION_CONNECTION_ID }}
+        SECRET_NOTION_CONNECTION_ID: ${{ secrets.NOTION_CONNECTION_ID || secrets.NOTION_API_KEY || secrets.NOTION_KEY }}
         SECRET_SLACK_DOMAIN: ${{ secrets.SLACK_DOMAIN }}
         SECRET_DISCORD_BOT_ID: ${{ secrets.DISCORD_BOT_ID }}
-        SECRET_DISCORD_BOT_KEY: ${{ secrets.DISCORD_BOT_KEY }}
+        SECRET_DISCORD_BOT_KEY: ${{ secrets.DISCORD_BOT_KEY || secrets.DISCORD_BOT_TOKEN || secrets.DISCORD_TOKEN }}
+
       run: |
         if [ -f ".env.example" ]; then
           cp .env.example .env

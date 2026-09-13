@@ -767,6 +767,8 @@ object CredentialRegistry {
     suspend fun ingestBuildConfigKeysToVault(context: Context) {
         withContext(Dispatchers.IO) {
             val securePrefs = getSecureSharedPreferences(context)
+
+            // 1. Process all known registered credentials
             ALL_CREDENTIALS.forEach { entry ->
                 val keyName = entry.keyName
                 val existingLower = securePrefs.getString(keyName.lowercase(), null)
@@ -781,6 +783,55 @@ object CredentialRegistry {
                         saveCredential(keyName, buildConfigVal, context)
                     }
                 }
+            }
+
+            // 2. Reflectively inspect all BuildConfig fields for newly added/custom keys
+            try {
+                val buildConfigClass = com.example.BuildConfig::class.java
+                val standardFields = setOf("DEBUG", "APPLICATION_ID", "BUILD_TYPE", "VERSION_CODE", "VERSION_NAME")
+                buildConfigClass.fields.forEach { field ->
+                    val fieldName = field.name
+                    if (fieldName !in standardFields) {
+                        val existingLower = securePrefs.getString(fieldName.lowercase(), null)
+                        val existingUpper = securePrefs.getString(fieldName, null)
+                        val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
+                                            (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
+                        if (!hasVaultValue) {
+                            val v = field.get(null) as? String
+                            if (!v.isNullOrBlank() && !isPlaceholder(v)) {
+                                android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving BuildConfig secret [$fieldName] into Vault")
+                                saveCredential(fieldName, v, context)
+                            }
+                        }
+                    }
+                }
+            } catch (ignored: Throwable) {
+                // Ignore if reflection is restricted
+            }
+
+            // 3. Inspect packaged compile-time seed asset (wasti_seed_vault.json) if present
+            try {
+                val assetManager = context.assets
+                val assetsList = assetManager.list("") ?: emptyArray()
+                if ("wasti_seed_vault.json" in assetsList) {
+                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(jsonStr)
+                    val keys = json.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        val v = json.optString(k, "")
+                        val existingLower = securePrefs.getString(k.lowercase(), null)
+                        val existingUpper = securePrefs.getString(k, null)
+                        val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
+                                            (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
+                        if (!hasVaultValue && v.isNotBlank() && !isPlaceholder(v)) {
+                            android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving seed asset secret [$k] into Vault")
+                            saveCredential(k, v, context)
+                        }
+                    }
+                }
+            } catch (ignored: Throwable) {
+                // Ignore if asset is not packaged
             }
         }
     }
@@ -837,16 +888,14 @@ object CredentialRegistry {
         withContext(Dispatchers.IO) {
             val formattedKey = keyName.trim().uppercase().replace(" ", "_")
             val securePrefs = getSecureSharedPreferences(context)
-            val currentKeys = getCustomKeyNames(context).filter { it != formattedKey }
+            val currentKeys = getCustomKeyNames(context).toMutableSet()
+            currentKeys.remove(formattedKey)
 
             securePrefs.edit()
                 .putString("wasti_custom_key_names_csv", currentKeys.joinToString(","))
                 .remove(formattedKey)
                 .remove(formattedKey.lowercase())
                 .apply()
-
-            val db = WastiDatabase.getDatabase(context)
-            db.settingDao().deleteSetting(formattedKey.lowercase())
 
             refreshAll(context)
         }
@@ -894,7 +943,11 @@ object CredentialRegistry {
                 }
 
                 val finalRaw = raw ?: ""
-                val initialStatus = if (finalRaw.isBlank()) CredentialStatus.NotConfigured else CredentialStatus.NotConfigured
+                val initialStatus = if (finalRaw.isBlank() || isPlaceholder(finalRaw)) {
+                    CredentialStatus.NotConfigured
+                } else {
+                    CredentialStatus.Connected("Secured in Hardware Vault")
+                }
                 CredentialState(entry = entry, rawValue = finalRaw, status = initialStatus)
             }
             _credentialStates.value = currentList

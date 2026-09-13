@@ -9,6 +9,7 @@
 
 # 2. Core Application & Component Architecture
 -keep class com.example.WastiApplication { *; }
+-keep class com.example.BuildConfig { *; }
 -keep class com.example.data.** { *; }
 -keep class com.example.domain.** { *; }
 -keep class com.example.ui.** { *; }

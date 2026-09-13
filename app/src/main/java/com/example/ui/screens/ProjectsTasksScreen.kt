@@ -34,6 +34,12 @@ fun ProjectsTasksScreen(
     var selectedProjectId by remember { mutableStateOf<String?>(projects.firstOrNull()?.id) }
     var searchQuery by remember { mutableStateOf("") }
 
+    LaunchedEffect(projects) {
+        if ((selectedProjectId == null || projects.none { it.id == selectedProjectId }) && projects.isNotEmpty()) {
+            selectedProjectId = projects.first().id
+        }
+    }
+
     var showProjectDialog by remember { mutableStateOf(false) }
     var projName by remember { mutableStateOf("") }
     var projDesc by remember { mutableStateOf("") }

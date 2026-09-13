@@ -576,20 +576,98 @@ fun ChatWorkspaceScreen(
                             )
                         }
 
-                        if (experienceMode.showTechnicalLedger) {
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
-                            ) {
-                                Text(
-                                    text = "Council Active",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (experienceMode.showTechnicalLedger) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                    modifier = Modifier.padding(end = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Council Active",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // Interactive Model Switcher Chip
+                            Box {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                    modifier = Modifier
+                                        .clickable { showModelMenu = true }
+                                        .testTag("chat_model_selector_chip")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Tune,
+                                            contentDescription = "Select Model",
+                                            modifier = Modifier.size(12.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = selectedModel.removePrefix("wasti-").take(16),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showModelMenu,
+                                    onDismissRequest = { showModelMenu = false }
+                                ) {
+                                    val allModels = listOf(
+                                        "wasti-super-ensemble" to "⚡ Wasti Super-Ensemble (Auto-Routing)",
+                                        "gemini-2.5-flash" to "✨ Gemini 2.5 Flash (Ultra-Fast)",
+                                        "gemini-2.5-pro" to "🧠 Gemini 2.5 Pro (Deep Reasoning)",
+                                        "groq-llama-3.3-70b" to "⚡ Groq Llama 3.3 70B (Low Latency)",
+                                        "openai-gpt-4o" to "🤖 OpenAI GPT-4o (Omnimodal)",
+                                        "openai-gpt-4o-mini" to "🚀 OpenAI GPT-4o Mini",
+                                        "claude-3-5-sonnet" to "🎭 Claude 3.5 Sonnet",
+                                        "deepseek-chat" to "🌊 DeepSeek V3",
+                                        "deepseek-reasoner" to "🔬 DeepSeek R1 Reasoner",
+                                        "xai-grok-beta" to "⚡ xAI Grok Beta",
+                                        "wasti-smollm" to "📱 Edge SmolLM (On-Device Native)",
+                                        "local-llama-endpoint" to "💻 Local LLM (Termux / Endpoint)"
+                                    )
+                                    allModels.forEach { (modelId, label) ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (modelId == selectedModel) {
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                    }
+                                                    Text(label, fontSize = 12.sp, fontWeight = if (modelId == selectedModel) FontWeight.Bold else FontWeight.Normal)
+                                                }
+                                            },
+                                            onClick = {
+                                                onSelectModel(modelId)
+                                                showModelMenu = false
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
+
                     }
                 }
 

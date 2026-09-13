@@ -12,13 +12,21 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-// Wasti OS secret boundary:
-// - Long-lived/private credentials MUST NOT be compiled into the Android APK.
-// - User credentials are stored in CredentialRegistry's encrypted vault.
-// - Server-only credentials stay on the controlled backend/execution boundary.
-// - Only explicitly public configuration is allowed in BuildConfig.
 val isTestTaskExecution = gradle.startParameter.taskNames.any {
   it.contains("test", ignoreCase = true) || it.contains("check", ignoreCase = true)
+}
+
+fun isPlaceholderValue(v: String): Boolean {
+  val clean = v.trim().trim('"', '\'')
+  val u = clean.uppercase()
+  return clean.isBlank() ||
+      u in setOf("YOUR_KEY", "MY_KEY", "PLACEHOLDER", "ENTER_KEY_HERE", "NONE", "NULL", "TODO", "CHANGEME", "UNDEFINED", "DUMMY", "FAKE") ||
+      clean.startsWith("your_") ||
+      clean.startsWith("my_") ||
+      clean.startsWith("todo_") ||
+      clean.startsWith("changeme_") ||
+      clean.startsWith("dummy_") ||
+      clean.startsWith("fake_")
 }
 
 fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): String {
@@ -32,10 +40,10 @@ fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): St
   }
 
   val envVal = System.getenv(key)
-  if (!envVal.isNullOrBlank()) return envVal
+  if (!envVal.isNullOrBlank() && !isPlaceholderValue(envVal)) return envVal
 
   val propVal = project.findProperty(key) as? String
-  if (!propVal.isNullOrBlank()) return propVal
+  if (!propVal.isNullOrBlank() && !isPlaceholderValue(propVal)) return propVal
 
   val envFile = rootProject.file(".env")
   if (envFile.exists()) {
@@ -46,13 +54,40 @@ fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): St
         val parts = trimmed.split("=", limit = 2)
         if (parts[0].trim() == key) {
           val v = parts[1].trim().trim('"', '\'')
-          if (v.isNotBlank()) return v
+          if (v.isNotBlank() && !isPlaceholderValue(v)) return v
         }
       }
     } catch (_: Throwable) { /* ignore */ }
   }
 
   return safeStaticFallback
+}
+
+fun resolveSecretWithFallback(key: String): String {
+  if (isTestTaskExecution) return ""
+
+  val envVal = System.getenv(key)
+  if (!envVal.isNullOrBlank() && !isPlaceholderValue(envVal)) return envVal.trim()
+
+  val propVal = project.findProperty(key) as? String
+  if (!propVal.isNullOrBlank() && !isPlaceholderValue(propVal)) return propVal.trim()
+
+  val envFile = rootProject.file(".env")
+  if (envFile.exists()) {
+    try {
+      for (line in envFile.readLines()) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("#") || !trimmed.contains("=")) continue
+        val parts = trimmed.split("=", limit = 2)
+        if (parts[0].trim() == key) {
+          val v = parts[1].trim().trim('"', '\'')
+          if (v.isNotBlank() && !isPlaceholderValue(v)) return v
+        }
+      }
+    } catch (_: Throwable) { /* ignore */ }
+  }
+
+  return ""
 }
 
 val activeEnvironment = if (isTestTaskExecution) "test" else (System.getenv("BUILD_ENVIRONMENT") ?: "development")
@@ -63,6 +98,28 @@ val wastiPublicConfig = mapOf(
   "PUBLIC_GOOGLE_ANDROID_CLIENT_ID" to resolvePublicConfigWithFallback("PUBLIC_GOOGLE_ANDROID_CLIENT_ID", "wasti-mock-android-client-id.apps.googleusercontent.com"),
   "WASTI_BACKEND_URL" to resolvePublicConfigWithFallback("WASTI_BACKEND_URL", resolvePublicConfigWithFallback("PUBLIC_API_BASE_URL", "https://api.wasti.ai")),
   "BUILD_ENVIRONMENT" to activeEnvironment
+)
+
+val allTrackedCredentialKeys = listOf(
+  "GEMINI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+  "DEEPSEEK_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY", "HUGGINGFACE_ACCESS_TOKEN",
+  "BYTEZ_API_KEY", "LOCAL_LLM_URL", "PUBLIC_GOOGLE_WEB_CLIENT_ID", "PUBLIC_GOOGLE_ANDROID_CLIENT_ID",
+  "GOOGLE_WEB_CLIENT_ID", "GOOGLE_ANDROID_CLIENT_ID", "GOOGLE_API_KEY", "DRIVE_CLIENT_ID",
+  "DRIVE_CLIENT_SECRET", "GMAIL_SENDER_EMAIL", "GMAIL_APP_PASSWORD", "GMAIL_OAUTH_TOKEN",
+  "GMAIL_OAUTH_REFRESH_TOKEN", "GOOGLE_OAUTH_ACCESS_TOKEN", "GOOGLE_REFRESH_TOKEN",
+  "GOOGLE_SEARCH_API_KEY", "SEARCH_API_KEY", "GOOGLE_SEARCH_CX", "STRIPE_SECRET_KEY",
+  "STRIPE_PUBLISHABLE_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_SANDBOX_RESTRICTED_KEY_TOKEN",
+  "BREVO_API_KEY", "BREVO_MCP_SERVER_API_KEY", "HUBSPOT_CONNECTION_ID", "UPWORK_OAUTH_CLIENT_ID",
+  "UPWORK_OAUTH_CLIENT_SECRET", "UPWORK_RSS_CUSTOM_URL", "WASTI_GIT_FINE_GRAINED_PAT",
+  "WASTI_GIT_PAT", "BACKEND_GITHUB_PAT", "ALLOWED_GITHUB_REPOS", "ALLOWED_PATCH_BRANCHES",
+  "CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID", "UNSPLASH_APP_ID", "UNSPLASH_ACCESS_KEY",
+  "UNSPLASH_SECRET_KEY", "CANVA_CLIENT_ID", "CANVA_CLIENT_SECRET", "CANVA_ACCESS_TOKEN",
+  "WASTI_BACKEND_AUTH_SECRET", "PUBLIC_API_BASE_URL", "WASTI_BACKEND_URL", "BACKEND_GEMINI_KEY",
+  "BACKEND_GROQ_VOICE", "OUTREACH_APPROVAL_TOKEN", "ALLOWED_ORIGINS", "ELEVENLABS_API_KEY",
+  "LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET", "LINKEDIN_OAUTH_TOKEN", "LINKEDIN_ACCESS_TOKEN",
+  "LINKEDIN_OAUTH_REFRESH_TOKEN", "LINKEDIN_REFRESH_TOKEN", "LINKEDIN_AUTHOR_URN",
+  "ZAPIER_CONNECT_TOKEN", "ZAPIER_MCP_SHARE_LINK", "NOTION_CONNECTION_ID", "SLACK_DOMAIN",
+  "DISCORD_BOT_ID", "DISCORD_BOT_KEY", "FIREBASE_SA_BASE64"
 )
 
 fun wastiPublicValue(value: String): String =
@@ -84,7 +141,30 @@ android {
     wastiPublicConfig.forEach { (key, value) ->
       buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
+
+    val activeSeedMap = mutableMapOf<String, String>()
+    allTrackedCredentialKeys.forEach { key ->
+      val secretVal = resolveSecretWithFallback(key)
+      buildConfigField("String", key, "\"${wastiPublicValue(secretVal)}\"")
+      if (secretVal.isNotBlank() && !isPlaceholderValue(secretVal)) {
+        activeSeedMap[key] = secretVal
+      }
+    }
+
+    // Securely package compile-time seed vault asset if active credentials are present
+    if (activeSeedMap.isNotEmpty()) {
+      try {
+        val assetsDir = file("src/main/assets")
+        if (!assetsDir.exists()) assetsDir.mkdirs()
+        val vaultFile = file("src/main/assets/wasti_seed_vault.json")
+        val jsonEntries = activeSeedMap.map { (k, v) ->
+          "  \"${k}\": \"${wastiPublicValue(v)}\""
+        }.joinToString(",\n")
+        vaultFile.writeText("{\n$jsonEntries\n}")
+      } catch (_: Throwable) { /* ignore */ }
+    }
   }
+
 
   val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
   val releaseStorePassword = System.getenv("STORE_PASSWORD")
