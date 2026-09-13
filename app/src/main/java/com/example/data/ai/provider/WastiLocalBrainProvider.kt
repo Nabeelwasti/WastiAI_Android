@@ -105,11 +105,10 @@ class WastiLocalBrainProvider(
             if (result.status == com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS) {
                 result.output to true
             } else {
-                executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false
+                tryLocalServerOrHuggingFace(request) ?: (executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false)
             }
         } else {
-            // Explicitly classify as HEURISTIC / NON-NEURAL fallback
-            executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false
+            tryLocalServerOrHuggingFace(request) ?: (executeDomainSpecializedInference(request.prompt, request.systemInstruction) to false)
         }
 
         val latency = System.currentTimeMillis() - startTime
@@ -125,6 +124,55 @@ class WastiLocalBrainProvider(
             latencyMs = latency,
             costUsd = 0.0
         )
+    }
+
+    private suspend fun tryLocalServerOrHuggingFace(request: ProviderRequest): Pair<String, Boolean>? {
+        // 1. Try local LLM server (e.g. Ollama or llama-server running in Termux or on device)
+        try {
+            val localOutput = com.example.data.api.LocalLLMClient.generateText(
+                prompt = request.prompt,
+                systemInstruction = request.systemInstruction,
+                modelName = mapToLocalServerModel(modelDescriptor.id)
+            )
+            if (localOutput.isNotBlank()) {
+                return localOutput to true
+            }
+        } catch (_: Throwable) {}
+
+        // 2. Try Hugging Face Router API if token is configured
+        if (com.example.data.api.HuggingFaceClient.isConfigured()) {
+            try {
+                val hfOutput = com.example.data.api.HuggingFaceClient.generateText(
+                    prompt = request.prompt,
+                    systemInstruction = request.systemInstruction,
+                    modelId = modelDescriptor.id
+                )
+                if (hfOutput.isNotBlank()) {
+                    return hfOutput to true
+                }
+            } catch (_: Throwable) {}
+        }
+
+        return null
+    }
+
+    private fun mapToLocalServerModel(id: String): String {
+        val lower = id.lowercase()
+        return when {
+            lower.contains("llama") -> "llama3.2"
+            lower.contains("qwen") -> "qwen2.5-coder"
+            lower.contains("deepseek") -> "deepseek-r1"
+            lower.contains("gemma") -> "gemma2"
+            lower.contains("mistral") -> "mistral"
+            lower.contains("phi") -> "phi3.5"
+            lower.contains("smollm") -> "smollm2"
+            lower.contains("granite") -> "granite3-dense"
+            lower.contains("falcon") -> "falcon"
+            lower.contains("stablelm") -> "stablelm2"
+            lower.contains("glm") -> "glm4"
+            lower.contains("commandr") -> "command-r"
+            else -> id
+        }
     }
 
 

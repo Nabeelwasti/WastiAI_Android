@@ -19,6 +19,8 @@ import com.example.data.ai.model.UsageStats
 import com.example.data.ai.provider.DeepSeekProvider
 import com.example.data.ai.provider.GeminiProvider
 import com.example.data.ai.provider.GroqProvider
+import com.example.data.ai.provider.HuggingFaceProvider
+import com.example.data.ai.provider.LocalLLMProvider
 import com.example.data.ai.provider.OfflineProvider
 import com.example.data.ai.provider.OpenAIProvider
 import com.example.data.ai.provider.OpenRouterProvider
@@ -54,6 +56,8 @@ object AIManager {
         val xai = XAIProvider()
         val deepSeek = DeepSeekProvider()
         val openRouter = OpenRouterProvider()
+        val huggingFace = HuggingFaceProvider()
+        val localLlm = LocalLLMProvider()
         val offline = OfflineProvider()
 
         capabilityRegistry.registerProvider(gemini)
@@ -62,6 +66,8 @@ object AIManager {
         capabilityRegistry.registerProvider(xai)
         capabilityRegistry.registerProvider(deepSeek)
         capabilityRegistry.registerProvider(openRouter)
+        capabilityRegistry.registerProvider(huggingFace)
+        capabilityRegistry.registerProvider(localLlm)
         capabilityRegistry.registerProvider(offline)
 
         // Initialize health records
@@ -71,6 +77,8 @@ object AIManager {
         healthMonitor.initializeProvider(xai.id, xai.name)
         healthMonitor.initializeProvider(deepSeek.id, deepSeek.name)
         healthMonitor.initializeProvider(openRouter.id, openRouter.name)
+        healthMonitor.initializeProvider(huggingFace.id, huggingFace.name)
+        healthMonitor.initializeProvider(localLlm.id, localLlm.name)
         healthMonitor.initializeProvider(offline.id, offline.name)
 
         // Register all local open-source brain providers (100% Local / Free / Offline / Zero-API-Key)

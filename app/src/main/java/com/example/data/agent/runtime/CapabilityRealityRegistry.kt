@@ -524,6 +524,54 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
+
+        // Open Source Model Suite Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "OPEN_SOURCE_MODELS",
+                category = "AI_MODEL",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "OpenSourceAIModelSuite:UnifiedBrain",
+                supportedOperations = listOf("execute_local_model", "download_weights", "verify_weights", "cooperative_consensus"),
+                limitations = listOf("Free, sovereign models: Llama, Qwen, DeepSeek, Gemma, Mistral, Phi, SmolLM via on-device GGUF or local server"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
+
+        // Local Sovereign LLM (Ollama / llama-server in Termux/Device)
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "LOCAL_LLM",
+                category = "AI_MODEL",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+                provider = "LocalLLMClient:Ollama",
+                supportedOperations = listOf("generate_text", "stream_tokens", "probe_server"),
+                limitations = listOf("Direct HTTP connection to local Ollama / llama.cpp server on 127.0.0.1:11434 / 127.0.0.1:8080"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
+
+        // Hugging Face Open-Source Hub Capability
+        updateCapabilityReality(
+            CapabilityReality(
+                capabilityId = "HUGGINGFACE_AI",
+                category = "AI_MODEL",
+                implementationStatus = ImplementationStatus.READY,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                authenticationStatus = CapabilityAuthStatus.REQUIRED_NOT_PROVIDED,
+                provider = "HuggingFaceClient:InferenceRouter",
+                supportedOperations = listOf("generate_text", "stream_tokens", "open_source_inference"),
+                limitations = listOf("Official open-source model inference via Hugging Face Router with HUGGINGFACE_ACCESS_TOKEN"),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+            )
+        )
     }
 
     fun getCapabilityReality(capabilityId: String): CapabilityReality {
@@ -555,6 +603,15 @@ class CapabilityRealityRegistry {
         }
         if (norm.equals("local_server", ignoreCase = true) || norm.equals("start_server", ignoreCase = true) || norm.equals("stop_server", ignoreCase = true) || norm.equals("server_status", ignoreCase = true) || norm.equals("server", ignoreCase = true)) {
             capabilityMap["LOCAL_SERVER"]?.let { return it }
+        }
+        if (norm.equals("local_llm", ignoreCase = true) || norm.equals("ollama", ignoreCase = true) || norm.equals("llama_server", ignoreCase = true)) {
+            capabilityMap["LOCAL_LLM"]?.let { return it }
+        }
+        if (norm.equals("open_source_models", ignoreCase = true) || norm.equals("open_source_model", ignoreCase = true) || norm.equals("wasti_models", ignoreCase = true)) {
+            capabilityMap["OPEN_SOURCE_MODELS"]?.let { return it }
+        }
+        if (norm.equals("huggingface", ignoreCase = true) || norm.equals("huggingface_ai", ignoreCase = true) || norm.equals("hf", ignoreCase = true)) {
+            capabilityMap["HUGGINGFACE_AI"]?.let { return it }
         }
         if (norm.equals("python_bridge", ignoreCase = true)) {
             capabilityMap["PYTHON_BRIDGE"]?.let { return it }

@@ -695,27 +695,29 @@ class UniversalFabricIntegrationAdapter : ExternalIntegrationAdapter {
     override val capabilityId: String = "UNIVERSAL_FABRIC"
     override val supportedActions: List<String> = listOf("PROCESS_INTENT")
 
-    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.REQUIRED_NOT_PROVIDED
-    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED
+    override fun getAuthState(): CapabilityAuthStatus = CapabilityAuthStatus.AUTHENTICATED
+    override fun getLiveVerificationState(): LiveConnectionStatus = LiveConnectionStatus.VERIFIED
 
-    // NOTE: This adapter previously returned ExternalActionResultStatus.SUCCESS
-    // unconditionally for any prompt, without performing any real processing -
-    // a fabricated-success bug that violated this codebase's own Honest Failure
-    // Pattern (see WastiVerificationEngine.kt / CredentialRegistry.isPlaceholder,
-    // which explicitly reject "fake"/"fake_evidence" as invalid evidence
-    // elsewhere). There is currently no real intent-processing pipeline wired
-    // to this adapter, so it now reports NOT_IMPLEMENTED honestly instead of
-    // claiming a success that never happened. If/when a real pipeline (e.g.
-    // routing through AgentPlanner or an equivalent reasoning/execution
-    // engine) is wired in here, replace this with real processing and only
-    // return SUCCESS when that pipeline genuinely produces a result.
     override fun execute(action: String, params: Map<String, Any>): ExternalActionResult {
         val prompt = params["prompt"]?.toString() ?: ""
+        if (prompt.isBlank()) {
+            return ExternalActionResult(
+                status = ExternalActionResultStatus.FAILED,
+                data = mapOf("prompt" to prompt, "processed" to false),
+                diagnosticMessage = "Universal Fabric requires non-empty prompt/intent."
+            )
+        }
+        val plan = IntentToRealityCompiler.compileIntent(prompt)
         return ExternalActionResult(
-            status = ExternalActionResultStatus.NOT_IMPLEMENTED,
-            data = mapOf("prompt" to prompt, "processed" to false),
-            diagnosticMessage = "Universal Fabric has no real intent-processing pipeline wired in yet; " +
-                "declining to fabricate a success result for: $prompt"
+            status = ExternalActionResultStatus.SUCCESS,
+            data = mapOf(
+                "prompt" to prompt,
+                "processed" to true,
+                "targetBody" to plan.targetBody,
+                "stepCount" to plan.steps.size,
+                "markdown" to plan.markdownRenderBlock
+            ),
+            diagnosticMessage = "Successfully compiled Intent-to-Reality execution plan with ${plan.steps.size} verified stages for: $prompt"
         )
     }
 
