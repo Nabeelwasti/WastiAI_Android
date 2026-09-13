@@ -499,6 +499,21 @@ class WastiRepository(private val db: WastiDatabase) {
         val memoryContext = buildMemoryContextBlock(conversationId)
         val fullSystemInstruction = "$masterUnifiedSuperAgentPrompt\n\n$customInstruction$memoryContext"
 
+        if (selectedModel == "unified-brain-consensus" || com.example.data.ai.engine.UnifiedBrainStrategy.isUnifiedConsensusActive()) {
+            try {
+                val consensusReply = com.example.data.ai.engine.UnifiedBrainStrategy.executeConsensusReasoning(
+                    prompt = userPrompt,
+                    fileContext = fileContext,
+                    activeAgentId = activeAgentId
+                )
+                if (consensusReply.finalMergedResponse.isNotBlank()) {
+                    return Pair(consensusReply.finalMergedResponse, "Wasti Unified Brain")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Unified Brain consensus execution encountered issue, falling back to core orchestration", e)
+            }
+        }
+
         val (responseText, _) = WastiCore.executeOrchestratedRequest(
             userPrompt = userPrompt,
             systemInstruction = fullSystemInstruction,

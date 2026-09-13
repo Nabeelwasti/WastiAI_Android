@@ -68,6 +68,10 @@ object WastiOmniBrain {
     private val _activeThoughtStream = MutableStateFlow<String>("OmniBrain Standby • All 12 Sovereign Nodes Online")
     val activeThoughtStream: StateFlow<String> = _activeThoughtStream.asStateFlow()
 
+    fun setThoughtStream(thought: String) {
+        _activeThoughtStream.value = thought
+    }
+
     /**
      * Executes the Universal Master Brain Reasoning Loop.
      * Queries cloud and sovereign models in parallel, analyzes all outputs,

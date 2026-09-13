@@ -131,12 +131,14 @@ fun ChatWorkspaceScreen(
     agents: List<AgentEntity>,
     activeAgentId: String,
     selectedModel: String = "wasti-super-ensemble",
+    isUnifiedBrainEnabled: Boolean = true,
     isGenerating: Boolean,
     lastOperationError: String? = null,
     onErrorShown: () -> Unit = {},
     onSelectConversation: (String) -> Unit,
     onSelectAgent: (String) -> Unit,
     onSelectModel: (String) -> Unit = {},
+    onToggleUnifiedBrain: (Boolean) -> Unit = {},
     onClearChatHistory: () -> Unit = {},
     onSendMessage: (
         prompt: String,
@@ -593,6 +595,35 @@ fun ChatWorkspaceScreen(
                                 }
                             }
 
+                            // Interactive Unified Brain Strategy Toggle Chip
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                                modifier = Modifier
+                                    .padding(end = 6.dp)
+                                    .clickable { onToggleUnifiedBrain(!isUnifiedBrainEnabled) }
+                                    .testTag("chat_unified_brain_chip")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Psychology,
+                                        contentDescription = "Unified Brain Strategy",
+                                        modifier = Modifier.size(13.dp),
+                                        tint = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (isUnifiedBrainEnabled) "Unified Brain" else "Solo Brain",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
                             // Interactive Model Switcher Chip
                             Box {
                                 Surface(
@@ -634,6 +665,7 @@ fun ChatWorkspaceScreen(
                                     onDismissRequest = { showModelMenu = false }
                                 ) {
                                     val allModels = listOf(
+                                        "unified-brain-consensus" to "🌟 Unified Brain Consensus (All Models Merged)",
                                         "wasti-super-ensemble" to "⚡ Wasti Super-Ensemble (Auto-Routing)",
                                         "gemini-2.5-flash" to "✨ Gemini 2.5 Flash (Ultra-Fast)",
                                         "gemini-2.5-pro" to "🧠 Gemini 2.5 Pro (Deep Reasoning)",

@@ -307,7 +307,22 @@ object WastiCore {
             }
         }
 
-        // 3. Intelligent Tier Dispatching
+        // 3. Intelligent Tier Dispatching & Unified Brain Strategy
+        if (com.example.data.ai.engine.UnifiedBrainStrategy.isUnifiedConsensusActive()) {
+            try {
+                val consensusReply = com.example.data.ai.engine.UnifiedBrainStrategy.executeConsensusReasoning(
+                    prompt = userPrompt,
+                    fileContext = fileContext,
+                    activeAgentId = activeAgentId
+                )
+                if (consensusReply.finalMergedResponse.isNotBlank()) {
+                    return@withContext Pair(consensusReply.finalMergedResponse, "Wasti Unified Brain")
+                }
+            } catch (e: Exception) {
+                Log.w("WastiCore", "Unified Brain Strategy consensus failed, falling back to direct tier", e)
+            }
+        }
+
         val routingTier = classifyIntentTier(userPrompt)
         if (routingTier == RoutingTier.FAST_LANE || routingTier == RoutingTier.STANDARD_LANE) {
             try {

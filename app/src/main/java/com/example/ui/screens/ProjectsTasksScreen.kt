@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -29,7 +30,10 @@ fun ProjectsTasksScreen(
     agents: List<AgentEntity>,
     onAddProject: (String, String, String) -> Unit,
     onAddTask: (String, String, String, String, String) -> Unit,
-    onToggleTaskStatus: (String, Boolean) -> Unit
+    onToggleTaskStatus: (String, Boolean) -> Unit,
+    onExecuteTaskWithConsensus: (String, String, String) -> Unit = { _, _, _ -> },
+    isUnifiedBrainEnabled: Boolean = true,
+    onToggleUnifiedBrain: (Boolean) -> Unit = {}
 ) {
     var selectedProjectId by remember { mutableStateOf<String?>(projects.firstOrNull()?.id) }
     var searchQuery by remember { mutableStateOf("") }
@@ -157,6 +161,52 @@ fun ProjectsTasksScreen(
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleUnifiedBrain(!isUnifiedBrainEnabled) }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = if (isUnifiedBrainEnabled) "Unified Brain Strategy: ON" else "Unified Brain Strategy: OFF",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = if (isUnifiedBrainEnabled) "All agents & models collaborate in background" else "Direct single-agent task execution",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isUnifiedBrainEnabled,
+                                onCheckedChange = onToggleUnifiedBrain,
+                                modifier = Modifier.scale(0.75f)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -309,12 +359,29 @@ fun ProjectsTasksScreen(
                         color = MaterialTheme.colorScheme.secondaryContainer
                     ) {
                         Text(
-                            text = "Wasti AI",
+                            text = if (isUnifiedBrainEnabled) "Unified Brain" else "Wasti AI",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
+                    }
+
+                    if (!task.isCompleted) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { onExecuteTaskWithConsensus(task.id, task.title, task.description) },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("task_execute_button_${task.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Execute with Unified Brain",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }

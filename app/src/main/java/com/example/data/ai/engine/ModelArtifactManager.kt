@@ -1,13 +1,8 @@
 package com.example.data.ai.engine
 
-import android.app.ActivityManager
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
-import android.os.PowerManager
 import android.os.StatFs
 import android.util.Log
 import com.example.data.ai.model.AcceleratorExecutionStatus

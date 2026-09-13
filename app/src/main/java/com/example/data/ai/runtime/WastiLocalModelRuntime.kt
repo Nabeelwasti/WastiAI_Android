@@ -6,6 +6,7 @@ import com.example.data.ai.engine.HardwareCapabilityDetector
 import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.model.ModelArtifactManifest
 import com.example.data.ai.model.ModelRuntimeStatus
+import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.ai.model.QuantizationType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

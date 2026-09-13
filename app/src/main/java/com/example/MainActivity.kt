@@ -168,6 +168,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val integrations by viewModel.integrations.collectAsStateWithLifecycle()
             val logs by viewModel.logs.collectAsStateWithLifecycle()
             val activeCodeContext by viewModel.activeCodeContext.collectAsStateWithLifecycle()
+            val isUnifiedBrainEnabled by viewModel.isUnifiedBrainEnabled.collectAsStateWithLifecycle()
 
             val activeAgentName = "Wasti AI"
 
@@ -254,12 +255,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 agents = agents,
                                 activeAgentId = activeAgentId,
                                 selectedModel = selectedModel,
+                                isUnifiedBrainEnabled = isUnifiedBrainEnabled,
                                 isGenerating = isGenerating,
                                 lastOperationError = lastOperationError,
                                 onErrorShown = { viewModel.clearOperationError() },
                                 onSelectConversation = { viewModel.selectConversation(it) },
                                 onSelectAgent = { viewModel.selectAgent(it) },
                                 onSelectModel = { viewModel.setSelectedModel(it) },
+                                onToggleUnifiedBrain = { viewModel.setUnifiedBrainEnabled(it) },
                                 onClearChatHistory = { viewModel.clearChatHistory() },
                                 onSendMessage = { prompt, imageInlineData, mimeType, attachedMediaUris, mediaList ->
                                     viewModel.sendMessage(
@@ -311,7 +314,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 agents = agents,
                                 onAddProject = { name, desc, priority -> viewModel.addProject(name, desc, priority) },
                                 onAddTask = { pId, title, desc, agentId, priority -> viewModel.addTask(pId, title, desc, agentId, priority) },
-                                onToggleTaskStatus = { taskId, currentStatus -> viewModel.toggleTaskStatus(taskId, currentStatus) }
+                                onToggleTaskStatus = { taskId, currentStatus -> viewModel.toggleTaskStatus(taskId, currentStatus) },
+                                onExecuteTaskWithConsensus = { taskId, title, desc -> viewModel.executeTaskWithUnifiedConsensus(taskId, title, desc) },
+                                isUnifiedBrainEnabled = isUnifiedBrainEnabled,
+                                onToggleUnifiedBrain = { viewModel.setUnifiedBrainEnabled(it) }
                             )
                             "terminal" -> TerminalWorkspaceScreen(
                                 wreManager = viewModel.wreManager,

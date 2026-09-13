@@ -62,6 +62,26 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     )
     val agenticState: StateFlow<com.example.data.agent.runtime.AgenticState> = _agenticState.asStateFlow()
 
+    // Unified Brain Strategy State: All agents, brains & models working concurrently in background
+    val isUnifiedBrainEnabled = MutableStateFlow(
+        prefs.getBoolean("unified_brain_strategy_enabled", true)
+    )
+    val unifiedBrainMode: StateFlow<com.example.data.ai.engine.BrainStrategyMode> =
+        com.example.data.ai.engine.UnifiedBrainStrategy.strategyMode
+    val liveConsensusStatus: StateFlow<com.example.data.ai.engine.ConsensusStatusUpdate?> =
+        com.example.data.ai.engine.UnifiedBrainStrategy.liveConsensusStatus
+
+    fun setUnifiedBrainEnabled(enabled: Boolean) {
+        isUnifiedBrainEnabled.value = enabled
+        prefs.edit().putBoolean("unified_brain_strategy_enabled", enabled).apply()
+        com.example.data.ai.engine.UnifiedBrainStrategy.setUnifiedConsensusActive(getApplication(), enabled)
+    }
+
+    fun toggleUnifiedBrainStrategy() {
+        val next = !isUnifiedBrainEnabled.value
+        setUnifiedBrainEnabled(next)
+    }
+
     fun setActiveTab(tab: String) {
         activeTab.value = tab
     }
@@ -128,6 +148,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
 
     init {
+        com.example.data.ai.engine.UnifiedBrainStrategy.initialize(application)
         viewModelScope.launch {
             try {
                 com.example.data.credential.CredentialRegistry.refreshAll(application)
@@ -470,6 +491,27 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleTaskStatus(taskId: String, currentStatus: Boolean) =
         launchRepositoryAction("update task status") {
             repository.toggleTaskStatus(taskId, currentStatus)
+        }
+
+    fun executeTaskWithUnifiedConsensus(taskId: String, title: String, description: String) =
+        launchRepositoryAction("execute task with unified brain consensus") {
+            com.example.data.ai.engine.UnifiedBrainStrategy.executeTaskConsensus(
+                taskId = taskId,
+                taskTitle = title,
+                taskDescription = description,
+                context = getApplication()
+            )
+            repository.toggleTaskStatus(taskId, true)
+        }
+
+    fun executeProjectWithUnifiedConsensus(projectId: String, name: String, goal: String) =
+        launchRepositoryAction("execute project with unified brain consensus") {
+            com.example.data.ai.engine.UnifiedBrainStrategy.executeProjectConsensus(
+                projectId = projectId,
+                projectName = name,
+                projectGoal = goal,
+                context = getApplication()
+            )
         }
 
     fun addAgent(name: String, roleTitle: String, agentType: String, systemInstruction: String, capabilities: String) =

@@ -8,8 +8,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -51,6 +53,7 @@ fun OnboardingModelWizardDialog(
     val targetModelId = "wasti-smollm"
     val manifest = remember { ModelArtifactManager.getManifest(targetModelId) }
     val hwSpecs = remember { HardwareCapabilityDetector.detectHardwareEnvironment(context) }
+    val activeProgress = downloadProgressMap[targetModelId]
     val isWeightsInstalled by remember(activeProgress) {
         derivedStateOf { ModelArtifactManager.isWeightsPresent(context, targetModelId) }
     }
@@ -80,8 +83,6 @@ fun OnboardingModelWizardDialog(
             }
         )
     }
-
-    val activeProgress = downloadProgressMap[targetModelId]
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
