@@ -387,14 +387,30 @@ object WastiCore {
                     fileContext = fileContext
                 )
                 if (fallbackResp.isError || fallbackResp.content.isBlank()) {
-                    DeveloperLogger.logError("all_providers", fallbackResp.errorMessage ?: "All providers failed", "TOTAL_FAILURE")
-                    Pair("Wasti AI is currently processing in low-connectivity state. Please check network or API keys in Developer Settings.", "Wasti AI")
+                    DeveloperLogger.logError("all_providers", fallbackResp.errorMessage ?: "All providers failed", "ENGAGING_OMNIBRAIN")
+                    val omni = com.example.data.ai.engine.WastiOmniBrain.reasonAndSynthesize(
+                        prompt = userPrompt,
+                        appId = activeAgentId
+                    )
+                    if (omni.masterResponse.isNotBlank()) {
+                        Pair(omni.masterResponse, "Wasti OmniBrain")
+                    } else {
+                        Pair("Wasti AI is currently processing in low-connectivity state. Please check network or API keys in Developer Settings.", "Wasti AI")
+                    }
                 } else {
                     Pair(fallbackResp.content, "Wasti AI")
                 }
             } catch (e: Exception) {
-                DeveloperLogger.logError("fallback", e.message ?: "Fallback exception", "TOTAL_FAILURE")
-                Pair("Wasti AI encountered a processing delay. Please retry in a moment.", "Wasti AI")
+                DeveloperLogger.logError("fallback", e.message ?: "Fallback exception", "ENGAGING_OMNIBRAIN")
+                try {
+                    val omni = com.example.data.ai.engine.WastiOmniBrain.reasonAndSynthesize(
+                        prompt = userPrompt,
+                        appId = activeAgentId
+                    )
+                    Pair(omni.masterResponse, "Wasti OmniBrain")
+                } catch (oe: Exception) {
+                    Pair("Wasti AI encountered a processing delay. Please retry in a moment.", "Wasti AI")
+                }
             }
         }
 

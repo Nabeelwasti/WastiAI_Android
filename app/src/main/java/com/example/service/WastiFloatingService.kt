@@ -74,6 +74,18 @@ class WastiFloatingService : Service() {
         var isRunning: Boolean = false
             private set
 
+        var activeInstance: WastiFloatingService? = null
+            private set
+
+        fun triggerWakeWord(context: Context) {
+            val instance = activeInstance
+            if (instance != null) {
+                instance.triggerWakeWordActivation()
+            } else {
+                start(context)
+            }
+        }
+
         fun start(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
                 try {
@@ -195,6 +207,11 @@ class WastiFloatingService : Service() {
         observeRuntimeContext()
         observeFabricEvents()
 
+        activeInstance = this
+        WakeWordVoskService.startNativeListeningCallback = {
+            activeInstance?.triggerWakeWordActivation()
+        }
+
         logSystemEvent("INFO", "Wasti Floating Action Service initialized and overlay attached.")
     }
 
@@ -204,6 +221,10 @@ class WastiFloatingService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (activeInstance == this) {
+            activeInstance = null
+        }
+        WakeWordVoskService.startNativeListeningCallback = null
         isRunning = false
         sttProvider.destroy()
         stopSpeech()
@@ -960,6 +981,36 @@ class WastiFloatingService : Service() {
         }
     }
 
+    fun triggerWakeWordActivation() {
+        serviceScope.launch(Dispatchers.Main) {
+            try {
+                expandOverlay()
+                updateBubbleUi(isListening = true, labelText = "Hey Wasti detected! Listening...")
+                responseTextLabel?.text = "🎤 Wake word detected. Speak your command..."
+                speakText("Yes?")
+
+                kotlinx.coroutines.delay(400)
+
+                if (!sttProvider.isHardwareAvailable(this@WastiFloatingService)) {
+                    Log.w(TAG, "Speech recognizer hardware unavailable for wake-word activation")
+                    return@launch
+                }
+
+                sttProvider.startListening(
+                    context = this@WastiFloatingService,
+                    onBeginningOfSpeech = {
+                        updateBubbleUi(isListening = true, labelText = "Listening...")
+                    },
+                    onResult = { result ->
+                        handleSpeechResult(result)
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during triggerWakeWordActivation", e)
+            }
+        }
+    }
+
     private suspend fun executeCommand(command: String) {
         try {
             val result = UniversalConversationFabric.getInstance(applicationContext).submitTask(
@@ -975,27 +1026,35 @@ class WastiFloatingService : Service() {
                     handleExecutionCompleted(result.output)
                 }
                 is CommandSubmissionResult.Rejected -> {
-                    val errorMsg = "Command rejected: ${result.reason}"
-                    withContext(Dispatchers.Main) {
-                        responseTextLabel?.text = "❌ $errorMsg"
-                        expandedStatusTextView?.text = "Rejected"
-                        statusTextView?.text = "❌ Rejected"
-                        speakText(errorMsg)
-                    }
+                    val omni = com.example.data.ai.engine.WastiOmniBrain.reasonAndSynthesize(
+                        prompt = command,
+                        context = applicationContext,
+                        appId = "floating_bubble"
+                    )
+                    handleExecutionCompleted(omni.masterResponse)
                 }
                 is CommandSubmissionResult.Accepted -> {
                     // Task successfully accepted into execution loop; updates handled by observers
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error executing floating command via UniversalConversationFabric", e)
-            logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
-            withContext(Dispatchers.Main) {
-                val errorMsg = e.message ?: "Unknown error"
-                responseTextLabel?.text = "❌ Execution Error: $errorMsg"
-                expandedStatusTextView?.text = "Error"
-                statusTextView?.text = "❌ Error"
-                speakText("Error: $errorMsg")
+            Log.e(TAG, "Error executing floating command via UniversalConversationFabric, engaging OmniBrain fallback", e)
+            try {
+                val omni = com.example.data.ai.engine.WastiOmniBrain.reasonAndSynthesize(
+                    prompt = command,
+                    context = applicationContext,
+                    appId = "floating_bubble"
+                )
+                handleExecutionCompleted(omni.masterResponse)
+            } catch (inner: Exception) {
+                logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    val errorMsg = e.message ?: "Unknown error"
+                    responseTextLabel?.text = "❌ Execution Error: $errorMsg"
+                    expandedStatusTextView?.text = "Error"
+                    statusTextView?.text = "❌ Error"
+                    speakText("Error: $errorMsg")
+                }
             }
         }
     }

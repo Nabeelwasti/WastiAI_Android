@@ -178,20 +178,39 @@ class WakeWordVoskService : Service() {
                 Log.i(TAG, "Initializing Vosk model for 'Hey Wasti' keyword spotting...")
                 WakeWordVoskState.updateStatus("Loading Vosk Model...")
 
-                val modelDir = File(filesDir, "vosk-model-small-en-us-0.15")
-                if (!modelDir.exists()) {
-                    modelDir.mkdirs()
-                }
+                val modelDir = VoskModelDownloader.getModelDir(this@WakeWordVoskService)
+                if (!VoskModelDownloader.isModelInstalled(this@WakeWordVoskService)) {
+                    Log.i(TAG, "Vosk model not yet downloaded; initiating background download via VoskModelDownloader...")
+                    WakeWordVoskState.updateStatus("Bootstrapping Vosk Model in Background...")
 
-                try {
-                    voskModel = Model(modelDir.absolutePath)
-                    voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), "[\"hey wasti\", \"[unk]\"]")
-                    WakeWordVoskState.setModelLoaded(true)
-                    WakeWordVoskState.updateStatus("Model Loaded • Listening for 'Hey Wasti'")
-                } catch (e: Throwable) {
-                    Log.w(TAG, "Vosk native model directory standby mode.", e)
-                    WakeWordVoskState.setModelLoaded(false)
-                    WakeWordVoskState.updateStatus("AudioRecord Standby (Model Directory Prepared)")
+                    // Launch background download without blocking immediate listening capability
+                    launch {
+                        val downloaded = VoskModelDownloader.downloadAndInstallModel(applicationContext)
+                        if (downloaded && isListening) {
+                            try {
+                                voskModel?.close()
+                                voskRecognizer?.close()
+                                voskModel = Model(modelDir.absolutePath)
+                                voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), "[\"hey wasti\", \"[unk]\"]")
+                                WakeWordVoskState.setModelLoaded(true)
+                                WakeWordVoskState.updateStatus("Model Loaded • Listening for 'Hey Wasti'")
+                                Log.i(TAG, "Vosk model hot-loaded successfully into active wake-word loop.")
+                            } catch (e: Throwable) {
+                                Log.e(TAG, "Failed hot-loading downloaded Vosk model", e)
+                            }
+                        }
+                    }
+                } else {
+                    try {
+                        voskModel = Model(modelDir.absolutePath)
+                        voskRecognizer = Recognizer(voskModel, SAMPLE_RATE.toFloat(), "[\"hey wasti\", \"[unk]\"]")
+                        WakeWordVoskState.setModelLoaded(true)
+                        WakeWordVoskState.updateStatus("Model Loaded • Listening for 'Hey Wasti'")
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "Vosk native model directory standby mode.", e)
+                        WakeWordVoskState.setModelLoaded(false)
+                        WakeWordVoskState.updateStatus("AudioRecord Standby (Model Directory Prepared)")
+                    }
                 }
 
                 startAudioRecordBufferLoop()
@@ -291,7 +310,11 @@ class WakeWordVoskService : Service() {
             WakeWordVoskState.recordWakeWord("Hey Wasti")
             WakeWordVoskState.updateStatus("Wake Word 'Hey Wasti' Detected!")
             withContext(Dispatchers.Main) {
-                startNativeListeningCallback?.invoke()
+                if (startNativeListeningCallback != null) {
+                    startNativeListeningCallback?.invoke()
+                } else {
+                    WastiFloatingService.triggerWakeWord(applicationContext)
+                }
             }
             delay(1500)
             if (isListening) {
