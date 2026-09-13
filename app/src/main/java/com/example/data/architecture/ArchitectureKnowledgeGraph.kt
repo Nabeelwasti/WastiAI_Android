@@ -279,6 +279,8 @@ object ArchitectureKnowledgeGraph {
 
     fun getAllNodes(): List<ArchitectureNode> = nodes.values.toList()
 
+    fun getAllEdges(): List<ArchitectureEdge> = edges.toList()
+
     fun getNodesByLayer(layer: ArchitectureLayer): List<ArchitectureNode> =
         nodes.values.filter { it.layer == layer }
 
