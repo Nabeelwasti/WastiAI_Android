@@ -81,7 +81,8 @@ class WastiPolyglotTerminalEngine(
         "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum",
         "sysinfo", "hardware", "keystore", "tunnel", "polyglot",
         "search", "speak", "alternatives", "cognitive", "sensory", "face",
-        "lead", "hunt", "leads", "scrape", "crawl", "crm"
+        "lead", "hunt", "leads", "scrape", "crawl", "crm",
+        "model", "agent"
     )
 
     override suspend fun canExecute(request: ExecutionRequest): Boolean {
@@ -105,7 +106,9 @@ class WastiPolyglotTerminalEngine(
                 lower.startsWith("ssh ") ||
                 lower.startsWith("tmux ") ||
                 lower.startsWith("gcc ") ||
-                lower.startsWith("clang ")
+                lower.startsWith("clang ") ||
+                lower.startsWith("model ") ||
+                lower.startsWith("agent ")
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {
@@ -148,6 +151,7 @@ class WastiPolyglotTerminalEngine(
             "lead", "hunt", "leads" -> executeLeadCommand(raw)
             "scrape", "crawl" -> executeScrapeCommand(raw)
             "crm" -> executeCrmCommand(raw)
+            "model", "agent" -> executeModelAgentCommand(firstToken, restOfCmd, workingDir)
             else -> executeShellProcess(raw)
         }
 
@@ -676,6 +680,98 @@ Commands:
                     isSuccess = true,
                     language = PolyglotLanguage.CRM_PIPELINE,
                     stdout = "Usage:\n• `crm list` — View all prospects\n• `crm add <name> <email> <phone> <company>` — Add prospect"
+                )
+            }
+        }
+    }
+
+    private suspend fun executeModelAgentCommand(action: String, args: String, workingDir: File): PolyglotExecutionOutcome {
+        val tokens = args.split(Regex("\\s+")).filter { it.isNotBlank() }
+        val subAction = tokens.getOrNull(0)?.lowercase() ?: "list"
+        val modelId = tokens.getOrNull(1)?.lowercase() ?: "wasti-llama"
+
+        return when (subAction) {
+            "list" -> {
+                val listSb = StringBuilder()
+                listSb.appendLine("=== WASTI AI OS — 12 OPEN-SOURCE SOVEREIGN AGENTS ===")
+                for (m in com.example.data.ai.model.OpenSourceModelCatalog.ALL_MODELS) {
+                    val status = com.example.data.ai.engine.ModelArtifactManager.getModelStatus(context, m.id)
+                    val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest(m.id)
+                    val mb = (manifest?.byteSize ?: 0L) / (1024 * 1024)
+                    listSb.appendLine(" • [${m.id}] ${m.brandDisplayName} | Status: $status | Size: ~${mb}MB | Backend: ${m.defaultBackend}")
+                }
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.SHELL,
+                    stdout = listSb.toString().trimEnd()
+                )
+            }
+            "install", "download", "pull" -> {
+                val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest(modelId)
+                if (manifest == null) {
+                    PolyglotExecutionOutcome(
+                        isSuccess = false,
+                        language = PolyglotLanguage.SHELL,
+                        stdout = "",
+                        stderr = "Unknown model '$modelId'. Use 'model list' to view all 12 available agents."
+                    )
+                } else {
+                    val success = com.example.data.ai.runtime.WastiModelDownloader.downloadModel(context, manifest)
+                    if (success) {
+                        PolyglotExecutionOutcome(
+                            isSuccess = true,
+                            language = PolyglotLanguage.SHELL,
+                            stdout = "✔ Successfully installed and verified agent model '$modelId' in Wasti AI OS native storage."
+                        )
+                    } else {
+                        val plan = com.example.data.ai.runtime.CodingEnvironmentInstallerBridge.planResolution(
+                            context,
+                            modelId,
+                            "Direct download interrupted"
+                        )
+                        PolyglotExecutionOutcome(
+                            isSuccess = false,
+                            language = PolyglotLanguage.SHELL,
+                            stdout = "⚠ Direct download interrupted. Autonomous Recovery Plan generated:\n${plan.commandLineSnippet}\nFallback Providers: ${plan.fallbackProvidersAvailable.joinToString(", ")}",
+                            stderr = "Download failed via primary & mirror. Autonomous resolution available."
+                        )
+                    }
+                }
+            }
+            "verify" -> {
+                val isPresent = com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, modelId)
+                val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest(modelId)
+                if (!isPresent || manifest == null) {
+                    PolyglotExecutionOutcome(
+                        isSuccess = false,
+                        language = PolyglotLanguage.SHELL,
+                        stdout = "",
+                        stderr = "Weights for '$modelId' are not present locally. Run 'model install $modelId'."
+                    )
+                } else {
+                    val file = com.example.data.ai.engine.ModelArtifactManager.getModelFile(context, modelId)
+                    val verified = com.example.data.ai.engine.ModelArtifactManager.verifyModelIntegrity(file, manifest.expectedSha256)
+                    PolyglotExecutionOutcome(
+                        isSuccess = verified,
+                        language = PolyglotLanguage.SHELL,
+                        stdout = if (verified) "✔ Cryptographic SHA-256 integrity verified: $modelId" else "❌ SHA-256 verification failed: $modelId"
+                    )
+                }
+            }
+            "status" -> {
+                val status = com.example.data.ai.engine.ModelArtifactManager.getModelStatus(context, modelId)
+                val (canRun, reason) = com.example.data.ai.engine.ModelArtifactManager.isModelRunnableLocally(context, modelId)
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.SHELL,
+                    stdout = "Model: $modelId\nStatus: $status\nLocal Runnable: $canRun\nDiagnostic: $reason"
+                )
+            }
+            else -> {
+                PolyglotExecutionOutcome(
+                    isSuccess = true,
+                    language = PolyglotLanguage.SHELL,
+                    stdout = "Usage:\n• `model list` — View all 12 open-source sovereign models\n• `model install <id>` — Install & verify model weights\n• `model verify <id>` — Verify cryptographic checksum\n• `model status <id>` — Check hardware & execution readiness"
                 )
             }
         }

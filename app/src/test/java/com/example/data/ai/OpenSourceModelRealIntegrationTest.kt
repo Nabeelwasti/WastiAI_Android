@@ -7,6 +7,7 @@ import com.example.data.ai.provider.HuggingFaceProvider
 import com.example.data.ai.provider.LocalLLMProvider
 import com.example.data.api.HuggingFaceClient
 import com.example.data.api.LocalLLMClient
+import com.example.data.ai.runtime.WastiModelDownloader
 import com.example.data.core.TestCategory
 import com.example.data.core.TestTier
 import kotlinx.coroutines.runBlocking
@@ -180,5 +181,27 @@ class OpenSourceModelRealIntegrationTest {
         val skills = preserver.getAllLearnedSkills()
         assertEquals(1, skills.size)
         assertEquals("SafeFileRead", skills[0].skillName)
+    }
+
+    @Test
+    fun testNativePolyglotTerminalModelCommands() = runBlocking {
+        val context: android.content.Context = androidx.test.core.app.ApplicationProvider.getApplicationContext()
+        val envManager = com.example.data.wre.WreEnvironmentManager(context)
+        val workspace = com.example.data.wre.WreWorkspaceManager(context, envManager)
+        val terminal = com.example.data.wre.WastiPolyglotTerminalEngine(context, workspace)
+
+        assertTrue(terminal.canExecute(com.example.data.wre.ExecutionRequest(command = "model list")))
+        assertTrue(terminal.canExecute(com.example.data.wre.ExecutionRequest(command = "model status wasti-llama")))
+
+        val listResult = terminal.execute(com.example.data.wre.ExecutionRequest(command = "model list"))
+        assertTrue(listResult.isSuccess)
+        assertTrue(listResult.stdout.contains("12 OPEN-SOURCE SOVEREIGN AGENTS"))
+        assertTrue(listResult.stdout.contains("wasti-llama"))
+        assertTrue(listResult.stdout.contains("wasti-qwen"))
+        assertTrue(listResult.stdout.contains("wasti-deepseek"))
+
+        val statusResult = terminal.execute(com.example.data.wre.ExecutionRequest(command = "model status wasti-llama"))
+        assertTrue(statusResult.isSuccess)
+        assertTrue(statusResult.stdout.contains("Model: wasti-llama"))
     }
 }
