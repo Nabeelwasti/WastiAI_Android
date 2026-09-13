@@ -56,6 +56,19 @@ class OpenSourceModelRealIntegrationTest {
     }
 
     @Test
+    fun testHuggingFaceClientEmbeddingSupport() = runBlocking {
+        val parsed = HuggingFaceClient.parseEmbeddingResponse("[0.1, 0.2, 0.3]")
+        assertEquals(3, parsed.size)
+        assertEquals(0.1f, parsed[0], 0.001f)
+
+        val empty = HuggingFaceClient.parseEmbeddingResponse("")
+        assertTrue(empty.isEmpty())
+
+        val unconfigured = HuggingFaceClient.generateEmbedding("test query")
+        assertTrue(unconfigured.isEmpty())
+    }
+
+    @Test
     fun testHuggingFaceProviderRegistrationAndDefaults() {
         val provider = HuggingFaceProvider()
         assertEquals("huggingface", provider.id)

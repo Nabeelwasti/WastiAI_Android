@@ -29,6 +29,7 @@ import java.util.concurrent.TimeUnit
 object HuggingFaceClient {
     private const val TAG = "HuggingFaceClient"
     private const val ROUTER_URL = "https://router.huggingface.co/hf-inference/v1/chat/completions"
+    private const val EMBEDDING_MODEL_URL = "https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private val okHttpClient = OkHttpClient.Builder()
@@ -41,6 +42,59 @@ object HuggingFaceClient {
         val token = CredentialRegistry.getRawValue("HUGGINGFACE_ACCESS_TOKEN")
             ?: CredentialRegistry.getRawValue("HUGGINGFACE_API_KEY")
         return !token.isNullOrBlank() && !CredentialRegistry.isPlaceholder(token)
+    }
+
+    suspend fun generateEmbedding(text: String): List<Float> = withContext(Dispatchers.IO) {
+        val apiKey = CredentialRegistry.getRawValue("HUGGINGFACE_ACCESS_TOKEN")
+            ?: CredentialRegistry.getRawValue("HUGGINGFACE_API_KEY")
+        if (apiKey.isNullOrBlank() || CredentialRegistry.isPlaceholder(apiKey)) return@withContext emptyList()
+
+        val bearer = if (apiKey.startsWith("Bearer ")) apiKey else "Bearer $apiKey"
+        val json = JSONObject().apply {
+            put("inputs", text)
+        }.toString()
+
+        val request = Request.Builder()
+            .url(EMBEDDING_MODEL_URL)
+            .addHeader("Authorization", bearer)
+            .post(json.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            val response = okHttpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                val bodyString = response.body?.string().orEmpty()
+                parseEmbeddingResponse(bodyString)
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            emptyList()
+        }
+    }
+
+    fun parseEmbeddingResponse(bodyString: String): List<Float> {
+        if (bodyString.isBlank()) return emptyList()
+        return try {
+            val jsonArray = JSONArray(bodyString)
+            val result = mutableListOf<Float>()
+            if (jsonArray.length() > 0) {
+                val first = jsonArray.opt(0)
+                if (first is JSONArray) {
+                    for (i in 0 until first.length()) {
+                        result.add(first.getDouble(i).toFloat())
+                    }
+                } else {
+                    for (i in 0 until jsonArray.length()) {
+                        result.add(jsonArray.getDouble(i).toFloat())
+                    }
+                }
+            }
+            result
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
 
     suspend fun generateText(
