@@ -219,6 +219,23 @@ secrets {
 
 googleServices { missingGoogleServicesStrategy = MissingGoogleServicesStrategy.WARN }
 
+tasks.matching { it.name.startsWith("assembleRelease") || it.name.startsWith("bundleRelease") }.configureEach {
+  doFirst {
+    val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("STORE_PASSWORD")
+    val releaseKeyPassword = System.getenv("KEY_PASSWORD")
+    val ready = !releaseKeystorePath.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank() &&
+        file(releaseKeystorePath).exists()
+    if (!ready) {
+      throw GradleException(
+        "Production release signing is not configured. Set KEYSTORE_PATH, STORE_PASSWORD, and KEY_PASSWORD and provide the keystore before assembling or bundling release."
+      )
+    }
+  }
+}
+
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
