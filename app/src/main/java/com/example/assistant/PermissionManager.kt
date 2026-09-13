@@ -151,7 +151,6 @@ object PermissionManager {
         legacyTestConsent[permissionOrCapability] = consented
     }
 
-    @Deprecated("Use setUserConsent(context, permissionOrCapability, consented) for persistent storage")
     fun setUserConsent(permissionOrCapability: String, consented: Boolean) {
         legacyTestConsent[permissionOrCapability] = consented
         effectiveContext?.let { setUserConsent(it, permissionOrCapability, consented) }
@@ -163,7 +162,6 @@ object PermissionManager {
         else legacyTestConsent[permissionOrCapability] ?: defaultConsentFor(permissionOrCapability)
     }
 
-    @Deprecated("Use hasUserConsent(context, permissionOrCapability)")
     fun hasUserConsent(permissionOrCapability: String): Boolean {
         return legacyTestConsent[permissionOrCapability]
             ?: effectiveContext?.let { hasUserConsent(it, permissionOrCapability) }
@@ -173,7 +171,6 @@ object PermissionManager {
     private fun hasStoredUserConsent(context: Context, permissionOrCapability: String): Boolean =
         prefs(context).contains(CONSENT_PREFIX + permissionOrCapability) || legacyTestConsent.containsKey(permissionOrCapability)
 
-    @Deprecated("Use clearUserConsents(context)")
     fun clearUserConsents() {
         legacyTestConsent.clear()
         effectiveContext?.let { clearUserConsents(it) }

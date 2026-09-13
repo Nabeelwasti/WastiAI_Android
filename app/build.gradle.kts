@@ -172,7 +172,17 @@ android {
         }
         test.addTestListener(object : org.gradle.api.tasks.testing.TestListener {
           override fun beforeSuite(suite: org.gradle.api.tasks.testing.TestDescriptor) {}
-          override fun afterSuite(suite: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {}
+          override fun afterSuite(suite: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
+            if (suite.parent == null) {
+              println("\n========================================================")
+              println("  [UNIT TEST SUITE COMPLETE] Total: ${result.testCount} tests executed")
+              println("  Passed: ${result.successfulTestCount} | Failed: ${result.failedTestCount} | Skipped: ${result.skippedTestCount}")
+              println("========================================================\n")
+            } else if (suite.className != null) {
+              val status = if (result.failedTestCount > 0) "FAILED" else "PASSED"
+              println("  ✔ [TEST SUITE $status] ${suite.className} (${result.testCount} tests, ${result.successfulTestCount} passed)")
+            }
+          }
           override fun beforeTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor) {}
           override fun afterTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
             if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
