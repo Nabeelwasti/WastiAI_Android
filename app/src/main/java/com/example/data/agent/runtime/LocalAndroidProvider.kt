@@ -78,10 +78,44 @@ class LocalAndroidProvider(
             stdoutThread.start()
             stderrThread.start()
 
-            // request.timeoutMs remains compatibility telemetry only. A long task continues
-            // until real completion, explicit cancellation, emergency stop, or runtime failure.
-            // waitFor() gives Kotlin a single unambiguous ExecutionResult return path.
-            val exitCode = proc.waitFor()
+            val completed = if (request.timeoutMs > 0L) {
+                try {
+                    proc.waitFor(request.timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+                } catch (_: NoSuchMethodError) {
+                    val deadline = System.currentTimeMillis() + request.timeoutMs
+                    var isDone = false
+                    while (System.currentTimeMillis() < deadline) {
+                        try {
+                            proc.exitValue()
+                            isDone = true
+                            break
+                        } catch (_: IllegalThreadStateException) {
+                            Thread.sleep(50)
+                        }
+                    }
+                    isDone
+                }
+            } else {
+                proc.waitFor()
+                true
+            }
+
+            if (!completed) {
+                terminateProcess(proc)
+                try { stdoutThread.join(200) } catch (_: Throwable) {}
+                try { stderrThread.join(200) } catch (_: Throwable) {}
+                val duration = System.currentTimeMillis() - startTime
+                return@withContext ExecutionResult(
+                    stdout = stdout,
+                    stderr = "EXECUTION_TIMEOUT: Process exceeded requested timeout of ${request.timeoutMs}ms",
+                    exitCode = -1,
+                    durationMs = duration,
+                    status = ExecutionStatus(false, "EXECUTION_TIMEOUT: Process exceeded requested timeout of ${request.timeoutMs}ms"),
+                    errorType = ExecutionErrorType.TIMEOUT
+                )
+            }
+
+            val exitCode = proc.exitValue()
             stdoutThread.join()
             stderrThread.join()
             val ok = exitCode == 0
@@ -95,11 +129,27 @@ class LocalAndroidProvider(
             )
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
+            terminateProcess(process)
             return@withContext ExecutionResult("", "EXECUTION_CANCELLED: ${e.message ?: "Execution thread interrupted"}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_CANCELLED"), ExecutionErrorType.CANCELLED)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            terminateProcess(process)
+            return@withContext ExecutionResult("", "EXECUTION_CANCELLED: ${e.message ?: "Execution cancelled"}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_CANCELLED"), ExecutionErrorType.CANCELLED)
         } catch (e: Exception) {
-            process?.let { if (it.isAlive) { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) it.destroyForcibly() else it.destroy() } }
+            terminateProcess(process)
             return@withContext ExecutionResult("", "EXECUTION_ERROR: ${e.message}", -1, System.currentTimeMillis() - startTime, ExecutionStatus(false, "EXECUTION_ERROR: ${e.message}"), ExecutionErrorType.RUNTIME)
+        }
+    }
+
+    private fun terminateProcess(process: Process?) {
+        if (process == null) return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                process.destroyForcibly()
+            } else {
+                process.destroy()
+            }
+        } catch (_: Throwable) {
+            try { process.destroy() } catch (_: Throwable) {}
         }
     }
 

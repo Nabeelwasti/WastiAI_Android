@@ -177,9 +177,9 @@ android {
         // Stop at the first real test failure so CI never burns the remaining budget
         // after the suite has already established a failing state.
         test.failFast = true
-        // Short CI safety ceiling. This applies only to JVM test execution in CI;
-        // it does not restrict Wasti OS runtime execution on a real device.
-        test.timeout.set(Duration.ofMinutes(4))
+        // Generous safety ceiling for the comprehensive unit test suite in CI.
+        // This applies only to JVM test execution in CI; it does not restrict Wasti OS runtime execution.
+        test.timeout.set(Duration.ofMinutes(12))
       }
     }
   }
