@@ -950,7 +950,7 @@ $taskPipelineDigest
         return (jaccard * 0.4) + (overlap * 0.6)
     }
 
-    private fun rankMemoriesByVectorSimilarity(query: String, memoriesList: List<MemoryEntity>, topK: Int = 5): List<MemoryEntity> {
+    fun rankMemoriesByVectorSimilarity(query: String, memoriesList: List<MemoryEntity>, topK: Int = 5): List<MemoryEntity> {
         if (memoriesList.isEmpty()) return emptyList()
         val now = System.currentTimeMillis()
 

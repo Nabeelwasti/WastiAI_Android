@@ -331,7 +331,7 @@ object MemoryManager {
         }
     }
 
-    private fun calculateKeywordMatchScore(query: String, text: String): Float {
+    internal fun calculateKeywordMatchScore(query: String, text: String): Float {
         val queryWords = query.lowercase().split(Regex("\\s+")).filter { it.length > 2 }
         if (queryWords.isEmpty()) return 0.0f
 

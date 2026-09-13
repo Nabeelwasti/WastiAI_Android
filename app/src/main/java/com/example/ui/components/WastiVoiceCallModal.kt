@@ -242,11 +242,11 @@ fun WastiVoiceCallModal(
             } finally {
                 try {
                     aec?.release()
-                } catch (e: Exception) {}
+                } catch (_: Exception) {}
                 try {
                     audioRecord?.stop()
                     audioRecord?.release()
-                } catch (e: Exception) {}
+                } catch (_: Exception) {}
             }
         }
     }
@@ -431,13 +431,13 @@ fun WastiVoiceCallModal(
                         try {
                             player.stop()
                             player.release()
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {}
                         if (mediaPlayer == player) {
                             mediaPlayer = null
                         }
                         try {
                             tempFile.delete()
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {}
 
                         Handler(Looper.getMainLooper()).post {
                             voiceStatusText = "Wasti HD Speech complete • Reopening mic..."
@@ -451,13 +451,13 @@ fun WastiVoiceCallModal(
                         isSpeaking = false
                         try {
                             player.release()
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {}
                         if (mediaPlayer == player) {
                             mediaPlayer = null
                         }
                         try {
                             tempFile.delete()
-                        } catch (e: Exception) {}
+                        } catch (_: Exception) {}
 
                         fallbackToAndroidTts(rawText, persona)
                         true
@@ -491,11 +491,11 @@ fun WastiVoiceCallModal(
                     if (mp.isPlaying) mp.stop()
                     mp.release()
                 }
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
             try {
                 tts.stop()
                 tts.shutdown()
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
     }
 

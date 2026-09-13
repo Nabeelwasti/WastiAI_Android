@@ -1,0 +1,330 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>SwallowedException:AutonomousCapabilityOrchestrator.kt$AutonomousCapabilityOrchestrator$e: Exception</ID>
+    <ID>SwallowedException:CredentialRegistry.kt$CredentialRegistry$e: Throwable</ID>
+    <ID>SwallowedException:LinkedInOAuthService.kt$LinkedInOAuthService$e: Exception</ID>
+    <ID>SwallowedException:MeshProtocolModels.kt$CapabilityDelta.Companion$e: Exception</ID>
+    <ID>SwallowedException:ModelArtifactManager.kt$HardwareCapabilityDetector$e: Exception</ID>
+    <ID>SwallowedException:OfflineProvider.kt$OfflineProvider$e: Exception</ID>
+    <ID>SwallowedException:OperationsManager.kt$OperationsManager$e: Throwable</ID>
+    <ID>SwallowedException:RemoteSandboxCodeExecutionProvider.kt$DefaultRemoteSandboxHttpClient$e: java.net.SocketTimeoutException</ID>
+    <ID>SwallowedException:TestClassification.kt$TestClassificationRegistry$e2: Exception</ID>
+    <ID>SwallowedException:TestClassification.kt$TestClassificationRegistry$e: Exception</ID>
+    <ID>SwallowedException:UniversalConversationFabric.kt$UniversalConversationFabric$e: TimeoutCancellationException</ID>
+    <ID>SwallowedException:WastiBuildAndTestManager.kt$WastiBuildAndTestManager$e2: Exception</ID>
+    <ID>SwallowedException:WastiBuildAndTestManager.kt$WastiBuildAndTestManager$e: Exception</ID>
+    <ID>SwallowedException:WastiCore.kt$WastiCore$oe: Exception</ID>
+    <ID>SwallowedException:WastiFloatingService.kt$WastiFloatingService$inner: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.ActionHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.ChatHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.ConversationConfirmHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.ConversationContinueHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.ExecuteHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.PairingRequestHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.PairingRevokeHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.PairingVerifyHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.TerminalHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiLocalServerManager.kt$WastiLocalServerManager.TransportHandler$e: Exception</ID>
+    <ID>SwallowedException:WastiModelDownloader.kt$WastiModelDownloader$e: CancellationException</ID>
+    <ID>SwallowedException:WastiProactiveAutonomousEngine.kt$WastiProactiveAutonomousEngine$e: CancellationException</ID>
+    <ID>SwallowedException:WastiProjectManager.kt$WastiProjectManager$e: Exception</ID>
+    <ID>SwallowedException:WastiPythonRuntimeEngine.kt$WastiPythonRuntimeEngine$e2: Exception</ID>
+    <ID>SwallowedException:WastiPythonRuntimeEngine.kt$WastiPythonRuntimeEngine$e: Exception</ID>
+    <ID>SwallowedException:WastiSecureStorage.kt$WastiSecureStorage$e: Throwable</ID>
+    <ID>SwallowedException:WastiViewModel.kt$WastiViewModel$e: Exception</ID>
+    <ID>SwallowedException:WastiVoiceCallModal.kt$e: Exception</ID>
+    <ID>SwallowedException:WastiWasmRuntime.kt$WastiWasmRuntime.Companion$t: Throwable</ID>
+    <ID>SwallowedException:WastiWebSocketServer.kt$WastiWebSocketServer$e: Exception</ID>
+    <ID>SwallowedException:WastiWorkManagerHelper.kt$WastiWorkManagerHelper$e: Throwable</ID>
+    <ID>SwallowedException:WebSearchEngine.kt$WebSearchEngine$e: Exception</ID>
+    <ID>SwallowedException:WorkspaceManager.kt$WorkspaceManager$e: Exception</ID>
+    <ID>SwallowedException:WrePackageManager.kt$WrePackageManager$e: Exception</ID>
+    <ID>UnusedImports:AccountHubScreen.kt$import androidx.compose.foundation.shape.CircleShape</ID>
+    <ID>UnusedImports:ActionExecutor.kt$import android.telephony.SmsManager</ID>
+    <ID>UnusedImports:AgenticLoopEngine.kt$import kotlinx.coroutines.delay</ID>
+    <ID>UnusedImports:AudioContracts.kt$import kotlinx.coroutines.flow.StateFlow</ID>
+    <ID>UnusedImports:AutonomousCapabilityOrchestrator.kt$import com.example.data.agent.runtime.WastiCapabilityRegistry</ID>
+    <ID>UnusedImports:AutonomousHardwareOffloader.kt$import android.bluetooth.BluetoothAdapter</ID>
+    <ID>UnusedImports:AutonomousHardwareOffloader.kt$import java.util.UUID</ID>
+    <ID>UnusedImports:AutonomousSkillEvolutionEngine.kt$import kotlinx.coroutines.launch</ID>
+    <ID>UnusedImports:AutonomousWorkflowModels.kt$import com.example.data.agent.runtime.UnifiedExecutionStatus</ID>
+    <ID>UnusedImports:BciSignalProcessor.kt$import kotlin.math.sqrt</ID>
+    <ID>UnusedImports:BrainSimulationScreen.kt$import androidx.compose.material.icons.filled.Speed</ID>
+    <ID>UnusedImports:BrainSimulationScreen.kt$import com.example.data.core.BciSourceType</ID>
+    <ID>UnusedImports:CanonicalAudioOrchestrator.kt$import com.example.data.voice.provider.SpeechToTextProvider</ID>
+    <ID>UnusedImports:CapabilityCenterScreen.kt$import android.content.Context</ID>
+    <ID>UnusedImports:CapabilityCenterScreen.kt$import androidx.compose.animation.AnimatedVisibility</ID>
+    <ID>UnusedImports:CapabilityCenterScreen.kt$import androidx.compose.ui.draw.clip</ID>
+    <ID>UnusedImports:CapabilityCenterScreen.kt$import androidx.compose.ui.graphics.vector.ImageVector</ID>
+    <ID>UnusedImports:CapabilityInventionEngine.kt$import com.example.data.di.WastiServiceLocator</ID>
+    <ID>UnusedImports:CapabilityPlanner.kt$import com.example.data.di.WastiServiceLocator</ID>
+    <ID>UnusedImports:ChatWorkspaceScreen.kt$import android.app.Activity</ID>
+    <ID>UnusedImports:ChatWorkspaceScreen.kt$import android.content.Intent</ID>
+    <ID>UnusedImports:ChatWorkspaceScreen.kt$import android.speech.RecognizerIntent</ID>
+    <ID>UnusedImports:CivilizationArchitectureDashboard.kt$import androidx.compose.foundation.border</ID>
+    <ID>UnusedImports:CivilizationArchitectureDashboard.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:CivilizationArchitectureDashboard.kt$import com.example.data.ai.council.AICouncilEngine</ID>
+    <ID>UnusedImports:CivilizationArchitectureDashboard.kt$import com.example.data.architecture.civilization.CapabilityLifecycleState</ID>
+    <ID>UnusedImports:ClientInvoiceManager.kt$import android.widget.Toast</ID>
+    <ID>UnusedImports:CodePromptWorkspaceScreen.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import android.content.ClipData</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import android.content.ClipboardManager</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import android.content.Context</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import androidx.compose.foundation.background</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import androidx.compose.ui.draw.clip</ID>
+    <ID>UnusedImports:CodeStudioScreen.kt$import java.io.File</ID>
+    <ID>UnusedImports:CodebaseIntelligenceEngine.kt$import com.example.data.agent.runtime.WastiCapabilityRegistry</ID>
+    <ID>UnusedImports:CostResourcePlanner.kt$import java.util.UUID</ID>
+    <ID>UnusedImports:CredentialRegistry.kt$import androidx.security.crypto.EncryptedSharedPreferences</ID>
+    <ID>UnusedImports:CredentialRegistry.kt$import androidx.security.crypto.MasterKey</ID>
+    <ID>UnusedImports:DashboardScreen.kt$import androidx.compose.foundation.Image</ID>
+    <ID>UnusedImports:DashboardScreen.kt$import androidx.compose.foundation.lazy.LazyRow</ID>
+    <ID>UnusedImports:DashboardScreen.kt$import androidx.compose.foundation.lazy.items</ID>
+    <ID>UnusedImports:DashboardScreen.kt$import androidx.compose.ui.res.painterResource</ID>
+    <ID>UnusedImports:DevAssistantScreen.kt$import androidx.compose.foundation.background</ID>
+    <ID>UnusedImports:DevAssistantScreen.kt$import com.example.data.credential.CredentialRegistry</ID>
+    <ID>UnusedImports:DeviceVerificationEvidenceTracker.kt$import android.os.Build</ID>
+    <ID>UnusedImports:DraftPersistenceManager.kt$import androidx.security.crypto.EncryptedSharedPreferences</ID>
+    <ID>UnusedImports:DraftPersistenceManager.kt$import androidx.security.crypto.MasterKey</ID>
+    <ID>UnusedImports:GeminiApiService.kt$import com.example.BuildConfig</ID>
+    <ID>UnusedImports:GeminiApiService.kt$import okhttp3.MediaType.Companion.toMediaType</ID>
+    <ID>UnusedImports:LeadRadarRepository.kt$import com.example.data.crm.FieldProvenanceSource</ID>
+    <ID>UnusedImports:LeadRadarRepository.kt$import com.example.data.crm.ProvenanceTrackedField</ID>
+    <ID>UnusedImports:LeadSyncWorker.kt$import androidx.work.WorkManager</ID>
+    <ID>UnusedImports:LeadSyncWorker.kt$import com.example.data.credential.CredentialRegistry</ID>
+    <ID>UnusedImports:LocalAndroidProvider.kt$import android.os.Build</ID>
+    <ID>UnusedImports:LocalLLMClient.kt$import android.util.Log</ID>
+    <ID>UnusedImports:MainActivity.kt$import android.Manifest</ID>
+    <ID>UnusedImports:MainActivity.kt$import android.os.Build</ID>
+    <ID>UnusedImports:MainActivity.kt$import androidx.activity.ComponentActivity</ID>
+    <ID>UnusedImports:MainActivity.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:MainActivity.kt$import androidx.compose.foundation.shape.RoundedCornerShape</ID>
+    <ID>UnusedImports:MainActivity.kt$import androidx.compose.ui.Alignment</ID>
+    <ID>UnusedImports:MainActivity.kt$import androidx.compose.ui.draw.clip</ID>
+    <ID>UnusedImports:MainActivity.kt$import com.example.data.core.AppStartupState</ID>
+    <ID>UnusedImports:MainActivity.kt$import com.example.data.wre.WreManager</ID>
+    <ID>UnusedImports:MemoryDreamingEngine.kt$import com.example.data.db.MemoryEntity</ID>
+    <ID>UnusedImports:MemoryKnowledgeScreen.kt$import androidx.compose.foundation.background</ID>
+    <ID>UnusedImports:MemoryManager.kt$import com.example.data.memory.model.EmbeddingVector</ID>
+    <ID>UnusedImports:MemoryManager.kt$import com.example.data.memory.model.SearchType</ID>
+    <ID>UnusedImports:MeshProtocolModels.kt$import android.util.Log</ID>
+    <ID>UnusedImports:MeshProtocolModels.kt$import java.util.concurrent.ConcurrentSkipListSet</ID>
+    <ID>UnusedImports:ModelArtifactManifests.kt$import java.io.File</ID>
+    <ID>UnusedImports:NeuralEmulationEngine.kt$import kotlin.math.tanh</ID>
+    <ID>UnusedImports:NotionClient.kt$import okhttp3.MediaType.Companion.toMediaType</ID>
+    <ID>UnusedImports:NotionClient.kt$import okhttp3.RequestBody.Companion.toRequestBody</ID>
+    <ID>UnusedImports:OnboardingModelWizard.kt$import androidx.compose.material.icons.filled.Security</ID>
+    <ID>UnusedImports:OperationsDashboardScreen.kt$import androidx.compose.animation.AnimatedVisibility</ID>
+    <ID>UnusedImports:OperationsDashboardScreen.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:OperationsDashboardScreen.kt$import androidx.compose.ui.graphics.Brush</ID>
+    <ID>UnusedImports:PermissionManager.kt$import android.content.res.AssetManager</ID>
+    <ID>UnusedImports:ProactiveReconciliationWorker.kt$import androidx.work.WorkManager</ID>
+    <ID>UnusedImports:ProductionReadinessGate.kt$import com.example.data.agent.runtime.CapabilityRealityState</ID>
+    <ID>UnusedImports:ProjectsTasksScreen.kt$import androidx.compose.ui.graphics.Color</ID>
+    <ID>UnusedImports:ProviderRouter.kt$import com.example.data.ai.model.ProviderCapability</ID>
+    <ID>UnusedImports:ProviderRouter.kt$import com.example.data.ai.provider.AIProvider</ID>
+    <ID>UnusedImports:RealityDiagnosticsView.kt$import androidx.compose.ui.draw.clip</ID>
+    <ID>UnusedImports:RealityDiagnosticsView.kt$import com.example.data.agent.runtime.CapabilityRealityRegistry</ID>
+    <ID>UnusedImports:ReverseAppStoreIntentCard.kt$import androidx.compose.animation.AnimatedVisibility</ID>
+    <ID>UnusedImports:SelfEnhancementWorker.kt$import androidx.work.WorkManager</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import android.content.ClipData</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import android.content.ClipboardManager</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import androidx.compose.animation.AnimatedVisibility</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import androidx.compose.foundation.ExperimentalFoundationApi</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import androidx.compose.foundation.combinedClickable</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import androidx.compose.ui.graphics.Color</ID>
+    <ID>UnusedImports:SettingsScreen.kt$import com.example.data.credential.CredentialCategory</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import android.content.Intent</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import android.net.Uri</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import com.example.data.credential.CredentialRegistry</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import com.example.data.credential.CredentialStatus</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import com.example.data.db.WastiDatabase</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import com.example.data.node.AutonomousHardwareOffloader</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import java.io.BufferedReader</ID>
+    <ID>UnusedImports:SovereignAlternativeRegistry.kt$import java.io.InputStreamReader</ID>
+    <ID>UnusedImports:StreamingEngine.kt$import kotlinx.coroutines.flow.flow</ID>
+    <ID>UnusedImports:TerminalWorkspaceScreen.kt$import androidx.compose.foundation.lazy.LazyRow</ID>
+    <ID>UnusedImports:TerminalWorkspaceScreen.kt$import androidx.compose.foundation.verticalScroll</ID>
+    <ID>UnusedImports:TerminalWorkspaceScreen.kt$import java.io.File</ID>
+    <ID>UnusedImports:ToolRegistry.kt$import com.example.data.memory.MemoryManager</ID>
+    <ID>UnusedImports:ToolRegistry.kt$import com.example.data.memory.model.MemorySearchQuery</ID>
+    <ID>UnusedImports:UnifiedExecutionFabric.kt$import kotlinx.coroutines.withTimeoutOrNull</ID>
+    <ID>UnusedImports:UnifiedWorkflowEngine.kt$import com.example.data.tool.ToolRegistry</ID>
+    <ID>UnusedImports:UniversalConversationFabric.kt$import com.example.data.db.ConversationEntity</ID>
+    <ID>UnusedImports:WakeWordSettingsScreen.kt$import java.io.File</ID>
+    <ID>UnusedImports:WakeWordVoskService.kt$import java.io.File</ID>
+    <ID>UnusedImports:WastiApplication.kt$import androidx.work.WorkManager</ID>
+    <ID>UnusedImports:WastiBinaryProtocol.kt$import java.nio.ByteBuffer</ID>
+    <ID>UnusedImports:WastiBiometricFaceEngine.kt$import java.io.ByteArrayOutputStream</ID>
+    <ID>UnusedImports:WastiBuildAndTestManager.kt$import java.io.File</ID>
+    <ID>UnusedImports:WastiDeepHardwareProfiler.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiDeviceController.kt$import com.example.data.db.KnowledgeEntity</ID>
+    <ID>UnusedImports:WastiDeviceSensoryEngine.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiEmbeddingRuntime.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiExceptions.kt$import java.io.IOException</ID>
+    <ID>UnusedImports:WastiFloatingService.kt$import com.example.data.device.WastiDeviceController</ID>
+    <ID>UnusedImports:WastiHolisticCognitiveEngine.kt$import java.io.File</ID>
+    <ID>UnusedImports:WastiIntentParser.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiLocalBrainProvider.kt$import com.example.data.ai.engine.HardwareCapabilityDetector</ID>
+    <ID>UnusedImports:WastiLocalModelRuntime.kt$import com.example.data.ai.model.ModelArtifactManifest</ID>
+    <ID>UnusedImports:WastiLocalModelRuntime.kt$import com.example.data.ai.model.ModelRuntimeStatus</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import com.example.data.core.CommandSubmissionResult</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import com.example.data.core.WastiOSRuntime</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import java.util.concurrent.CopyOnWriteArrayList</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import kotlinx.coroutines.flow.MutableStateFlow</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import kotlinx.coroutines.flow.StateFlow</ID>
+    <ID>UnusedImports:WastiMeshTransport.kt$import kotlinx.coroutines.flow.asStateFlow</ID>
+    <ID>UnusedImports:WastiMeshTransportEngine.kt$import com.example.data.agent.runtime.CapabilityRealityRegistry</ID>
+    <ID>UnusedImports:WastiNativeBridgeManager.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiNativeBridgeManager.kt$import com.example.data.agent.runtime.UnifiedExecutionRequest</ID>
+    <ID>UnusedImports:WastiNativeBridgeManager.kt$import com.example.data.agent.runtime.UnifiedExecutionResult</ID>
+    <ID>UnusedImports:WastiNativeBridgeManager.kt$import com.example.data.agent.runtime.UnifiedExecutionStatus</ID>
+    <ID>UnusedImports:WastiNativeBridgeManager.kt$import com.example.data.agent.runtime.UnifiedVerificationStatus</ID>
+    <ID>UnusedImports:WastiNearbyHardwareEngine.kt$import android.bluetooth.BluetoothAdapter</ID>
+    <ID>UnusedImports:WastiNearbyHardwareEngine.kt$import android.os.Build</ID>
+    <ID>UnusedImports:WastiNearbyHardwareEngine.kt$import kotlinx.coroutines.withContext</ID>
+    <ID>UnusedImports:WastiNodeJsRuntimeEngine.kt$import java.text.SimpleDateFormat</ID>
+    <ID>UnusedImports:WastiNodeJsRuntimeEngine.kt$import java.util.Date</ID>
+    <ID>UnusedImports:WastiNodeJsRuntimeEngine.kt$import java.util.Locale</ID>
+    <ID>UnusedImports:WastiNodeJsRuntimeEngine.kt$import org.json.JSONArray</ID>
+    <ID>UnusedImports:WastiOSRuntime.kt$import com.example.data.workflow.UnifiedWorkflowEngine</ID>
+    <ID>UnusedImports:WastiOmniBrain.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiOmniBrain.kt$import com.example.data.ai.model.ModelRuntimeStatus</ID>
+    <ID>UnusedImports:WastiPackageAptPipNpmEngine.kt$import java.text.SimpleDateFormat</ID>
+    <ID>UnusedImports:WastiPackageAptPipNpmEngine.kt$import java.util.Date</ID>
+    <ID>UnusedImports:WastiPackageAptPipNpmEngine.kt$import java.util.Locale</ID>
+    <ID>UnusedImports:WastiPackageAptPipNpmEngine.kt$import org.json.JSONArray</ID>
+    <ID>UnusedImports:WastiPolyglotTerminalEngine.kt$import android.util.Log</ID>
+    <ID>UnusedImports:WastiPolyglotTerminalEngine.kt$import java.util.UUID</ID>
+    <ID>UnusedImports:WastiProactiveAutonomousEngine.kt$import com.example.data.workflow.AutonomousCapabilityOrchestrator</ID>
+    <ID>UnusedImports:WastiProductionSigningEngine.kt$import org.json.JSONObject</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import java.io.File</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import java.io.InputStream</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import java.io.OutputStream</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import java.util.concurrent.ConcurrentHashMap</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import kotlinx.coroutines.Dispatchers</ID>
+    <ID>UnusedImports:WastiPseudoTerminalEmulator.kt$import kotlinx.coroutines.withContext</ID>
+    <ID>UnusedImports:WastiPythonRuntimeEngine.kt$import java.math.BigDecimal</ID>
+    <ID>UnusedImports:WastiPythonRuntimeEngine.kt$import java.math.RoundingMode</ID>
+    <ID>UnusedImports:WastiPythonRuntimeEngine.kt$import java.util.UUID</ID>
+    <ID>UnusedImports:WastiSovereignBinaryRegistry.kt$import java.io.FileOutputStream</ID>
+    <ID>UnusedImports:WastiSovereignBinaryRegistry.kt$import java.net.HttpURLConnection</ID>
+    <ID>UnusedImports:WastiSovereignBinaryRegistry.kt$import java.net.URL</ID>
+    <ID>UnusedImports:WastiSovereignConnectivityProvider.kt$import android.net.wifi.p2p.WifiP2pConfig</ID>
+    <ID>UnusedImports:WastiSovereignConnectivityProvider.kt$import android.net.wifi.p2p.WifiP2pInfo</ID>
+    <ID>UnusedImports:WastiSovereignConnectivityProvider.kt$import java.net.HttpURLConnection</ID>
+    <ID>UnusedImports:WastiSovereignConnectivityProvider.kt$import java.net.URL</ID>
+    <ID>UnusedImports:WastiSqliteEngine.kt$import android.database.Cursor</ID>
+    <ID>UnusedImports:WastiSqliteEngine.kt$import org.json.JSONArray</ID>
+    <ID>UnusedImports:WastiSqliteEngine.kt$import org.json.JSONObject</ID>
+    <ID>UnusedImports:WastiSshTmuxCompilerEngine.kt$import java.util.zip.ZipEntry</ID>
+    <ID>UnusedImports:WastiSshTmuxCompilerEngine.kt$import java.util.zip.ZipInputStream</ID>
+    <ID>UnusedImports:WastiSshTmuxCompilerEngine.kt$import java.util.zip.ZipOutputStream</ID>
+    <ID>UnusedImports:WastiStartupSplashScreen.kt$import androidx.compose.foundation.clickable</ID>
+    <ID>UnusedImports:WastiStartupSplashScreen.kt$import com.example.data.core.AppStartupManager</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.animation.AnimatedVisibility</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.animation.expandVertically</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.animation.fadeIn</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.animation.fadeOut</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.animation.shrinkVertically</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.foundation.background</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.foundation.layout.height</ID>
+    <ID>UnusedImports:WastiSuggestionOverlay.kt$import androidx.compose.ui.graphics.Color</ID>
+    <ID>UnusedImports:WastiSystemResilienceGovernor.kt$import android.content.Context</ID>
+    <ID>UnusedImports:WastiSystemResilienceGovernor.kt$import android.os.PowerManager</ID>
+    <ID>UnusedImports:WastiUniversalMeshBridge.kt$import com.example.data.node.AutonomousHardwareOffloader</ID>
+    <ID>UnusedImports:WastiUniversalMeshBridge.kt$import com.example.data.node.NearbyHardwareNode</ID>
+    <ID>UnusedImports:WastiUniversalMeshBridge.kt$import java.net.DatagramPacket</ID>
+    <ID>UnusedImports:WastiUniversalMeshBridge.kt$import java.net.DatagramSocket</ID>
+    <ID>UnusedImports:WastiUrduLanguageEngine.kt$import java.util.Locale</ID>
+    <ID>UnusedImports:WastiViewModel.kt$import com.example.data.repository.WastiRepository</ID>
+    <ID>UnusedImports:WastiViewModel.kt$import com.example.data.wre.ExecutionRequest</ID>
+    <ID>UnusedImports:WastiViewModel.kt$import com.example.data.wre.ExecutionResult</ID>
+    <ID>UnusedImports:WastiViewModel.kt$import com.example.data.wre.WreManager</ID>
+    <ID>UnusedImports:WastiVoiceCallModal.kt$import android.app.Activity</ID>
+    <ID>UnusedImports:WastiWebSocketServer.kt$import com.example.data.agent.runtime.UnifiedExecutionFabric</ID>
+    <ID>UnusedImports:WastiWebSocketServer.kt$import com.example.data.agent.runtime.WastiEmergencyStopController</ID>
+    <ID>UnusedImports:WastiWebSocketServer.kt$import com.example.data.core.WastiOSRuntime</ID>
+    <ID>UnusedImports:WastiWebSocketServer.kt$import java.util.concurrent.ConcurrentHashMap</ID>
+    <ID>UnusedImports:WastiWorkManagerLifecycleTracker.kt$import androidx.work.WorkManager</ID>
+    <ID>UnusedImports:WorkflowEngine.kt$import java.util.UUID</ID>
+    <ID>UnusedImports:WreAutocompleteEngine.kt$import java.io.File</ID>
+    <ID>UnusedPrivateProperty:ActionIntentSystem.kt$ActionIntentEngine$private val securityPolicyEngine: WastiSecurityPolicyEngine? = null</ID>
+    <ID>UnusedPrivateProperty:AgentPlanner.kt$AgentPlanner$val availableTools = toolRegistry.list().map { it.name }</ID>
+    <ID>UnusedPrivateProperty:AnimatedAiOrb.kt$val rotationAngle by infiniteTransition.animateFloat( initialValue = 0f, targetValue = 360f, animationSpec = infiniteRepeatable( animation = tween(8000, easing = LinearEasing), repeatMode = RepeatMode.Restart ), label = "rotationAngle" )</ID>
+    <ID>UnusedPrivateProperty:AutonomousCapabilityOrchestrator.kt$AutonomousCapabilityOrchestrator$private val activeMemory: AgentMemoryContract by lazy { memoryContract ?: InMemoryAgentMemoryStore() }</ID>
+    <ID>UnusedPrivateProperty:AutonomousSkillEvolutionEngine.kt$AutonomousSkillEvolutionEngine$private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)</ID>
+    <ID>UnusedPrivateProperty:BrainSimulationScreen.kt$val bioState by BiologicalTelemetryInterface.telemetryStream.collectAsState()</ID>
+    <ID>UnusedPrivateProperty:BrainSimulationScreen.kt$val envState by EnvironmentalRealityEngine.currentEnvironment.collectAsState()</ID>
+    <ID>UnusedPrivateProperty:CanonicalAudioOrchestrator.kt$CanonicalAudioOrchestrator$private val vad: VoiceActivityDetector = SimpleEnergyVad()</ID>
+    <ID>UnusedPrivateProperty:CapabilityCenterScreen.kt$val outputAudioReality by audioOrchestrator.outputRealityState.collectAsState()</ID>
+    <ID>UnusedPrivateProperty:CapabilityCompositionEngine.kt$CapabilityCompositionEngine$private val eventBus: AgentEventBus = AgentEventBus.getInstance()</ID>
+    <ID>UnusedPrivateProperty:CapabilityDiscoveryEngine.kt$CapabilityDiscoveryEngine$private val modelRegistry: ModelProviderRegistry</ID>
+    <ID>UnusedPrivateProperty:CapabilityLibraryManager.kt$CapabilityLibraryManager$private val registry: CapabilityRealityRegistry get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry</ID>
+    <ID>UnusedPrivateProperty:CapabilityPlanner.kt$CapabilityPlanner$private val registry: CapabilityRealityRegistry get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry</ID>
+    <ID>UnusedPrivateProperty:CapabilityRegressionMonitor.kt$CapabilityRegressionMonitor$private val eventBus: AgentEventBus = AgentEventBus.getInstance()</ID>
+    <ID>UnusedPrivateProperty:ChatWorkspaceScreen.kt$var showModelMenu by remember { mutableStateOf(false) }</ID>
+    <ID>UnusedPrivateProperty:CivilizationArchitectureDashboard.kt$val allCapabilities = remember { CapabilityCivilizationRegistry.getAll() }</ID>
+    <ID>UnusedPrivateProperty:CodeStudioScreen.kt$val installedPackages = remember { wreManager.packageManager.listPackages() }</ID>
+    <ID>UnusedPrivateProperty:MainActivity.kt$MainActivity$val permissionLauncher = rememberLauncherForActivityResult( contract = ActivityResultContracts.RequestMultiplePermissions() ) { _ -&gt; }</ID>
+    <ID>UnusedPrivateProperty:MemoryRetrievalEngine.kt$MemoryRetrievalEngine$private val knowledgeGraphEngine: KnowledgeGraphEngine</ID>
+    <ID>UnusedPrivateProperty:ModelArtifactManager.kt$HardwareCapabilityDetector$val totalMemoryMb = rt.totalMemory() / (1024 * 1024)</ID>
+    <ID>UnusedPrivateProperty:RealityDiagnosticsView.kt$val context = LocalContext.current</ID>
+    <ID>UnusedPrivateProperty:SelfCorrectionEngine.kt$SelfCorrectionEngine$private val workspaceManager: WorkspaceManager</ID>
+    <ID>UnusedPrivateProperty:StripeWorkerService.kt$StripeWorkerService$private val moshi = Moshi.Builder() .addLast(KotlinJsonAdapterFactory()) .build()</ID>
+    <ID>UnusedPrivateProperty:UnifiedWorkflowEngine.kt$UnifiedWorkflowEngine$private val securityPolicyEngine: WastiSecurityPolicyEngine? = null</ID>
+    <ID>UnusedPrivateProperty:UniversalAutonomousExecutionLoop.kt$UniversalAutonomousExecutionLoop$private val actionIntentEngine: ActionIntentEngine = ActionIntentEngine.instance</ID>
+    <ID>UnusedPrivateProperty:UniversalConversationFabric.kt$UniversalConversationFabric$private val runtime: WastiOSRuntime = WastiServiceLocator.wastiOSRuntime</ID>
+    <ID>UnusedPrivateProperty:WastiAgentRuntimeImpl.kt$WastiAgentRuntimeImpl$private val toolRouter: WastiAgentToolRouter</ID>
+    <ID>UnusedPrivateProperty:WastiGitEngine.kt$WastiGitEngine$private val context: Context</ID>
+    <ID>UnusedPrivateProperty:WastiGitEngine.kt$WastiGitEngine$private val workspaceManager: WreWorkspaceManager</ID>
+    <ID>UnusedPrivateProperty:WastiNodeJsRuntimeEngine.kt$WastiNodeJsRuntimeEngine$private val context: Context</ID>
+    <ID>UnusedPrivateProperty:WastiPolyglotTerminalEngine.kt$WastiPolyglotTerminalEngine$private val binaryRegistry = WastiSovereignBinaryRegistry(context, workspaceManager)</ID>
+    <ID>UnusedPrivateProperty:WastiPseudoTerminalEmulator.kt$WastiPseudoTerminalEmulator$private val context: Context</ID>
+    <ID>UnusedPrivateProperty:WastiPseudoTerminalEmulator.kt$WastiPseudoTerminalEmulator$private val isRunning = AtomicBoolean(false)</ID>
+    <ID>UnusedPrivateProperty:WastiRuntimeManager.kt$WastiRuntimeManager$private val workspaceManager: WorkspaceManager = WorkspaceManager(context)</ID>
+    <ID>UnusedPrivateProperty:WastiSovereignBinaryRegistry.kt$WastiSovereignBinaryRegistry$private val etcDir: File by lazy { File(context.filesDir, "usr/etc").apply { mkdirs() } }</ID>
+    <ID>UnusedPrivateProperty:WastiSovereignConnectivityProvider.kt$WastiSovereignConnectivityProvider$private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager</ID>
+    <ID>UnusedPrivateProperty:WastiSovereignConnectivityProvider.kt$WastiSovereignConnectivityProvider$val line = reader.readLine() ?: return</ID>
+    <ID>UnusedPrivateProperty:WastiSqliteEngine.kt$WastiSqliteEngine$private val workspaceManager: WreWorkspaceManager</ID>
+    <ID>UnusedPrivateProperty:WastiSystemResilienceGovernor.kt$WastiSystemResilienceGovernor$private val governorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)</ID>
+    <ID>UnusedPrivateProperty:WastiUniversalMeshBridge.kt$WastiUniversalMeshBridge.Companion$private const val DISCOVERY_PORT = 9988</ID>
+    <ID>UnusedPrivateProperty:WastiWasmRuntime.kt$WastiWasmRuntime$l</ID>
+    <ID>UnusedPrivateProperty:WastiWasmRuntime.kt$WastiWasmRuntime$val flags = bytecode[offset + countBytes].toInt()</ID>
+    <ID>UnusedPrivateProperty:WastiWasmRuntime.kt$WastiWasmRuntime$val memory = ByteBuffer.allocate(module.memoryPages * PAGE_SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)</ID>
+    <ID>UnusedPrivateProperty:WastiWebSocketServer.kt$WastiWebSocketServer$val fin = (b1 and 0x80) != 0</ID>
+    <ID>UnusedPrivateProperty:WastiWebSocketServer.kt$WastiWebSocketServer$val requestLine = lines[0]</ID>
+    <ID>WildcardImport:AccountHubScreen.kt$import com.example.data.credential.*</ID>
+    <ID>WildcardImport:AgentViewModel.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:CanonicalAudioOrchestrator.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:CapabilityCenterScreen.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:CivilizationArchitectureDashboard.kt$import com.example.data.architecture.*</ID>
+    <ID>WildcardImport:CodeStudioScreen.kt$import com.example.data.wre.*</ID>
+    <ID>WildcardImport:Daos.kt$import androidx.room.*</ID>
+    <ID>WildcardImport:DashboardScreen.kt$import com.example.data.db.*</ID>
+    <ID>WildcardImport:DriveSyncEngine.kt$import com.example.data.db.*</ID>
+    <ID>WildcardImport:FirstRunSetupWizardDialog.kt$import com.example.data.core.*</ID>
+    <ID>WildcardImport:MainActivity.kt$import com.example.ui.screens.*</ID>
+    <ID>WildcardImport:TerminalWorkspaceScreen.kt$import com.example.data.wre.*</ID>
+    <ID>WildcardImport:UniversalConversationFabric.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:WakeWordVoskService.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:WastiLocalServerManager.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:WastiMeshTransport.kt$import com.example.data.node.*</ID>
+    <ID>WildcardImport:WastiMeshTransport.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:WastiNodeJsRuntimeEngine.kt$import kotlin.math.*</ID>
+    <ID>WildcardImport:WastiNodeManager.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:WastiOSRuntime.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:WastiOSRuntime.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:WastiProactiveAutonomousEngine.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:WastiProactiveAutonomousEngine.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:WastiPythonRuntimeEngine.kt$import kotlin.math.*</ID>
+    <ID>WildcardImport:WastiRepository.kt$import com.example.data.db.*</ID>
+    <ID>WildcardImport:WastiServiceLocator.kt$import com.example.data.agent.runtime.*</ID>
+    <ID>WildcardImport:WastiViewModel.kt$import com.example.data.db.*</ID>
+    <ID>WildcardImport:WastiWebSocketServer.kt$import com.example.data.node.*</ID>
+    <ID>WildcardImport:WastiWebSocketServer.kt$import kotlinx.coroutines.*</ID>
+  </CurrentIssues>
+</SmellBaseline>

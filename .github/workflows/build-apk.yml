@@ -20,6 +20,58 @@ permissions:
   contents: read
 
 jobs:
+  lint_detekt:
+    name: Lint, Detekt & Code Quality Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v7
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v6
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Setup Python 3
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Run Code Quality & Anti-Pattern Audit
+      run: |
+        python3 scripts/audit_code_quality.py
+
+    - name: Install Detekt CLI
+      run: |
+        DETEKT_VERSION="1.23.8"
+        echo "Downloading detekt-cli v${DETEKT_VERSION}..."
+        curl -sSL -o /tmp/detekt-cli.jar "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}-all.jar"
+        test -s /tmp/detekt-cli.jar || { echo "ERROR: Failed to download detekt-cli jar"; exit 1; }
+        echo "SUCCESS: Detekt CLI ready."
+
+    - name: Run Detekt Static Analysis (Fails on Unused Code & Anti-Patterns)
+      run: |
+        mkdir -p build/reports/detekt
+        java -jar /tmp/detekt-cli.jar \
+          --config detekt.yml \
+          --input app/src/main/java \
+          --baseline detekt-baseline.xml \
+          --report html:build/reports/detekt/detekt.html \
+          --report xml:build/reports/detekt/detekt.xml
+
+    - name: Upload Detekt Quality Report
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: Detekt-Quality-Report
+        path: build/reports/detekt/
+        if-no-files-found: ignore
+
   validate:
     name: Validate, Test & Build APK
     runs-on: ubuntu-latest
@@ -283,6 +335,10 @@ jobs:
     - name: Generate Truthful Secrets Ingestion Report
       run: |
         python3 scripts/generate_secrets_report.py .env
+
+    - name: Run Code Quality & Anti-Pattern Audit
+      run: |
+        python3 scripts/audit_code_quality.py
 
     - name: Run Backend Syntax & Security Validation Tests
       run: |
@@ -597,7 +653,7 @@ jobs:
 
   publish:
     name: Publish Release Artifact
-    needs: validate
+    needs: [validate, lint_detekt]
     if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request' && needs.validate.outputs.have_release_keystore == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15

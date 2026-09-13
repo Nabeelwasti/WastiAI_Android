@@ -34,10 +34,17 @@ if command -v python3 >/dev/null 2>&1; then
 fi
 
 # Gate 4: Secret Management & Vault Ingestion Audit
-echo "[Pre-Push 4/4] Auditing secret management & vault integrity..."
+echo "[Pre-Push 4/5] Auditing secret management & vault integrity..."
 if command -v python3 >/dev/null 2>&1; then
   python3 scripts/generate_secrets_report.py .env.example
   echo "✔ Secret ingestion and fail-closed audit verified."
+fi
+
+# Gate 5: Code Quality, Unused Code & Anti-Pattern Audit
+echo "[Pre-Push 5/5] Auditing for unused code and anti-patterns..."
+if command -v python3 >/dev/null 2>&1; then
+  python3 scripts/audit_code_quality.py
+  echo "✔ Code quality and anti-pattern audit passed."
 fi
 
 echo "========================================================"

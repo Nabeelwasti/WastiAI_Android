@@ -477,7 +477,7 @@ object LeadRadarRepository {
      * Used by streaming/count operations that don't receive a Context parameter directly,
      * mirroring the pattern already used by ingestToCrm(lead)/addDiscoveredLead/ingestProspect.
      */
-    private fun requireDatabase(): WastiDatabase {
+    internal fun requireDatabase(): WastiDatabase {
         val ctx = appContext
             ?: throw IllegalStateException(
                 "LeadRadarRepository: database accessed before initDatabase(context) was called."

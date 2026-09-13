@@ -275,7 +275,7 @@ class WastiOSRuntime(
         }
     }
 
-    private fun mapStateToMessage(state: AgenticState): String {
+    fun mapStateToMessage(state: AgenticState): String {
         return when (state) {
             is AgenticState.Idle -> "System Idle"
             is AgenticState.Analyzing -> "Analyzing Context: ${state.message}"

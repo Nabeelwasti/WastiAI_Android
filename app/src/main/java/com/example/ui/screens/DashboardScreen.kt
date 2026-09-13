@@ -553,7 +553,7 @@ private fun QuickActionCard(label: String, icon: ImageVector, modifier: Modifier
 }
 
 @Composable
-private fun AgentStatusCard(agent: AgentEntity, onClick: () -> Unit) {
+fun AgentStatusCard(agent: AgentEntity, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .width(140.dp)

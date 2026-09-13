@@ -1,0 +1,113 @@
+build:
+  maxIssues: 0
+  weights:
+    empty-blocks: 1
+    exceptions: 1
+    potential-bugs: 1
+    style: 1
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+# Focus strictly on Unused Code and Obvious Anti-Patterns as requested:
+# 1. Empty Blocks (silently empty handlers, if/else/when blocks)
+empty-blocks:
+  active: true
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: "^(_|(ignore|expected).*)"
+  EmptyClassBlock:
+    active: true
+  EmptyDefaultConstructor:
+    active: true
+  EmptyDoWhileBlock:
+    active: true
+  EmptyElseBlock:
+    active: true
+  EmptyFinallyBlock:
+    active: true
+  EmptyFunctionBlock:
+    active: true
+    ignoreOverridden: true
+  EmptyIfBlock:
+    active: true
+  EmptyInitBlock:
+    active: true
+  EmptySecondaryConstructor:
+    active: true
+  EmptyTryBlock:
+    active: true
+  EmptyWhenBlock:
+    active: true
+  EmptyWhileBlock:
+    active: true
+
+# 2. Exceptions Anti-Patterns (swallowed exceptions, naked exceptions)
+exceptions:
+  active: true
+  SwallowedException:
+    active: true
+    ignoredExceptionTypes:
+      - InterruptedException
+      - NumberFormatException
+      - ParseException
+      - MalformedURLException
+      - NoSuchElementException
+    allowedExceptionNameRegex: "^(_|(ignore|expected).*)"
+  ThrowingExceptionsWithoutMessageOrCause:
+    active: true
+  TooGenericExceptionThrown:
+    active: true
+
+# 3. Potential Bugs (unreachable code, broken equals/hashcode)
+potential-bugs:
+  active: true
+  EqualsWithHashCodeExist:
+    active: true
+  ExplicitGarbageCollectionCall:
+    active: true
+  UnreachableCode:
+    active: true
+  UselessPostfixExpression:
+    active: true
+
+# 4. Style & Unused Code (unused imports, unused private members/properties, wildcard imports)
+style:
+  active: true
+  WildcardImport:
+    active: true
+    excludeImports:
+      - 'java.util.*'
+      - 'androidx.compose.animation.*'
+      - 'androidx.compose.foundation.layout.*'
+      - 'androidx.compose.material.icons.filled.*'
+      - 'androidx.compose.material.icons.automirrored.filled.*'
+      - 'androidx.compose.material3.*'
+      - 'androidx.compose.runtime.*'
+      - 'androidx.compose.ui.*'
+      - 'kotlinx.coroutines.flow.*'
+  UnusedImports:
+    active: true
+  UnusedPrivateMember:
+    active: true
+    allowedNames: "(_|preview.*|previewParam.*|TAG|serialVersionUID)"
+  UnusedPrivateProperty:
+    active: true
+    allowedNames: "(_|TAG|serialVersionUID)"
+
+# Disable noisy cosmetic rules to keep focus on genuine bugs, unused code, and anti-patterns
+naming:
+  active: false
+
+performance:
+  active: false
+
+complexity:
+  active: false
+
+comments:
+  active: false
+
+coroutines:
+  active: false

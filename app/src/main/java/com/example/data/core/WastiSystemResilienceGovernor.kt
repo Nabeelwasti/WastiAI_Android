@@ -104,6 +104,7 @@ object WastiSystemResilienceGovernor {
     /**
      * Proactively frees transient memory and triggers GC when under severe load.
      */
+    @Suppress("ExplicitGarbageCollectionCall")
     fun proactivelyTrimMemory() {
         Log.w(TAG, "Critical memory threshold reached. Executing proactive memory trimming...")
         try {

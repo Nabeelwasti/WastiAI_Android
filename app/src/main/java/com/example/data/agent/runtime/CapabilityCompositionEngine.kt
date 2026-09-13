@@ -137,7 +137,7 @@ class CapabilityCompositionEngine(
                     val isSuccess = (res["success"] as? Boolean) == true
                     val outStr = res["output"]?.toString() ?: ""
                     if (!isSuccess) {
-                        throw Exception(outStr.ifEmpty { "Tool '${step.capabilityId}' execution returned failure" })
+                        throw IllegalStateException(outStr.ifEmpty { "Tool '${step.capabilityId}' execution returned failure" })
                     }
                     output = outStr
                     verifiedEvidence = "Tool '${step.capabilityId}' executed with verified output contract [${outStr.length} chars]"
@@ -151,12 +151,12 @@ class CapabilityCompositionEngine(
                         output = wasmRes.stringOutput ?: "WASM executed successfully"
                         verifiedEvidence = "WASM sandbox verified: exitCode=0, output verified"
                     } else {
-                        throw Exception(wasmRes.diagnosticMessage)
+                        throw IllegalStateException(wasmRes.diagnosticMessage)
                     }
                 } else {
                     val reality = realityRegistry.get(step.capabilityId)
                     if (reality == null || reality.liveConnectionStatus == LiveConnectionStatus.FAILED || reality.executionStatus == CapabilityExecutionStatus.UNAVAILABLE) {
-                        throw Exception("CAPABILITY_UNAVAILABLE: No registered executor, tool, or active provider found for capability '${step.capabilityId}'.")
+                        throw IllegalStateException("CAPABILITY_UNAVAILABLE: No registered executor, tool, or active provider found for capability '${step.capabilityId}'.")
                     }
                     // Attempt execution via UnifiedExecutionFabric
                     val fabricReq = UnifiedExecutionRequest(
@@ -170,7 +170,7 @@ class CapabilityCompositionEngine(
                         output = fabricRes.output
                         verifiedEvidence = fabricRes.verificationEvidence ?: "Fabric execution verified for '${step.capabilityId}'"
                     } else {
-                        throw Exception(fabricRes.error ?: fabricRes.output.ifEmpty { "Execution failed for capability '${step.capabilityId}'" })
+                        throw IllegalStateException(fabricRes.error ?: fabricRes.output.ifEmpty { "Execution failed for capability '${step.capabilityId}'" })
                     }
                 }
 

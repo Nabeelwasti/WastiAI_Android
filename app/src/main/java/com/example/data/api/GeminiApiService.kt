@@ -452,7 +452,7 @@ object GeminiClient {
 
     private fun String?.isNullClassOrBlank(): Boolean = this == null || this.isBlank()
 
-    private fun synthesizeLocalAiResponse(prompt: String, systemInstruction: String): String {
+    internal fun synthesizeLocalAiResponse(prompt: String, systemInstruction: String): String {
         val lower = prompt.lowercase().trim()
         val lang = WastiUrduLanguageEngine.detectLanguage(prompt)
 
