@@ -147,114 +147,143 @@ object WastiModelDownloader {
         var downloadedBytes = 0L
 
         try {
-            for ((index, currentUrl) in candidateUrls.withIndex()) {
-            try {
-                if (index > 0) {
-                    Log.i(TAG, "Attempting fallback mirror download for $modelId: $currentUrl")
-                    updateProgress(
-                        ModelDownloadProgress(
-                            modelId = modelId,
-                            bytesDownloaded = 0L,
-                            totalBytes = manifest.byteSize,
-                            progressFraction = 0.0f,
-                            statusText = "Switching to mirror CDN..."
+            var urlIndex = 0
+            while (urlIndex < candidateUrls.size) {
+                val currentUrl = candidateUrls[urlIndex]
+                try {
+                    if (urlIndex > 0) {
+                        Log.i(TAG, "Attempting fallback download candidate for $modelId ($urlIndex/${candidateUrls.size}): $currentUrl")
+                        updateProgress(
+                            ModelDownloadProgress(
+                                modelId = modelId,
+                                bytesDownloaded = tempFile.takeIf { it.exists() }?.length() ?: 0L,
+                                totalBytes = manifest.byteSize,
+                                progressFraction = 0.0f,
+                                statusText = "Switching to alternative download endpoint..."
+                            )
                         )
-                    )
-                }
+                    }
 
-                val url = URL(currentUrl)
-                connection = url.openConnection() as HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
-                connection.requestMethod = "GET"
+                    val url = URL(currentUrl)
+                    connection = url.openConnection() as HttpURLConnection
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 30000
+                    connection.requestMethod = "GET"
 
-                val responseCode = connection.responseCode
-                if (responseCode !in 200..299) {
-                    lastErrorMsg = "HTTP error $responseCode while downloading from $currentUrl"
-                    Log.w(TAG, lastErrorMsg)
-                    connection.disconnect()
-                    connection = null
-                    continue
-                }
+                    val existingLength = if (tempFile.exists()) tempFile.length() else 0L
+                    var isResuming = false
+                    if (existingLength in 1 until manifest.byteSize) {
+                        connection.setRequestProperty("Range", "bytes=$existingLength-")
+                        isResuming = true
+                    }
 
-                totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
-                val digest = MessageDigest.getInstance("SHA-256")
-                downloadedBytes = 0L
+                    val responseCode = connection.responseCode
+                    val appending = isResuming && responseCode == 206
+                    if (!appending && responseCode !in 200..299) {
+                        lastErrorMsg = "HTTP error $responseCode while downloading from $currentUrl"
+                        Log.w(TAG, lastErrorMsg)
+                        connection.disconnect()
+                        connection = null
+                        urlIndex++
+                        continue
+                    }
 
-                if (tempFile.exists()) {
-                    tempFile.delete()
-                }
+                    if (appending) {
+                        downloadedBytes = existingLength
+                        val remaining = connection.contentLengthLong
+                        totalBytes = if (remaining > 0) existingLength + remaining else manifest.byteSize
+                        Log.i(TAG, "Resuming download for $modelId from byte $existingLength (remaining: $remaining)")
+                    } else {
+                        downloadedBytes = 0L
+                        totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
+                        if (tempFile.exists()) tempFile.delete()
+                    }
 
-                connection.inputStream.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        val buffer = ByteArray(32768)
-                        var bytesRead: Int
-                        var lastUpdate = System.currentTimeMillis()
+                    connection.inputStream.use { input ->
+                        FileOutputStream(tempFile, appending).use { output ->
+                            val buffer = ByteArray(65536)
+                            var bytesRead: Int
+                            var lastUpdate = System.currentTimeMillis()
 
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            digest.update(buffer, 0, bytesRead)
-                            downloadedBytes += bytesRead
+                            while (input.read(buffer).also { bytesRead = it } != -1) {
+                                output.write(buffer, 0, bytesRead)
+                                downloadedBytes += bytesRead
 
-                            val now = System.currentTimeMillis()
-                            if (now - lastUpdate > 300) {
-                                val fraction = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0.0f
-                                updateProgress(
-                                    ModelDownloadProgress(
-                                        modelId = modelId,
-                                        bytesDownloaded = downloadedBytes,
-                                        totalBytes = totalBytes,
-                                        progressFraction = fraction,
-                                        statusText = "Downloading: ${(fraction * 100).toInt()}% (${downloadedBytes / (1024 * 1024)}MB / ${totalBytes / (1024 * 1024)}MB)"
+                                val now = System.currentTimeMillis()
+                                if (now - lastUpdate > 300) {
+                                    val fraction = if (totalBytes > 0) downloadedBytes.toFloat() / totalBytes else 0.0f
+                                    updateProgress(
+                                        ModelDownloadProgress(
+                                            modelId = modelId,
+                                            bytesDownloaded = downloadedBytes,
+                                            totalBytes = totalBytes,
+                                            progressFraction = fraction,
+                                            statusText = "Downloading: ${(fraction * 100).toInt()}% (${downloadedBytes / (1024 * 1024)}MB / ${totalBytes / (1024 * 1024)}MB)"
+                                        )
                                     )
-                                )
-                                lastUpdate = now
+                                    lastUpdate = now
+                                }
                             }
                         }
                     }
-                }
 
-                // Verify Exact Checksum (Reject synthetic/prefix/wildcard hashes)
-                val calculatedSha = digest.digest().joinToString("") { "%02x".format(it) }
-                val isExactMatch = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)
+                    // Verify Exact Checksum (Reject synthetic/prefix/wildcard hashes)
+                    val calculatedSha = calculateFileSha256(tempFile)
+                    val isExactMatch = calculatedSha.equals(manifest.expectedSha256, ignoreCase = true)
 
-                if (!isExactMatch) {
-                    lastErrorMsg = "SHA-256 integrity verification failed for $modelId. Expected: ${manifest.expectedSha256}, Calculated: $calculatedSha"
-                    Log.e(TAG, lastErrorMsg)
-                    if (tempFile.exists()) tempFile.delete()
-                    connection.disconnect()
+                    if (!isExactMatch) {
+                        lastErrorMsg = "SHA-256 integrity verification failed for $modelId. Expected: ${manifest.expectedSha256}, Calculated: $calculatedSha"
+                        Log.e(TAG, lastErrorMsg)
+                        if (tempFile.exists()) tempFile.delete()
+                        connection.disconnect()
+                        connection = null
+                        urlIndex++
+                        continue
+                    }
+
+                    downloadSucceeded = true
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    lastErrorMsg = e.message ?: "Unknown download error on $currentUrl"
+                    Log.w(TAG, "Candidate URL $currentUrl failed: ${e.message}")
+                    connection?.disconnect()
                     connection = null
-                    continue
+                    urlIndex++
                 }
 
-                downloadSucceeded = true
-                break
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                lastErrorMsg = e.message ?: "Unknown download error on $currentUrl"
-                Log.w(TAG, "Candidate URL $currentUrl failed: ${e.message}")
-                if (tempFile.exists()) tempFile.delete()
-                connection?.disconnect()
-                connection = null
+                // If hardcoded candidates are exhausted, trigger live web research for dynamic alternative mirrors
+                if (urlIndex == candidateUrls.size && !downloadSucceeded) {
+                    val dynamicUrls = discoverDynamicCandidateUrls(manifest)
+                    for (dynUrl in dynamicUrls) {
+                        if (!candidateUrls.contains(dynUrl)) {
+                            candidateUrls.add(dynUrl)
+                            Log.i(TAG, "Discovered dynamic mirror for $modelId via live research: $dynUrl")
+                        }
+                    }
+                }
             }
-        }
 
-        if (!downloadSucceeded) {
-            updateProgress(
-                ModelDownloadProgress(
-                    modelId = modelId,
-                    bytesDownloaded = 0L,
-                    totalBytes = manifest.byteSize,
-                    progressFraction = 0.0f,
-                    statusText = "Download failed across all mirrors",
-                    isFailed = true,
-                    errorMessage = lastErrorMsg
+            if (!downloadSucceeded) {
+                // Activate Sovereign Coding Environment resolution plan
+                val resolutionPlan = CodingEnvironmentInstallerBridge.planResolution(context, modelId, lastErrorMsg)
+                Log.w(TAG, "All download endpoints exhausted for $modelId. Fallback available: ${resolutionPlan.suggestedStrategy}")
+
+                updateProgress(
+                    ModelDownloadProgress(
+                        modelId = modelId,
+                        bytesDownloaded = 0L,
+                        totalBytes = manifest.byteSize,
+                        progressFraction = 0.0f,
+                        statusText = "Direct download failed. Sovereign Coding Environment available: 'model install $modelId'",
+                        isFailed = true,
+                        errorMessage = "$lastErrorMsg (Fallback: ${resolutionPlan.commandLineSnippet})"
+                    )
                 )
-            )
-            ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
-            return@withContext false
-        }
+                ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
+                return@withContext false
+            }
 
             // Atomic move only after successful cryptographic verification
             if (tempFile.exists()) {
@@ -327,5 +356,35 @@ object WastiModelDownloader {
         val current = _downloadProgressMap.value.toMutableMap()
         current[progress.modelId] = progress
         _downloadProgressMap.value = current
+    }
+
+    fun calculateFileSha256(file: File): String {
+        if (!file.exists() || file.length() == 0L) return ""
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            var bytesRead: Int
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                digest.update(buffer, 0, bytesRead)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    suspend fun discoverDynamicCandidateUrls(manifest: ModelArtifactManifest): List<String> = withContext(Dispatchers.IO) {
+        val discovered = mutableListOf<String>()
+        try {
+            val query = "${manifest.canonicalFileName} resolve main gguf"
+            val searchOutcome = com.example.data.agent.runtime.SovereignAlternativeRegistry.executeSovereignWebSearch(query)
+            for (res in searchOutcome.results) {
+                val url = res.sourceUrl
+                if (isSecureDownloadUrl(url) && url.contains(manifest.canonicalFileName, ignoreCase = true)) {
+                    discovered.add(url)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Dynamic URL discovery encountered error: ${e.message}")
+        }
+        discovered
     }
 }

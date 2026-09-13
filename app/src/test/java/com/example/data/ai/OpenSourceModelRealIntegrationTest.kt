@@ -203,4 +203,19 @@ class OpenSourceModelRealIntegrationTest {
         assertEquals(com.example.data.wre.ExecutionStatus.SUCCESS, statusResult.status)
         assertTrue(statusResult.stdout.contains("Model: wasti-llama"))
     }
+
+    @Test
+    fun testModelDownloaderResilientSha256AndDynamicDiscovery() = kotlinx.coroutines.runBlocking {
+        val testFile = java.io.File.createTempFile("wasti_test_sha", ".bin")
+        testFile.writeBytes("Wasti Sovereign Neural Integrity".toByteArray())
+        val calcSha = com.example.data.ai.runtime.WastiModelDownloader.calculateFileSha256(testFile)
+        assertTrue(calcSha.isNotBlank())
+        assertEquals(64, calcSha.length)
+        testFile.delete()
+
+        val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest("wasti-smollm")
+        assertNotNull(manifest)
+        val dynamicUrls = com.example.data.ai.runtime.WastiModelDownloader.discoverDynamicCandidateUrls(manifest!!)
+        assertNotNull(dynamicUrls)
+    }
 }

@@ -72,4 +72,25 @@ class WastiErrorEngineTest {
         assertEquals(true, analysis.isRecoverable)
         assertTrue(analysis.userFriendlyMessage.contains("com.whatsapp"))
     }
+
+    @Test
+    fun testDiagnoseWithLiveResearchGeneratesIntelligenceAndAlternatives() = kotlinx.coroutines.runBlocking {
+        val ex = NetworkException("Connection refused to remote server", httpCode = 503)
+        val analysis = WastiErrorEngine.diagnoseWithLiveResearch(ex, "NetworkTest")
+
+        assertEquals("NETWORK_ERROR", analysis.errorCode)
+        assertTrue(analysis.isRecoverable)
+        assertTrue(analysis.alternativeResolutionPaths.isNotEmpty())
+        assertTrue(analysis.alternativeResolutionPaths.any { it.contains("SQLite") || it.contains("offline") })
+        org.junit.Assert.assertNotNull(analysis.suggestedSelfCorrectionPrompt)
+    }
+
+    @Test
+    fun testDiagnoseStringWithLiveResearch() = kotlinx.coroutines.runBlocking {
+        val analysis = WastiErrorEngine.diagnoseStringWithLiveResearch("Unresolved reference: SymbolX in main.kt", "CompileTest")
+
+        assertEquals("COMPILATION_ERROR", analysis.errorCode)
+        assertTrue(analysis.alternativeResolutionPaths.isNotEmpty())
+        assertTrue(analysis.alternativeResolutionPaths.any { it.contains("WastiPolyglotTerminalEngine") || it.contains("WreWorkspaceManager") })
+    }
 }

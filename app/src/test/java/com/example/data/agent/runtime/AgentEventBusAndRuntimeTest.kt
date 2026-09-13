@@ -95,4 +95,23 @@ class AgentEventBusAndRuntimeTest {
         assertTrue(taskRes2.isFailure)
         assertTrue(taskRes2.exceptionOrNull()?.message?.contains("EMERGENCY_STOP_ACTIVE") == true)
     }
+
+    @Test
+    fun testErrorAnalyzerLiveResearch() = kotlinx.coroutines.runBlocking {
+        val errorAnalyzer = ErrorAnalyzer()
+        val observation = AgentObservation(
+            taskId = "task-research-1",
+            toolName = "execute_code",
+            isSuccess = false,
+            exitCode = 1,
+            stdout = "",
+            stderr = "SyntaxError: unexpected token '<' at line 12",
+            durationMs = 25L
+        )
+
+        val diagnostic = errorAnalyzer.analyzeFailureWithLiveResearch(observation)
+        assertEquals(ExecutionErrorType.SYNTAX, diagnostic.category)
+        assertTrue(diagnostic.alternativePaths.isNotEmpty())
+        assertTrue(diagnostic.alternativePaths.any { it.contains("syntax") || it.contains("WRE") })
+    }
 }

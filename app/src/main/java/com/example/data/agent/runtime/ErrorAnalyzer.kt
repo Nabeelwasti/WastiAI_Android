@@ -6,7 +6,9 @@ data class ErrorDiagnostic(
     val evidence: String,
     val probableCause: String,
     val suggestedCorrection: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val onlineResearchFindings: String? = null,
+    val alternativePaths: List<String> = emptyList()
 )
 
 /**
@@ -93,5 +95,58 @@ class ErrorAnalyzer(
             ExecutionErrorType.PROVIDER_UNAVAILABLE -> "Register required execution provider or check network capabilities"
             else -> "Inspect stderr logs and revise tool arguments"
         }
+    }
+
+    suspend fun analyzeFailureWithLiveResearch(observation: AgentObservation): ErrorDiagnostic {
+        val base = analyzeFailure(observation)
+        val errorSnippet = observation.stderr.ifBlank { observation.stdout }.take(100).replace("\n", " ").trim()
+        val query = "fix ${base.category} error $errorSnippet".trim()
+
+        val searchOutcome = runCatching {
+            SovereignAlternativeRegistry.executeSovereignWebSearch(query)
+        }.getOrNull()
+
+        val researchFindings = searchOutcome?.results
+            ?.filter { it.snippet.isNotBlank() }
+            ?.take(2)
+            ?.joinToString(" | ") { "${it.title}: ${it.snippet}" }
+
+        val alternatives = mutableListOf<String>()
+        when (base.category) {
+            ExecutionErrorType.COMPILATION, ExecutionErrorType.SYNTAX -> {
+                alternatives.add("Validate syntax in isolated WRE scratchpad")
+                alternatives.add("Consult language compiler documentation via live research")
+                alternatives.add("Apply iterative AST auto-patching")
+            }
+            ExecutionErrorType.TIMEOUT -> {
+                alternatives.add("Split execution payload into smaller batches")
+                alternatives.add("Increase per-command execution timeout in ExecutionRequest")
+                alternatives.add("Offload heavy batch processing to background worker job")
+            }
+            ExecutionErrorType.SECURITY, ExecutionErrorType.PERMISSION -> {
+                alternatives.add("Verify workspace sandbox boundaries")
+                alternatives.add("Request explicit user elevation or biometric approval")
+            }
+            ExecutionErrorType.PROVIDER_UNAVAILABLE -> {
+                alternatives.add("Fallback to NativeCommandProvider or Polyglot Terminal Engine")
+                alternatives.add("Check local Ollama / llama.cpp server status")
+            }
+            else -> {
+                alternatives.add("Execute detailed error probe via polyglot terminal")
+                alternatives.add("Use online research recommendations to formulate fix")
+            }
+        }
+
+        val enrichedCorrection = if (!researchFindings.isNullOrBlank()) {
+            "${base.suggestedCorrection} [Web Research: $researchFindings]"
+        } else {
+            base.suggestedCorrection
+        }
+
+        return base.copy(
+            suggestedCorrection = enrichedCorrection,
+            onlineResearchFindings = researchFindings,
+            alternativePaths = alternatives
+        )
     }
 }

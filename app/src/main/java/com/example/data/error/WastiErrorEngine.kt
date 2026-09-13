@@ -1,6 +1,9 @@
 package com.example.data.error
 
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import com.example.data.agent.runtime.SovereignAlternativeRegistry
 
 data class WastiErrorAnalysis(
     val errorCode: String,
@@ -9,7 +12,9 @@ data class WastiErrorAnalysis(
     val probableCause: String,
     val suggestedSelfCorrectionPrompt: String,
     val isRecoverable: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val liveResearchEvidence: String? = null,
+    val alternativeResolutionPaths: List<String> = emptyList()
 )
 
 /**
@@ -122,5 +127,76 @@ object WastiErrorEngine {
                 )
             }
         }
+    }
+
+    /**
+     * Executes deep runtime online research for unexpected or complex failures.
+     * Queries DuckDuckGo / Wikipedia / community knowledge bases on the fly to find:
+     * 1. Exact error cause
+     * 2. Verified fixes and command adjustments
+     * 3. Alternative viable execution paths so no single failure halts the system.
+     */
+    suspend fun diagnoseWithLiveResearch(
+        throwable: Throwable,
+        contextTag: String = "General"
+    ): WastiErrorAnalysis = withContext(Dispatchers.IO) {
+        val baseAnalysis = analyze(throwable, contextTag)
+        val errorDesc = (throwable.message ?: throwable.javaClass.simpleName).take(100)
+        val query = "${baseAnalysis.errorCode} $errorDesc solution fix"
+
+        val searchOutcome = runCatching {
+            SovereignAlternativeRegistry.executeSovereignWebSearch(query)
+        }.getOrNull()
+
+        val researchEvidence = searchOutcome?.results
+            ?.filter { it.snippet.isNotBlank() }
+            ?.take(3)
+            ?.joinToString("\n") { "- ${it.title}: ${it.snippet} [${it.sourceUrl}]" }
+
+        val dynamicAlternatives = mutableListOf<String>()
+        when (baseAnalysis.errorCode) {
+            "NETWORK_ERROR" -> {
+                dynamicAlternatives.add("Fall back to local on-device SQLite / Room database")
+                dynamicAlternatives.add("Use local offline quantized GGUF weights (wasti-smollm / wasti-llama)")
+                dynamicAlternatives.add("Queue request in Offline Sync Fabric for automatic retry upon reconnection")
+            }
+            "COMPILATION_ERROR", "SYNTAX_ERROR" -> {
+                dynamicAlternatives.add("Invoke WastiPolyglotTerminalEngine sandbox for isolated syntax verification")
+                dynamicAlternatives.add("Request AST auto-repair via WastiSelfEvolutionEngine")
+                dynamicAlternatives.add("Revert to last cryptographically verified code checkpoint in WreWorkspaceManager")
+            }
+            "CAPABILITY_UNAVAILABLE" -> {
+                dynamicAlternatives.add("Synthesize capability from basic primitives via WastiSelfEvolutionEngine")
+                dynamicAlternatives.add("Discover alternative tool in CapabilityRealityRegistry")
+                dynamicAlternatives.add("Offload computation to Swarm / PC node via AutonomousHardwareOffloader")
+            }
+            "AUTH_REQUIRED" -> {
+                dynamicAlternatives.add("Fall back to zero-key SovereignAlternativeRegistry engines")
+                dynamicAlternatives.add("Switch to local HuggingFace / Ollama daemon (127.0.0.1:11434)")
+            }
+            else -> {
+                dynamicAlternatives.add("Run isolated diagnostics via WastiPolyglotTerminalEngine")
+                dynamicAlternatives.add("Query online knowledge base for verified patch")
+            }
+        }
+
+        val enrichedPrompt = if (!researchEvidence.isNullOrBlank()) {
+            "${baseAnalysis.suggestedSelfCorrectionPrompt}\n\n[RUNTIME WEB RESEARCH INTELLIGENCE]:\n$researchEvidence"
+        } else {
+            baseAnalysis.suggestedSelfCorrectionPrompt
+        }
+
+        baseAnalysis.copy(
+            suggestedSelfCorrectionPrompt = enrichedPrompt,
+            liveResearchEvidence = researchEvidence,
+            alternativeResolutionPaths = dynamicAlternatives
+        )
+    }
+
+    suspend fun diagnoseStringWithLiveResearch(
+        errorMessage: String,
+        contextTag: String = "General"
+    ): WastiErrorAnalysis = withContext(Dispatchers.IO) {
+        diagnoseWithLiveResearch(RuntimeException(errorMessage), contextTag)
     }
 }
