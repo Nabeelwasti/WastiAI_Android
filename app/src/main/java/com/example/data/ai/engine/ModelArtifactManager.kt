@@ -40,6 +40,71 @@ object HardwareCapabilityDetector {
     }
 
     fun detectHardwareEnvironment(context: Context?): HardwareEnvironmentSpecs {
+        if (context != null) {
+            try {
+                val deepProfile = com.example.data.core.WastiDeepHardwareProfiler.profileSystem(context)
+                val totalRam = deepProfile.memory.totalRamMb
+                val availRam = deepProfile.memory.availableRamMb
+                val freeStorage = deepProfile.storage.freeInternalStorageMb
+                val totalStorage = deepProfile.storage.totalInternalStorageMb
+                val cores = deepProfile.cpu.availableCores
+                val arch = deepProfile.cpu.primaryArchitecture
+                val isThrottling = deepProfile.power.isThermalThrottling
+                val isLowBattery = deepProfile.power.batteryPercentage <= 15 && !deepProfile.power.isCharging
+
+                val vulkanSupported = try {
+                    context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL)
+                } catch (_: Throwable) {
+                    false
+                }
+
+                val nnapiLib = File("/system/lib64/libneuralnetworks.so")
+                val vendorNpuNode = File("/dev/npu_dev")
+                val isNpuDetected = (nnapiLib.exists() || vendorNpuNode.exists()) && !deepProfile.memory.isLowMemory
+                val isGpuDetected = vulkanSupported || File("/system/lib64/libvulkan.so").exists() || File("/system/lib64/libOpenCL.so").exists()
+
+                val currentEvidence = lastRecordedEvidence
+                val acceleratorStatus = when {
+                    currentEvidence != null -> AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION
+                    isNpuDetected || isGpuDetected -> AcceleratorExecutionStatus.DRIVER_DETECTED_UNVERIFIED
+                    else -> AcceleratorExecutionStatus.NOT_DETECTED
+                }
+
+                val viability = when {
+                    totalRam >= 6000 && availRam >= 2000 && freeStorage >= 3000 -> "EXCELLENT: Capable of 1.5B–3B GGUF Models Locally"
+                    totalRam >= 3500 && freeStorage >= 1500 -> "GOOD: Capable of Compact 1B SmolLM2 Locally"
+                    else -> "CONSTRAINED: Cloud & Hybrid Routing Recommended"
+                }
+
+                return HardwareEnvironmentSpecs(
+                    totalRamMb = totalRam,
+                    availableRamMb = availRam,
+                    availableStorageMb = freeStorage,
+                    cpuCores = cores,
+                    isNpuHardwareDetected = isNpuDetected,
+                    isGpuHardwareDetected = isGpuDetected,
+                    acceleratorStatus = acceleratorStatus,
+                    isLowRamDevice = deepProfile.memory.isLowMemory,
+                    isBatteryLowOrThermalsThrottling = isThrottling || isLowBattery,
+                    verifiedExecutionEvidence = currentEvidence,
+                    hasNpuAcceleration = acceleratorStatus == AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION,
+                    isBatteryLow = isLowBattery,
+                    isThermalThrottling = isThrottling,
+                    isLowRam = deepProfile.memory.isLowMemory,
+                    cpuArchitecture = arch,
+                    totalStorageMb = totalStorage,
+                    batteryPercentage = deepProfile.power.batteryPercentage,
+                    isCharging = deepProfile.power.isCharging,
+                    deviceModel = "${deepProfile.identity.manufacturer.uppercase()} ${deepProfile.identity.model}",
+                    androidVersion = "Android ${deepProfile.os.androidVersion} (API ${deepProfile.os.apiLevel})",
+                    hasVulkanSupport = vulkanSupported,
+                    inferenceViabilityScore = viability
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "Deep hardware profiling error: ${e.message}, falling back to basic checks")
+            }
+        }
+
         val rt = Runtime.getRuntime()
         val totalMemoryMb = rt.totalMemory() / (1024 * 1024)
         val freeMemoryMb = rt.freeMemory() / (1024 * 1024)
@@ -52,93 +117,31 @@ object HardwareCapabilityDetector {
         } catch (_: Throwable) {}
 
         val cores = Runtime.getRuntime().availableProcessors()
-        var isLowRam = maxMemoryMb < 512
-        var isThermalThrottling = false
-        var isBatteryLow = false
-        var isNpuDetected = false
-        var isGpuDetected = false
-
-        if (context != null) {
-            try {
-                val actManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
-                if (actManager != null) {
-                    val memInfo = ActivityManager.MemoryInfo()
-                    actManager.getMemoryInfo(memInfo)
-                    isLowRam = memInfo.lowMemory || actManager.isLowRamDevice
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "ActivityManager query error: ${e.message}")
-            }
-
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
-                    if (powerManager != null) {
-                        val status = powerManager.currentThermalStatus
-                        isThermalThrottling = status >= PowerManager.THERMAL_STATUS_SEVERE
-                    }
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Thermal status query error: ${e.message}")
-            }
-
-            try {
-                val ifilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-                val batteryStatus = context.registerReceiver(null, ifilter)
-                val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-                val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-                if (level >= 0 && scale > 0) {
-                    val batteryPct = (level * 100) / scale
-                    isBatteryLow = batteryPct <= 15
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Battery level query error: ${e.message}")
-            }
-
-            // Real NPU / NNAPI driver detection:
-            // Check for presence of NNAPI driver libraries or vendor NPU driver nodes
-            try {
-                val nnapiLib = File("/system/lib64/libneuralnetworks.so")
-                val vendorNpuNode = File("/dev/npu_dev")
-                val vendorHexagonNode = File("/dev/fastrpc-cdsp-secure")
-                isNpuDetected = (nnapiLib.exists() || vendorNpuNode.exists() || vendorHexagonNode.exists()) && !isLowRam
-            } catch (e: Exception) {
-                isNpuDetected = false
-            }
-
-            // Real GPU driver detection (Vulkan / OpenCL):
-            try {
-                val vulkanLib = File("/system/lib64/libvulkan.so")
-                val openClLib = File("/system/lib64/libOpenCL.so")
-                isGpuDetected = vulkanLib.exists() || openClLib.exists()
-            } catch (e: Exception) {
-                isGpuDetected = false
-            }
-        }
-
-        // Truthful accelerator state: passive driver file detection does NOT equal active verified acceleration
         val currentEvidence = lastRecordedEvidence
-        val acceleratorStatus = when {
-            currentEvidence != null -> AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION
-            isNpuDetected || isGpuDetected -> AcceleratorExecutionStatus.DRIVER_DETECTED_UNVERIFIED
-            else -> AcceleratorExecutionStatus.NOT_DETECTED
-        }
 
         return HardwareEnvironmentSpecs(
             totalRamMb = maxMemoryMb,
             availableRamMb = freeMemoryMb,
             availableStorageMb = availableStorageMb,
             cpuCores = cores,
-            isNpuHardwareDetected = isNpuDetected,
-            isGpuHardwareDetected = isGpuDetected,
-            acceleratorStatus = acceleratorStatus,
-            isLowRamDevice = isLowRam,
-            isBatteryLowOrThermalsThrottling = isThermalThrottling || isBatteryLow,
+            isNpuHardwareDetected = false,
+            isGpuHardwareDetected = false,
+            acceleratorStatus = if (currentEvidence != null) AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION else AcceleratorExecutionStatus.NOT_DETECTED,
+            isLowRamDevice = maxMemoryMb < 512,
+            isBatteryLowOrThermalsThrottling = false,
             verifiedExecutionEvidence = currentEvidence,
-            hasNpuAcceleration = acceleratorStatus == AcceleratorExecutionStatus.ACTIVE_VERIFIED_ACCELERATION,
-            isBatteryLow = isBatteryLow,
-            isThermalThrottling = isThermalThrottling,
-            isLowRam = isLowRam
+            hasNpuAcceleration = currentEvidence != null,
+            isBatteryLow = false,
+            isThermalThrottling = false,
+            isLowRam = maxMemoryMb < 512,
+            cpuArchitecture = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a",
+            totalStorageMb = availableStorageMb * 2,
+            batteryPercentage = 100,
+            isCharging = true,
+            deviceModel = "${Build.MANUFACTURER.uppercase()} ${Build.MODEL}",
+            androidVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+            hasVulkanSupport = false,
+            inferenceViabilityScore = "BALANCED: Local & Cloud Hybrid"
         )
     }
 

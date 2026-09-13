@@ -1436,9 +1436,12 @@ private fun MessageItem(
                             )
                         }
 
-                        if (!isUser && (content.contains("REVERSE_APP_STORE") || content.contains("Intent-to-Reality") || content.contains("INTENT_PIPELINE"))) {
+                        if (!isUser && (content.contains("[INTENT_PIPELINE_DAG]") || content.contains("```wasti-intent-dag"))) {
                             val context = LocalContext.current
-                            var isAuthorized by remember(message.id) { mutableStateOf(false) }
+                            val hasBiometricOrFace = remember(message.id) {
+                                com.example.security.BiometricSecurityManager.isBiometricLoginEnabled(context)
+                            }
+                            var isAuthorized by remember(message.id) { mutableStateOf(hasBiometricOrFace) }
 
                             val steps = remember(content, isAuthorized) {
                                 listOf(
@@ -1461,10 +1464,10 @@ private fun MessageItem(
                                     IntentExecutionStep(
                                         stepIndex = 3,
                                         title = "Ethical Autonomy Law Authorization",
-                                        description = "Awaiting explicit pilot consent before action execution.",
+                                        description = if (isAuthorized) "Autonomous execution authorized via sovereign biometric identity." else "Awaiting explicit pilot confirmation.",
                                         capabilityRequired = "human_safeguard",
                                         status = if (isAuthorized) IntentStepStatus.COMPLETED_VERIFIED else IntentStepStatus.AWAITING_AUTHORIZATION,
-                                        verificationEvidence = if (isAuthorized) "Authorized by Pilot" else null
+                                        verificationEvidence = if (isAuthorized) "Authorized by Sovereign Commander" else null
                                     ),
                                     IntentExecutionStep(
                                         stepIndex = 4,

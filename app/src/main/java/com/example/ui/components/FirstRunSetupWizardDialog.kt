@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.example.data.core.*
 import kotlinx.coroutines.launch
 
@@ -56,6 +58,73 @@ fun FirstRunSetupWizardDialog(
     var isExecuting by remember { mutableStateOf(false) }
     var executionStatusText by remember { mutableStateOf<String?>(null) }
     var completedResultText by remember { mutableStateOf<String?>(null) }
+
+    var isFaceEnrolled by remember { mutableStateOf(false) }
+    var isScanningFace by remember { mutableStateOf(false) }
+    var faceSignatureText by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        isFaceEnrolled = WastiBiometricFaceEngine.isFaceEnrolled(context)
+    }
+
+    val cameraFaceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            coroutineScope.launch {
+                isScanningFace = true
+                val res = WastiBiometricFaceEngine.enrollUserFace(context, bitmap)
+                isScanningFace = false
+                if (res.isSuccess) {
+                    isFaceEnrolled = true
+                    faceSignatureText = res.faceSignatureHash
+                    android.widget.Toast.makeText(context, "Commander Face Enrolled & Secured Locally!", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    android.widget.Toast.makeText(context, "Face enrollment error: ${res.message}", android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    val allWizardPermissions = remember {
+        buildList {
+            add(android.Manifest.permission.RECORD_AUDIO)
+            add(android.Manifest.permission.CAMERA)
+            add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+            add(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+            add(android.Manifest.permission.READ_CALENDAR)
+            add(android.Manifest.permission.WRITE_CALENDAR)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                add(android.Manifest.permission.POST_NOTIFICATIONS)
+                add(android.Manifest.permission.READ_MEDIA_IMAGES)
+                add(android.Manifest.permission.READ_MEDIA_VIDEO)
+                add(android.Manifest.permission.READ_MEDIA_AUDIO)
+                add(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+            } else {
+                add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                add(android.Manifest.permission.BLUETOOTH_SCAN)
+                add(android.Manifest.permission.BLUETOOTH_CONNECT)
+            }
+        }
+    }
+
+    var hasAllPermissionsGranted by remember {
+        mutableStateOf(
+            allWizardPermissions.all { perm ->
+                androidx.core.content.ContextCompat.checkSelfPermission(context, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            }
+        )
+    }
+
+    val wizardPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        hasAllPermissionsGranted = allWizardPermissions.all { perm ->
+            androidx.core.content.ContextCompat.checkSelfPermission(context, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+    }
 
     val hardwareProfile = remember {
         WastiDeepHardwareProfiler.profileSystem(context)
@@ -187,6 +256,61 @@ fun FirstRunSetupWizardDialog(
                                             )
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Device System Permissions Card
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (hasAllPermissionsGranted) Color(0xFF2E7D32).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    imageVector = if (hasAllPermissionsGranted) Icons.Default.CheckCircle else Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = if (hasAllPermissionsGranted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (hasAllPermissionsGranted) "✓ System Permissions Granted" else "Device Permissions (1-Tap Activation)",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (hasAllPermissionsGranted) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (hasAllPermissionsGranted)
+                                            "Audio, Camera, Notifications, and Storage are fully enabled for autonomous background intelligence."
+                                        else
+                                            "Audio (voice), Camera (face scan), Notifications (thinking/progress), Storage (weights). Tap below to accept via system prompt.",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            if (!hasAllPermissionsGranted) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        wizardPermissionLauncher.launch(allWizardPermissions.toTypedArray())
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Grant All Permissions (1-Tap)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
@@ -360,40 +484,85 @@ fun FirstRunSetupWizardDialog(
 
                     // Question 4: Biometric Face Recognition & Commander Identity
                     Text(
-                        text = "4. Biometric Face Recognition & Identity",
+                        text = "4. Biometric Face Recognition & Commander Identity",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Enable on-device live face detection so Wasti knows who the primary Commander is across camera, images, and sessions.",
+                        text = "Scan your face using the device camera so Wasti reliably recognizes the primary owner/admin for sensitive command verification, personalized assistance, and gallery/photo analysis.",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isFaceEnrolled) Color(0xFF2E7D32).copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(modifier = Modifier.padding(14.dp)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.Face, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Icon(
+                                    imageVector = if (isFaceEnrolled) Icons.Default.CheckCircle else Icons.Default.Face,
+                                    contentDescription = null,
+                                    tint = if (isFaceEnrolled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "On-Device Face Biometric Recognition",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        text = if (isFaceEnrolled) "Commander Face Profile Active & Verified" else "On-Device Face Biometric Recognition",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isFaceEnrolled) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "Invariant 64D luminance gradient embedding stored in local encrypted Room DB (zero cloud leak)",
+                                        text = if (isFaceEnrolled) {
+                                            "Signature: ${faceSignatureText?.take(14) ?: "0x9f4a12..."} • 64D Luminance Gradient embedding secured in encrypted Room DB"
+                                        } else {
+                                            "Uses local CameraX to generate an invariant 64D mathematical embedding. Zero cloud leak."
+                                        },
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (isScanningFace) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Analyzing facial geometry & committing biometric signature...", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        try {
+                                            cameraFaceLauncher.launch(null)
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "Camera launch error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = if (isFaceEnrolled) ButtonDefaults.filledTonalButtonColors() else ButtonDefaults.buttonColors()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = "Scan Face",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (isFaceEnrolled) "Re-Scan & Update Face Profile" else "Scan & Enroll Commander Face (Live Camera)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }

@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.auth.GoogleAuthClient
 import com.example.data.auth.GoogleAuthResult
+import com.example.data.auth.MicrosoftAuthClient
+import com.example.data.auth.MicrosoftAuthResult
 import com.example.data.sync.CloudSyncManager
 import com.example.security.BiometricSecurityManager
 import com.example.security.findFragmentActivity
@@ -50,6 +52,7 @@ fun WelcomeAuthScreen(
 
     var startAnimation by remember { mutableStateOf(false) }
     var isAuthenticating by remember { mutableStateOf(false) }
+    var isMicrosoftAuthenticating by remember { mutableStateOf(false) }
     var authErrorMessage by remember { mutableStateOf<String?>(null) }
 
     // Task 45B: One-Tap Biometric states
@@ -461,6 +464,83 @@ fun WelcomeAuthScreen(
                             Icon(Icons.Default.AccountCircle, contentDescription = "Google Logo", modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(10.dp))
                             Text("Sign in with Google", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Prominent "Sign in with Microsoft" Button
+                    Button(
+                        onClick = {
+                            if (!isMicrosoftAuthenticating) {
+                                val activity = context.findFragmentActivity()
+                                if (activity != null) {
+                                    scope.launch {
+                                        isMicrosoftAuthenticating = true
+                                        authErrorMessage = null
+                                        val client = MicrosoftAuthClient(context)
+                                        when (val result = client.signIn(activity)) {
+                                            is MicrosoftAuthResult.Success -> {
+                                                isMicrosoftAuthenticating = false
+                                                userDisplayName = result.displayName
+                                                showPostSignInBiometricCard = true
+                                                Toast.makeText(context, "Welcome ${result.displayName}! Microsoft Authenticated.", Toast.LENGTH_SHORT).show()
+                                            }
+                                            is MicrosoftAuthResult.Error -> {
+                                                isMicrosoftAuthenticating = false
+                                                authErrorMessage = result.message
+                                                Toast.makeText(context, "Microsoft Auth Error: ${result.message}", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Microsoft Sign-In requires active Activity context.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .testTag("microsoft_sign_in_button"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF0078D4) // Microsoft Executive Blue
+                        )
+                    ) {
+                        if (isMicrosoftAuthenticating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Authenticating with Microsoft...", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Window, contentDescription = "Microsoft Logo", modifier = Modifier.size(22.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Sign in with Microsoft", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Sovereign Multi-Account Trust Badge
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Zero-Cloud Leak: Google, Microsoft & Biometrics are bound locally via Android KeyStore AES-256.",
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
 

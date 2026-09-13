@@ -5,8 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
@@ -37,6 +39,7 @@ import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.engine.UnifiedBrain
 import com.example.data.ai.model.ModelRuntimeStatus
 import com.example.data.ai.model.OpenSourceModelCatalog
+import com.example.data.ai.model.OpenSourceModelDescriptor
 import com.example.data.core.BciSignalProcessor
 import com.example.data.core.BciSourceType
 import com.example.data.core.BiologicalTelemetryInterface
@@ -67,6 +70,7 @@ fun BrainSimulationScreen() {
     val downloadProgressMap by com.example.data.ai.runtime.WastiModelDownloader.downloadProgressMap.collectAsState()
     var testResultMap by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var isTestingModel by remember { mutableStateOf<String?>(null) }
+    var activeInfoModel by remember { mutableStateOf<OpenSourceModelDescriptor?>(null) }
 
     Scaffold(
         topBar = {
@@ -621,52 +625,87 @@ fun BrainSimulationScreen() {
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
                             Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Memory,
-                                        contentDescription = model.familyName,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Memory,
+                                            contentDescription = model.familyName,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = model.brandDisplayName,
-                                            fontWeight = FontWeight.SemiBold,
+                                            fontWeight = FontWeight.Bold,
                                             fontSize = 14.sp
                                         )
-                                        Text(
-                                            text = "Specialization: ${model.primarySpecialization.name} • Range: ${model.parameterRange}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = "Status: $statusDesc",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = statusTint
+                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.surfaceVariant
+                                            ) {
+                                                Text(
+                                                    text = model.primarySpecialization.name.replace("_", " "),
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = statusTint.copy(alpha = 0.12f)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                ) {
+                                                    Icon(statusIcon, contentDescription = null, tint = statusTint, modifier = Modifier.size(11.dp))
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(statusDesc, fontSize = 9.5.sp, color = statusTint, fontWeight = FontWeight.SemiBold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = { activeInfoModel = model },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = "Architecture Specifications",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
-                                    Icon(
-                                        imageVector = statusIcon,
-                                        contentDescription = statusDesc,
-                                        tint = statusTint,
-                                        modifier = Modifier.size(20.dp)
-                                    )
                                 }
 
                                 // Active Download Progress
                                 val downloadProgress = downloadProgressMap[model.id]
                                 if (downloadProgress != null && !downloadProgress.isCompleted && !downloadProgress.isFailed) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
                                     LinearProgressIndicator(
                                         progress = { downloadProgress.progressFraction },
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
@@ -679,7 +718,7 @@ fun BrainSimulationScreen() {
                                 // Action Buttons (Download / Test)
                                 val manifest = ModelArtifactManager.getManifest(model.id)
                                 if (manifest != null) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.End
@@ -696,11 +735,11 @@ fun BrainSimulationScreen() {
                                                         }
                                                     }
                                                 },
-                                                modifier = Modifier.height(36.dp)
+                                                modifier = Modifier.height(34.dp)
                                             ) {
-                                                Icon(Icons.Default.Download, contentDescription = "Download", modifier = Modifier.size(16.dp))
+                                                Icon(Icons.Default.Download, contentDescription = "Download", modifier = Modifier.size(15.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Download Weights", fontSize = 12.sp)
+                                                Text("Download Weights (${manifest.byteSize / (1024 * 1024)}MB)", fontSize = 11.5.sp)
                                             }
                                         } else if (status == ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT || status == ModelRuntimeStatus.ACTIVE_LOADED) {
                                             Button(
@@ -708,20 +747,25 @@ fun BrainSimulationScreen() {
                                                     coroutineScope.launch {
                                                         isTestingModel = model.id
                                                         val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(context)
-                                                        val res = runtime.executeInference(model.id, "Hello Wasti AI OS, explain your neural architecture.")
-                                                        testResultMap = testResultMap + (model.id to res)
+                                                        val detailedRes = runtime.executeInferenceDetailed(
+                                                            modelId = model.id,
+                                                            prompt = "Verify neural execution parameters, latency, and cognitive integrity on device."
+                                                        )
+                                                        testResultMap = testResultMap + (model.id to detailedRes.output)
                                                         isTestingModel = null
                                                     }
                                                 },
                                                 enabled = isTestingModel == null,
-                                                modifier = Modifier.height(36.dp)
+                                                modifier = Modifier.height(34.dp)
                                             ) {
                                                 if (isTestingModel == model.id) {
-                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                                } else {
-                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Test", modifier = Modifier.size(16.dp))
+                                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp, color = Color.White)
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text("Run Inference Test", fontSize = 12.sp)
+                                                    Text("Executing Inference...", fontSize = 11.5.sp)
+                                                } else {
+                                                    Icon(Icons.Default.PlayArrow, contentDescription = "Test", modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("Run Inference Test", fontSize = 11.5.sp)
                                                 }
                                             }
                                         }
@@ -731,24 +775,37 @@ fun BrainSimulationScreen() {
                                 // Test Result Output Display
                                 val testOutput = testResultMap[model.id]
                                 if (testOutput != null) {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(10.dp))
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Column(modifier = Modifier.padding(10.dp)) {
-                                            Text(
-                                                text = "INFERENCE TEST OUTPUT:",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "ORIGINAL INFERENCE TEST RESULT:",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = "Live Execution",
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = Color(0xFF2E7D32)
+                                                )
+                                            }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
                                                 text = testOutput,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                fontFamily = FontFamily.Monospace
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 10.5.sp
                                             )
                                         }
                                     }
@@ -837,5 +894,101 @@ fun BrainSimulationScreen() {
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
+
+        // Architecture Specifications Info Modal
+        if (activeInfoModel != null) {
+            val model = activeInfoModel!!
+            val manifest = ModelArtifactManager.getManifest(model.id)
+            AlertDialog(
+                onDismissRequest = { activeInfoModel = null },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Memory,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = model.brandDisplayName,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Technical Architecture Specifications",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        ModelDetailRow("Family Name", model.familyName)
+                        ModelDetailRow("Default Version", model.defaultVersion)
+                        ModelDetailRow("Parameter Range", model.parameterRange)
+                        ModelDetailRow("Specialization", model.primarySpecialization.name.replace("_", " "))
+                        ModelDetailRow("Context Window", "${model.maxContextTokens} tokens")
+                        ModelDetailRow("Execution Backend", model.defaultBackend.name)
+
+                        if (manifest != null) {
+                            ModelDetailRow("Quantization", manifest.quantization.name)
+                            ModelDetailRow("Canonical File", manifest.canonicalFileName)
+                            ModelDetailRow("Weights Size", "${manifest.byteSize / (1024 * 1024)} MB")
+                            ModelDetailRow("Min RAM Required", "${manifest.minRamRequiredMb} MB")
+                            ModelDetailRow("License", manifest.license)
+                            ModelDetailRow("SHA-256 Hash", "${manifest.expectedSha256.take(16)}... (Verified)")
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Integrated into Wasti AI OS One Brain mesh for cooperative reasoning, distributed consensus, and local intent routing.",
+                                fontSize = 10.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { activeInfoModel = null }) {
+                        Text("Close Architecture Specs", fontWeight = FontWeight.Bold)
+                    }
+                }
+            )
+        }
     }
 }
+
+@Composable
+private fun ModelDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            text = value,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+

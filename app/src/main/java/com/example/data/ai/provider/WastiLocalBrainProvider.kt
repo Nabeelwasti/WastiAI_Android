@@ -183,6 +183,15 @@ class WastiLocalBrainProvider(
 
 
     private fun executeDomainSpecializedInference(prompt: String, systemInstruction: String): String {
+        val trimmed = prompt.trim().lowercase()
+        val isGreeting = trimmed == "hi" || trimmed == "hello" || trimmed == "hey" ||
+                trimmed.startsWith("hi ") || trimmed.startsWith("hello ") ||
+                trimmed.startsWith("who are you") || trimmed.startsWith("how are you")
+
+        if (isGreeting) {
+            return "Hello Sir! I am Wasti AI, powered by the sovereign ${modelDescriptor.brandDisplayName} engine. I am fully initialized and ready to assist you. How can I help you today?"
+        }
+
         val matchingSkills = com.example.data.ai.engine.SelfTrainingKnowledgeDistillationEngine.findMatchingSkills(prompt)
         val skillContext = if (matchingSkills.isNotEmpty()) {
             val top = matchingSkills.first()

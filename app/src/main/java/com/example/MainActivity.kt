@@ -57,9 +57,47 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         setContent {
             val focusManager = LocalFocusManager.current
             var triggerVoiceModalSignal by remember { mutableIntStateOf(0) }
+
+            val allCorePermissions = remember {
+                buildList {
+                    add(Manifest.permission.RECORD_AUDIO)
+                    add(Manifest.permission.CAMERA)
+                    add(Manifest.permission.ACCESS_FINE_LOCATION)
+                    add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    add(Manifest.permission.READ_CALENDAR)
+                    add(Manifest.permission.WRITE_CALENDAR)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        add(Manifest.permission.POST_NOTIFICATIONS)
+                        add(Manifest.permission.READ_MEDIA_IMAGES)
+                        add(Manifest.permission.READ_MEDIA_VIDEO)
+                        add(Manifest.permission.READ_MEDIA_AUDIO)
+                        add(Manifest.permission.NEARBY_WIFI_DEVICES)
+                    } else {
+                        add(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        add(Manifest.permission.BLUETOOTH_SCAN)
+                        add(Manifest.permission.BLUETOOTH_CONNECT)
+                    }
+                }
+            }
+
             val permissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestMultiplePermissions()
             ) { _ -> }
+
+            // Automatic cold-start 1-click device permission prompt trigger
+            LaunchedEffect(Unit) {
+                val prefs = getSharedPreferences("wasti_app_prefs", android.content.Context.MODE_PRIVATE)
+                val permissionsTriggered = prefs.getBoolean("permissions_auto_triggered_v1", false)
+                val hasMissing = allCorePermissions.any { perm ->
+                    androidx.core.content.ContextCompat.checkSelfPermission(this@MainActivity, perm) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                }
+                if (!permissionsTriggered && hasMissing) {
+                    prefs.edit().putBoolean("permissions_auto_triggered_v1", true).apply()
+                    permissionLauncher.launch(allCorePermissions.toTypedArray())
+                }
+            }
 
             LaunchedEffect(Unit) {
                 com.example.data.action.WastiAppActionBus.actions.collect { action ->

@@ -56,6 +56,14 @@ data class HardwareEnvironmentSpecs(
     val hasNpuAcceleration: Boolean = false,
     val isBatteryLow: Boolean = false,
     val isThermalThrottling: Boolean = false,
-    val isLowRam: Boolean = false
+    val isLowRam: Boolean = false,
+    val cpuArchitecture: String = "arm64-v8a",
+    val totalStorageMb: Long = 0L,
+    val batteryPercentage: Int = 100,
+    val isCharging: Boolean = false,
+    val deviceModel: String = "",
+    val androidVersion: String = "",
+    val hasVulkanSupport: Boolean = false,
+    val inferenceViabilityScore: String = ""
 )
 

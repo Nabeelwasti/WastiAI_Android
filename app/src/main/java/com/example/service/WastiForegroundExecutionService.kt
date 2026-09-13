@@ -161,7 +161,8 @@ class WastiForegroundExecutionService : Service() {
     private fun buildNotification(
         title: String,
         content: String,
-        isBusy: Boolean = false
+        isBusy: Boolean = false,
+        progressPercent: Int? = null
     ): Notification {
         val openIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -185,12 +186,17 @@ class WastiForegroundExecutionService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(content)
+            .setContentText(content.lowercase())
+            .setSubText("wasti ai os • autonomous background execution")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(openPendingIntent)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
+
+        if (progressPercent != null && progressPercent in 0..100) {
+            builder.setProgress(100, progressPercent, false)
+        }
 
         if (isBusy) {
             builder.addAction(
@@ -204,10 +210,38 @@ class WastiForegroundExecutionService : Service() {
     }
 
     private fun observeRuntimeState() {
+        // Observe Global Execution Context
         serviceScope.launch {
             runtime.activeContext.collectLatest { ctx ->
                 updateNotificationForContext(ctx)
                 manageWakeLock(ctx.isBusy)
+            }
+        }
+
+        // Observe Model Downloads in real-time
+        serviceScope.launch {
+            com.example.data.ai.runtime.WastiModelDownloader.downloadProgressMap.collectLatest { progressMap ->
+                val activeDownload = progressMap.values.firstOrNull { !it.isCompleted && !it.isFailed }
+                if (activeDownload != null) {
+                    val percent = (activeDownload.progressFraction * 100).toInt().coerceIn(0, 100)
+                    val title = "⚡ Wasti AI OS: Downloading Neural Weights"
+                    val content = "${activeDownload.modelId}: $percent% • ${activeDownload.bytesDownloaded / (1024 * 1024)}MB / ${activeDownload.totalBytes / (1024 * 1024)}MB"
+                    val notif = buildNotification(title, content, isBusy = true, progressPercent = percent)
+                    notificationManager.notify(NOTIFICATION_ID, notif)
+                    manageWakeLock(true)
+                }
+            }
+        }
+
+        // Observe OmniBrain Live Thinking Stream
+        serviceScope.launch {
+            com.example.data.ai.engine.WastiOmniBrain.activeThoughtStream.collectLatest { thought ->
+                if (thought.isNotBlank() && !thought.contains("Standby", ignoreCase = true)) {
+                    val title = "🧠 Wasti AI OS: Autonomous Thinking Active"
+                    val notif = buildNotification(title, thought, isBusy = true)
+                    notificationManager.notify(NOTIFICATION_ID, notif)
+                    manageWakeLock(true)
+                }
             }
         }
     }
@@ -222,7 +256,7 @@ class WastiForegroundExecutionService : Service() {
         val content = if (ctx.isBusy) {
             "${ctx.progressMessage} (${ctx.activeTaskId?.take(8) ?: "executing"})"
         } else {
-            "Ready for requests across Chat, Voice, Floating Bubble, and Local Server"
+            "ready for requests across chat, voice, floating bubble, and local server"
         }
 
         val notif = buildNotification(title, content, ctx.isBusy)
@@ -238,8 +272,8 @@ class WastiForegroundExecutionService : Service() {
                         PowerManager.PARTIAL_WAKE_LOCK,
                         "WastiOS:AutonomousTaskExecutionWakeLock"
                     ).apply {
-                        // 5-minute maximum timeout safety for battery preservation
-                        acquire(5 * 60 * 1000L)
+                        // 30-minute maximum timeout for background neural downloads & indexing
+                        acquire(30 * 60 * 1000L)
                     }
                     Log.d(TAG, "Acquired bounded execution WakeLock")
                 }

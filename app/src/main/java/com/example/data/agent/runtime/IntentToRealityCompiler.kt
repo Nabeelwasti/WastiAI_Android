@@ -29,7 +29,13 @@ object IntentToRealityCompiler {
      * an autonomous multi-step outcome suitable for Reverse App Store compilation.
      */
     fun isAutonomousIntent(prompt: String): Boolean {
-        val lower = prompt.lowercase()
+        val lower = prompt.trim().lowercase()
+        if (lower.length < 12 || lower == "hi" || lower == "hello" || lower == "hey" ||
+            lower.startsWith("hi ") || lower.startsWith("hello ") || lower.startsWith("who are you") ||
+            lower.startsWith("how are you") || lower.startsWith("what is ")
+        ) {
+            return false
+        }
         return lower.contains("organize") ||
                 lower.contains("compile") ||
                 lower.contains("backup") ||

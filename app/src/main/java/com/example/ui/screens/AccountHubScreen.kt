@@ -26,6 +26,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.credential.*
+import com.example.data.core.WastiBiometricFaceEngine
+import com.example.data.auth.GoogleAuthClient
+import com.example.data.auth.MicrosoftAuthClient
 import com.example.security.BiometricSecurityManager
 import com.example.security.findFragmentActivity
 import kotlinx.coroutines.launch
@@ -50,9 +53,15 @@ fun AccountHubScreen(
     var showPinDialog by remember { mutableStateOf(false) }
     var enteredPin by remember { mutableStateOf("") }
     var isDevModeUnlocked by remember { mutableStateOf(BiometricSecurityManager.isDevModeUnlocked(context)) }
+    var isFaceEnrolled by remember { mutableStateOf(false) }
+    var isBiometricEnabled by remember { mutableStateOf(BiometricSecurityManager.isBiometricLoginEnabled(context)) }
+    val googleUser = remember { GoogleAuthClient(context).currentUser }
+    val msUser = remember { MicrosoftAuthClient(context).currentUser }
 
     LaunchedEffect(Unit) {
         CredentialRegistry.refreshAll(context)
+        isFaceEnrolled = WastiBiometricFaceEngine.isFaceEnrolled(context)
+        isBiometricEnabled = BiometricSecurityManager.isBiometricLoginEnabled(context)
     }
 
     val filteredList = remember(credentialStates, selectedCategoryFilter) {
@@ -183,6 +192,82 @@ fun AccountHubScreen(
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // Multi-Account Federation & Frictionless Trust Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                    .testTag("linked_accounts_federation_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AccountBalanceWallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Linked Accounts & Frictionless Trust",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Google Pill
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (googleUser != null) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AccountCircle, contentDescription = null, tint = if (googleUser != null) Color(0xFF2E7D32) else Color.Gray, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Google", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (googleUser != null) "Connected" else "Unlinked", fontSize = 9.5.sp, color = if (googleUser != null) Color(0xFF2E7D32) else Color.Gray)
+                                }
+                            }
+                        }
+                        // Microsoft Pill
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (msUser != null) Color(0xFF0078D4).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Window, contentDescription = null, tint = if (msUser != null) Color(0xFF0078D4) else Color.Gray, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Microsoft", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (msUser != null) "Connected" else "Unlinked", fontSize = 9.5.sp, color = if (msUser != null) Color(0xFF0078D4) else Color.Gray)
+                                }
+                            }
+                        }
+                        // Biometric & Face Pill
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isFaceEnrolled || isBiometricEnabled) Color(0xFF2E7D32).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Fingerprint, contentDescription = null, tint = if (isFaceEnrolled || isBiometricEnabled) Color(0xFF2E7D32) else Color.Gray, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text("Biometrics", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(if (isFaceEnrolled) "Face + Touch" else if (isBiometricEnabled) "Touch Key" else "Ready", fontSize = 9.5.sp, color = if (isFaceEnrolled || isBiometricEnabled) Color(0xFF2E7D32) else Color.Gray)
+                                }
+                            }
+                        }
                     }
                 }
             }
