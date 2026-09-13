@@ -170,6 +170,14 @@ android {
           showCauses = true
           showStackTraces = true
         }
+        test.afterTest { desc, result ->
+          if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
+            println("[TEST FAILED] ${desc.className} -> ${desc.name}")
+            result.exception?.let { exc ->
+              println("[TEST ERROR] ${exc.message}")
+            }
+          }
+        }
         // This suite contains process-wide singletons, embedded servers, Room state,
         // and global emergency-stop state. Keep JVM test classes isolated by process
         // order rather than introducing cross-class races in CI.

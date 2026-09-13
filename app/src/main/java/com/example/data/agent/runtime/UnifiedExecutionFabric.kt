@@ -853,7 +853,7 @@ class UnifiedExecutionFabric(
                     error = if (isInactive) "Wasti Accessibility Service is inactive" else null,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (isInactive) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.VERIFIED,
+                    verificationStatus = if (isInactive) UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE else UnifiedVerificationStatus.VERIFIED,
                     verificationEvidence = if (isInactive) "Accessibility Service inactive" else "Screen node layout scraped"
                 )
             }
@@ -1060,7 +1060,7 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.COMPLETED,
+            status = UnifiedExecutionStatus.VERIFIED,
             output = outputText,
             executor = "MemoryManager",
             startedAt = startedAt,
