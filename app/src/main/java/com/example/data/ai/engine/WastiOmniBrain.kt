@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.data.agent.runtime.WastiAgentLearningPreserver
 import com.example.data.ai.AIManager
-import com.example.data.ai.model.AIResponse
+import com.example.data.ai.model.ProviderResponse
 import com.example.data.ai.model.ModelRuntimeStatus
 import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.ai.model.ProviderRequest
@@ -133,7 +133,7 @@ object WastiOmniBrain {
                 async {
                     WastiSystemResilienceGovernor.withCrashShield("CloudModel:$providerId", null) {
                         val nodeStart = System.currentTimeMillis()
-                        val response: AIResponse = AIManager.execute(
+                        val response: ProviderResponse = AIManager.execute(
                             prompt = fullPrompt,
                             preferredProviderId = providerId
                         )
