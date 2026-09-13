@@ -249,10 +249,15 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         assertFalse(isRunnable)
         assertTrue(reason.contains("not present locally") || reason.contains("Download required"))
 
-        // Unmanifested model fails closed
+        // Manifested model without downloaded weights also fails closed
         val (isRunnableDeepseek, reasonDeepseek) = ModelArtifactManager.isModelRunnableLocally(context, "wasti-deepseek")
         assertFalse(isRunnableDeepseek)
-        assertTrue(reasonDeepseek.contains("manifest"))
+        assertTrue(reasonDeepseek.contains("not present locally") || reasonDeepseek.contains("Download required"))
+
+        // Unmanifested model fails closed
+        val (isRunnableUnmanifested, reasonUnmanifested) = ModelArtifactManager.isModelRunnableLocally(context, "wasti-unmanifested-test-model")
+        assertFalse(isRunnableUnmanifested)
+        assertTrue(reasonUnmanifested.contains("manifest"))
 
         // Status for downloadable model with missing weights must be AVAILABLE_PENDING_DOWNLOAD, not LOCAL_WEIGHTS_PRESENT
         val status = ModelArtifactManager.getModelStatus(context, "wasti-smollm")
