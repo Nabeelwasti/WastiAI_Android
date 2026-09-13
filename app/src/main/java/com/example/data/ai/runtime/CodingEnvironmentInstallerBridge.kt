@@ -118,7 +118,8 @@ object CodingEnvironmentInstallerBridge {
         val snippet = "curl -fsSL https://raw.githubusercontent.com/Nabeelwasti/WastiAI_Android/main/scripts/install_wasti_agent.sh | bash -s $modelId"
 
         val fallbacks = mutableListOf<String>()
-        if (com.example.data.api.LocalLLMClient.isAvailable()) {
+        val localCandidates = com.example.data.api.LocalLLMClient.getCandidateEndpoints()
+        if (localCandidates.isNotEmpty()) {
             fallbacks.add("LOCAL_OLLAMA_SERVER (127.0.0.1:11434)")
         }
         if (com.example.data.api.HuggingFaceClient.isConfigured()) {

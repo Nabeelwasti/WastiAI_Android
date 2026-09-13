@@ -143,6 +143,8 @@ object WastiModelDownloader {
         var connection: HttpURLConnection? = null
         var downloadSucceeded = false
         var lastErrorMsg = "Unable to initiate download"
+        var totalBytes = manifest.byteSize
+        var downloadedBytes = 0L
 
         try {
             for ((index, currentUrl) in candidateUrls.withIndex()) {
@@ -175,9 +177,9 @@ object WastiModelDownloader {
                     continue
                 }
 
-                val totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
+                totalBytes = if (connection.contentLengthLong > 0) connection.contentLengthLong else manifest.byteSize
                 val digest = MessageDigest.getInstance("SHA-256")
-                var downloadedBytes = 0L
+                downloadedBytes = 0L
 
                 if (tempFile.exists()) {
                     tempFile.delete()
