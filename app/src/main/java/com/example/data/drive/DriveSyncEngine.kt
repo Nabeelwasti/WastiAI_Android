@@ -38,11 +38,17 @@ object DriveSyncEngine {
     const val DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file"
     const val BACKUP_FILE_NAME = "wasti_os_backup.json"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        try {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .build()
+        } catch (_: Throwable) {
+            OkHttpClient()
+        }
+    }
 
     private val _syncStatus = MutableStateFlow<DriveSyncStatus>(DriveSyncStatus.Idle)
     val syncStatus: StateFlow<DriveSyncStatus> = _syncStatus.asStateFlow()

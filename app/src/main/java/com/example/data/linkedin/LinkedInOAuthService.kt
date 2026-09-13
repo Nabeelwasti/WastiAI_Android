@@ -29,11 +29,17 @@ object LinkedInOAuthService {
     private const val TAG = "LinkedInOAuthService"
     const val LINKEDIN_SHARE_SCOPE = "w_member_social"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        try {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .build()
+        } catch (_: Throwable) {
+            OkHttpClient()
+        }
+    }
 
     fun getClientId(context: Context?): String? {
         return CredentialRegistry.getRawValue("LINKEDIN_CLIENT_ID", context)

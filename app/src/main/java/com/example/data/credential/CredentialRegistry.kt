@@ -48,10 +48,16 @@ data class CredentialState(
 
 object CredentialRegistry {
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        try {
+            OkHttpClient.Builder()
+                .connectTimeout(8, TimeUnit.SECONDS)
+                .readTimeout(8, TimeUnit.SECONDS)
+                .build()
+        } catch (_: Throwable) {
+            OkHttpClient()
+        }
+    }
 
     fun isPlaceholder(valString: String): Boolean {
         if (valString.isBlank()) return true

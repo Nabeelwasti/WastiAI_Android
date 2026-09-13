@@ -25,11 +25,17 @@ object GmailOAuthService {
     const val GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
     private const val TAG = "GmailOAuthService"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        try {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
+                .build()
+        } catch (_: Throwable) {
+            OkHttpClient()
+        }
+    }
 
     fun getAccessToken(context: Context?): String? {
         if (context != null) {

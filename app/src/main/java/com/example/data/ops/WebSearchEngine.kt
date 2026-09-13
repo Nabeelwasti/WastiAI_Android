@@ -39,14 +39,46 @@ object WebSearchEngine {
 
     private const val TAG = "WebSearchEngine"
 
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .followRedirects(true)
-        .followSslRedirects(true)
-        .build()
+    private val httpClient: OkHttpClient by lazy {
+        createSafeHttpClient()
+    }
+
+    private fun createSafeHttpClient(): OkHttpClient {
+        val builder = OkHttpClient.Builder()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .followRedirects(true)
+            .followSslRedirects(true)
+
+        return try {
+            builder.build()
+        } catch (e: Throwable) {
+            Log.w(TAG, "Standard OkHttp build failed ($e); engaging explicit TLS trust manager fallback.")
+            try {
+                val trustManagerFactory = javax.net.ssl.TrustManagerFactory.getInstance(
+                    javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
+                )
+                trustManagerFactory.init(null as java.security.KeyStore?)
+                val trustManagers = trustManagerFactory.trustManagers
+                val x509TrustManager = trustManagers.filterIsInstance<javax.net.ssl.X509TrustManager>().first()
+                val sslContext = javax.net.ssl.SSLContext.getInstance("TLS")
+                sslContext.init(null, arrayOf(x509TrustManager), java.security.SecureRandom())
+
+                OkHttpClient.Builder()
+                    .sslSocketFactory(sslContext.socketFactory, x509TrustManager)
+                    .connectTimeout(8, TimeUnit.SECONDS)
+                    .readTimeout(10, TimeUnit.SECONDS)
+                    .writeTimeout(10, TimeUnit.SECONDS)
+                    .retryOnConnectionFailure(true)
+                    .build()
+            } catch (t2: Throwable) {
+                Log.e(TAG, "Explicit TLS configuration fallback error: ${t2.message}")
+                OkHttpClient()
+            }
+        }
+    }
 
     /**
      * Executes web search for a query and returns top 5 results as a formatted JSON string.
