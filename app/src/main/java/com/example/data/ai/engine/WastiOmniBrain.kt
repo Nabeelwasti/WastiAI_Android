@@ -77,7 +77,8 @@ object WastiOmniBrain {
         prompt: String,
         context: Context? = null,
         appId: String = "general",
-        preferredLocalModels: List<String> = listOf("wasti-llama", "wasti-qwen", "wasti-deepseek", "wasti-mistral", "wasti-gemma")
+        preferredLocalModels: List<String> = listOf("wasti-llama", "wasti-qwen", "wasti-deepseek", "wasti-mistral", "wasti-gemma"),
+        includeCloudProviders: Boolean = true
     ): OmniBrainSynthesis = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         _activeThoughtStream.value = "OmniBrain Active: Ingesting memories and formulating cross-model perspectives..."
@@ -127,31 +128,35 @@ object WastiOmniBrain {
                 }
             }
 
-            // B. Query Fast Cloud Models (if credentials configured & online)
-            val cloudProviderIds = listOf("groq", "gemini", "deepseek")
-            val cloudTasks = cloudProviderIds.map { providerId ->
-                async {
-                    WastiSystemResilienceGovernor.withCrashShield("CloudModel:$providerId", null) {
-                        val nodeStart = System.currentTimeMillis()
-                        val response: ProviderResponse = AIManager.execute(
-                            prompt = fullPrompt,
-                            preferredProviderId = providerId
-                        )
-                        val latency = System.currentTimeMillis() - nodeStart
-
-                        if (!response.isError && response.content.isNotBlank()) {
-                            ModelPerspective(
-                                modelId = "cloud-$providerId",
-                                displayName = "Cloud ${providerId.uppercase()}",
-                                role = "Global Cloud Intelligence",
-                                outputContent = response.content,
-                                confidence = 0.95f,
-                                latencyMs = latency,
-                                isLocalSovereign = false
+            // B. Query Fast Cloud Models (if requested, credentials configured & online)
+            val cloudTasks = if (includeCloudProviders) {
+                val cloudProviderIds = listOf("groq", "gemini", "deepseek")
+                cloudProviderIds.map { providerId ->
+                    async {
+                        WastiSystemResilienceGovernor.withCrashShield("CloudModel:$providerId", null) {
+                            val nodeStart = System.currentTimeMillis()
+                            val response: ProviderResponse = AIManager.execute(
+                                prompt = fullPrompt,
+                                preferredProviderId = providerId
                             )
-                        } else null
+                            val latency = System.currentTimeMillis() - nodeStart
+
+                            if (!response.isError && response.content.isNotBlank()) {
+                                ModelPerspective(
+                                    modelId = "cloud-$providerId",
+                                    displayName = "Cloud ${providerId.uppercase()}",
+                                    role = "Global Cloud Intelligence",
+                                    outputContent = response.content,
+                                    confidence = 0.95f,
+                                    latencyMs = latency,
+                                    isLocalSovereign = false
+                                )
+                            } else null
+                        }
                     }
                 }
+            } else {
+                emptyList()
             }
 
             val localResults = localTasks.awaitAll().filterNotNull()

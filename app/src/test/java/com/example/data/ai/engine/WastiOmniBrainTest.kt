@@ -51,7 +51,8 @@ class WastiOmniBrainTest {
             prompt = "Emergency offline check",
             context = null,
             appId = "test_empty",
-            preferredLocalModels = emptyList()
+            preferredLocalModels = emptyList(),
+            includeCloudProviders = false
         )
 
         assertNotNull(synthesis)
