@@ -170,6 +170,27 @@ class ArchitectureAndCivilizationTest {
     }
 
     @Test
+    fun testAllTwelveSovereignModelsIntegratedInCouncilAndBrain() {
+        val sovereignCouncilMembers = AICouncilEngine.councilMembers.filter { it.isLocalSovereign }
+        assertEquals("AI Council must contain exactly 12 sovereign local models", 12, sovereignCouncilMembers.size)
+
+        val catalogModels = com.example.data.ai.model.OpenSourceModelCatalog.ALL_MODELS
+        assertEquals("OpenSourceModelCatalog must contain exactly 12 models", 12, catalogModels.size)
+
+        // Verify each model in catalog is represented in the council
+        catalogModels.forEach { model ->
+            assertTrue(
+                "Council must include model ${model.id}",
+                sovereignCouncilMembers.any { it.id == model.id }
+            )
+        }
+
+        // Verify UnifiedBrain instantiates providers for all 12 models
+        val unifiedProviders = com.example.data.ai.engine.UnifiedBrain.getAllLocalProviders()
+        assertEquals("UnifiedBrain must instantiate all 12 local providers", 12, unifiedProviders.size)
+    }
+
+    @Test
     fun testDependencyIntelligenceEngineAndCycleDetection() {
         // Transitive dependencies of omni_brain
         val transitiveDeps = DependencyIntelligenceEngine.getTransitiveDependencies("omni_brain")

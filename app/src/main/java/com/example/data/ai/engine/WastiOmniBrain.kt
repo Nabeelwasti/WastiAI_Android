@@ -77,11 +77,11 @@ object WastiOmniBrain {
         prompt: String,
         context: Context? = null,
         appId: String = "general",
-        preferredLocalModels: List<String> = listOf("wasti-llama", "wasti-qwen", "wasti-deepseek", "wasti-mistral", "wasti-gemma"),
+        preferredLocalModels: List<String> = OpenSourceModelCatalog.ALL_MODELS.map { it.id },
         includeCloudProviders: Boolean = true
     ): OmniBrainSynthesis = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        _activeThoughtStream.value = "OmniBrain Active: Ingesting memories and formulating cross-model perspectives..."
+        _activeThoughtStream.value = "OmniBrain Active: Ingesting memories and formulating cross-model perspectives across all 12 sovereign nodes..."
 
         // 1. Gather Long-Term Memory and Preserved Learnings
         val adaptedPrompt = WastiAgentLearningPreserver.getAdaptedSystemPrompt(prompt, appId)
@@ -108,10 +108,11 @@ object WastiOmniBrain {
                         val latency = System.currentTimeMillis() - nodeStart
 
                         val role = when {
-                            modelId.contains("qwen") || modelId.contains("deepseek") -> "Algorithmic & Code Architecture"
-                            modelId.contains("llama") || modelId.contains("mistral") -> "Executive Strategy & Reasoning"
-                            modelId.contains("gemma") -> "Logical Invariants & Validation"
-                            modelId.contains("granite") || modelId.contains("commandr") || modelId.contains("phi") -> "Execution & Action Pipeline"
+                            modelId.contains("qwen") || modelId.contains("deepseek") || modelId.contains("granite") -> "Algorithmic & Code Architecture"
+                            modelId.contains("llama") || modelId.contains("mistral") || modelId.contains("commandr") -> "Executive Strategy & Reasoning"
+                            modelId.contains("gemma") || modelId.contains("falcon") -> "Logical Invariants & Validation"
+                            modelId.contains("phi") || modelId.contains("smollm") || modelId.contains("stablelm") -> "On-Device Sovereign Edge Logic"
+                            modelId.contains("glm") -> "Multimodal Research & Dialogue"
                             else -> "Creative Synthesis & Dialogue"
                         }
 

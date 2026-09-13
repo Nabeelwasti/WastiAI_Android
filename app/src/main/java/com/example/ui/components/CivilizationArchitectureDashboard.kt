@@ -197,8 +197,57 @@ fun CivilizationArchitectureDashboard(
                         CouncilRoleItem("GPT-4o", "Deep Multi-Perspective Reasoning", "OpenAI / API")
                         CouncilRoleItem("Gemini 1.5", "Web Grounding & Real-Time Research", "Google Cloud")
                         CouncilRoleItem("DeepSeek V3/R1", "Polyglot Code Synthesis & Sandbox Optimization", "Groq / DeepSeek")
-                        CouncilRoleItem("SmolLM 360M", "100% Sovereign Offline Privacy & Zero-Latency", "Local Edge NPU")
+                        CouncilRoleItem("12 Sovereign Models", "100% Offline Privacy, Edge Reasoning, Coding & Math", "On-Device NPU / Mesh")
                         CouncilRoleItem("Wasti Core", "Final Autonomous Decision & Governance Authority", "Sovereign Master")
+                    }
+                }
+            }
+        }
+
+        // CARD 2B: 12 SOVEREIGN OPEN-SOURCE LOCAL MODELS SUITE
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Memory, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("12 Sovereign Open-Source Models Suite", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.2f)
+                    ) {
+                        Text(
+                            text = "12/12 Integrated",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF065F46),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Zero-cloud, sovereign offline intelligence: 12 authentic open-source architectures spanning Meta, Alibaba, Google, Microsoft, DeepSeek, IBM, Mistral, Cohere, TII, Hugging Face, Zhipu, and Stability.",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    com.example.data.ai.model.OpenSourceModelCatalog.ALL_MODELS.forEach { model ->
+                        OpenSourceModelItemRow(model = model)
                     }
                 }
             }
@@ -502,3 +551,43 @@ private fun SubsystemNodeRow(node: ArchitectureNode) {
         }
     }
 }
+
+@Composable
+private fun OpenSourceModelItemRow(model: com.example.data.ai.model.OpenSourceModelDescriptor) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(model.brandDisplayName, fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("(${model.defaultVersion})", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                text = "${model.primarySpecialization.name.replace('_', ' ')} • ${model.parameterRange} • Context: ${model.maxContextTokens} tokens",
+                fontSize = 9.5.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = if (model.isLocalExecutionSupported) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Text(
+                text = if (model.isLocalExecutionSupported) "On-Device NPU" else "Mesh / Server",
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (model.isLocalExecutionSupported) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+        }
+    }
+}
+

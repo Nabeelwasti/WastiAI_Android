@@ -60,7 +60,7 @@ object UnifiedBrain {
 
     suspend fun executeCooperativeReasoning(
         prompt: String,
-        participatingModelIds: List<String> = listOf("wasti-llama", "wasti-qwen", "wasti-deepseek", "wasti-mistral"),
+        participatingModelIds: List<String> = OpenSourceModelCatalog.ALL_MODELS.map { it.id },
         requireNeuralConsensus: Boolean = false
     ): UnifiedBrainConsensus = coroutineScope {
         val startTime = System.currentTimeMillis()
