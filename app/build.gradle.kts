@@ -170,14 +170,19 @@ android {
           showCauses = true
           showStackTraces = true
         }
-        test.afterTest { desc, result ->
-          if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
-            println("[TEST FAILED] ${desc.className} -> ${desc.name}")
-            result.exception?.let { exc ->
-              println("[TEST ERROR] ${exc.message}")
+        test.addTestListener(object : org.gradle.api.tasks.testing.TestListener {
+          override fun beforeSuite(suite: org.gradle.api.tasks.testing.TestDescriptor) {}
+          override fun afterSuite(suite: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {}
+          override fun beforeTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor) {}
+          override fun afterTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
+            if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
+              println("[TEST FAILED] ${testDescriptor.className} -> ${testDescriptor.name}")
+              result.exception?.let { exc ->
+                println("[TEST ERROR] ${exc.message}")
+              }
             }
           }
-        }
+        })
         // This suite contains process-wide singletons, embedded servers, Room state,
         // and global emergency-stop state. Keep JVM test classes isolated by process
         // order rather than introducing cross-class races in CI.

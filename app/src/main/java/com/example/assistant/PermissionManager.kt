@@ -26,6 +26,9 @@ object PermissionManager {
     @Volatile
     private var applicationContext: Context? = null
 
+    private val effectiveContext: Context?
+        get() = applicationContext ?: com.example.WastiApplication.instance
+
     // Only used by JVM/Robolectric compatibility callers that do not provide Context.
     private val legacyTestConsent = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
@@ -150,7 +153,7 @@ object PermissionManager {
 
     @Deprecated("Use setUserConsent(context, permissionOrCapability, consented) for persistent storage")
     fun setUserConsent(permissionOrCapability: String, consented: Boolean) {
-        applicationContext?.let { setUserConsent(it, permissionOrCapability, consented) }
+        effectiveContext?.let { setUserConsent(it, permissionOrCapability, consented) }
             ?: legacyTestConsent.put(permissionOrCapability, consented)
     }
 
@@ -162,7 +165,7 @@ object PermissionManager {
 
     @Deprecated("Use hasUserConsent(context, permissionOrCapability)")
     fun hasUserConsent(permissionOrCapability: String): Boolean {
-        applicationContext?.let { return hasUserConsent(it, permissionOrCapability) }
+        effectiveContext?.let { return hasUserConsent(it, permissionOrCapability) }
         return legacyTestConsent[permissionOrCapability] ?: defaultConsentFor(permissionOrCapability)
     }
 
@@ -171,7 +174,7 @@ object PermissionManager {
 
     @Deprecated("Use clearUserConsents(context)")
     fun clearUserConsents() {
-        applicationContext?.let { clearUserConsents(it) } ?: legacyTestConsent.clear()
+        effectiveContext?.let { clearUserConsents(it) } ?: legacyTestConsent.clear()
     }
 
     fun clearUserConsents(context: Context) {
