@@ -100,13 +100,12 @@ class AgentEventBusAndRuntimeTest {
     fun testErrorAnalyzerLiveResearch() = kotlinx.coroutines.runBlocking {
         val errorAnalyzer = ErrorAnalyzer()
         val observation = AgentObservation(
-            taskId = "task-research-1",
+            taskId = TaskId("task-research-1"),
             toolName = "execute_code",
             isSuccess = false,
             exitCode = 1,
             stdout = "",
-            stderr = "SyntaxError: unexpected token '<' at line 12",
-            durationMs = 25L
+            stderr = "SyntaxError: unexpected token '<' at line 12"
         )
 
         val diagnostic = errorAnalyzer.analyzeFailureWithLiveResearch(observation)
