@@ -43,6 +43,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import com.example.service.WastiFloatingService
+import com.example.data.core.WastiExperienceMode
 import com.example.ui.viewmodel.SettingsViewModel
 import kotlinx.coroutines.launch
 
@@ -63,6 +64,7 @@ fun SettingsScreen(
     val credentialStates by settingsViewModel.credentialStates.collectAsState()
     val isTestingMap by settingsViewModel.isTestingMap.collectAsState()
     val statusMessageMap by settingsViewModel.statusMessageMap.collectAsState()
+    val currentExperienceMode by WastiExperienceMode.currentMode.collectAsState()
 
     var enableExtraVoiceModels by remember { mutableStateOf(prefs.getBoolean("enable_extra_voice_models", false)) }
     var searchQuery by remember { mutableStateOf("") }
@@ -242,6 +244,16 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        // SECTION 0: WASTI ADAPTIVE EXPERIENCE MODE (PHASE 9)
+        item {
+            ExperienceModeSettingsCard(
+                currentMode = currentExperienceMode,
+                onSelectMode = { newMode ->
+                    WastiExperienceMode.setAndPersistMode(newMode, context)
+                }
+            )
         }
 
         // SECTION 1: PRIMARY AI PROVIDERS VAULT
@@ -1567,6 +1579,91 @@ fun WastiResurrectionProtocolCard() {
                         )
                         if (res.isSuccess) {
                             Text("Source Device: ${res.sourceDeviceId.take(12)}... (Restored into ${android.os.Build.MODEL})", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ExperienceModeSettingsCard(
+    currentMode: WastiExperienceMode,
+    onSelectMode: (WastiExperienceMode) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Wasti Adaptive Experience Mode", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Text(
+                        text = "Phase 9 UX",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Controls interface exposure and technical granularity without removing or splitting any capabilities.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            WastiExperienceMode.entries.forEach { mode ->
+                val isSelected = mode == currentMode
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSelectMode(mode) }
+                        .padding(vertical = 3.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { onSelectMode(mode) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = mode.displayName,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = mode.description,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }

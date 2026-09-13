@@ -168,4 +168,104 @@ class ArchitectureAndCivilizationTest {
         assertTrue(deliberation.participatingMembers.isNotEmpty())
         assertEquals("VERIFY -> REMEMBER -> IMPROVE", deliberation.identityOrbitStage)
     }
+
+    @Test
+    fun testDependencyIntelligenceEngineAndCycleDetection() {
+        // Transitive dependencies of omni_brain
+        val transitiveDeps = DependencyIntelligenceEngine.getTransitiveDependencies("omni_brain")
+        assertTrue("OmniBrain must have transitive dependencies", transitiveDeps.isNotEmpty())
+
+        // Cycles detection: Architecture Knowledge Graph should be acyclic
+        val cycles = DependencyIntelligenceEngine.detectDependencyCycles()
+        assertTrue("Architecture Knowledge Graph should have zero cycles", cycles.isEmpty())
+
+        // Blast radius of credential_vault
+        val blast = DependencyIntelligenceEngine.assessBlastRadius("credential_vault")
+        assertNotNull(blast)
+        assertEquals("credential_vault", blast.targetNodeId)
+        assertTrue(blast.totalTransitiveAffectedNodes >= 0)
+
+        // Degradation simulation
+        val sim = DependencyIntelligenceEngine.simulateDegradation(setOf("external_cloud_cortex"))
+        assertNotNull(sim)
+        assertTrue("Core reasoning must remain operational even if cloud cortex fails", sim.isCoreReasoningOperational)
+        assertTrue(sim.operationalLayersRemaining.contains(ArchitectureLayer.BRAIN_REASONING_LAYER))
+    }
+
+    @Test
+    fun testCapabilityRelationshipGraphFallbacksAndClusters() {
+        val allCaps = CapabilityRelationshipGraph.getAllCapabilities()
+        assertTrue(allCaps.isNotEmpty())
+
+        // Check fallback for cloud whisper
+        val fallbacks = CapabilityRelationshipGraph.findFallbackPath("cloud_whisper_stt")
+        assertTrue("Should find offline vosk fallback for cloud whisper", fallbacks.contains("vosk_offline_stt"))
+
+        // Check fallback for cloud ensemble
+        val brainFallbacks = CapabilityRelationshipGraph.findFallbackPath("cloud_ensemble_inference")
+        assertTrue("Should find edge SmolLM fallback for cloud ensemble", brainFallbacks.contains("edge_smollm_inference"))
+
+        // Check synergistic clusters
+        val cluster = CapabilityRelationshipGraph.getSynergisticCluster("wre_polyglot_sandbox")
+        assertTrue(cluster.contains("wre_polyglot_sandbox"))
+        assertTrue(cluster.contains("code_prompt_synthesizer"))
+    }
+
+    @Test
+    fun testFileOwnershipEngineInspectsImpact() {
+        val analysis = FileOwnershipEngine.inspectFileImpact("com.example.data.ai.engine.WastiOmniBrain")
+        assertNotNull(analysis)
+        assertEquals(ArchitectureLayer.BRAIN_REASONING_LAYER, analysis.ownerLayer)
+        assertEquals("omni_brain", analysis.subsystemId)
+        assertTrue(analysis.whyItExists.contains("Master cognitive engine"))
+        assertTrue(analysis.whatItBreaksIfRemoved.isNotEmpty())
+        assertEquals(FileOwnershipEngine.CriticalityTier.CRITICAL_SOVEREIGN, analysis.criticality)
+    }
+
+    @Test
+    fun testArchitectureEvolutionEngineAuditsBoundaries() {
+        val audit = ArchitectureEvolutionEngine.auditArchitectureBoundaries()
+        assertNotNull(audit)
+        assertTrue("Architecture must be compliant with layer boundary rules", audit.isArchitectureCompliant)
+        assertTrue(audit.boundaryViolations.isEmpty())
+        assertTrue("Sovereign offline integrity must be high (>60%)", audit.sovereignOfflineIntegrityPercent > 60.0f)
+        assertTrue(audit.activeProposals.isNotEmpty())
+    }
+
+    @Test
+    fun testObservatoryTracingAndMetricsEngines() {
+        val trace = ObservatoryEngine.Tracing.startSpan("unit_test_op", "test_subsystem")
+        assertNotNull(trace.spanId)
+        assertNotNull(trace.traceId)
+        trace.end(isSuccess = true, networkBytes = 1024L)
+
+        val metrics = ObservatoryEngine.Metrics.currentMetrics
+        assertTrue(metrics.totalOperationsRecorded > 0)
+        assertTrue(metrics.totalNetworkBytes >= 1024L)
+    }
+
+    @Test
+    fun testReliabilityHealthAndFailurePrediction() {
+        ReliabilityEngine.recordFailureEvent("network_caller", "ConnectTimeoutException", "TIMEOUT")
+        val status = ReliabilityEngine.evaluateReliability()
+        assertNotNull(status)
+        assertTrue(status.recentFailureEvents.any { it.subsystemId == "network_caller" })
+
+        ReliabilityEngine.recordSuccessfulRecovery()
+        val postRecovery = ReliabilityEngine.evaluateReliability()
+        assertTrue(postRecovery.recoveredFailures > 0)
+
+        val verdict = ReliabilityEngine.HealthScoreEngine.getVerdict()
+        assertNotNull(verdict)
+    }
+
+    @Test
+    fun testCostIntelligencePreExecutionCostEstimate() {
+        val shortEstimate = CostIntelligenceEngine.estimatePreExecutionCost("summarize this note")
+        assertEquals(CostIntelligenceEngine.CostOptimalRoute.LOCAL_SOVEREIGN_FREE, shortEstimate.recommendedRoute)
+        assertTrue(shortEstimate.estimatedBatteryDrainMah > 0.0f)
+
+        val heavyEstimate = CostIntelligenceEngine.estimatePreExecutionCost("a".repeat(3000) + " architecture redesign")
+        assertEquals(CostIntelligenceEngine.CostOptimalRoute.CLOUD_DEEP_CORTEX, heavyEstimate.recommendedRoute)
+    }
 }

@@ -46,6 +46,7 @@ import com.example.ui.components.IntentExecutionStep
 import com.example.ui.components.IntentStepStatus
 import com.example.util.WastiSpeechSanitizer
 import com.example.security.BiometricSecurityManager
+import com.example.data.core.WastiExperienceMode
 import com.example.security.findFragmentActivity
 import android.widget.Toast
 import kotlinx.coroutines.launch
@@ -150,6 +151,7 @@ fun ChatWorkspaceScreen(
     triggerVoiceCallSignal: Int = 0
 ) {
     val context = LocalContext.current
+    val experienceMode by WastiExperienceMode.currentMode.collectAsState()
     LaunchedEffect(lastOperationError) {
     lastOperationError?.let { err ->
         Toast.makeText(context, err, Toast.LENGTH_LONG).show()
@@ -556,21 +558,38 @@ fun ChatWorkspaceScreen(
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF34D399))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "⚡ Wasti AI (Unified Orchestration Engine)",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF34D399))
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "⚡ Wasti AI • ${experienceMode.displayName}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+
+                        if (experienceMode.showTechnicalLedger) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                            ) {
+                                Text(
+                                    text = "Council Active",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                 }
 

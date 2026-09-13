@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.PlayArrow
@@ -160,6 +161,12 @@ fun BrainSimulationScreen() {
                         onClick = { selectedSimulationTab = 4 },
                         text = { Text("Code & Hardware") },
                         icon = { Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    Tab(
+                        selected = selectedSimulationTab == 5,
+                        onClick = { selectedSimulationTab = 5 },
+                        text = { Text("Civilization & Graph") },
+                        icon = { Icon(Icons.Default.Hub, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
                 }
             }
@@ -815,6 +822,13 @@ fun BrainSimulationScreen() {
                                 }
                             }
                         }
+                    }
+                }
+
+                5 -> {
+                    // TAB 5: CIVILIZATION OF CAPABILITIES & UNIVERSAL HIERARCHY
+                    item {
+                        com.example.ui.components.CivilizationArchitectureDashboard()
                     }
                 }
             }

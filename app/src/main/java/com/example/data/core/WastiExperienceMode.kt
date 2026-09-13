@@ -1,5 +1,6 @@
 package com.example.data.core
 
+import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -63,11 +64,29 @@ enum class WastiExperienceMode(
     );
 
     companion object {
+        private const val PREFS_NAME = "wasti_experience_prefs"
+        private const val KEY_MODE = "experience_mode"
+
         private val _currentMode = MutableStateFlow(DEVELOPER_MODE)
         val currentMode: StateFlow<WastiExperienceMode> = _currentMode.asStateFlow()
 
+        fun init(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.getString(KEY_MODE, DEVELOPER_MODE.name)
+            val matched = entries.firstOrNull { it.name == saved } ?: DEVELOPER_MODE
+            _currentMode.value = matched
+        }
+
         fun setMode(mode: WastiExperienceMode) {
             _currentMode.value = mode
+        }
+
+        fun setAndPersistMode(mode: WastiExperienceMode, context: Context) {
+            _currentMode.value = mode
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_MODE, mode.name)
+                .apply()
         }
     }
 }

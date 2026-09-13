@@ -8,12 +8,30 @@ import kotlinx.coroutines.flow.asStateFlow
  * Cost Intelligence Engine.
  *
  * Implements Phase 8 Cost Intelligence Layer:
- * Tracks API costs, token consumption, and energy trade-offs before routing requests.
+ * Tracks API costs, token consumption, battery energy trade-offs, and storage delta
+ * BEFORE cognitive and execution decisions are finalized.
  *
  * Enables Wasti to autonomously decide when to execute locally for $0.00 cost
  * versus escalating to cloud cortex models.
  */
 object CostIntelligenceEngine {
+
+    enum class CostOptimalRoute {
+        LOCAL_SOVEREIGN_FREE,  // $0.00 USD, 0 network, minimal battery
+        CLOUD_FAST_CHEAP,      // Low latency, < $0.001 (e.g. Groq Llama-3 8B)
+        CLOUD_DEEP_CORTEX,     // Full synthesis, $0.01+ (e.g. Claude 3.5 Sonnet / GPT-4o)
+        MESH_SWARM_OFFLOAD     // Offloaded to local muscle peer device (zero cloud cost)
+    }
+
+    data class PreExecutionCostEstimate(
+        val promptLengthChars: Int,
+        val estimatedOpenAICostUsd: Double,
+        val estimatedGeminiCostUsd: Double,
+        val estimatedBatteryDrainMah: Float,
+        val estimatedStorageDeltaBytes: Long,
+        val recommendedRoute: CostOptimalRoute,
+        val rationale: String
+    )
 
     data class ProviderCostSummary(
         val providerId: String,
@@ -28,6 +46,7 @@ object CostIntelligenceEngine {
         val totalCloudTokensConsumed: Long = 0L,
         val localFreeInferencesExecuted: Long = 0L,
         val totalMoneySavedUsd: Double = 0.0,
+        val totalBatteryDrainMahSaved: Float = 0.0f,
         val providerCosts: Map<String, ProviderCostSummary> = emptyMap()
     )
 
@@ -64,15 +83,53 @@ object CostIntelligenceEngine {
     private fun publishLedger() {
         val totalCost = providerStats.values.sumOf { it.estimatedTotalCostUsd }
         val totalTokens = providerStats.values.sumOf { it.totalPromptTokens + it.totalCompletionTokens }
-        // Estimate savings: ~$0.002 per 1k tokens if local inference replaced cloud
-        val estimatedSaved = localFreeInferences * 0.0015
+        // Estimate savings: ~$0.0015 per local inference replaced cloud
+        val estimatedSavedUsd = localFreeInferences * 0.0015
+        val batteryMahSaved = localFreeInferences * 0.25f
 
         _costLedgerState.value = SystemCostLedger(
             totalEstimatedCostUsd = totalCost,
             totalCloudTokensConsumed = totalTokens,
             localFreeInferencesExecuted = localFreeInferences,
-            totalMoneySavedUsd = estimatedSaved,
+            totalMoneySavedUsd = estimatedSavedUsd,
+            totalBatteryDrainMahSaved = batteryMahSaved,
             providerCosts = providerStats.toMap()
+        )
+    }
+
+    /**
+     * Estimates cost BEFORE execution is made across OpenAI, Gemini, Battery, and Cloud.
+     */
+    fun estimatePreExecutionCost(prompt: String): PreExecutionCostEstimate {
+        val length = prompt.length
+        val estTokens = (length / 4) + 100
+
+        val estOpenAICost = (estTokens / 1000.0) * 0.005
+        val estGeminiCost = (estTokens / 1000.0) * 0.0015
+        val estBatteryDrain = (estTokens * 0.0004f).coerceAtLeast(0.05f)
+        val estStorageDelta = (length * 2L).coerceAtLeast(256L)
+
+        val route = when {
+            shouldPreferLocalSovereignty(prompt) -> CostOptimalRoute.LOCAL_SOVEREIGN_FREE
+            length > 2000 || prompt.contains("architecture", ignoreCase = true) -> CostOptimalRoute.CLOUD_DEEP_CORTEX
+            else -> CostOptimalRoute.CLOUD_FAST_CHEAP
+        }
+
+        val rationale = when (route) {
+            CostOptimalRoute.LOCAL_SOVEREIGN_FREE -> "Zero-cost sovereign edge execution. Preserves battery and privacy."
+            CostOptimalRoute.CLOUD_FAST_CHEAP -> "Low token volume fast inference via cached high-throughput provider."
+            CostOptimalRoute.CLOUD_DEEP_CORTEX -> "Complex multi-perspective architectural synthesis requires extended cloud cortex."
+            CostOptimalRoute.MESH_SWARM_OFFLOAD -> "Workload routed to nearby compute muscle node over LAN/Wi-Fi Direct."
+        }
+
+        return PreExecutionCostEstimate(
+            promptLengthChars = length,
+            estimatedOpenAICostUsd = estOpenAICost,
+            estimatedGeminiCostUsd = estGeminiCost,
+            estimatedBatteryDrainMah = estBatteryDrain,
+            estimatedStorageDeltaBytes = estStorageDelta,
+            recommendedRoute = route,
+            rationale = rationale
         )
     }
 

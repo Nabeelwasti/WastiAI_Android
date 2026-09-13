@@ -44,6 +44,7 @@ class WastiApplication : Application(), Configuration.Provider {
         instance = this
         PermissionManager.initialize(this)
         com.example.data.di.WastiServiceLocator.init(this)
+        com.example.data.core.WastiExperienceMode.init(this)
         Log.i("WastiApplication", "Wasti AI OS Application starting — initializing core subsystems")
 
         try {
