@@ -75,6 +75,13 @@ class HttpServer private constructor(
     private val contexts = CopyOnWriteArrayList<HttpContext>()
     private var acceptThread: Thread? = null
 
+    init {
+        val socket = ServerSocket()
+        socket.reuseAddress = true
+        socket.bind(bindAddress, backlog)
+        serverSocket = socket
+    }
+
     val address: InetSocketAddress
         get() = serverSocket?.let {
             InetSocketAddress(it.inetAddress, it.localPort)
@@ -95,10 +102,13 @@ class HttpServer private constructor(
     fun start() {
         if (isRunning.get()) return
 
-        val socket = ServerSocket()
-        socket.reuseAddress = true
-        socket.bind(bindAddress, backlog)
-        serverSocket = socket
+        var socket = serverSocket
+        if (socket == null || socket.isClosed) {
+            socket = ServerSocket()
+            socket.reuseAddress = true
+            socket.bind(bindAddress, backlog)
+            serverSocket = socket
+        }
         isRunning.set(true)
 
         val thread = Thread({
@@ -129,7 +139,13 @@ class HttpServer private constructor(
 
     @Synchronized
     fun stop(delay: Int = 0) {
-        if (!isRunning.getAndSet(false)) return
+        if (!isRunning.getAndSet(false)) {
+            try {
+                serverSocket?.close()
+            } catch (_: Exception) {}
+            serverSocket = null
+            return
+        }
 
         try {
             serverSocket?.close()
@@ -363,10 +379,11 @@ private class SocketHttpExchange(
         val statusText = HttpServer.getStatusMessage(rCode)
         val headerBuilder = StringBuilder("HTTP/1.1 $rCode $statusText\r\n")
 
-        if (responseLength >= 0) {
+        if (responseLength >= 0 && !responseHeaders.containsKey("Content-Length")) {
             headerBuilder.append("Content-Length: $responseLength\r\n")
         }
         for ((k, vals) in responseHeaders) {
+            if (k.equals("Connection", ignoreCase = true)) continue
             for (v in vals) {
                 headerBuilder.append("$k: $v\r\n")
             }
@@ -380,6 +397,9 @@ private class SocketHttpExchange(
         if (isClosed.compareAndSet(false, true)) {
             try {
                 responseStream.flush()
+            } catch (_: Exception) {}
+            try {
+                socket.shutdownOutput()
             } catch (_: Exception) {}
             try {
                 socket.close()
