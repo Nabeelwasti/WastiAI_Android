@@ -289,8 +289,8 @@ class WastiLocalModelRuntime(
                         val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
                             evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
                             subject = "local_native_inference:$modelId",
-                            verifiedState = "NATIVE_CONTAINER_VERIFIED_FORWARD_PASS",
-                            confidence = 0.70
+                            verifiedState = if (isNeuralVerified) "NATIVE_CONTAINER_VERIFIED_FORWARD_PASS" else "NATIVE_CONTAINER_PARSE_ONLY",
+                            confidence = if (isNeuralVerified) 0.70 else 0.50
                         )
                         com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                             taskId = "task_native_${System.currentTimeMillis()}",

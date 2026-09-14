@@ -389,6 +389,15 @@ object UnifiedBrainStrategy {
             score -= 0.20f
         }
 
+        // Measured topical agreement with prompt keywords
+        val promptKeywords = prompt.lowercase().split(" ", ",", ".", ";").filter { it.length > 3 }
+        if (promptKeywords.isNotEmpty()) {
+            val matchingCount = promptKeywords.count { lower.contains(it) }
+            if (matchingCount > 0) {
+                score += 0.05f
+            }
+        }
+
         return score.coerceIn(0.10f, 1.0f)
     }
 

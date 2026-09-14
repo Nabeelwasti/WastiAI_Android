@@ -100,7 +100,7 @@ class WastiLocalBrainProvider(
         )
         val adaptedRequest = request.copy(systemInstruction = adaptedSystemInstruction)
 
-        val (content, isRealNeural, modelLabel) = if (appCtx != null && isNeuralInferenceActive) {
+        val (content, _, modelLabel) = if (appCtx != null && isNeuralInferenceActive) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
             val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
             val result = runtime.executeInferenceDetailed(
