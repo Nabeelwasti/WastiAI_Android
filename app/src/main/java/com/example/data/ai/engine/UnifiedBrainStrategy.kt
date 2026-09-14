@@ -476,7 +476,6 @@ object UnifiedBrainStrategy {
 
         val codeNodes = contributions.filter { it.role.contains("Code") || it.role.contains("Algorithmic") }
         val strategyNodes = contributions.filter { it.role.contains("Strategy") || it.role.contains("Reasoning") }
-        val invariantNodes = contributions.filter { it.role.contains("Invariant") || it.role.contains("Verification") }
         val cloudNodes = contributions.filter { !it.isLocal }
 
         // 1. Extract best code or technical spec

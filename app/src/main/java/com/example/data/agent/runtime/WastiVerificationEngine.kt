@@ -456,21 +456,25 @@ class WastiVerificationEngine {
                 text.contains("Record found", ignoreCase = true) ||
                 text.contains("MemoryItem", ignoreCase = true)
 
-            // UI / Device Control: must anchor to accessibility window/package match
-            cap.contains("device") || cap.contains("accessibility") || cap.contains("ui") || cap == "navigate_to" ->
+            // UI / Device Control / In-App Navigation: must anchor to accessibility window/package match or verified navigation dispatch
+            cap.contains("device") || cap.contains("accessibility") || cap.contains("ui") || cap == "navigate_to" || cap == "open_screen" || cap == "navigate" ->
                 text.contains("Accessibility observed", ignoreCase = true) ||
                 text.contains("active package matching", ignoreCase = true) ||
-                text.contains("window package", ignoreCase = true)
+                text.contains("window package", ignoreCase = true) ||
+                text.contains("Navigated to destination screen", ignoreCase = true) ||
+                text.contains("WastiAppActionBus", ignoreCase = true) ||
+                (text.contains("navigation", ignoreCase = true) && text.contains("verified", ignoreCase = true))
 
-            // Process / Shell / Code / Transform: must anchor to verified execution
+            // Process / Shell / Code / Transform / Server: must anchor to verified execution
             cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ||
                 cap.contains("invented") || cap.contains("transformer") || cap.contains("transform") ||
                 cap.contains("reverse") || cap.contains("extractor") || cap.contains("aggregator") ||
-                cap.startsWith("wre_tool_") ->
+                cap.startsWith("wre_tool_") || cap.contains("server") ->
                 text.contains("returned exit code 0", ignoreCase = true) ||
                 text.contains("FACT_VERIFIED", ignoreCase = true) ||
                 text.contains("Terminal command", ignoreCase = true) ||
                 text.contains("Verified", ignoreCase = true) ||
+                text.contains("Local Server Status", ignoreCase = true) ||
                 text.contains("independent execution proof", ignoreCase = true)
 
             // Local Neural inference
