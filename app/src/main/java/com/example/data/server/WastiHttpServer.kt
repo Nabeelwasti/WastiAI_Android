@@ -214,8 +214,11 @@ class HttpServer private constructor(
 
             try {
                 matchedContext.handler.handle(exchange)
-            } finally {
-                exchange.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error handling HTTP request: ${e.message}")
+                try {
+                    exchange.close()
+                } catch (_: Exception) {}
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error handling HTTP request: ${e.message}")
@@ -332,10 +335,17 @@ private class SocketHttpExchange(
         get() = socket.localSocketAddress as? InetSocketAddress
 
     private var headersSent = false
+    private val isClosed = AtomicBoolean(false)
     private val wrappedResponseBody = object : FilterOutputStream(responseStream) {
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            responseStream.write(b, off, len)
+        }
+
         override fun close() {
-            flush()
-            // Do not close the underlying socket here; exchange.close() handles it
+            try {
+                flush()
+            } catch (_: Exception) {}
+            this@SocketHttpExchange.close()
         }
     }
 
@@ -363,11 +373,13 @@ private class SocketHttpExchange(
     }
 
     override fun close() {
-        try {
-            wrappedResponseBody.flush()
-        } catch (_: Exception) {}
-        try {
-            socket.close()
-        } catch (_: Exception) {}
+        if (isClosed.compareAndSet(false, true)) {
+            try {
+                responseStream.flush()
+            } catch (_: Exception) {}
+            try {
+                socket.close()
+            } catch (_: Exception) {}
+        }
     }
 }
