@@ -1,0 +1,68 @@
+name: Maintenance - Clean Disposable Actions Artifacts
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  cleanup:
+    if: github.event_name == 'workflow_dispatch' || github.event.issue.title == 'WASTI_CLEANUP_ACTIONS_ARTIFACTS'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete disposable workflow artifacts older than 7 days
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+            let page = 1;
+            let deleted = 0;
+            let kept = 0;
+            while (true) {
+              const { data } = await github.rest.actions.listArtifactsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page
+              });
+              if (!data.artifacts.length) break;
+              for (const artifact of data.artifacts) {
+                const created = new Date(artifact.created_at).getTime();
+                if (!artifact.expired && created < cutoff) {
+                  await github.rest.actions.deleteArtifact({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    artifact_id: artifact.id
+                  });
+                  deleted++;
+                  core.info(`Deleted artifact: ${artifact.name} (${artifact.id})`);
+                } else {
+                  kept++;
+                }
+              }
+              if (data.artifacts.length < 100) break;
+              page++;
+            }
+            core.summary
+              .addHeading('Actions artifact cleanup')
+              .addTable([
+                [{data: 'Deleted', header: true}, {data: 'Kept', header: true}],
+                [String(deleted), String(kept)]
+              ])
+              .addRaw('Only disposable GitHub Actions artifacts older than 7 days were removed. Git commits, source files, issues, pull requests, and releases were not touched.')
+              .write();
+      - name: Close cleanup trigger issue
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed'
+            });
