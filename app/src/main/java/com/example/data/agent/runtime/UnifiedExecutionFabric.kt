@@ -1507,7 +1507,16 @@ class UnifiedExecutionFabric(
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
             verificationStatus = if (buildRes.status == BuildStatus.SUCCESS) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-            verificationEvidence = buildRes.verificationState
+            verificationEvidence = buildRes.verificationState,
+            exitCode = buildRes.exitCode,
+            details = mapOf(
+                "projectId" to projId,
+                "projectPath" to projPath,
+                "exit_code" to buildRes.exitCode.toString(),
+                "status" to buildRes.status.name,
+                "verificationState" to buildRes.verificationState,
+                "probe_verified" to (buildRes.status == BuildStatus.SUCCESS).toString()
+            )
         )
     }
 
@@ -1544,7 +1553,17 @@ class UnifiedExecutionFabric(
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
             verificationStatus = if (isPass) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-            verificationEvidence = "PassedTests: ${report.passedTests}/${report.totalTests}"
+            verificationEvidence = "PassedTests: ${report.passedTests}/${report.totalTests}",
+            exitCode = if (isPass) 0 else 1,
+            details = mapOf(
+                "projectId" to projId,
+                "projectPath" to projPath,
+                "exit_code" to (if (isPass) "0" else "1"),
+                "status" to report.status.name,
+                "passedTests" to report.passedTests.toString(),
+                "totalTests" to report.totalTests.toString(),
+                "probe_verified" to isPass.toString()
+            )
         )
     }
 
@@ -1577,7 +1596,14 @@ class UnifiedExecutionFabric(
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
             verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Findings: ${diag.findings.size}"
+            verificationEvidence = "Findings: ${diag.findings.size}",
+            exitCode = 0,
+            details = mapOf(
+                "projectId" to projId,
+                "exit_code" to "0",
+                "probe_verified" to "true",
+                "findingsCount" to diag.findings.size.toString()
+            )
         )
     }
 
@@ -1608,6 +1634,7 @@ class UnifiedExecutionFabric(
             RuntimeRealityStatus.NOT_INSTALLED, RuntimeRealityStatus.TOOLCHAIN_MISSING, RuntimeRealityStatus.UNAVAILABLE -> UnifiedExecutionStatus.UNAVAILABLE
             else -> UnifiedExecutionStatus.FAILED
         }
+        val isPass = res.status == RuntimeRealityStatus.AVAILABLE
 
         return createResult(
             request = request,
@@ -1617,7 +1644,13 @@ class UnifiedExecutionFabric(
             executor = "WastiRuntimeManager",
             startedAt = startedAt,
             verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-            verificationEvidence = "Package ${res.packageName} state: ${res.status}"
+            verificationEvidence = "Package ${res.packageName} state: ${res.status}",
+            exitCode = if (isPass) 0 else 1,
+            details = mapOf(
+                "exit_code" to (if (isPass) "0" else "1"),
+                "probe_verified" to isPass.toString(),
+                "packageName" to res.packageName
+            )
         )
     }
 

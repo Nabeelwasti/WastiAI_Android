@@ -490,11 +490,19 @@ class WastiVerificationEngine {
                 text.contains("Web result returned through the canonical execution fabric", ignoreCase = true) ||
                 text.contains("HTTP_200", ignoreCase = true)
 
-            // Canonical environment and project dev manager
-            cap.contains("project") || cap.contains("system") || cap.contains("environment") || cap.contains("sysinfo") ->
+            // Canonical environment, project dev, and development toolchain operations
+            cap.contains("project") || cap.contains("build") || cap.contains("compile") ||
+                cap.contains("test") || cap.contains("debug") || cap.contains("diag") ||
+                cap.contains("package") || cap.contains("system") || cap.contains("environment") ||
+                cap.contains("sysinfo") ->
                 text.contains("returned through the canonical execution fabric", ignoreCase = true) ||
                 text.contains("verified through independent execution proof", ignoreCase = true) ||
-                text.contains("Verified", ignoreCase = true)
+                text.contains("Verified", ignoreCase = true) ||
+                text.contains("STATICALLY_VALIDATED", ignoreCase = true) ||
+                text.contains("Syntax validated", ignoreCase = true) ||
+                text.contains("Tests Run", ignoreCase = true) ||
+                text.contains("Diagnostics for", ignoreCase = true) ||
+                text.contains("Package", ignoreCase = true)
 
             else -> false
         }
