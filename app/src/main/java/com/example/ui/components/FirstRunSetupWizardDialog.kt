@@ -126,6 +126,25 @@ fun FirstRunSetupWizardDialog(
         }
     }
 
+    var isAccessibilityActive by remember {
+        mutableStateOf(com.example.assistant.SpecialPermissionHelper.isAccessibilityServiceEnabled(context))
+    }
+    var isOverlayActive by remember {
+        mutableStateOf(com.example.assistant.SpecialPermissionHelper.canDrawOverlays(context))
+    }
+    var isBatteryOptimizationIgnored by remember {
+        mutableStateOf(com.example.assistant.SpecialPermissionHelper.isIgnoringBatteryOptimizations(context))
+    }
+
+    val refreshPermissions = {
+        hasAllPermissionsGranted = allWizardPermissions.all { perm ->
+            androidx.core.content.ContextCompat.checkSelfPermission(context, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        isAccessibilityActive = com.example.assistant.SpecialPermissionHelper.isAccessibilityServiceEnabled(context)
+        isOverlayActive = com.example.assistant.SpecialPermissionHelper.canDrawOverlays(context)
+        isBatteryOptimizationIgnored = com.example.assistant.SpecialPermissionHelper.isIgnoringBatteryOptimizations(context)
+    }
+
     val hardwareProfile = remember {
         WastiDeepHardwareProfiler.profileSystem(context)
     }
@@ -564,6 +583,189 @@ fun FirstRunSetupWizardDialog(
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.SemiBold
                                     )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Question 5: Device Autonomous Control & Special Permissions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "5. Device & Platform Autonomous Capabilities",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(onClick = { refreshPermissions() }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh Permissions", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Android Zero-Trust Security mandates that privileged execution capabilities must be configured by you in Android System Settings. Never accept claims of silent privilege elevation.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Row 1: Runtime Permissions
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Standard Permissions", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (hasAllPermissionsGranted) Color(0xFF2E7D32).copy(alpha = 0.2f) else Color(0xFFE65100).copy(alpha = 0.2f)
+                                        ) {
+                                            Text(
+                                                text = if (hasAllPermissionsGranted) "Granted" else "Pending",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (hasAllPermissionsGranted) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text("Mic, Camera, Notifications, Media", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (!hasAllPermissionsGranted) {
+                                    Button(
+                                        onClick = { wizardPermissionLauncher.launch(allWizardPermissions.toTypedArray()) },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Grant", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                            // Row 2: Accessibility Service
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Accessibility Service", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isAccessibilityActive) Color(0xFF2E7D32).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = if (isAccessibilityActive) "Active" else "Disabled",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isAccessibilityActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text("Autonomous UI navigation, app control & screen clicks", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        (context as? android.app.Activity)?.let {
+                                            com.example.assistant.SpecialPermissionHelper.openAccessibilitySettings(it)
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (isAccessibilityActive) "Settings" else "Configure", fontSize = 11.sp)
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                            // Row 3: Overlay / System Alert Window
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Display Over Other Apps", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isOverlayActive) Color(0xFF2E7D32).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = if (isOverlayActive) "Enabled" else "Disabled",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isOverlayActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text("Floating Commander HUD & persistent voice call indicator", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        (context as? android.app.Activity)?.let {
+                                            com.example.assistant.SpecialPermissionHelper.openOverlayPermissionSettings(it)
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (isOverlayActive) "Settings" else "Configure", fontSize = 11.sp)
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                            // Row 4: Battery Optimization Exemption
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Background Processing", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (isBatteryOptimizationIgnored) Color(0xFF2E7D32).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant
+                                        ) {
+                                            Text(
+                                                text = if (isBatteryOptimizationIgnored) "Unrestricted" else "Optimized",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isBatteryOptimizationIgnored) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    Text("Prevents OS termination of background server & reasoning", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        com.example.assistant.SpecialPermissionHelper.openBatteryOptimizationSettings(context)
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    Text(if (isBatteryOptimizationIgnored) "Settings" else "Unrestrict", fontSize = 11.sp)
                                 }
                             }
                         }

@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -192,6 +194,8 @@ fun ChatWorkspaceScreen(
 
     var showWebScanDialog by remember { mutableStateOf(false) }
     var webUrlInput by remember { mutableStateOf("") }
+    var showExecutiveInfoDialog by remember { mutableStateOf(false) }
+    var showMoreOptionsMenu by remember { mutableStateOf(false) }
 
     var activeAttachments by remember { mutableStateOf<List<ActiveAttachment>>(emptyList()) }
     val scope = rememberCoroutineScope()
@@ -456,259 +460,365 @@ fun ChatWorkspaceScreen(
         )
     }
 
+    // Dialog 4: Contextual Executive Control & Insights (ⓘ)
+    if (showExecutiveInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showExecutiveInfoDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Executive Control & Insights", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Session Management
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Active Sessions", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        TextButton(
+                            onClick = {
+                                showExecutiveInfoDialog = false
+                                showNewSessionDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New", fontSize = 11.sp)
+                        }
+                    }
+
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(conversations) { conv ->
+                            val isSelected = conv.id == activeConversationId
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    onSelectConversation(conv.id)
+                                    showExecutiveInfoDialog = false
+                                },
+                                label = { Text(conv.title, fontSize = 11.sp) },
+                                leadingIcon = if (isSelected) {
+                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(12.dp)) }
+                                } else null
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                    // Engine & Mode Details
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("⚡ Engine Reality: Wasti AI", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("• Mode: ${experienceMode.displayName}", fontSize = 11.sp)
+                            Text("• Active Model: $selectedModel", fontSize = 11.sp)
+                            Text("• Strategy: ${if (isUnifiedBrainEnabled) "Multi-Model Consensus" else "Single Model Direct"}", fontSize = 11.sp)
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+
+                    // Unified Task Execution Timeline Stepper
+                    Text("Task Execution Timeline", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    UniversalTaskTimelineStepper()
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showExecutiveInfoDialog = false }) {
+                    Text("Done")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .imePadding()
             .testTag("chat_workspace_screen")
     ) {
-        // Conversation Top Selector Bar
+        // Compact WhatsApp / Gemini Style Top Bar
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp
+            tonalElevation = 2.dp
         ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    LazyRow(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // Left: Avatar + Title + Status (Click opens Executive Control Sheet)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clickable { showExecutiveInfoDialog = true }
                     ) {
-                        items(conversations) { conv ->
-                            val isSelected = conv.id == activeConversationId
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { onSelectConversation(conv.id) },
-                                label = { Text(conv.title, fontSize = 12.sp) },
-                                leadingIcon = if (isSelected) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
-                                } else null
+                        Box(contentAlignment = Alignment.BottomEnd) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Psychology,
+                                        contentDescription = "Wasti AI",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF34D399))
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(10.dp))
+
+                        Column {
+                            val activeConv = conversations.firstOrNull { it.id == activeConversationId }
+                            Text(
+                                text = activeConv?.title?.take(20) ?: "Wasti AI",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = if (isGenerating) "Synthesizing..." else "Online • ${selectedModel.removePrefix("wasti-").take(14)}",
+                                fontSize = 10.5.sp,
+                                color = if (isGenerating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
                             )
                         }
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Toggle Search Bar
-                        IconButton(onClick = { isSearchActive = !isSearchActive }) {
-                            Icon(
-                                imageVector = if (isSearchActive) Icons.Default.SearchOff else Icons.Default.Search,
-                                contentDescription = "Search Messages",
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                    // Right: Action Chips & Controls
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        // 1. Interactive Model Switcher Chip
+                        Box {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier
+                                    .clickable { showModelMenu = true }
+                                    .testTag("chat_model_selector_chip")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "Select Model",
+                                        modifier = Modifier.size(12.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.ArrowDropDown,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showModelMenu,
+                                onDismissRequest = { showModelMenu = false }
+                            ) {
+                                val allModels = listOf(
+                                    "unified-brain-consensus" to "🌟 Unified Brain Consensus (All Models Merged)",
+                                    "wasti-super-ensemble" to "⚡ Wasti Super-Ensemble (Auto-Routing)",
+                                    "gemini-2.5-flash" to "✨ Gemini 2.5 Flash (Ultra-Fast)",
+                                    "gemini-2.5-pro" to "🧠 Gemini 2.5 Pro (Deep Reasoning)",
+                                    "groq-llama-3.3-70b" to "⚡ Groq Llama 3.3 70B (Low Latency)",
+                                    "openai-gpt-4o" to "🤖 OpenAI GPT-4o (Omnimodal)",
+                                    "openai-gpt-4o-mini" to "🚀 OpenAI GPT-4o Mini",
+                                    "claude-3-5-sonnet" to "🎭 Claude 3.5 Sonnet",
+                                    "deepseek-chat" to "🌊 DeepSeek V3",
+                                    "deepseek-reasoner" to "🔬 DeepSeek R1 Reasoner",
+                                    "xai-grok-beta" to "⚡ xAI Grok Beta",
+                                    "wasti-smollm" to "📱 Edge SmolLM (On-Device Native)",
+                                    "local-llama-endpoint" to "💻 Local LLM (Termux / Endpoint)"
+                                )
+                                allModels.forEach { (modelId, label) ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (modelId == selectedModel) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                }
+                                                Text(label, fontSize = 12.sp, fontWeight = if (modelId == selectedModel) FontWeight.Bold else FontWeight.Normal)
+                                            }
+                                        },
+                                        onClick = {
+                                            onSelectModel(modelId)
+                                            showModelMenu = false
+                                        }
+                                    )
+                                }
+                            }
                         }
 
-                        // Clear Chat History Button
-                        IconButton(onClick = { showClearConfirmDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "Clear Chat History",
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-
-                        // Voice Call Trigger
+                        // 2. Interactive Unified Brain Strategy Toggle Chip
                         Surface(
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .clickable { onToggleUnifiedBrain(!isUnifiedBrainEnabled) }
+                                .testTag("chat_unified_brain_chip")
+                        ) {
+                            Box(modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.Psychology,
+                                    contentDescription = "Unified Brain Strategy",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        // 3. Live Voice Call Chip
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
                             modifier = Modifier
                                 .clickable { showVoiceModal = true }
-                                .padding(end = 4.dp)
                                 .testTag("conversation_bar_voice_call_chip")
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.GraphicEq,
                                     contentDescription = "Wasti Live Voice Call",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isVoiceActive) "🎙️ Live Voice (Active)" else "🎙️ Live Voice",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
 
+                        // 4. Toggle Search Bar
                         IconButton(
-                            onClick = { showNewSessionDialog = true },
-                            modifier = Modifier.testTag("add_chat_session_button")
+                            onClick = { isSearchActive = !isSearchActive },
+                            modifier = Modifier.size(30.dp)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "New Session", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Active Engine Banner (Unified Wasti AI)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp)),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF34D399))
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "⚡ Wasti AI • ${experienceMode.displayName}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            Icon(
+                                imageVector = if (isSearchActive) Icons.Default.SearchOff else Icons.Default.Search,
+                                contentDescription = "Search Messages",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
                             )
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (experienceMode.showTechnicalLedger) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                    modifier = Modifier.padding(end = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "Council Active",
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
+                        // 5. Contextual Info ⓘ Button
+                        IconButton(
+                            onClick = { showExecutiveInfoDialog = true },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Executive Control & Insights",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
 
-                            // Interactive Unified Brain Strategy Toggle Chip
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                                modifier = Modifier
-                                    .padding(end = 6.dp)
-                                    .clickable { onToggleUnifiedBrain(!isUnifiedBrainEnabled) }
-                                    .testTag("chat_unified_brain_chip")
+                        // 6. More Options Menu
+                        Box {
+                            IconButton(
+                                onClick = { showMoreOptionsMenu = true },
+                                modifier = Modifier.size(30.dp)
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Psychology,
-                                        contentDescription = "Unified Brain Strategy",
-                                        modifier = Modifier.size(13.dp),
-                                        tint = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (isUnifiedBrainEnabled) "Unified Brain" else "Solo Brain",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isUnifiedBrainEnabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More Options",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(17.dp)
+                                )
                             }
 
-                            // Interactive Model Switcher Chip
-                            Box {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                                    modifier = Modifier
-                                        .clickable { showModelMenu = true }
-                                        .testTag("chat_model_selector_chip")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Tune,
-                                            contentDescription = "Select Model",
-                                            modifier = Modifier.size(12.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = selectedModel.removePrefix("wasti-").take(16),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.ArrowDropDown,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
+                            DropdownMenu(
+                                expanded = showMoreOptionsMenu,
+                                onDismissRequest = { showMoreOptionsMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("New Chat Session", fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        showMoreOptionsMenu = false
+                                        showNewSessionDialog = true
+                                    },
+                                    modifier = Modifier.testTag("add_chat_session_button")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Scan & Index Web URL", fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        showMoreOptionsMenu = false
+                                        showWebScanDialog = true
                                     }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showModelMenu,
-                                    onDismissRequest = { showModelMenu = false }
-                                ) {
-                                    val allModels = listOf(
-                                        "unified-brain-consensus" to "🌟 Unified Brain Consensus (All Models Merged)",
-                                        "wasti-super-ensemble" to "⚡ Wasti Super-Ensemble (Auto-Routing)",
-                                        "gemini-2.5-flash" to "✨ Gemini 2.5 Flash (Ultra-Fast)",
-                                        "gemini-2.5-pro" to "🧠 Gemini 2.5 Pro (Deep Reasoning)",
-                                        "groq-llama-3.3-70b" to "⚡ Groq Llama 3.3 70B (Low Latency)",
-                                        "openai-gpt-4o" to "🤖 OpenAI GPT-4o (Omnimodal)",
-                                        "openai-gpt-4o-mini" to "🚀 OpenAI GPT-4o Mini",
-                                        "claude-3-5-sonnet" to "🎭 Claude 3.5 Sonnet",
-                                        "deepseek-chat" to "🌊 DeepSeek V3",
-                                        "deepseek-reasoner" to "🔬 DeepSeek R1 Reasoner",
-                                        "xai-grok-beta" to "⚡ xAI Grok Beta",
-                                        "wasti-smollm" to "📱 Edge SmolLM (On-Device Native)",
-                                        "local-llama-endpoint" to "💻 Local LLM (Termux / Endpoint)"
-                                    )
-                                    allModels.forEach { (modelId, label) ->
-                                        DropdownMenuItem(
-                                            text = {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    if (modelId == selectedModel) {
-                                                        Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                    }
-                                                    Text(label, fontSize = 12.sp, fontWeight = if (modelId == selectedModel) FontWeight.Bold else FontWeight.Normal)
-                                                }
-                                            },
-                                            onClick = {
-                                                onSelectModel(modelId)
-                                                showModelMenu = false
-                                            }
-                                        )
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Task Timeline & Stepper", fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Default.Timeline, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        showMoreOptionsMenu = false
+                                        showExecutiveInfoDialog = true
                                     }
-                                }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Clear Chat History", fontSize = 12.sp, color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        showMoreOptionsMenu = false
+                                        showClearConfirmDialog = true
+                                    }
+                                )
                             }
                         }
-
                     }
                 }
-
-                // Unified Task Execution Timeline Stepper
-                UniversalTaskTimelineStepper()
 
                 // Expandable Search Bar
                 if (isSearchActive) {
-                    Spacer(modifier = Modifier.height(6.dp))
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -721,7 +831,9 @@ fun ChatWorkspaceScreen(
                                 }
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )

@@ -1998,7 +1998,7 @@ class EternalManifestoAndTruthAuditTest {
     @Test
     fun testBackendRealityAndEndpointReachability() = runBlocking {
         // 1. Set up a local lightweight HttpServer simulating the Wasti backend /health endpoint
-        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        val server = com.example.data.server.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
         val port = server.address.port
         val validBaseUrl = "http://127.0.0.1:$port"
 

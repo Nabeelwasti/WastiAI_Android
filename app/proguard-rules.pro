@@ -85,7 +85,7 @@
 -dontwarn okio.**
 -keep class okio.** { *; }
 -keep class com.example.data.api.** { *; }
--dontwarn com.sun.net.httpserver.**
+-keep class com.example.data.server.** { *; }
 
 # 11. Serialization & JSON Codecs (Moshi & Kotlinx)
 -keepclasseswithmembers class * {

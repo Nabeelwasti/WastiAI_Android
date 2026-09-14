@@ -1,6 +1,6 @@
 package com.example.assistant.backend
 
-import com.sun.net.httpserver.HttpServer
+import com.example.data.server.HttpServer
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*

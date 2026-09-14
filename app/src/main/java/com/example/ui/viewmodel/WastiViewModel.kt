@@ -33,7 +33,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = application.getSharedPreferences("wasti_prefs", android.content.Context.MODE_PRIVATE)
 
-    val activeTab = MutableStateFlow("dashboard")
+    val activeTab = MutableStateFlow("chat")
     val activeConversationId = MutableStateFlow<String?>(null)
     val activeAgentId = MutableStateFlow("ceo_agent")
     val isCommandPaletteOpen = MutableStateFlow(false)

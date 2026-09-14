@@ -642,7 +642,7 @@ class UnifiedExecutionFabric(
         val destination = request.parameters["destination"]?.toString()
             ?: request.parameters["screen"]?.toString()
             ?: request.parameters["tab"]?.toString()
-            ?: "dashboard"
+            ?: "chat"
 
         com.example.data.action.WastiAppActionBus.tryDispatch(
             com.example.data.action.WastiAppAction.NavigateTo(destination)
