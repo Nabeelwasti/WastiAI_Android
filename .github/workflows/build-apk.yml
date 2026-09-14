@@ -50,8 +50,8 @@ jobs:
       run: |
         DETEKT_VERSION="1.23.8"
         echo "Downloading detekt-cli v${DETEKT_VERSION}..."
-        curl -sSL -o /tmp/detekt-cli.jar "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}-all.jar"
-        test -s /tmp/detekt-cli.jar || { echo "ERROR: Failed to download detekt-cli jar"; exit 1; }
+        curl --retry 5 --retry-connrefused --retry-delay 2 -fsSL -o /tmp/detekt-cli.jar "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}-all.jar"
+        jar tf /tmp/detekt-cli.jar > /dev/null 2>&1 || { echo "ERROR: Failed to download a valid detekt-cli jar"; exit 1; }
         echo "SUCCESS: Detekt CLI ready."
 
     - name: Run Detekt Static Analysis (Fails on Unused Code & Anti-Patterns)

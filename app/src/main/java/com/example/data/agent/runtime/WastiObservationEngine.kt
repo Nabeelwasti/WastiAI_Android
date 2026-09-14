@@ -241,20 +241,20 @@ class WastiObservationEngine(
                 "system_info", "system", "inspect_environment", "environment", "status",
                 "project_dev_manager", "create_project", "create_managed_project", "inspect_project",
                 "list_projects", "delete_project", "project", "dev_environment",
+                "build_project", "compile_project", "build", "compile", "build_manager",
+                "test_project", "run_tests", "test", "test_runner",
+                "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
+                "package_manager", "resolve_package", "install_package",
                 "navigate_to", "open_screen", "navigate"
             ) -> successfulExecutionObservation(
                 request = request,
                 executorResult = executorResult,
-                description = "Environment, navigation, or project operation"
+                description = "Environment, project, or development toolchain operation"
             )
 
             category == "INVENTED" || category == "DYNAMIC_WRE" || capabilityId.startsWith("wre_tool_") ||
                 executorResult.executor.startsWith("InventionExecutor_") ||
                 capabilityId in setOf(
-                    "build_project", "compile_project", "build", "compile", "build_manager",
-                    "test_project", "run_tests", "test", "test_runner",
-                    "debug_project", "analyze_diagnostics", "debug", "debug_diagnostics",
-                    "package_manager", "resolve_package", "install_package",
                     "wasti_sandbox", "sandbox", "wasm", "wasm_sandbox", "wasm_runtime",
                     "local_server", "start_server", "stop_server", "server_status", "server",
                     "python_bridge", "termux_bridge",
