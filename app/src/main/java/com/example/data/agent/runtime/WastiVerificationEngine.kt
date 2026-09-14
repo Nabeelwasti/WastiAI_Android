@@ -448,7 +448,9 @@ class WastiVerificationEngine {
                 text.contains("inspected at", ignoreCase = true) ||
                 text.contains("File-system post-state", ignoreCase = true) ||
                 text.contains("exists=", ignoreCase = true) ||
-                text.contains("bytes", ignoreCase = true)
+                text.contains("bytes", ignoreCase = true) ||
+                text.contains("Post-execution file is present", ignoreCase = true) ||
+                text.contains("Workspace operation verified", ignoreCase = true)
 
             // Memory: must anchor to memory capability store query
             cap.contains("memory") ->

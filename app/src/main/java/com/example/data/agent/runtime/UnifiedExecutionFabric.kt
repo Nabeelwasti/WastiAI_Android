@@ -389,6 +389,7 @@ class UnifiedExecutionFabric(
                 taskId = request.taskId,
                 actionId = request.actionId,
                 capabilityId = request.capabilityId,
+                parameters = request.parameters,
                 expectedOutcome = request.parameters["expectedOutcome"]?.toString() ?: "",
                 observationStrategy = ObservationStrategy.SCREEN_SCRAPE,
                 timeoutMs = request.timeoutMs
@@ -1289,7 +1290,8 @@ class UnifiedExecutionFabric(
             executor = "WorkspaceManager",
             startedAt = startedAt,
             verificationStatus = if (isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-            verificationEvidence = if (isSuccess) "Workspace operation verified" else (errorMsg ?: "Failed")
+            verificationEvidence = if (isSuccess) "Workspace operation verified" else (errorMsg ?: "Failed"),
+            details = mapOf("path" to path, "action" to action)
         )
     }
 

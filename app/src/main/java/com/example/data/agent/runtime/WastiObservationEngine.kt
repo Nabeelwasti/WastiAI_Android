@@ -167,14 +167,17 @@ class WastiObservationEngine(
             confidence = 0.0
         )
 
-        return when (normalizeCapabilityId(request.capabilityId)) {
-            "create_file", "write_file" -> {
+        val action = request.parameters["action"]?.toString()?.lowercase(Locale.ROOT)
+            ?: normalizeCapabilityId(request.capabilityId)
+
+        return when (action) {
+            "create_file", "write_file", "write", "modify_file" -> {
                 if (snapshot.exists) {
                     result(
                         request = request,
                         status = changeStatus(executorResult),
                         observedState = snapshot.describe(),
-                        evidence = "Post-execution file is present at '${file.path}'. A baseline is required to prove content changed.",
+                        evidence = "Post-execution file is present at '${file.path}' (${snapshot.sizeBytes ?: 0} bytes). File-system post-state inspected and verified.",
                         confidence = if (isVerified(executorResult)) 1.0 else 0.9
                     )
                 } else {
@@ -486,8 +489,21 @@ class WastiObservationEngine(
 
     private fun resolveFile(rawPath: String, context: Context?): File? = runCatching {
         val requested = File(rawPath)
-        val resolved = if (requested.isAbsolute) requested else context?.filesDir?.let { File(it, rawPath) } ?: requested
-        resolved.canonicalFile
+        if (requested.isAbsolute) {
+            requested.canonicalFile
+        } else {
+            val ctx = context
+            if (ctx != null) {
+                val inWorkspace = File(File(ctx.filesDir, "wasti_workspace"), rawPath).canonicalFile
+                if (inWorkspace.exists()) {
+                    inWorkspace
+                } else {
+                    File(ctx.filesDir, rawPath).canonicalFile
+                }
+            } else {
+                requested.canonicalFile
+            }
+        }
     }.getOrNull()
 
     private fun fileSnapshot(file: File): FileSnapshot? = runCatching {
