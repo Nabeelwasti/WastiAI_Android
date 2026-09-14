@@ -19,6 +19,18 @@ enum class ExecutionStatus {
     UNAVAILABLE
 }
 
+/**
+ * Strict Runtime Classification for WRE Execution Engines.
+ * Enforces Zero-Fabrication: A pseudo-terminal or UI emulator must never
+ * satisfy a capability requiring genuine process execution.
+ */
+enum class ProcessExecutionTier {
+    REAL_PROCESS,
+    SANDBOX_PROCESS,
+    EMULATED,
+    UNAVAILABLE
+}
+
 enum class ExecutionPermission {
     FILE_READ,
     FILE_WRITE,
@@ -55,6 +67,7 @@ data class ExecutionResult(
     val stderr: String,
     val durationMs: Long,
     val status: ExecutionStatus,
+    val executionTier: ProcessExecutionTier = ProcessExecutionTier.REAL_PROCESS,
     val verified: Boolean = false,
     val verificationEvidence: String? = null,
     val metadata: Map<String, String> = emptyMap()
@@ -69,7 +82,8 @@ data class WastiProcess(
     val stdout: StringBuilder = StringBuilder(),
     val stderr: StringBuilder = StringBuilder(),
     val exitCode: Int? = null,
-    val providerName: String = "Internal"
+    val providerName: String = "Internal",
+    val executionTier: ProcessExecutionTier = ProcessExecutionTier.REAL_PROCESS
 )
 
 data class WastiJob(

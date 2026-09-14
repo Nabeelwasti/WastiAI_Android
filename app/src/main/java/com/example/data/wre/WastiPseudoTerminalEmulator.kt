@@ -24,6 +24,13 @@ class WastiPseudoTerminalEmulator(
     private val rows: Int = 24
 ) {
 
+    /**
+     * Strict Truthful Classification:
+     * Indicates that this component parses screen buffer state and ANSI sequences,
+     * and does NOT substitute for genuine operating system process execution.
+     */
+    val executionTier: ProcessExecutionTier = ProcessExecutionTier.EMULATED
+
     private val screenBuffer = Array(rows) { CharArray(columns) { ' ' } }
     private var cursorX = 0
     private var cursorY = 0
