@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Case-insensitive HTTP Header container compatible with standard HTTP server patterns.
  */
-class Headers : LinkedHashMap<String, MutableList<String>>(String.CASE_INSENSITIVE_ORDER) {
+class Headers : java.util.TreeMap<String, MutableList<String>>(java.lang.String.CASE_INSENSITIVE_ORDER) {
     fun getFirst(key: String): String? = this[key]?.firstOrNull()
 
     fun set(key: String, value: String) {
@@ -41,6 +41,8 @@ abstract class HttpExchange : AutoCloseable {
     abstract val responseHeaders: Headers
     abstract val requestBody: InputStream
     abstract val responseBody: OutputStream
+    abstract val remoteAddress: InetSocketAddress?
+    abstract val localAddress: InetSocketAddress?
 
     abstract fun sendResponseHeaders(rCode: Int, responseLength: Long)
     abstract override fun close()
@@ -203,10 +205,10 @@ class HttpServer private constructor(
             // 5. Create HttpExchange implementation
             val exchange = SocketHttpExchange(
                 socket = socket,
-                method = method,
-                uri = uri,
+                requestMethod = method,
+                requestURI = uri,
                 requestHeaders = reqHeaders,
-                requestStream = reqBodyStream,
+                requestBody = reqBodyStream,
                 responseStream = rawOutput
             )
 
@@ -324,6 +326,11 @@ private class SocketHttpExchange(
     private val responseStream: OutputStream
 ) : HttpExchange() {
     override val responseHeaders: Headers = Headers()
+    override val remoteAddress: InetSocketAddress?
+        get() = socket.remoteSocketAddress as? InetSocketAddress
+    override val localAddress: InetSocketAddress?
+        get() = socket.localSocketAddress as? InetSocketAddress
+
     private var headersSent = false
     private val wrappedResponseBody = object : FilterOutputStream(responseStream) {
         override fun close() {

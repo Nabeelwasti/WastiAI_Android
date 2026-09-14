@@ -68,7 +68,8 @@ fun ExecutiveBrainHeader(
     status: ExecutiveBrainStatus = ExecutiveBrainStatus.ONLINE,
     activeTaskCount: Int = 0,
     modifier: Modifier = Modifier,
-    onOpenStatus: (() -> Unit)? = null
+    onOpenStatus: (() -> Unit)? = null,
+    onToggleNavigationDrawer: (() -> Unit)? = null
 ) {
     val safeTaskCount = activeTaskCount.coerceAtLeast(0)
     val resolvedAgentName = activeAgentName.ifBlank { "Wasti AI" }
@@ -103,7 +104,8 @@ fun ExecutiveBrainHeader(
                             activeAgentName = resolvedAgentName,
                             status = status,
                             activeTaskCount = safeTaskCount,
-                            onOpenStatus = onOpenStatus
+                            onOpenStatus = onOpenStatus,
+                            onToggleNavigationDrawer = onToggleNavigationDrawer
                         )
                         HeaderActions(
                             isCompact = true,
@@ -124,7 +126,8 @@ fun ExecutiveBrainHeader(
                             status = status,
                             activeTaskCount = safeTaskCount,
                             modifier = Modifier.weight(1f, fill = false),
-                            onOpenStatus = onOpenStatus
+                            onOpenStatus = onOpenStatus,
+                            onToggleNavigationDrawer = onToggleNavigationDrawer
                         )
                         HeaderActions(
                             isCompact = false,
@@ -147,12 +150,30 @@ private fun ExecutiveIdentity(
     status: ExecutiveBrainStatus,
     activeTaskCount: Int,
     modifier: Modifier = Modifier,
-    onOpenStatus: (() -> Unit)? = null
+    onOpenStatus: (() -> Unit)? = null,
+    onToggleNavigationDrawer: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (onToggleNavigationDrawer != null) {
+            IconButton(
+                onClick = onToggleNavigationDrawer,
+                modifier = Modifier
+                    .size(36.dp)
+                    .testTag("executive_drawer_toggle_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Open Navigation Menu",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+
         Surface(
             modifier = Modifier.size(40.dp),
             shape = RoundedCornerShape(12.dp),
@@ -296,6 +317,52 @@ private fun HeaderActions(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface
             )
+        }
+
+        // 3-Dot Overflow Menu
+        var showMoreMenu by remember { mutableStateOf(false) }
+        Box {
+            IconButton(
+                onClick = { showMoreMenu = true },
+                modifier = Modifier.testTag("header_overflow_menu_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Executive Menu",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            DropdownMenu(
+                expanded = showMoreMenu,
+                onDismissRequest = { showMoreMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Command Palette", fontSize = 12.sp) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onOpenCommandPalette()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isDarkTheme) "Light Theme" else "Dark Theme", fontSize = 12.sp) },
+                    leadingIcon = { Icon(if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onToggleTheme()
+                    }
+                )
+                if (onOpenVoiceCall != null) {
+                    DropdownMenuItem(
+                        text = { Text("Live Voice Call", fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.GraphicEq, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        onClick = {
+                            showMoreMenu = false
+                            onOpenVoiceCall()
+                        }
+                    )
+                }
+            }
         }
     }
 }

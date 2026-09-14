@@ -13,7 +13,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -36,6 +38,7 @@ fun ProjectsTasksScreen(
     isUnifiedBrainEnabled: Boolean = true,
     onToggleUnifiedBrain: (Boolean) -> Unit = {}
 ) {
+    val clipboardManager = LocalClipboardManager.current
     var selectedProjectId by remember { mutableStateOf<String?>(projects.firstOrNull()?.id) }
     var searchQuery by remember { mutableStateOf("") }
 
@@ -403,6 +406,52 @@ fun ProjectsTasksScreen(
                                 contentDescription = "Execute with Unified Brain",
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    var showTaskMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showTaskMenu = true },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("task_menu_button_${task.id}")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Task Options",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showTaskMenu,
+                            onDismissRequest = { showTaskMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(if (task.isCompleted) "Mark Incomplete" else "Mark Complete", fontSize = 12.sp) },
+                                leadingIcon = { Icon(if (task.isCompleted) Icons.Default.CheckBoxOutlineBlank else Icons.Default.CheckBox, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTaskMenu = false
+                                    onToggleTaskStatus(task.id, task.isCompleted)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Execute Plan", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTaskMenu = false
+                                    onExecuteTaskWithConsensus(task.id, task.title, task.description)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy Task Title", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTaskMenu = false
+                                    clipboardManager.setText(AnnotatedString(task.title))
+                                }
                             )
                         }
                     }

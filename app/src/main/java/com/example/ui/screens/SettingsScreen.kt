@@ -299,11 +299,60 @@ fun SettingsScreen(
                             Text("Secret Vault & Dynamic Integration Keys", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                         }
 
-                        IconButton(
-                            onClick = { showAddCustomKeyDialog = true },
-                            modifier = Modifier.testTag("add_custom_key_button")
-                        ) {
-                            Icon(Icons.Default.AddCircle, contentDescription = "Add Custom Key", tint = MaterialTheme.colorScheme.primary)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { showAddCustomKeyDialog = true },
+                                modifier = Modifier.testTag("add_custom_key_button")
+                            ) {
+                                Icon(Icons.Default.AddCircle, contentDescription = "Add Custom Key", tint = MaterialTheme.colorScheme.primary)
+                            }
+
+                            var showSettingsMenu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(
+                                    onClick = { showSettingsMenu = true },
+                                    modifier = Modifier.testTag("settings_overflow_menu_button")
+                                ) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = "Settings Menu",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showSettingsMenu,
+                                    onDismissRequest = { showSettingsMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (isVaultUnlocked) "Lock Vault" else "Unlock Full Vault", fontSize = 12.sp) },
+                                        leadingIcon = { Icon(if (isVaultUnlocked) Icons.Default.Lock else Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showSettingsMenu = false
+                                            if (!isVaultUnlocked) {
+                                                showPasscodeAuthDialog = true
+                                            } else {
+                                                isVaultUnlocked = false
+                                            }
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Add Custom Secret", fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showSettingsMenu = false
+                                            showAddCustomKeyDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isDarkTheme) "Switch to Light Theme" else "Switch to Dark Theme", fontSize = 12.sp) },
+                                        leadingIcon = { Icon(if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showSettingsMenu = false
+                                            onToggleTheme()
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
 

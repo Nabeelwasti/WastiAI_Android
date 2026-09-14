@@ -152,7 +152,8 @@ fun ChatWorkspaceScreen(
     onEditAndResendMessage: (messageId: String, newContent: String) -> Unit = { _, _ -> },
     onCreateNewConversation: (String) -> Unit,
     onCancelGeneration: () -> Unit = {},
-    triggerVoiceCallSignal: Int = 0
+    triggerVoiceCallSignal: Int = 0,
+    onToggleNavigationDrawer: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val experienceMode by WastiExperienceMode.currentMode.collectAsState()
@@ -574,14 +575,32 @@ fun ChatWorkspaceScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left: Avatar + Title + Status (Click opens Executive Control Sheet)
+                    // Left: 3-Line Hamburger Menu + Avatar + Title + Status
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .weight(1f, fill = false)
-                            .clickable { showExecutiveInfoDialog = true }
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        Box(contentAlignment = Alignment.BottomEnd) {
+                        IconButton(
+                            onClick = onToggleNavigationDrawer,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("chat_hamburger_menu_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Menu,
+                                contentDescription = "Open Navigation Menu",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { showExecutiveInfoDialog = true }
+                        ) {
+                            Box(contentAlignment = Alignment.BottomEnd) {
                             Surface(
                                 shape = CircleShape,
                                 color = MaterialTheme.colorScheme.primaryContainer,
@@ -622,8 +641,9 @@ fun ChatWorkspaceScreen(
                             )
                         }
                     }
+                }
 
-                    // Right: Action Chips & Controls
+                // Right: Action Chips & Controls
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(3.dp)

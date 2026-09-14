@@ -15,7 +15,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,6 +30,7 @@ fun AgentManagerScreen(
     onAddAgent: (String, String, String, String, String) -> Unit,
     onSelectAgentForChat: (String) -> Unit
 ) {
+    val clipboardManager = LocalClipboardManager.current
     var showAddAgentDialog by remember { mutableStateOf(false) }
     var newAgentName by remember { mutableStateOf("") }
     var newRoleTitle by remember { mutableStateOf("") }
@@ -383,17 +386,57 @@ fun AgentManagerScreen(
                             }
                         }
 
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.secondaryContainer
-                        ) {
-                            Text(
-                                text = agent.status.uppercase(),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.secondaryContainer
+                            ) {
+                                Text(
+                                    text = agent.status.uppercase(),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+
+                            var showAgentMenu by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(
+                                    onClick = { showAgentMenu = true },
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .testTag("agent_menu_button_${agent.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = "Agent Options",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showAgentMenu,
+                                    onDismissRequest = { showAgentMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Chat with Agent", fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showAgentMenu = false
+                                            onSelectAgentForChat(agent.id)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Copy Agent ID", fontSize = 12.sp) },
+                                        leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                        onClick = {
+                                            showAgentMenu = false
+                                            clipboardManager.setText(AnnotatedString(agent.id))
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
 

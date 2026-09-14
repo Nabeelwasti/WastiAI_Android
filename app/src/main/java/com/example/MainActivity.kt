@@ -12,12 +12,16 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -231,6 +235,14 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         }
                     )
 
+                    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+                    val drawerScope = rememberCoroutineScope()
+                    val toggleDrawer: () -> Unit = {
+                        drawerScope.launch {
+                            if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                        }
+                    }
+
                     val renderScreenContent: @Composable () -> Unit = {
                         when (activeTab) {
                             "dashboard" -> DashboardScreen(
@@ -276,7 +288,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) },
                                 onCancelGeneration = { viewModel.cancelActiveGeneration() },
-                                triggerVoiceCallSignal = triggerVoiceModalSignal
+                                triggerVoiceCallSignal = triggerVoiceModalSignal,
+                                onToggleNavigationDrawer = toggleDrawer
                             )
                             "agents" -> AgentManagerScreen(
                                 agents = agents,
@@ -390,57 +403,188 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
                     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                         val isWideScreen = maxWidth >= 768.dp
-                        if (isWideScreen) {
-                            Row(modifier = Modifier.fillMaxSize()) {
-                                NavigationRail(
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    contentColor = MaterialTheme.colorScheme.primary,
-                                    header = {
-                                        Icon(
-                                            imageVector = Icons.Default.Psychology,
-                                            contentDescription = "Wasti AI OS",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .padding(vertical = 4.dp)
-                                        )
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .testTag("main_rail_nav")
+
+                        ModalNavigationDrawer(
+                            drawerState = drawerState,
+                            gesturesEnabled = !isWideScreen,
+                            drawerContent = {
+                                ModalDrawerSheet(
+                                    modifier = Modifier.width(300.dp),
+                                    drawerContainerColor = MaterialTheme.colorScheme.surface,
+                                    drawerTonalElevation = 4.dp
                                 ) {
-                                    navItems.forEach { nav ->
-                                        val isSelected = activeTab == nav.id
-                                        NavigationRailItem(
-                                            selected = isSelected,
-                                            onClick = {
-                                                focusManager.clearFocus()
-                                                viewModel.selectTab(nav.id)
-                                            },
-                                            modifier = Modifier.testTag("nav_item_${nav.id}"),
-                                            icon = {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Surface(
+                                                    modifier = Modifier.size(40.dp),
+                                                    shape = CircleShape,
+                                                    color = MaterialTheme.colorScheme.primaryContainer
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Hub,
+                                                            contentDescription = null,
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(24.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                Column {
+                                                    Text(
+                                                        text = "WastiAI OS",
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "Autonomous Super Intelligence",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = { drawerScope.launch { drawerState.close() } }
+                                            ) {
                                                 Icon(
-                                                    imageVector = nav.icon,
-                                                    contentDescription = nav.title,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            },
-                                            label = {
-                                                Text(
-                                                    text = nav.title,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Close Menu",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
-                                        )
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .verticalScroll(rememberScrollState())
+                                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        navItems.forEach { nav ->
+                                            val isSelected = activeTab == nav.id
+                                            NavigationDrawerItem(
+                                                label = {
+                                                    Text(
+                                                        text = nav.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                },
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = nav.icon,
+                                                        contentDescription = nav.title,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                },
+                                                selected = isSelected,
+                                                onClick = {
+                                                    focusManager.clearFocus()
+                                                    viewModel.selectTab(nav.id)
+                                                    drawerScope.launch { drawerState.close() }
+                                                },
+                                                modifier = Modifier
+                                                    .padding(vertical = 2.dp)
+                                                    .testTag("drawer_item_${nav.id}"),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
                                     }
                                 }
+                            }
+                        ) {
+                            if (isWideScreen) {
+                                Row(modifier = Modifier.fillMaxSize()) {
+                                    NavigationRail(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        contentColor = MaterialTheme.colorScheme.primary,
+                                        header = {
+                                            Icon(
+                                                imageVector = Icons.Default.Psychology,
+                                                contentDescription = "Wasti AI OS",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .padding(vertical = 4.dp)
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .testTag("main_rail_nav")
+                                    ) {
+                                        navItems.forEach { nav ->
+                                            val isSelected = activeTab == nav.id
+                                            NavigationRailItem(
+                                                selected = isSelected,
+                                                onClick = {
+                                                    focusManager.clearFocus()
+                                                    viewModel.selectTab(nav.id)
+                                                },
+                                                modifier = Modifier.testTag("nav_item_${nav.id}"),
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = nav.icon,
+                                                        contentDescription = nav.title,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                },
+                                                label = {
+                                                    Text(
+                                                        text = nav.title,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
 
+                                    Scaffold(
+                                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxHeight()
+                                            .testTag("wasti_main_scaffold"),
+                                        topBar = {
+                                            ExecutiveBrainHeader(
+                                                activeAgentName = activeAgentName,
+                                                isDarkTheme = darkTheme,
+                                                onToggleTheme = { viewModel.toggleTheme() },
+                                                onOpenCommandPalette = { viewModel.toggleCommandPalette() },
+                                                onOpenVoiceCall = {
+                                                    focusManager.clearFocus()
+                                                    viewModel.selectTab("chat")
+                                                    triggerVoiceModalSignal++
+                                                },
+                                                onToggleNavigationDrawer = toggleDrawer
+                                            )
+                                        }
+                                    ) { innerPadding ->
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(innerPadding)
+                                        ) {
+                                            renderScreenContent()
+                                        }
+                                    }
+                                }
+                            } else {
                                 Scaffold(
                                     contentWindowInsets = WindowInsets(0, 0, 0, 0),
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
+                                        .fillMaxSize()
                                         .testTag("wasti_main_scaffold"),
                                     topBar = {
                                         ExecutiveBrainHeader(
@@ -452,8 +596,50 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                                 focusManager.clearFocus()
                                                 viewModel.selectTab("chat")
                                                 triggerVoiceModalSignal++
-                                            }
+                                            },
+                                            onToggleNavigationDrawer = toggleDrawer
                                         )
+                                    },
+                                    bottomBar = {
+                                        ScrollableTabRow(
+                                            selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
+                                            edgePadding = 8.dp,
+                                            containerColor = MaterialTheme.colorScheme.surface,
+                                            contentColor = MaterialTheme.colorScheme.primary,
+                                            divider = {},
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                                .testTag("main_bottom_nav")
+                                        ) {
+                                            navItems.forEach { nav ->
+                                                val isSelected = activeTab == nav.id
+                                                Tab(
+                                                    selected = isSelected,
+                                                    onClick = {
+                                                        focusManager.clearFocus()
+                                                        viewModel.selectTab(nav.id)
+                                                    },
+                                                    modifier = Modifier.testTag("nav_item_${nav.id}"),
+                                                    text = {
+                                                        Text(
+                                                            text = nav.title,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    },
+                                                    icon = {
+                                                        Icon(
+                                                            imageVector = nav.icon,
+                                                            contentDescription = nav.title,
+                                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 ) { innerPadding ->
                                     Box(
@@ -463,75 +649,6 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     ) {
                                         renderScreenContent()
                                     }
-                                }
-                            }
-                        } else {
-                            Scaffold(
-                                contentWindowInsets = WindowInsets(0, 0, 0, 0),
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .testTag("wasti_main_scaffold"),
-                                topBar = {
-                                    ExecutiveBrainHeader(
-                                        activeAgentName = activeAgentName,
-                                        isDarkTheme = darkTheme,
-                                        onToggleTheme = { viewModel.toggleTheme() },
-                                        onOpenCommandPalette = { viewModel.toggleCommandPalette() },
-                                        onOpenVoiceCall = {
-                                            focusManager.clearFocus()
-                                            viewModel.selectTab("chat")
-                                            triggerVoiceModalSignal++
-                                        }
-                                    )
-                                },
-                                bottomBar = {
-                                    ScrollableTabRow(
-                                        selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
-                                        edgePadding = 8.dp,
-                                        containerColor = MaterialTheme.colorScheme.surface,
-                                        contentColor = MaterialTheme.colorScheme.primary,
-                                        divider = {},
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .windowInsetsPadding(WindowInsets.navigationBars)
-                                            .testTag("main_bottom_nav")
-                                    ) {
-                                        navItems.forEach { nav ->
-                                            val isSelected = activeTab == nav.id
-                                            Tab(
-                                                selected = isSelected,
-                                                onClick = {
-                                                    focusManager.clearFocus()
-                                                    viewModel.selectTab(nav.id)
-                                                },
-                                                modifier = Modifier.testTag("nav_item_${nav.id}"),
-                                                text = {
-                                                    Text(
-                                                        text = nav.title,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                },
-                                                icon = {
-                                                    Icon(
-                                                        imageVector = nav.icon,
-                                                        contentDescription = nav.title,
-                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            ) { innerPadding ->
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(innerPadding)
-                                ) {
-                                    renderScreenContent()
                                 }
                             }
                         }

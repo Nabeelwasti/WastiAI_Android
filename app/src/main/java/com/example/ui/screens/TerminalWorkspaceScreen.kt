@@ -465,6 +465,58 @@ fun TerminalWorkspaceScreen(
                             tint = Color(0xFF94A3B8)
                         )
                     }
+
+                    var showTerminalMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showTerminalMenu = true },
+                            modifier = Modifier.testTag("terminal_overflow_menu_button")
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "Terminal Menu",
+                                tint = Color(0xFF94A3B8)
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showTerminalMenu,
+                            onDismissRequest = { showTerminalMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Script Editor (Nano)", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTerminalMenu = false
+                                    editorFileName = "new_script.py"
+                                    editorContent = "#!/usr/bin/env python3\nprint('Hello from Wasti Polyglot OS')\n"
+                                    isEditorOpen = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copy Entire Log", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTerminalMenu = false
+                                    val allText = activeTab.lines.joinToString("\n") { it.text }
+                                    clipboardManager.setText(AnnotatedString(allText))
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Clear Terminal Buffer", fontSize = 12.sp) },
+                                leadingIcon = { Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                onClick = {
+                                    showTerminalMenu = false
+                                    activeTab.lines.clear()
+                                    activeTab.lines.add(
+                                        TerminalLine(
+                                            text = "Terminal buffer cleared.",
+                                            type = TerminalLineType.SYSTEM
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF0F172A)
