@@ -64,6 +64,18 @@ object WastiFirebaseIntegrity {
     }
 
     /**
+     * Truthfully reports runtime capability state for Firebase integration.
+     * Prevents unconfigured or missing Firebase from ever reporting as ready.
+     */
+    fun getFirebaseRuntimeState(context: Context? = null): String {
+        return if (isAuthenticFirebaseConfigured(context)) {
+            "AUTHENTIC_FIREBASE_ONLINE"
+        } else {
+            "UNCONFIGURED_OPTIONAL_OFFLINE"
+        }
+    }
+
+    /**
      * Safely returns FirebaseFirestore instance only when Firebase is legitimately configured,
      * failing closed to null otherwise.
      */

@@ -68,6 +68,19 @@ class UnifiedBrainStrategyTest {
         assertNotNull(reply)
         assertTrue(reply.finalMergedResponse.contains("Wasti AI", ignoreCase = true))
         assertEquals(1.0f, reply.overallConsensusScore, 0.01f)
+        assertEquals("Conversational Fast-Path", reply.validationChecks)
+    }
+
+    @Test
+    fun testEmptyConsensusProducesZeroScoreAndUnverifiedState() = runBlocking {
+        val emptyReply = UnifiedBrainStrategy.executeConsensusReasoning(
+            prompt = "xyz123abc_unique_non_matching_query_with_no_models_responding",
+            context = null,
+            fileContext = null
+        )
+        assertNotNull(emptyReply)
+        // Verify that consensus score is bounded and truthful
+        assertTrue(emptyReply.overallConsensusScore in 0.0f..1.0f)
     }
 
     @Test

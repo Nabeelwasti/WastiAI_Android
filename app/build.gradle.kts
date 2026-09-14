@@ -142,26 +142,12 @@ android {
       buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
 
-    val activeSeedMap = mutableMapOf<String, String>()
+    // Zero-Leakage Secret Boundary Doctrine:
+    // Production credentials are NEVER compiled into BuildConfig bytecode or packaged as APK assets.
+    // BuildConfig fields are generated with empty values ("") so existing symbol references compile cleanly,
+    // while all runtime secrets are exclusively persisted in Android Keystore / EncryptedSharedPreferences.
     allTrackedCredentialKeys.forEach { key ->
-      val secretVal = resolveSecretWithFallback(key)
-      buildConfigField("String", key, "\"${wastiPublicValue(secretVal)}\"")
-      if (secretVal.isNotBlank() && !isPlaceholderValue(secretVal)) {
-        activeSeedMap[key] = secretVal
-      }
-    }
-
-    // Securely package compile-time seed vault asset if active credentials are present
-    if (activeSeedMap.isNotEmpty()) {
-      try {
-        val assetsDir = file("src/main/assets")
-        if (!assetsDir.exists()) assetsDir.mkdirs()
-        val vaultFile = file("src/main/assets/wasti_seed_vault.json")
-        val jsonEntries = activeSeedMap.map { (k, v) ->
-          "  \"${k}\": \"${wastiPublicValue(v)}\""
-        }.joinToString(",\n")
-        vaultFile.writeText("{\n$jsonEntries\n}")
-      } catch (_: Throwable) { /* ignore */ }
+      buildConfigField("String", key, "\"\"")
     }
   }
 

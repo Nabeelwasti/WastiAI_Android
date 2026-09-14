@@ -71,8 +71,10 @@ class WastiApplication : Application(), Configuration.Provider {
 
         try {
             com.google.firebase.FirebaseApp.initializeApp(this)
+            val fbState = com.example.data.cloud.WastiFirebaseIntegrity.getFirebaseRuntimeState(this)
+            Log.i("WastiApplication", "Firebase configuration runtime state: $fbState")
         } catch (e: Throwable) {
-            Log.w("WastiApplication", "Firebase auto-initialization skipped/deferred: ${e.message}")
+            Log.w("WastiApplication", "Firebase auto-initialization skipped/deferred (Fail-Closed Standalone Mode): ${e.message}")
         }
 
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()

@@ -310,7 +310,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_initModel(
         return 0L;
     }
 
-    LOGI("Native neural model initialized successfully. Context handle: %p", ctx);
+    LOGI("Native model context initialized (GGUF container parsed & verified). Context handle: %p", ctx);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -345,7 +345,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
     int tokenLimit = (maxTokens > 0) ? std::min(maxTokens, 512) : 128;
     float temp = (temperature > 0.01f) ? temperature : 0.7f;
 
-    LOGI("Evaluating prompt with native neural inference (len=%zu, maxTokens=%d, temp=%.2f)",
+    LOGI("Evaluating prompt with native math engine (len=%zu, maxTokens=%d, temp=%.2f)",
          promptStr.length(), tokenLimit, temp);
 
     // Byte-pair/character tokenization of input prompt

@@ -148,11 +148,10 @@ object UnifiedBrainStrategy {
         val startTime = System.currentTimeMillis()
 
         // 1. Publish live status in clean small letters
-        val activeModelNames = listOf("gemini", "groq", "deepseek", "qwen", "llama", "gemma", "agent-council")
-        val statusText = "synthesizing across models & agents: [gemini, groq, deepseek, qwen, llama]..."
+        val statusText = "requesting consensus across available models and agents..."
         _liveConsensusStatus.value = ConsensusStatusUpdate(
-            activeModels = activeModelNames,
-            currentPhase = "deliberating",
+            activeModels = emptyList(),
+            currentPhase = "requesting",
             displayText = statusText
         )
         WastiOmniBrain.setThoughtStream(statusText)
@@ -194,12 +193,20 @@ object UnifiedBrainStrategy {
                             else -> "Creative Synthesis"
                         }
 
+                        val confidence = computeMeasuredConfidence(
+                            prompt = fullPrompt,
+                            content = resp.content,
+                            modelUsed = resp.modelUsed,
+                            isError = resp.isError,
+                            isLocal = true
+                        )
+
                         ModelContribution(
                             modelOrAgentId = descriptor.id,
                             displayName = descriptor.brandDisplayName,
                             role = role,
                             draftContent = resp.content,
-                            confidence = if (resp.content.length > 50) 0.88f else 0.65f,
+                            confidence = confidence,
                             latencyMs = latency,
                             isLocal = true
                         )
@@ -230,12 +237,19 @@ object UnifiedBrainStrategy {
                                 "openai" -> "Strategic Synthesis"
                                 else -> "Global Cloud Intelligence"
                             }
+                            val confidence = computeMeasuredConfidence(
+                                prompt = fullPrompt,
+                                content = resp.content,
+                                modelUsed = resp.modelUsed,
+                                isError = resp.isError,
+                                isLocal = false
+                            )
                             ModelContribution(
                                 modelOrAgentId = "cloud-$providerId",
                                 displayName = "Cloud ${providerId.replaceFirstChar { it.uppercase() }}",
                                 role = role,
                                 draftContent = resp.content,
-                                confidence = 0.95f,
+                                confidence = confidence,
                                 latencyMs = latency,
                                 isLocal = false
                             )
@@ -244,24 +258,42 @@ object UnifiedBrainStrategy {
                 }
             }
 
-            // C. Multi-Agent Council Perspectives
+            // C. Multi-Agent Council Perspectives (Executed via real AI Provider or omitted)
             val agentCouncilTasks = listOf("coding_agent", "ceo_agent", "research_agent").map { agentRole ->
                 async {
                     WastiSystemResilienceGovernor.withCrashShield("AgentCouncil:$agentRole", null) {
                         val roleInstruction = when (agentRole) {
-                            "coding_agent" -> "As Wasti OS Software Engineer, ensure all code is production-ready, modular, and handles nullability."
-                            "ceo_agent" -> "As Wasti OS Strategic Executive, ensure direct value, clear priorities, and practical ROI."
-                            else -> "As Wasti OS Research Specialist, ground in factual truth and verify invariants."
+                            "coding_agent" -> "You are Wasti OS Software Engineer. Generate robust, production-grade technical code specifications."
+                            "ceo_agent" -> "You are Wasti OS Strategic Executive. Provide clear strategic value, ROI, and execution roadmap."
+                            else -> "You are Wasti OS Research Specialist. Ground findings in factual truth and identify verification invariants."
                         }
-                        ModelContribution(
-                            modelOrAgentId = "council-$agentRole",
-                            displayName = "Agent Council: ${agentRole.replace('_', ' ').replaceFirstChar { it.uppercase() }}",
-                            role = roleInstruction,
-                            draftContent = "[Domain verified for $agentRole against target prompt]",
-                            confidence = 0.90f,
-                            latencyMs = 12L,
-                            isLocal = true
-                        )
+                        val councilStart = System.currentTimeMillis()
+                        val resp: ProviderResponse? = withTimeoutOrNull(12_000) {
+                            AIManager.execute(
+                                prompt = fullPrompt,
+                                systemInstruction = roleInstruction,
+                                requiredCapabilities = setOf(ProviderCapability.TEXT_GENERATION)
+                            )
+                        }
+                        if (resp != null && !resp.isError && resp.content.isNotBlank()) {
+                            val latency = System.currentTimeMillis() - councilStart
+                            val confidence = computeMeasuredConfidence(
+                                prompt = fullPrompt,
+                                content = resp.content,
+                                modelUsed = resp.modelUsed,
+                                isError = resp.isError,
+                                isLocal = false
+                            )
+                            ModelContribution(
+                                modelOrAgentId = "council-$agentRole",
+                                displayName = "Agent Council: ${agentRole.replace('_', ' ').replaceFirstChar { it.uppercase() }}",
+                                role = roleInstruction,
+                                draftContent = resp.content,
+                                confidence = confidence,
+                                latencyMs = latency,
+                                isLocal = false
+                            )
+                        } else null
                     }
                 }
             }
@@ -294,17 +326,70 @@ object UnifiedBrainStrategy {
         )
         WastiOmniBrain.setThoughtStream("unified brain consensus ready • ${contributions.size} models unified")
 
-        // 5. Record learning in background
-        if (mergedReply.overallConsensusScore >= 0.85f && prompt.length > 20) {
+        // 5. Record learning in background only if genuine verified multi-model consensus was achieved
+        val hasVerifiedContribution = contributions.any {
+            !it.draftContent.contains("[HEURISTIC_NON_NEURAL]") &&
+            !it.modelOrAgentId.contains("heuristic") &&
+            it.confidence >= 0.70f
+        }
+        if (mergedReply.overallConsensusScore >= 0.85f && prompt.length > 20 && hasVerifiedContribution && contributions.size >= 2) {
             WastiAgentLearningPreserver.recordLearnedSkill(
                 skillName = "Consensus:${prompt.take(30).trim()}",
                 targetAppId = activeAgentId,
                 promptDirective = "Apply consensus reasoning: ${mergedReply.finalMergedResponse.take(120).replace("\n", " ")}",
-                executionEvidence = "Synthesized across ${contributions.size} models & agents"
+                executionEvidence = "Synthesized across ${contributions.size} verified models & agents"
             )
         }
 
         mergedReply
+    }
+
+    /**
+     * Computes measured confidence dynamically from actual response properties,
+     * execution tier (genuine neural vs heuristic fallback), and structural completeness.
+     */
+    private fun computeMeasuredConfidence(
+        prompt: String,
+        content: String,
+        modelUsed: String,
+        isError: Boolean,
+        isLocal: Boolean
+    ): Float {
+        if (isError || content.isBlank()) return 0.0f
+        val cleanContent = content.trim()
+        if (cleanContent.length < 15) return 0.20f
+
+        var score = 0.50f
+
+        // Execution Tier weighting
+        when {
+            modelUsed.contains("[HEURISTIC_NON_NEURAL]") -> {
+                // Heuristic non-neural fallback is bound to max 0.40f
+                return (0.35f + if (cleanContent.length > 80) 0.05f else 0.0f).coerceIn(0.0f, 0.40f)
+            }
+            modelUsed.contains("[EXTERNAL_LOCAL_SERVER]") -> score += 0.25f
+            modelUsed.contains("[HUGGINGFACE_REMOTE_API]") -> score += 0.25f
+            !isLocal -> score += 0.30f
+            else -> score += 0.25f
+        }
+
+        // Structural quality indicators
+        if (cleanContent.contains("```") || cleanContent.contains("###") || cleanContent.contains("• ") || cleanContent.contains("- ")) {
+            score += 0.10f
+        }
+
+        // Length adequacy
+        if (cleanContent.length > 150) {
+            score += 0.05f
+        }
+
+        // Penalty for refusal or error phrases
+        val lower = cleanContent.lowercase()
+        if (lower.contains("i cannot") || lower.contains("as an ai language model") || lower.contains("error:") || lower.contains("unable to")) {
+            score -= 0.20f
+        }
+
+        return score.coerceIn(0.10f, 1.0f)
     }
 
     /**
@@ -324,32 +409,32 @@ object UnifiedBrainStrategy {
         if (trimmedPrompt == "hi" || trimmedPrompt == "hello" || trimmedPrompt == "hey" ||
             trimmedPrompt.startsWith("hi ") || trimmedPrompt.startsWith("hello ")
         ) {
-            val replyText = "Hello Sir! I am Wasti AI, your unified sovereign operating system and executive assistant. All internal intelligence nodes, long-term memory, and local tools are synchronized and operational. How may I assist you today?"
+            val replyText = "Hello Sir! I am Wasti AI, your sovereign operating system and executive assistant. Ready for your instructions. How may I assist you today?"
             return UnifiedMergedReply(
                 finalMergedResponse = replyText,
                 strategicSummary = "Conversational executive standby",
                 technicalCodeSummary = "Active conversation loop",
-                validationChecks = "Verified",
+                validationChecks = "Conversational Fast-Path",
                 operationalNextSteps = "Ready for instructions",
                 participatingContributions = contributions,
                 overallConsensusScore = 1.0f,
                 totalLatencyMs = totalLatency,
-                executionEvidence = "Instant greeting consensus"
+                executionEvidence = "Standard conversational greeting response (fast-path)"
             )
         }
 
         if (contributions.isEmpty()) {
-            val fallback = "Wasti AI: System evaluated locally across sovereign mobile runtime. Ready for commands."
+            val fallback = "Wasti AI: No active model or neural runtime produced consensus. System standing by."
             return UnifiedMergedReply(
                 finalMergedResponse = fallback,
-                strategicSummary = "Local runtime execution",
-                technicalCodeSummary = "Android polyglot core",
-                validationChecks = "Verified",
-                operationalNextSteps = "Standby",
+                strategicSummary = "No active model or brain produced consensus",
+                technicalCodeSummary = "Unverified",
+                validationChecks = "NO_CONSENSUS / UNVERIFIED",
+                operationalNextSteps = "Configure model providers or verify local weights",
                 participatingContributions = emptyList(),
-                overallConsensusScore = 0.80f,
+                overallConsensusScore = 0.0f,
                 totalLatencyMs = totalLatency,
-                executionEvidence = "Fallback local execution"
+                executionEvidence = "Zero participating models returned valid consensus"
             )
         }
 

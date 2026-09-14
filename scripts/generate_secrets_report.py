@@ -91,12 +91,11 @@ def main():
         print("  (All configured)")
 
     print("-" * 68)
-    print("APK NATIVE INTEGRATION PIPELINE:")
-    print("  • CI Ingestion: Active secrets compiled into Android BuildConfig fields")
-    print("  • Seed Vault: Packaged into hardware-keystore asset seed (wasti_seed_vault.json)")
-    print("  • Device Persistence: Cold-start transfers keys into EncryptedSharedPreferences (Hardware Keystore backed)")
+    print("APK NATIVE SECURITY BOUNDARY:")
+    print("  • Zero-Leakage: Secrets are NEVER packaged into APK assets or BuildConfig bytecode")
+    print("  • Device Persistence: Loaded securely via Hardware Keystore & EncryptedSharedPreferences")
     print("  • Fail-Closed: Preserved keys remain empty/unconfigured with fallback active")
-    print("VERDICT: Secret configuration syntax valid. Zero raw leakage. Fail-closed fallback active.")
+    print("VERDICT: Secret configuration syntax valid. Zero APK leakage. Fail-closed fallback active.")
     print("=" * 68)
 
 if __name__ == '__main__':

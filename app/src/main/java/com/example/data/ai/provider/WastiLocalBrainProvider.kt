@@ -100,7 +100,7 @@ class WastiLocalBrainProvider(
         )
         val adaptedRequest = request.copy(systemInstruction = adaptedSystemInstruction)
 
-        val (content, isRealNeural) = if (appCtx != null && isNeuralInferenceActive) {
+        val (content, isRealNeural, modelLabel) = if (appCtx != null && isNeuralInferenceActive) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
             val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
             val result = runtime.executeInferenceDetailed(
@@ -109,16 +109,27 @@ class WastiLocalBrainProvider(
                 systemInstruction = adaptedRequest.systemInstruction
             )
             if (result.status == com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS) {
-                result.output to true
+                Triple(
+                    result.output,
+                    result.isNeuralOutput,
+                    if (result.isNeuralOutput) defaultModel else "$defaultModel [CONTAINER_VALIDATED_MATH_ENGINE]"
+                )
             } else {
-                tryLocalServerOrHuggingFace(adaptedRequest) ?: (executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction) to false)
+                tryLocalServerOrHuggingFace(adaptedRequest) ?: Triple(
+                    executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction),
+                    false,
+                    "$defaultModel [HEURISTIC_NON_NEURAL]"
+                )
             }
         } else {
-            tryLocalServerOrHuggingFace(adaptedRequest) ?: (executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction) to false)
+            tryLocalServerOrHuggingFace(adaptedRequest) ?: Triple(
+                executeDomainSpecializedInference(adaptedRequest.prompt, adaptedRequest.systemInstruction),
+                false,
+                "$defaultModel [HEURISTIC_NON_NEURAL]"
+            )
         }
 
         val latency = System.currentTimeMillis() - startTime
-        val modelLabel = if (isRealNeural) defaultModel else "$defaultModel [HEURISTIC_NON_NEURAL]"
 
         return ProviderResponse(
             content = content,
@@ -132,8 +143,8 @@ class WastiLocalBrainProvider(
         )
     }
 
-    private suspend fun tryLocalServerOrHuggingFace(request: ProviderRequest): Pair<String, Boolean>? {
-        // 1. Try local LLM server (e.g. Ollama or llama-server running in Termux or on device)
+    private suspend fun tryLocalServerOrHuggingFace(request: ProviderRequest): Triple<String, Boolean, String>? {
+        // 1. Try local LLM server (e.g. Ollama or llama-server running as local server or edge endpoint)
         try {
             val localOutput = com.example.data.api.LocalLLMClient.generateText(
                 prompt = request.prompt,
@@ -141,7 +152,7 @@ class WastiLocalBrainProvider(
                 modelName = mapToLocalServerModel(modelDescriptor.id)
             )
             if (localOutput.isNotBlank()) {
-                return localOutput to true
+                return Triple(localOutput, false, "$defaultModel [EXTERNAL_LOCAL_SERVER]")
             }
         } catch (_: Throwable) {}
 
@@ -154,7 +165,7 @@ class WastiLocalBrainProvider(
                     modelId = modelDescriptor.id
                 )
                 if (hfOutput.isNotBlank()) {
-                    return hfOutput to true
+                    return Triple(hfOutput, false, "$defaultModel [HUGGINGFACE_REMOTE_API]")
                 }
             } catch (_: Throwable) {}
         }
