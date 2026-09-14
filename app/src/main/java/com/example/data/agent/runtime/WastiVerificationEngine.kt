@@ -459,7 +459,9 @@ class WastiVerificationEngine {
                 text.contains("MemoryItem", ignoreCase = true)
 
             // UI / Device Control / In-App Navigation: must anchor to accessibility window/package match or verified navigation dispatch
-            cap.contains("device") || cap.contains("accessibility") || cap.contains("ui") || cap == "navigate_to" || cap == "open_screen" || cap == "navigate" ->
+            cap.contains("device") || cap.contains("accessibility") ||
+                cap == "ui" || cap.startsWith("ui_") || cap.endsWith("_ui") || cap.contains("_ui_") ||
+                cap == "navigate_to" || cap == "open_screen" || cap == "navigate" ->
                 text.contains("Accessibility observed", ignoreCase = true) ||
                 text.contains("active package matching", ignoreCase = true) ||
                 text.contains("window package", ignoreCase = true) ||
