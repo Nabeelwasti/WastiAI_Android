@@ -407,15 +407,14 @@ class UnifiedExecutionFabric(
             )
             val verResult = verificationEngine.verify(verRequest)
 
-            // 8. Final Result Assembly with Truthful Status Mapping
+            // 8. Final Result Assembly with Strict Verification Truth Mapping
             val finalStatus = when (verResult.status) {
                 ActionVerificationStatus.VERIFIED -> {
-                    if (execResult.status == UnifiedExecutionStatus.COMPLETED) {
-                        if (customExecutors.containsKey(normalizedCapabilityId(request.capabilityId))) {
-                            UnifiedExecutionStatus.COMPLETED
-                        } else {
-                            UnifiedExecutionStatus.VERIFIED
-                        }
+                    if (execResult.status == UnifiedExecutionStatus.COMPLETED &&
+                        verResult.evidence.isNotBlank() &&
+                        !verificationEngine.isSyntheticOrMock(verResult.evidence)
+                    ) {
+                        UnifiedExecutionStatus.VERIFIED
                     } else {
                         execResult.status
                     }
@@ -428,9 +427,20 @@ class UnifiedExecutionFabric(
                     }
                 }
                 ActionVerificationStatus.VERIFICATION_UNAVAILABLE, ActionVerificationStatus.NOT_VERIFIABLE -> {
-                    execResult.status
+                    // Execution succeeded, but independent verification is unavailable: stay COMPLETED (never claim VERIFIED)
+                    if (execResult.status == UnifiedExecutionStatus.VERIFIED) {
+                        UnifiedExecutionStatus.COMPLETED
+                    } else {
+                        execResult.status
+                    }
                 }
-                ActionVerificationStatus.UNKNOWN -> execResult.status
+                ActionVerificationStatus.UNKNOWN -> {
+                    if (execResult.status == UnifiedExecutionStatus.VERIFIED) {
+                        UnifiedExecutionStatus.COMPLETED
+                    } else {
+                        execResult.status
+                    }
+                }
             }
 
             val finalVerStatus = when (verResult.status) {

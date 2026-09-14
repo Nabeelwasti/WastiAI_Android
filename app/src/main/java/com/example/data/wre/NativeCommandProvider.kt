@@ -957,6 +957,7 @@ class NativeCommandProvider(
             stderr = stderr.toString().trimEnd(),
             durationMs = duration,
             status = status,
+            executionTier = ProcessExecutionTier.SANDBOX_PROCESS,
             verified = verified,
             verificationEvidence = verificationEvidence
         )
@@ -1030,6 +1031,7 @@ class NativeCommandProvider(
             stderr = stderr.toString().trimEnd(),
             durationMs = duration,
             status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
+            executionTier = ProcessExecutionTier.REAL_PROCESS,
             verified = (exitCode == 0),
             verificationEvidence = if (exitCode == 0) "Native binary '${binFile.name}' executed with exit code 0" else null
         )

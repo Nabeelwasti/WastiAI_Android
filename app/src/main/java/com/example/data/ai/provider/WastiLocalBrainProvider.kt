@@ -57,7 +57,11 @@ class WastiLocalBrainProvider(
         get() = com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
 
     val isNeuralInferenceActive: Boolean
-        get() = isNeuralWeightsPresent && isNativeRuntimePresent
+        get() {
+            val appCtx = com.example.WastiApplication.instance ?: return false
+            if (!isNeuralWeightsPresent || !isNativeRuntimePresent) return false
+            return com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx).isGenuineNeuralExecutionProven(id)
+        }
 
     /**
      * Explicit indicator for deterministic domain heuristic fallback.
@@ -75,10 +79,13 @@ class WastiLocalBrainProvider(
         if (!hasNative) {
             return LocalBrainRuntimeState.MODEL_PRESENT
         }
-        val progressive = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx).getProgressiveState(id)
-        return when (progressive) {
-            com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED -> LocalBrainRuntimeState.VERIFIED_NEURAL_INFERENCE
-            else -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+        val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
+        val progressive = runtime.getProgressiveState(id)
+        val isProven = runtime.isGenuineNeuralExecutionProven(id)
+        return when {
+            isProven && progressive == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED -> LocalBrainRuntimeState.VERIFIED_NEURAL_INFERENCE
+            isProven -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+            else -> LocalBrainRuntimeState.MODEL_PRESENT
         }
     }
 

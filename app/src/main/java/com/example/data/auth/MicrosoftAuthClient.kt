@@ -37,13 +37,7 @@ class MicrosoftAuthClient(private val context: Context) {
         return try {
             val auth = firebaseAuth
             if (auth == null) {
-                // In offline / standalone development environments, simulate or fall back gracefully
-                val cachedEmail = CredentialRegistry.getRawValue("MICROSOFT_ACCOUNT_EMAIL") ?: "user@outlook.com"
-                return MicrosoftAuthResult.Success(
-                    user = null,
-                    accountEmail = cachedEmail,
-                    displayName = cachedEmail.substringBefore("@").replaceFirstChar { it.uppercase() }
-                )
+                return MicrosoftAuthResult.Error("Firebase Auth is not initialized or configured in this environment.")
             }
 
             val providerBuilder = OAuthProvider.newBuilder("microsoft.com")

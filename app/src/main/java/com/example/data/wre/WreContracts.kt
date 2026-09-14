@@ -67,7 +67,7 @@ data class ExecutionResult(
     val stderr: String,
     val durationMs: Long,
     val status: ExecutionStatus,
-    val executionTier: ProcessExecutionTier = ProcessExecutionTier.REAL_PROCESS,
+    val executionTier: ProcessExecutionTier = ProcessExecutionTier.EMULATED,
     val verified: Boolean = false,
     val verificationEvidence: String? = null,
     val metadata: Map<String, String> = emptyMap()
@@ -83,7 +83,7 @@ data class WastiProcess(
     val stderr: StringBuilder = StringBuilder(),
     val exitCode: Int? = null,
     val providerName: String = "Internal",
-    val executionTier: ProcessExecutionTier = ProcessExecutionTier.REAL_PROCESS
+    val executionTier: ProcessExecutionTier = ProcessExecutionTier.EMULATED
 )
 
 data class WastiJob(
