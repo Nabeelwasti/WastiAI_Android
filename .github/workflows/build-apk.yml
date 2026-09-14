@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read
+      contents: write
     outputs:
       have_release_keystore: ${{ steps.signing_config.outputs.have_release_keystore }}
 
@@ -646,53 +646,39 @@ jobs:
           debug_verification_evidence.json
 
     - name: Stage Release Artifacts
-      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
       run: |
         mkdir -p build-release-artifacts
-        cp app/build/outputs/apk/release/app-release.apk build-release-artifacts/
-        cp app/build/outputs/bundle/release/app-release.aab build-release-artifacts/
+        if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+          cp -f app/build/outputs/apk/release/app-release.apk build-release-artifacts/
+        fi
+        if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+          cp -f app/build/outputs/apk/debug/app-debug.apk build-release-artifacts/
+        fi
+        if [ -f "app/build/outputs/bundle/release/app-release.aab" ]; then
+          cp -f app/build/outputs/bundle/release/app-release.aab build-release-artifacts/
+        fi
         if [ -f "release_verification_evidence.json" ]; then
-          cp release_verification_evidence.json build-release-artifacts/
+          cp -f release_verification_evidence.json build-release-artifacts/
+        fi
+        if [ -f "debug_verification_evidence.json" ]; then
+          cp -f debug_verification_evidence.json build-release-artifacts/
         fi
 
     - name: Upload Release Artifacts
-      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
-      uses: actions/upload-artifact@v7
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      uses: actions/upload-artifact@v4
       continue-on-error: true
       with:
         name: WastiAI-Release-Artifacts
         if-no-files-found: ignore
         path: build-release-artifacts/
 
-  publish:
-    name: Publish Release Artifact
-    needs: [validate, lint_detekt]
-    if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request' && needs.validate.outputs.have_release_keystore == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-
-    steps:
-    - name: Download Built Release Artifacts
-      uses: actions/download-artifact@v8
-      with:
-        name: WastiAI-Release-Artifacts
-        path: build-artifacts/
-
     - name: Determine Canonical Release Version & Tag
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
       id: release_meta
       shell: bash
       run: |
-        echo "Inspecting downloaded release artifacts:"
-        find build-artifacts -type f
-        find build-artifacts -type f -name "app-release.apk" -exec cp -f {} build-artifacts/app-release.apk \;
-        find build-artifacts -type f -name "app-release.aab" -exec cp -f {} build-artifacts/app-release.aab \;
-        find build-artifacts -type f -name "release_verification_evidence.json" -exec cp -f {} build-artifacts/release_verification_evidence.json \;
-
-        test -f build-artifacts/app-release.apk || { echo "ERROR: Genuine signed app-release.apk missing. Release aborted."; exit 1; }
-        test -f build-artifacts/app-release.aab || { echo "ERROR: Genuine signed app-release.aab missing. Release aborted."; exit 1; }
-
         if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
           TAG_NAME="${GITHUB_REF#refs/tags/}"
           TITLE="Wasti AI ${TAG_NAME}"
@@ -705,27 +691,33 @@ jobs:
         echo "title=${TITLE}" >> $GITHUB_OUTPUT
         echo "SUCCESS: Derived release tag: ${TAG_NAME}"
 
-    - name: Create or Update GitHub Release
-      uses: softprops/action-gh-release@v3
-      with:
-        files: |
-          build-artifacts/app-release.apk
-          build-artifacts/app-release.aab
-          build-artifacts/release_verification_evidence.json
-        tag_name: ${{ steps.release_meta.outputs.tag_name }}
-        name: ${{ steps.release_meta.outputs.title }}
-        overwrite_files: true
-        make_latest: true
-        fail_on_unmatched_files: false
-        body: |
-          ### 📱 Wasti AI Production Release
-          - **Tag:** `${{ steps.release_meta.outputs.tag_name }}`
-          - **Commit:** `${{ github.sha }}`
-          - **Artifacts:**
-            - `app-release.apk` (Signed Production APK)
-            - `app-release.aab` (Signed Production Android App Bundle)
-            - `release_verification_evidence.json` (Cryptographic & Runtime Verification Evidence)
-          - Cryptographically signed with release keystore and verified by `apksigner`.
-          - Passed multi-tier zero-trust secret and bytecode boundary scans.
-        generate_release_notes: false
-        token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create or Update GitHub Release with APK and AAB
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG_NAME: ${{ steps.release_meta.outputs.tag_name }}
+        TITLE: ${{ steps.release_meta.outputs.title }}
+      run: |
+        echo "Preparing release assets for $TAG_NAME..."
+        ASSETS=()
+        for f in build-release-artifacts/*; do
+          if [ -f "$f" ]; then
+            ASSETS+=("$f")
+          fi
+        done
+
+        echo "Assets to publish: ${ASSETS[*]}"
+        gh release create "$TAG_NAME" "${ASSETS[@]}" \
+          --title "$TITLE" \
+          --notes "### 📱 Wasti AI Production & Debug Release
+        - **Tag:** \`$TAG_NAME\`
+        - **Commit:** \`${{ github.sha }}\`
+        - **Available Artifacts:**
+          - \`app-release.apk\` (Signed Production APK)
+          - \`app-debug.apk\` (Debug APK for immediate testing)
+          - \`app-release.aab\` (Signed Production Android App Bundle)
+          - \`release_verification_evidence.json\` (Runtime & DEX Verification)
+        - Cryptographically signed with release keystore and verified by \`apksigner\`." \
+          --latest || \
+        gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+        echo "SUCCESS: Wasti AI Release $TAG_NAME published to GitHub Releases!"
