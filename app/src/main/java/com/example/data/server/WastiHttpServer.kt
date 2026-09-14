@@ -315,6 +315,10 @@ private class BoundedInputStream(
         if (count != -1) bytesRead += count
         return count
     }
+
+    override fun close() {
+        // No-op: Do not close underlying socket InputStream so socket remains open for response
+    }
 }
 
 /**
