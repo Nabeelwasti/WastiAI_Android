@@ -733,6 +733,9 @@ class WastiProactiveAutonomousEngine(
                     task.retryCount++
                     task.nextRetryAt = System.currentTimeMillis() + (task.retryCount * 5000L)
                     task.state = ProactiveTaskState.SCHEDULED
+                    if (task.intervalMs > 0 && task.scheduledAt <= System.currentTimeMillis()) {
+                        task.scheduledAt = System.currentTimeMillis() + task.intervalMs
+                    }
                     task.lastError = "$errMsg (Retry ${task.retryCount}/${task.maxRetries})"
                     persistTask(task)
 
