@@ -316,11 +316,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onAddTask = { pId, title, desc, agentId, priority -> viewModel.addTask(pId, title, desc, agentId, priority) },
                                 onToggleTaskStatus = { taskId, currentStatus -> viewModel.toggleTaskStatus(taskId, currentStatus) },
                                 onExecuteTaskWithConsensus = { taskId, title, desc -> viewModel.executeTaskWithUnifiedConsensus(taskId, title, desc) },
+                                onExecuteProjectWithConsensus = { pId, name, desc -> viewModel.executeProjectWithUnifiedConsensus(pId, name, desc) },
                                 isUnifiedBrainEnabled = isUnifiedBrainEnabled,
                                 onToggleUnifiedBrain = { viewModel.setUnifiedBrainEnabled(it) }
                             )
                             "terminal" -> TerminalWorkspaceScreen(
                                 wreManager = viewModel.wreManager,
+                                viewModel = viewModel,
                                 onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
                             "code" -> com.example.ui.screens.CodeStudioScreen(
@@ -339,7 +341,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             "integrations" -> IntegrationsLogsScreen(
                                 integrations = integrations,
                                 logs = logs,
-                                onClearLogs = { viewModel.clearLogs() }
+                                onClearLogs = { viewModel.clearLogs() },
+                                onToggleIntegration = { id, connected -> viewModel.toggleIntegration(id, connected) }
                             )
                             "welcome" -> WelcomeAuthScreen(
                                 onLaunchWorkspace = { viewModel.selectTab("dashboard") },

@@ -27,6 +27,79 @@ fun AgentManagerScreen(
     onAddAgent: (String, String, String, String, String) -> Unit,
     onSelectAgentForChat: (String) -> Unit
 ) {
+    var showAddAgentDialog by remember { mutableStateOf(false) }
+    var newAgentName by remember { mutableStateOf("") }
+    var newRoleTitle by remember { mutableStateOf("") }
+    var newAgentType by remember { mutableStateOf("Specialist") }
+    var newInstruction by remember { mutableStateOf("") }
+    var newCapabilities by remember { mutableStateOf("reasoning,coding,search") }
+
+    if (showAddAgentDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddAgentDialog = false },
+            title = { Text("Add Custom Autonomous Agent", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newAgentName,
+                        onValueChange = { newAgentName = it },
+                        label = { Text("Agent Name") },
+                        placeholder = { Text("e.g. Security Specialist") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newRoleTitle,
+                        onValueChange = { newRoleTitle = it },
+                        label = { Text("Role Title") },
+                        placeholder = { Text("e.g. Zero-Trust Security Auditor") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newAgentType,
+                        onValueChange = { newAgentType = it },
+                        label = { Text("Agent Type") },
+                        placeholder = { Text("e.g. Specialist / Executive / Analyst") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newInstruction,
+                        onValueChange = { newInstruction = it },
+                        label = { Text("System Instruction") },
+                        placeholder = { Text("e.g. Audit code boundaries and enforce fail-closed security.") },
+                        modifier = Modifier.fillMaxWidth().height(90.dp)
+                    )
+                    OutlinedTextField(
+                        value = newCapabilities,
+                        onValueChange = { newCapabilities = it },
+                        label = { Text("Capabilities (comma separated)") },
+                        placeholder = { Text("security_audit,keystore,zero_trust") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newAgentName.isNotBlank()) {
+                            onAddAgent(newAgentName.trim(), newRoleTitle.trim(), newAgentType.trim(), newInstruction.trim(), newCapabilities.trim())
+                            newAgentName = ""
+                            newRoleTitle = ""
+                            newInstruction = ""
+                            showAddAgentDialog = false
+                        }
+                    }
+                ) {
+                    Text("Register Agent")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddAgentDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -237,6 +310,124 @@ fun AgentManagerScreen(
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
                         )
+                    }
+                }
+            }
+        }
+
+        // Agent Directory Header & Add Button
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Configured Agents Directory (${agents.size})",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                Button(
+                    onClick = { showAddAgentDialog = true },
+                    modifier = Modifier.testTag("add_custom_agent_button"),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Agent", modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Agent", fontSize = 12.sp)
+                }
+            }
+        }
+
+        // List of all agents
+        items(agents, key = { it.id }) { agent ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("agent_card_${agent.id}"),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(14.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = when (agent.agentType.uppercase()) {
+                                        "CEO" -> Icons.Default.Work
+                                        "DEVELOPER" -> Icons.Default.Terminal
+                                        "RESEARCH" -> Icons.Default.Search
+                                        else -> Icons.Default.SmartToy
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(agent.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(agent.roleTitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer
+                        ) {
+                            Text(
+                                text = agent.status.uppercase(),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+
+                    if (agent.systemInstruction.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = agent.systemInstruction,
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Caps: ${agent.capabilitiesCsv.ifBlank { "universal" }}",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        OutlinedButton(
+                            onClick = { onSelectAgentForChat(agent.id) },
+                            modifier = Modifier.testTag("chat_with_agent_${agent.id}"),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Chat with Agent", fontSize = 11.sp)
+                        }
                     }
                 }
             }

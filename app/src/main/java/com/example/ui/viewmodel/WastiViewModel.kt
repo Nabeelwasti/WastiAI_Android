@@ -524,6 +524,11 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
             repository.clearLogs()
         }
 
+    fun toggleIntegration(id: String, isConnected: Boolean) =
+        launchRepositoryAction("toggle integration status") {
+            repository.updateIntegrationStatus(id, isConnected)
+        }
+
     fun saveXaiApiKey(apiKey: String, modelName: String = "grok-2-latest") =
         launchRepositoryAction("save xAI settings") {
             repository.saveAppSetting("xai_api_key", apiKey.trim())

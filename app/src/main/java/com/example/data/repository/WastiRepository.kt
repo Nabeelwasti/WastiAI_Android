@@ -88,6 +88,10 @@ class WastiRepository(private val db: WastiDatabase) {
         db.terminalSessionDao().deleteHistoryForSession(sessionId)
     }
 
+    suspend fun updateIntegrationStatus(id: String, isConnected: Boolean) = withContext(Dispatchers.IO) {
+        db.integrationDao().updateIntegrationStatus(id, isConnected)
+    }
+
 
     companion object {
         private const val TAG = "WastiRepository"

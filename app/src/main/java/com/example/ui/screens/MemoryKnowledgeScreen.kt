@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.sp
 import com.example.data.db.ConversationEntity
 import com.example.data.db.KnowledgeEntity
 import com.example.data.db.MemoryEntity
+import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -46,6 +49,8 @@ fun MemoryKnowledgeScreen(
     onNavigateToChatWithPrompt: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isScanningWeb by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf("All") }
     var selectedSection by remember { mutableIntStateOf(0) } // 0 = Memory, 1 = Knowledge Base
     var searchQuery by remember { mutableStateOf("") }
@@ -116,25 +121,52 @@ fun MemoryKnowledgeScreen(
                     onClick = {
                         if (targetWebsiteUrl.isNotBlank()) {
                             val url = targetWebsiteUrl.trim()
-                            onAddKnowledge(
-                                "Scanned Website: $url",
-                                "Web Training",
-                                "Website $url was opened, parsed, and indexed by Wasti AI. Domain rules, content structure, and key facts have been extracted into active memory.",
-                                "website,scanned,url_training"
-                            )
-                            onAddMemory(
-                                "Learned Website: $url",
-                                "Web Training",
-                                "Website $url trained into Wasti AI Memory Vector."
-                            )
-                            targetWebsiteUrl = ""
-                            showWebScanDialog = false
+                            coroutineScope.launch {
+                                isScanningWeb = true
+                                try {
+                                    val req = UnifiedExecutionRequest(
+                                        capabilityId = "WEB_SEARCH",
+                                        parameters = mapOf("query" to url, "url" to url)
+                                    )
+                                    val result = UnifiedExecutionFabric.instance.execute(req, context)
+                                    val extractedContent = if (result.output.isNotBlank()) {
+                                        result.output.take(1500)
+                                    } else {
+                                        "URL: $url indexed with status ${result.status.name}. Execution took ${(result.completedAt - result.startedAt).coerceAtLeast(0)}ms via ${result.executor}."
+                                    }
+                                    onAddKnowledge(
+                                        "Scanned Web: ${url.take(50)}",
+                                        "Web Training",
+                                        extractedContent,
+                                        "website,scanned,url_training,evidence_${result.verificationEvidence ?: "web"}"
+                                    )
+                                    onAddMemory(
+                                        "Learned Web: ${url.take(50)}",
+                                        "Web Training",
+                                        "Web resource verified via ${result.executor}. Evidence: ${result.verificationEvidence ?: "UnifiedFabric OK"}"
+                                    )
+                                    Toast.makeText(context, "Web resource scanned and indexed!", Toast.LENGTH_SHORT).show()
+                                    targetWebsiteUrl = ""
+                                    showWebScanDialog = false
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Web scan error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    isScanningWeb = false
+                                }
+                            }
                         }
-                    }
+                    },
+                    enabled = !isScanningWeb
                 ) {
-                    Icon(Icons.Default.TravelExplore, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Scan & Train AI")
+                    if (isScanningWeb) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Scanning & Indexing...")
+                    } else {
+                        Icon(Icons.Default.TravelExplore, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Scan & Train AI")
+                    }
                 }
             },
             dismissButton = {

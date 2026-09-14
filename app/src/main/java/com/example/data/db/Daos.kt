@@ -166,6 +166,9 @@ interface IntegrationDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertIntegration(integration: IntegrationEntity)
+
+    @Query("UPDATE integrations SET isConnected = :isConnected WHERE id = :id")
+    suspend fun updateIntegrationStatus(id: String, isConnected: Boolean)
 }
 
 @Dao

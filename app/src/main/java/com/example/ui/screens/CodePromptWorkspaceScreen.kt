@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,11 +13,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.core.WastiCore
+import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.ui.components.CodeBlockView
+import kotlinx.coroutines.launch
 
 data class PromptTemplate(
     val title: String,
@@ -28,12 +35,17 @@ data class PromptTemplate(
 @Composable
 fun CodePromptWorkspaceScreen(
     activeCodeContext: String = "fun main() {\n    println(\"Wasti OS Code Engine\")\n}",
-    onCodeContextChange: (String) -> Unit = {},
+    onCodeContextChange: (String) -> Unit,
     onSendMessageToChat: (prompt: String, codeContext: String) -> Unit
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Code Playground, 1 = Prompt Library
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Code Playground, 1 = Dev Assistant, 2 = Prompt Library
     var codeInput by remember(activeCodeContext) { mutableStateOf(activeCodeContext) }
     var codeOutput by remember { mutableStateOf("") }
+    var isSynthesizing by remember { mutableStateOf(false) }
+    var isRunningCode by remember { mutableStateOf(false) }
+    var executionOutput by remember { mutableStateOf("") }
     var selectedLanguage by remember { mutableStateOf("kotlin") }
 
     val promptTemplates = listOf(
@@ -112,26 +124,80 @@ fun CodePromptWorkspaceScreen(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
                             onClick = {
-                                onSendMessageToChat("Refactor and optimize the current workspace file.", codeInput)
+                                coroutineScope.launch {
+                                    isSynthesizing = true
+                                    try {
+                                        val (resCode, _) = WastiCore.executeOrchestratedRequest(
+                                            userPrompt = "Code Context:\n$codeInput\n\nTask: Refactor, complete, and optimize this code.",
+                                            systemInstruction = "You are Wasti AI Code Synthesis Engine. Output clean, compilable, idiomatic code without unnecessary markdown fluff.",
+                                            activeAgentId = "coding_agent",
+                                            fileContext = codeInput
+                                        )
+                                        codeOutput = resCode.trim()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Synthesis error: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isSynthesizing = false
+                                    }
+                                }
                             },
+                            enabled = !isSynthesizing,
                             modifier = Modifier.testTag("generate_code_button")
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Generate Code")
+                            if (isSynthesizing) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Synthesizing...")
+                            } else {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Generate Code")
+                            }
                         }
 
                         OutlinedButton(
                             onClick = {
-                                selectedTab = 1
+                                coroutineScope.launch {
+                                    isRunningCode = true
+                                    executionOutput = ""
+                                    try {
+                                        val req = UnifiedExecutionRequest(
+                                            capabilityId = "TERMINAL",
+                                            parameters = mapOf("command" to "echo '${codeInput.replace("'", "'\\''")}'")
+                                        )
+                                        val res = UnifiedExecutionFabric.instance.execute(req, context)
+                                        executionOutput = res.output
+                                    } catch (e: Exception) {
+                                        executionOutput = "Execution error: ${e.message}"
+                                    } finally {
+                                        isRunningCode = false
+                                    }
+                                }
+                            },
+                            enabled = !isRunningCode,
+                            modifier = Modifier.testTag("run_code_wre_button")
+                        ) {
+                            if (isRunningCode) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Running...")
+                            } else {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Run")
                             }
+                        }
+
+                        OutlinedButton(
+                            onClick = { selectedTab = 1 }
                         ) {
                             Icon(Icons.Default.Terminal, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text("Dev Assistant")
                         }
                     }
@@ -139,9 +205,46 @@ fun CodePromptWorkspaceScreen(
 
                 if (codeOutput.isNotBlank()) {
                     item {
-                        Text(text = "Output Preview", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Output Preview", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Button(
+                                onClick = {
+                                    codeInput = codeOutput
+                                    onCodeContextChange(codeOutput)
+                                    Toast.makeText(context, "Applied to workspace code!", Toast.LENGTH_SHORT).show()
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Apply to Workspace", fontSize = 11.sp)
+                            }
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
                         CodeBlockView(code = codeOutput, language = selectedLanguage)
+                    }
+                }
+
+                if (executionOutput.isNotBlank()) {
+                    item {
+                        Text(text = "Execution Console Output", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = executionOutput,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -197,12 +300,28 @@ fun CodePromptWorkspaceScreen(
                             Spacer(modifier = Modifier.height(10.dp))
                             CodeBlockView(code = tmpl.sampleCode, language = "kotlin")
 
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Button(
-                                onClick = { onSendMessageToChat(tmpl.promptText, codeInput) },
-                                modifier = Modifier.align(Alignment.End)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Use Prompt in Chat", fontSize = 12.sp)
+                                OutlinedButton(
+                                    onClick = {
+                                        val stripped = tmpl.sampleCode.removePrefix("```sh\n").removePrefix("```kotlin\n").removePrefix("```json\n").removeSuffix("\n```")
+                                        codeInput = stripped
+                                        onCodeContextChange(stripped)
+                                        selectedTab = 0
+                                    },
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    Text("Open in Editor", fontSize = 12.sp)
+                                }
+
+                                Button(
+                                    onClick = { onSendMessageToChat(tmpl.promptText, codeInput) }
+                                ) {
+                                    Text("Use Prompt in Chat", fontSize = 12.sp)
+                                }
                             }
                         }
                     }

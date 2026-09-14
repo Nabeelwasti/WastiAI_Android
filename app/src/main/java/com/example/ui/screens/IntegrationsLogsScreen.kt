@@ -38,7 +38,8 @@ import kotlinx.coroutines.launch
 fun IntegrationsLogsScreen(
     integrations: List<IntegrationEntity>,
     logs: List<SystemLogEntity>,
-    onClearLogs: () -> Unit
+    onClearLogs: () -> Unit,
+    onToggleIntegration: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -268,7 +269,7 @@ fun IntegrationsLogsScreen(
 
                             Switch(
                                 checked = item.isConnected,
-                                onCheckedChange = { },
+                                onCheckedChange = { isChecked -> onToggleIntegration(item.id, isChecked) },
                                 modifier = Modifier.testTag("integration_switch_${item.id}")
                             )
                         }

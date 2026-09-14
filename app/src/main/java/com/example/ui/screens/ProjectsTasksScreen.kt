@@ -32,6 +32,7 @@ fun ProjectsTasksScreen(
     onAddTask: (String, String, String, String, String) -> Unit,
     onToggleTaskStatus: (String, Boolean) -> Unit,
     onExecuteTaskWithConsensus: (String, String, String) -> Unit = { _, _, _ -> },
+    onExecuteProjectWithConsensus: (String, String, String) -> Unit = { _, _, _ -> },
     isUnifiedBrainEnabled: Boolean = true,
     onToggleUnifiedBrain: (Boolean) -> Unit = {}
 ) {
@@ -293,6 +294,28 @@ fun ProjectsTasksScreen(
                         fontSize = 13.sp,
                         color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = { onExecuteProjectWithConsensus(proj.id, proj.name, proj.description) },
+                            modifier = Modifier.testTag("execute_project_button_${proj.id}"),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Psychology,
+                                contentDescription = "Execute Project Plan",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Execute Project with Unified Brain", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
                 }
             }
         }
