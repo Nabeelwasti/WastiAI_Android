@@ -74,7 +74,8 @@ class LeadSyncWorker(
             ClientInvoiceManager.initDatabase(context)
 
             // 2. Poll Upwork / Freelance custom RSS feeds or target queries
-            val lastQuery = LeadRadarRepository.lastSearchQuery.value.ifBlank { "Video Editing & Graphic Design" }
+            val defaultService = com.example.data.core.BusinessProfileManager.getActiveProfile(context).services.firstOrNull() ?: "Creative & Technical Solutions"
+            val lastQuery = LeadRadarRepository.lastSearchQuery.value.ifBlank { defaultService }
             val evaluatedLeads = LeadRadarRepository.scanAndEvaluateLeads(context, lastQuery)
             Log.d(TAG, "Background scan completed. Processed ${evaluatedLeads.size} leads.")
 

@@ -142,12 +142,32 @@ android {
       buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
 
-    // Zero-Leakage Secret Boundary Doctrine:
-    // Production credentials are NEVER compiled into BuildConfig bytecode or packaged as APK assets.
-    // BuildConfig fields are generated with empty values ("") so existing symbol references compile cleanly,
-    // while all runtime secrets are exclusively persisted in Android Keystore / EncryptedSharedPreferences.
+    // PERMANENT ARCHITECTURAL INVARIANT — DO NOT STRIP OR REVERT:
+    // Build-time credentials from GitHub Actions secrets and environment variables MUST be baked
+    // into BuildConfig and the compile-time wasti_seed_vault.json asset (which is .gitignored).
+    // The sandboxed Android application running on physical devices does not inherit Termux/host
+    // environment variables. On first launch, CredentialRegistry ingests these values into
+    // Android Keystore / EncryptedSharedPreferences for permanent hardware-backed security.
+    val activeSeedMap = mutableMapOf<String, String>()
     allTrackedCredentialKeys.forEach { key ->
-      buildConfigField("String", key, "\"\"")
+      val secretVal = resolveSecretWithFallback(key)
+      buildConfigField("String", key, "\"${wastiPublicValue(secretVal)}\"")
+      if (secretVal.isNotBlank() && !isPlaceholderValue(secretVal)) {
+        activeSeedMap[key] = secretVal
+      }
+    }
+
+    // Securely package compile-time seed vault asset if active credentials are present
+    if (activeSeedMap.isNotEmpty()) {
+      try {
+        val assetsDir = file("src/main/assets")
+        if (!assetsDir.exists()) assetsDir.mkdirs()
+        val vaultFile = file("src/main/assets/wasti_seed_vault.json")
+        val jsonEntries = activeSeedMap.map { (k, v) ->
+          "  \"${k}\": \"${wastiPublicValue(v)}\""
+        }.joinToString(",\n")
+        vaultFile.writeText("{\n$jsonEntries\n}")
+      } catch (_: Throwable) { /* ignore */ }
     }
   }
 

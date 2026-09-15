@@ -707,11 +707,36 @@ object CredentialRegistry {
                     return prefVal
                 }
             }
+            // 2.5. Compile-Time Seed Vault Asset fallback (wasti_seed_vault.json)
+            try {
+                val assetManager = targetCtx.assets
+                val assetsList = assetManager.list("") ?: emptyArray()
+                if ("wasti_seed_vault.json" in assetsList) {
+                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(jsonStr)
+                    for (ck in candidateKeys) {
+                        val v = json.optString(ck, "")
+                        if (v.isNotBlank() && !isPlaceholder(v)) {
+                            // Automatically persist to securePrefs so future lookups hit hardware vault
+                            securePrefs.edit().putString(lowerKey, v).putString(keyName, v).apply()
+                            return v
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // Ignore if asset is missing
+            }
         }
 
         // 3. Dynamic Safe BuildConfig property resolution
         val directBuildConfig = getBuildConfigString(keyName)
         if (!directBuildConfig.isNullOrBlank() && !isPlaceholder(directBuildConfig)) {
+            if (targetCtx != null) {
+                try {
+                    val securePrefs = getSecureSharedPreferences(targetCtx)
+                    securePrefs.edit().putString(keyName.lowercase(), directBuildConfig).putString(keyName, directBuildConfig).apply()
+                } catch (_: Throwable) {}
+            }
             return directBuildConfig
         }
 
@@ -809,8 +834,30 @@ object CredentialRegistry {
                 // Ignore if reflection is restricted
             }
 
-            // 3. Compile-time asset vaults are strictly eliminated to enforce zero-leakage security.
-            // All runtime credentials are exclusively stored in hardware-backed EncryptedSharedPreferences.
+            // 3. Inspect packaged compile-time seed asset (wasti_seed_vault.json) if present
+            try {
+                val assetManager = context.assets
+                val assetsList = assetManager.list("") ?: emptyArray()
+                if ("wasti_seed_vault.json" in assetsList) {
+                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
+                    val json = org.json.JSONObject(jsonStr)
+                    val keys = json.keys()
+                    while (keys.hasNext()) {
+                        val k = keys.next()
+                        val v = json.optString(k, "")
+                        val existingLower = securePrefs.getString(k.lowercase(), null)
+                        val existingUpper = securePrefs.getString(k, null)
+                        val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
+                                            (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
+                        if (!hasVaultValue && v.isNotBlank() && !isPlaceholder(v)) {
+                            android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving seed asset secret [$k] into Vault")
+                            saveCredential(k, v, context)
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // Ignore if asset is not packaged
+            }
         }
     }
 

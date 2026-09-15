@@ -170,12 +170,15 @@ object LeadRadarRepository {
 
         // Step 1: Gemini Intelligence Analysis
         try {
+            val profile = BusinessProfileManager.getActiveProfile(context)
+            val servicesStr = profile.services.joinToString(", ")
             val geminiPrompt = """
                 Analyze this lead/prospect information and extract detailed CRM fields in raw JSON format.
-                Agency: ThriveBridge Growth Solutions
-                Owner: Syed Nabeel Wasti (Creative, Digital & Technical Solutions Specialist)
-                Direct Contact: WhatsApp/Call +923067370864 (03067370864), Email wastinabeel99@gmail.com
-                Key Offer: Free consultation & scoping. Serving global (USA, UAE, International) and domestic Pakistan markets.
+                Business: ${profile.businessName}
+                Owner: ${profile.ownerName} (${profile.ownerTitle})
+                Direct Contact: WhatsApp/Call ${profile.ownerPhoneInternational} (${profile.ownerPhone}), Email ${profile.ownerEmail}
+                Key Offer: ${profile.tagline}. Serving global and regional client markets.
+                Services: $servicesStr
                 Lead Title: "${lead.title}"
                 Lead Description: "${lead.description}"
                 Link: "${lead.link}"
@@ -188,13 +191,13 @@ object LeadRadarRepository {
                 - email (String, valid email address or "Pending Discovery")
                 - phone (String, valid phone number or "Pending Discovery")
                 - websiteUrl (String, website URL or "Pending Discovery")
-                - opportunityNature (String, e.g. "Graphic Design & Branding", "Web & App Solutions", "AI Integration & Automation", "Advanced Visuals", "DMCA Protection")
-                - aiDraftedMessage (String, a high-converting personalized outreach proposal pitch highlighting solutions, free consultation, and signed off with Syed Nabeel Wasti | ThriveBridge Growth Solutions | 03067370864 | wastinabeel99@gmail.com. If the job lead is in Urdu, write the pitch in Urdu; otherwise write in English)
+                - opportunityNature (String, specific service or project match from: $servicesStr)
+                - aiDraftedMessage (String, a high-converting personalized outreach proposal pitch highlighting solutions, consultation, and signed off with ${profile.ownerName} | ${profile.businessName} | ${profile.ownerPhone} | ${profile.ownerEmail}. If the job lead is in Urdu, write the pitch in Urdu; otherwise write in English)
             """.trimIndent()
 
             val aiResp = com.example.data.ai.AIManager.execute(
                 prompt = geminiPrompt,
-                systemInstruction = "You are a Senior Client Engagement & CRM Agent for ThriveBridge Growth Solutions (Syed Nabeel Wasti). Return ONLY valid JSON."
+                systemInstruction = "You are a Senior Client Engagement & CRM Agent for ${profile.businessName} (${profile.ownerName}). Return ONLY valid JSON."
             )
 
             if (!aiResp.isError && aiResp.content.isNotBlank()) {

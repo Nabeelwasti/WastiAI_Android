@@ -237,17 +237,29 @@ object ClientInvoiceManager {
         return "$symbol $formattedNumber"
     }
 
-    fun generateInvoiceText(invoice: ClientInvoiceItem): String {
+    fun generateInvoiceText(invoice: ClientInvoiceItem, profile: BusinessProfile? = null): String {
+        val biz = profile ?: BusinessProfileManager.getActiveProfile()
+        val bizHeader = biz.businessName.uppercase()
+        val paymentLines = if (biz.paymentMethods.isNotEmpty()) {
+            biz.paymentMethods.joinToString("\n") { "• $it" }
+        } else {
+            "• Bank Transfer / ACH / Wire\n• Credit Card / Stripe\n• Online Payment Portal"
+        }
+        val taxLine = if (biz.taxId.isNotBlank()) "\nTax / Registration ID: ${biz.taxId}" else ""
+        val contactLine = if (biz.ownerEmail.isNotBlank()) "\nContact: ${biz.ownerEmail} | ${biz.ownerPhone}" else ""
+
         return """
             =========================================
-            WASTI AI CLIENT INVOICE & PAYMENT LEDGER
+            $bizHeader — OFFICIAL INVOICE
             Invoice ID: ${invoice.id.take(8).uppercase()}
             Date: ${invoice.issueDate}
-            Payment Due Date: ${invoice.dueDate}
+            Payment Due Date: ${invoice.dueDate}$taxLine
             =========================================
 
-            CLIENT: ${invoice.clientName}
-            PROJECT MILESTONE:
+            BILL TO (CLIENT):
+            ${invoice.clientName}
+
+            PROJECT MILESTONE & SCOPE:
             ${invoice.projectMilestone}
 
             -----------------------------------------
@@ -256,23 +268,27 @@ object ClientInvoiceManager {
             -----------------------------------------
 
             PAYMENT METHODS ACCEPTED:
-            • Bank Transfer / IBAN / ACH
-            • PayPal / Payoneer / Stripe Direct
-            • Crypto (USDT / USDC)
+            $paymentLines
+
+            TERMS & CONDITIONS:
+            ${biz.paymentTerms}
 
             Thank you for your business!
-            Wasti AI Autonomous Operating Systems
+            ${biz.businessName} (${biz.ownerName})$contactLine
+            ${biz.website}
         """.trimIndent()
     }
 
     fun copyInvoiceToClipboard(context: Context, invoice: ClientInvoiceItem) {
-        val text = generateInvoiceText(invoice)
+        val profile = BusinessProfileManager.getActiveProfile(context)
+        val text = generateInvoiceText(invoice, profile)
         LeadRadarRepository.copyToClipboard(context, "Invoice ${invoice.id.take(8)}", text)
     }
 
     fun shareInvoiceViaEmail(context: Context, invoice: ClientInvoiceItem) {
-        val subject = "Invoice ${invoice.id.take(8)} — ${invoice.projectMilestone}"
-        val body = generateInvoiceText(invoice)
+        val profile = BusinessProfileManager.getActiveProfile(context)
+        val subject = "Invoice ${invoice.id.take(8)} — ${invoice.projectMilestone} [${profile.businessName}]"
+        val body = generateInvoiceText(invoice, profile)
         LeadRadarRepository.dispatchViaEmail(context, subject, body)
     }
 

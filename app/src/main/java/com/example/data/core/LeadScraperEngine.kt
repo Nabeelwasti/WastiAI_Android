@@ -64,50 +64,68 @@ object LeadScraperEngine {
         Log.i(TAG, "Starting comprehensive lead discovery & deep scraping for query: $cleanQuery")
 
         val discoveredLeads = mutableListOf<LeadItem>()
+        val activeProfile = BusinessProfileManager.getActiveProfile(context)
+        val skillMatrix = activeProfile.toSkillMatrix()
 
-        // Lane 1: Custom/Upwork RSS Feed (if applicable)
-        if (cleanQuery.contains("freelance", ignoreCase = true) || cleanQuery.contains("job", ignoreCase = true) || cleanQuery.contains("upwork", ignoreCase = true)) {
+        // Lane 1: Live, Verified Remotive Remote Jobs Feed (Authentic Public API)
+        val remotiveJobs = fetchRemotiveJobs(cleanQuery)
+        discoveredLeads.addAll(remotiveJobs)
+
+        // Lane 2: RemoteOK Public RSS Feed (Real Remote Jobs)
+        if (discoveredLeads.size < 6) {
             try {
-                val customRssUrl = com.example.data.credential.CredentialRegistry.getRawValue("UPWORK_RSS_CUSTOM_URL", context)
+                val remoteOkLeads = fetchRssFeed("https://remoteok.com/remote-jobs.rss")
+                val queryLower = cleanQuery.lowercase()
+                val matchedRemoteOk = remoteOkLeads.filter {
+                    it.title.lowercase().contains(queryLower) ||
+                    it.description.lowercase().contains(queryLower) ||
+                    queryLower.split(" ").any { w -> w.length > 3 && (it.title.lowercase().contains(w) || it.description.lowercase().contains(w)) }
+                }
+                discoveredLeads.addAll(matchedRemoteOk)
+            } catch (e: Exception) {
+                Log.w(TAG, "RemoteOK RSS notice: ${e.message}")
+            }
+        }
+
+        // Lane 3: Custom User-Configured RSS Feed (e.g. Upwork authenticated RSS bridge)
+        val customRssUrl = com.example.data.credential.CredentialRegistry.getRawValue("UPWORK_RSS_CUSTOM_URL", context)
+        if (!customRssUrl.isNullOrBlank() && customRssUrl.startsWith("http")) {
+            try {
                 val encodedQuery = URLEncoder.encode(cleanQuery, "UTF-8")
-                val rssUrl = if (!customRssUrl.isNullOrBlank() && customRssUrl.startsWith("http")) {
-                    if (customRssUrl.contains("?")) "$customRssUrl&q=$encodedQuery" else "$customRssUrl?q=$encodedQuery"
-                } else {
-                    "https://www.upwork.com/ab/feed/jobs/rss?q=$encodedQuery"
-                }
-                val rssLeads = fetchRssFeed(rssUrl)
-                discoveredLeads.addAll(rssLeads)
+                val rssUrl = if (customRssUrl.contains("?")) "$customRssUrl&q=$encodedQuery" else "$customRssUrl?q=$encodedQuery"
+                val customLeads = fetchRssFeed(rssUrl)
+                discoveredLeads.addAll(customLeads)
             } catch (e: Exception) {
-                Log.w(TAG, "RSS fetch completed with notice: ${e.message}")
+                Log.w(TAG, "Custom RSS fetch notice: ${e.message}")
             }
         }
 
-        // Lane 2: Live Multi-Search Engine Queries (Targeted Business, Hiring, Contact & Social)
-        val searchQueries = listOf(
-            "$cleanQuery hiring contact email phone",
-            "$cleanQuery official website services contact us",
-            "site:linkedin.com/company/ $cleanQuery",
-            "$cleanQuery business directory phone email website"
-        )
+        // Lane 4: Live Multi-Search Engine Queries with Strict Lead Gate
+        if (discoveredLeads.size < 8) {
+            val searchQueries = listOf(
+                "$cleanQuery hiring apply contact email",
+                "$cleanQuery freelance contract rfp job",
+                "$cleanQuery business services contact us"
+            )
 
-        for (searchQ in searchQueries) {
-            if (discoveredLeads.size >= 8) break
-            try {
-                val searchResultJson = com.example.data.ops.WebSearchEngine.search(searchQ, context)
-                val items = parseSearchResultsToLeadItems(searchResultJson, cleanQuery)
-                for (item in items) {
-                    if (discoveredLeads.none { it.link.equals(item.link, ignoreCase = true) || it.title.equals(item.title, ignoreCase = true) }) {
-                        discoveredLeads.add(item)
+            for (searchQ in searchQueries) {
+                if (discoveredLeads.size >= 10) break
+                try {
+                    val searchResultJson = com.example.data.ops.WebSearchEngine.search(searchQ, context)
+                    val items = parseSearchResultsToLeadItems(searchResultJson, cleanQuery)
+                    for (item in items) {
+                        if (discoveredLeads.none { it.link.equals(item.link, ignoreCase = true) || it.title.equals(item.title, ignoreCase = true) }) {
+                            discoveredLeads.add(item)
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Search query '$searchQ' execution: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Search query '$searchQ' execution: ${e.message}")
             }
         }
 
-        // Lane 3: Deep Page Scraping & Real Contact Intelligence Extraction for discovered targets
+        // Lane 5: Deep Page Scraping & Real Contact Intelligence Extraction for discovered targets
         val enrichedLeadEntities = mutableListOf<LeadItemEntity>()
-        val skillMatrix = SkillMatrix()
 
         for (lead in discoveredLeads.take(10)) {
             var extractedEmail = lead.email
@@ -210,29 +228,136 @@ object LeadScraperEngine {
                 extractedPhone = extractedPhone,
                 extractedCompany = extractedCompany,
                 extractedLinkedIn = extractedLinkedIn,
-                targetCategory = cleanQuery
+                targetCategory = cleanQuery,
+                businessProfile = activeProfile
             )
 
-            // Construct enriched LeadItemEntity
-            val entity = LeadItemEntity(
-                id = java.util.UUID.randomUUID().toString(),
-                title = lead.title,
-                link = lead.link,
-                description = pageSnippet,
-                pubDate = lead.pubDate.ifBlank { "Live Web" },
-                category = lead.category.ifBlank { cleanQuery },
-                matchScore = eval.matchScore,
-                matchedSkills = eval.matchedSkills,
-                draftedPitch = eval.draftedPitch,
-                status = LeadStatus.DISCOVERED,
-                clientEmail = eval.clientEmail.ifBlank { extractedEmail },
-                timestamp = System.currentTimeMillis()
-            )
-
-            enrichedLeadEntities.add(entity)
+            // Strictly gate on positive genuine match: reject irrelevant or non-hiring entries
+            if (eval.matchScore >= 70) {
+                val entity = LeadItemEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    title = lead.title,
+                    link = lead.link,
+                    description = pageSnippet,
+                    pubDate = lead.pubDate.ifBlank { "Live Web" },
+                    category = lead.category.ifBlank { cleanQuery },
+                    matchScore = eval.matchScore,
+                    matchedSkills = eval.matchedSkills,
+                    draftedPitch = eval.draftedPitch,
+                    status = LeadStatus.DISCOVERED,
+                    clientEmail = eval.clientEmail.ifBlank { extractedEmail },
+                    timestamp = System.currentTimeMillis()
+                )
+                enrichedLeadEntities.add(entity)
+            }
         }
 
         return@withContext enrichedLeadEntities
+    }
+
+    /**
+     * Fetches verified, live remote jobs from the public Remotive API without requiring API keys.
+     */
+    suspend fun fetchRemotiveJobs(query: String): List<LeadItem> = withContext(Dispatchers.IO) {
+        val jobs = mutableListOf<LeadItem>()
+        var connection: HttpURLConnection? = null
+        try {
+            val cleanQ = query.trim()
+            val encodedQuery = URLEncoder.encode(cleanQ, "UTF-8")
+            val urlString = if (cleanQ.isNotBlank()) {
+                "https://remotive.com/api/remote-jobs?search=$encodedQuery&limit=12"
+            } else {
+                "https://remotive.com/api/remote-jobs?limit=12"
+            }
+            val url = URL(urlString)
+            connection = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 8000
+                readTimeout = 8000
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
+                val json = JSONObject(jsonStr)
+                val jobsArray = json.optJSONArray("jobs") ?: JSONArray()
+                for (i in 0 until jobsArray.length()) {
+                    val jobObj = jobsArray.getJSONObject(i)
+                    val title = jobObj.optString("title", "")
+                    val company = jobObj.optString("company_name", "")
+                    val jobUrl = jobObj.optString("url", "")
+                    val rawDesc = jobObj.optString("description", "")
+                    val cleanDesc = cleanHtml(rawDesc).take(800)
+                    val pubDate = jobObj.optString("publication_date", "")
+                    val category = jobObj.optString("category", cleanQ)
+                    val location = jobObj.optString("candidate_required_location", "Worldwide")
+
+                    if (title.isNotBlank() && jobUrl.isNotBlank()) {
+                        val fullSnippet = "$cleanDesc\nLocation: $location\nCompany: $company"
+                        jobs.add(
+                            LeadItem(
+                                title = "$title at $company",
+                                link = jobUrl,
+                                description = fullSnippet,
+                                pubDate = pubDate.ifBlank { "Live Job Feed" },
+                                category = category,
+                                companyName = company
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Remotive live jobs fetch notice: ${e.message}")
+        } finally {
+            connection?.disconnect()
+        }
+        jobs
+    }
+
+    /**
+     * Strict validation filter to eliminate fake leads, informational articles,
+     * encyclopedia pages, and search engine results.
+     */
+    fun isGenuineJobOrBusinessOpportunity(title: String, snippet: String, link: String): Boolean {
+        val lowerLink = link.lowercase()
+        val lowerTitle = title.lowercase()
+        val lowerSnippet = snippet.lowercase()
+        val combined = "$lowerTitle $lowerSnippet"
+
+        // 1. Blacklist invalid / informational / search engine domains
+        val bannedDomains = listOf(
+            "wikipedia.org", "wikimedia.org", "wiktionary.org",
+            "google.com/search", "duckduckgo.com", "bing.com", "search.yahoo.com",
+            "dictionary.com", "merriam-webster.com", "britannica.com",
+            "thefreedictionary.com", "cambridge.org", "schema.org", "w3.org",
+            "youtube.com/watch", "tiktok.com", "pinterest.com", "example.com"
+        )
+        if (bannedDomains.any { lowerLink.contains(it) }) {
+            return false
+        }
+
+        // 2. Reject pure informational or encyclopedia definition patterns
+        val informationalPatterns = listOf(
+            "refers to", "may refer to", "is defined as", "definition of",
+            "wikipedia article", "free encyclopedia", "overview of the history",
+            "meaning in english", "synonyms and antonyms"
+        )
+        if (informationalPatterns.any { combined.contains(it) }) {
+            return false
+        }
+
+        // 3. Affirmative hiring / client / project solicitation signals
+        val hiringKeywords = listOf(
+            "hiring", "job", "career", "looking for", "seeking", "needed", "wanted",
+            "freelance", "contract", "remote", "developer", "designer", "engineer",
+            "writer", "consultant", "specialist", "agency", "quote", "rfp", "project",
+            "budget", "rates", "apply", "contact us", "get in touch", "client",
+            "opportunity", "vacancy", "internship", "employment", "recruiting",
+            "position", "team", "services", "solutions", "property", "listing", "sales"
+        )
+        return hiringKeywords.any { combined.contains(it) }
     }
 
     /**
@@ -247,7 +372,7 @@ object LeadScraperEngine {
                 connectTimeout = 10000
                 readTimeout = 10000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/1.0")
+                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0")
                 instanceFollowRedirects = true
             }
 
@@ -327,6 +452,12 @@ object LeadScraperEngine {
                 val title = itemObj.optString("title", "Business Opportunity")
                 val snippet = itemObj.optString("snippet", "")
                 val link = itemObj.optString("link", "")
+
+                // Strict validation gate: discard encyclopedia, search links, and non-hiring pages
+                if (!isGenuineJobOrBusinessOpportunity(title, snippet, link)) {
+                    continue
+                }
+
                 if (title.isNotBlank() || snippet.isNotBlank()) {
                     val extractedEmail = LeadRadarRepository.extractEmail("$title $snippet")
                     val extractedPhone = LeadRadarRepository.extractPhone("$title $snippet")
@@ -355,7 +486,7 @@ object LeadScraperEngine {
     }
 
     /**
-     * Evaluates a job post or business profile against the agency's SkillMatrix services,
+     * Evaluates a job post or business inquiry against the configured BusinessProfile,
      * returning MatchScore, deeply tailored Pitch, and extracted contact fields.
      */
     fun evaluateLeadMatch(
@@ -365,46 +496,40 @@ object LeadScraperEngine {
         extractedPhone: String = "",
         extractedCompany: String = "",
         extractedLinkedIn: String = "",
-        targetCategory: String = ""
+        targetCategory: String = "",
+        businessProfile: BusinessProfile? = null
     ): LeadEvaluationResult {
+        val activeProfile = businessProfile ?: BusinessProfileManager.getActiveProfile()
+        val matrix = activeProfile.toSkillMatrix()
         val textLower = jobPostText.lowercase()
 
-        val matchedSkills = skillMatrix.services.filter { skill ->
-            val keywords = when {
-                skill.contains("Graphic", ignoreCase = true) || skill.contains("Branding", ignoreCase = true) || skill.contains("Canva", ignoreCase = true) || skill.contains("Corel", ignoreCase = true) ->
-                    listOf("graphic", "design", "logo", "brand", "visual", "photoshop", "illustrator", "banner", "poster", "signboard", "menu", "stationery", "canva", "coreldraw", "vector", "flyer", "packaging")
-                skill.contains("Advanced Visuals", ignoreCase = true) || skill.contains("Motion", ignoreCase = true) || skill.contains("Video", ignoreCase = true) || skill.contains("AutoCAD", ignoreCase = true) || skill.contains("CAD", ignoreCase = true) ->
-                    listOf("2d", "3d", "motion", "video", "photo", "edit", "editor", "portrait", "architectural", "rendering", "modeling", "reel", "after effects", "premiere", "blender", "clip", "montage", "autocad", "cad", "dwg", "animation", "vfx")
-                skill.contains("Screen Printing", ignoreCase = true) || skill.contains("Production", ignoreCase = true) || skill.contains("Print", ignoreCase = true) ->
-                    listOf("screen print", "printing", "production", "pre-press", "apparel", "merchandise", "artwork", "t-shirt", "color separation", "dtf", "sublimation")
-                skill.contains("Web", ignoreCase = true) || skill.contains("App", ignoreCase = true) || skill.contains("Software", ignoreCase = true) ->
-                    listOf("web", "website", "app", "portal", "attendance", "software", "development", "frontend", "backend", "react", "wordpress", "mobile", "full stack", "fullstack", "node", "android", "ios", "api", "saas")
-                skill.contains("AI", ignoreCase = true) || skill.contains("Automation", ignoreCase = true) ->
-                    listOf("ai", "automation", "assistant", "detection", "bot", "workflow", "gpt", "llm", "agent", "python", "zapier", "n8n", "machine learning", "computer vision", "crawler", "scraper")
-                skill.contains("Digital Presence", ignoreCase = true) || skill.contains("SEO", ignoreCase = true) || skill.contains("Marketing", ignoreCase = true) ->
-                    listOf("seo", "social media", "marketing", "consulting", "ranking", "traffic", "ads", "google ads", "meta", "facebook ads", "instagram ads", "growth")
-                skill.contains("Copywriting", ignoreCase = true) || skill.contains("Content", ignoreCase = true) || skill.contains("Writing", ignoreCase = true) || skill.contains("Lyrics", ignoreCase = true) ->
-                    listOf("copywriting", "content", "ebook", "e-book", "poetry", "lyrics", "writing", "article", "newsletter", "script", "blog", "technical writing")
-                skill.contains("Corporate Outreach", ignoreCase = true) || skill.contains("B2B", ignoreCase = true) ->
-                    listOf("outreach", "cold email", "b2b", "procurement", "campaign", "lead generation", "sales", "crm", "enterprise")
-                skill.contains("DMCA", ignoreCase = true) || skill.contains("Protection", ignoreCase = true) || skill.contains("Takedown", ignoreCase = true) ->
-                    listOf("dmca", "copyright", "takedown", "infringement", "stolen content", "protection", "removal", "piracy", "intellectual property")
-                skill.contains("Instructional", ignoreCase = true) || skill.contains("File", ignoreCase = true) || skill.contains("Academic", ignoreCase = true) ->
-                    listOf("instructional", "academic", "file management", "curriculum", "training", "course", "lms", "e-learning")
-                else -> listOf(skill.lowercase())
-            }
+        // Match against active business services
+        val matchedSkills = matrix.services.filter { service ->
+            val keywords = service.lowercase().split("&", ",", " ", "/", "-")
+                .map { it.trim() }
+                .filter { it.length >= 3 && it !in setOf("and", "the", "for", "with", "all") }
             keywords.any { textLower.contains(it) }
         }
 
+        val hasHiringIntent = listOf(
+            "hiring", "job", "career", "looking for", "seeking", "needed", "wanted",
+            "freelance", "contract", "apply", "position", "opportunity", "budget",
+            "rates", "rfp", "project", "quote", "developer", "designer", "consultant"
+        ).any { textLower.contains(it) }
+
+        // Truthful score calculation — NEVER fabricate high score for irrelevant text
         val baseScore = when {
-            matchedSkills.size >= 3 -> 98
-            matchedSkills.size == 2 -> 92
-            matchedSkills.size == 1 -> 85
-            textLower.contains("client") || textLower.contains("business") || textLower.contains("service") || textLower.contains("hire") -> 80
-            else -> 75
+            matchedSkills.size >= 3 && hasHiringIntent -> 98
+            matchedSkills.size == 2 && hasHiringIntent -> 92
+            matchedSkills.size == 1 && hasHiringIntent -> 88
+            matchedSkills.isNotEmpty() -> 80
+            hasHiringIntent -> 75
+            else -> 0 // Ineligible / zero match
         }
 
-        val primaryService = matchedSkills.firstOrNull() ?: targetCategory.ifBlank { skillMatrix.services.first() }
+        val primaryService = matchedSkills.firstOrNull() ?: targetCategory.ifBlank {
+            matrix.services.firstOrNull() ?: "Professional Services"
+        }
         val skillsStr = if (matchedSkills.isNotEmpty()) matchedSkills.joinToString(", ") else primaryService
 
         val clientDisplayName = if (extractedCompany.isNotBlank() && extractedCompany != "Pending Discovery") {
@@ -412,7 +537,7 @@ object LeadScraperEngine {
         } else if (extractedEmail.isNotBlank() && extractedEmail.contains("@")) {
             extractedEmail.substringBefore("@").replace(".", " ").capitalizeWords()
         } else {
-            "Leadership Team"
+            "Leadership & Hiring Team"
         }
 
         val isUrdu = jobPostText.any { it in '\u0600'..'\u06FF' }
@@ -422,39 +547,37 @@ object LeadScraperEngine {
 
                 ہم نے آپ کے بزنس / پروجیکٹ کی تفصیلات ("${jobPostText.take(100).replace("\n", " ")}...") کا بغور جائزہ لیا ہے۔
 
-                ہم ${skillMatrix.agencyName} کے پلیٹ فارم سے آپ کے بزنس کے لیے جدید اور اعلیٰ معیار کی خدمات فراہم کرنے کے لیے مکمل طور پر تیار ہیں:
+                ہم ${matrix.agencyName} کے پلیٹ فارم سے آپ کے لیے جدید اور اعلیٰ معیار کی خدمات فراہم کرنے کے لیے تیار ہیں:
 
-                ہماری اہم خدمات:
+                اہم خدمات:
                 • $skillsStr
-                • جدید ڈیزائن، ویڈیو ایڈیٹنگ، اور ویب / AI آٹومیشن کے حل
-                • تیز رفتار، محفوظ اور منافع بخش ڈیلیوری
-                • مکمل مفت پروجیکٹ اسکوپنگ اور مشورہ (100% Free Consultation & Scoping)
+                • اعلیٰ کوالٹی، تیز رفتار اور محفوظ ڈیلیوری
+                • مکمل مفت پروجیکٹ اسکوپنگ اور مشورہ (100% Free Consultation)
 
                 رابطہ کی تفصیلات:
-                👤 ${skillMatrix.ownerName}
-                🏢 ${skillMatrix.agencyName}
-                📞 کال / واٹس ایپ: ${skillMatrix.ownerPhoneInternational} (${skillMatrix.ownerPhone})
-                📧 ای میل: ${skillMatrix.ownerEmail}
+                👤 ${matrix.ownerName} (${matrix.ownerTitle})
+                🏢 ${matrix.agencyName}
+                📞 کال / واٹس ایپ: ${matrix.ownerPhoneInternational} (${matrix.ownerPhone})
+                📧 ای میل: ${matrix.ownerEmail}
             """.trimIndent()
         } else {
             """
                 Dear $clientDisplayName Team,
 
-                I reviewed your business focus and project requirements regarding "${jobPostText.take(110).replace("\n", " ")}...".
+                I reviewed your project and business requirements regarding "${jobPostText.take(110).replace("\n", " ")}...".
 
-                Through ${skillMatrix.agencyName}, I specialize in delivering turnkey solutions tailored specifically to your objectives, including:
-                • Targeted Expertise: $skillsStr
-                • End-to-End Execution: From design & media production to robust web, AI automation, and digital scaling.
-                • Dedicated Turnaround & High Precision.
-                • 100% Free Project Scoping & Discovery Consultation.
+                Through ${matrix.agencyName}, I specialize in delivering turnkey solutions tailored specifically to your objectives, including:
+                • Core Expertise: $skillsStr
+                • High-Precision Execution & Dedicated Turnaround.
+                • 100% Free Project Scoping & Initial Consultation.
 
-                I would be delighted to schedule a brief consultation to discuss your specific goals and provide a comprehensive proposal.
+                I would be delighted to schedule a brief discussion regarding your goals and provide a comprehensive roadmap.
 
                 Best regards,
-                ${skillMatrix.ownerName}
-                ${skillMatrix.agencyName}
-                📞 Call/WhatsApp: ${skillMatrix.ownerPhoneInternational} (${skillMatrix.ownerPhone})
-                📧 Email: ${skillMatrix.ownerEmail}
+                ${matrix.ownerName}
+                ${matrix.ownerTitle} | ${matrix.agencyName}
+                📞 Call/WhatsApp: ${matrix.ownerPhoneInternational} (${matrix.ownerPhone})
+                📧 Email: ${matrix.ownerEmail}
             """.trimIndent()
         }
 

@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -76,6 +78,7 @@ fun OperationsDashboardScreen() {
     val invoices by ClientInvoiceManager.invoicesFlow.collectAsStateWithLifecycle()
     val pendingProposal by WastiRootController.pendingProposal.collectAsStateWithLifecycle()
     val activeSkillMatrix by WastiRootController.activeSkillMatrix.collectAsStateWithLifecycle()
+    val activeBusinessProfile by com.example.data.core.BusinessProfileManager.activeProfile.collectAsStateWithLifecycle()
     val tools = remember { ToolRegistry.getAllTools() }
 
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -83,8 +86,32 @@ fun OperationsDashboardScreen() {
 
     var customKeywordInput by remember { mutableStateOf("Creative, Digital & Technical Services") }
     var isScanningLeads by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var editBizName by remember { mutableStateOf("") }
+    var editOwnerName by remember { mutableStateOf("") }
+    var editOwnerTitle by remember { mutableStateOf("") }
+    var editOwnerPhone by remember { mutableStateOf("") }
+    var editOwnerEmail by remember { mutableStateOf("") }
+    var editCurrency by remember { mutableStateOf("") }
+    var editTagline by remember { mutableStateOf("") }
+    var selectedIndustry by remember { mutableStateOf(com.example.data.core.BusinessIndustry.CREATIVE_AGENCY) }
     var selectedKanbanFilter by remember { mutableStateOf<LeadStatus?>(null) }
     var selectedCrmStageFilter by remember { mutableStateOf<String?>(null) }
+    val isNewUserSetupRequired by com.example.data.core.BusinessProfileManager.isNewUserSetupRequired.collectAsStateWithLifecycle()
+
+    LaunchedEffect(isNewUserSetupRequired) {
+        if (isNewUserSetupRequired) {
+            editBizName = activeBusinessProfile.businessName
+            editOwnerName = activeBusinessProfile.ownerName
+            editOwnerTitle = activeBusinessProfile.ownerTitle
+            editOwnerPhone = activeBusinessProfile.ownerPhone
+            editOwnerEmail = activeBusinessProfile.ownerEmail
+            editCurrency = activeBusinessProfile.currency
+            editTagline = activeBusinessProfile.tagline
+            selectedIndustry = activeBusinessProfile.industry
+            showProfileDialog = true
+        }
+    }
 
     var totalRevenueUsd by remember { mutableDoubleStateOf(0.0) }
     var totalPaidUsd by remember { mutableDoubleStateOf(0.0) }
@@ -468,8 +495,31 @@ fun OperationsDashboardScreen() {
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("ThriveBridge Growth Solutions — Lead Radar", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("Syed Nabeel Wasti • Call/WA: 0306 7370864 • wastinabeel99@gmail.com", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("${activeBusinessProfile.businessName} — Lead Radar", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    Text("${activeBusinessProfile.ownerName} (${activeBusinessProfile.ownerTitle}) • Call/WA: ${activeBusinessProfile.ownerPhone} • ${activeBusinessProfile.ownerEmail}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                }
+                                IconButton(
+                                    onClick = {
+                                        editBizName = activeBusinessProfile.businessName
+                                        editOwnerName = activeBusinessProfile.ownerName
+                                        editOwnerTitle = activeBusinessProfile.ownerTitle
+                                        editOwnerPhone = activeBusinessProfile.ownerPhone
+                                        editOwnerEmail = activeBusinessProfile.ownerEmail
+                                        editCurrency = activeBusinessProfile.currency
+                                        editTagline = activeBusinessProfile.tagline
+                                        selectedIndustry = activeBusinessProfile.industry
+                                        showProfileDialog = true
+                                    }
+                                ) {
+                                    Icon(Icons.Default.Settings, contentDescription = "Configure Business Profile", tint = MaterialTheme.colorScheme.primary)
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -505,23 +555,12 @@ fun OperationsDashboardScreen() {
                                 }
                             }
 
-                            Text("Agency Service Lanes:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${activeBusinessProfile.industry.displayName} Service Lanes:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             LazyRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val serviceLanes = listOf(
-                                    "All Services" to "Creative, Digital & Technical Services",
-                                    "Branding & Design" to "Graphic Design & Branding",
-                                    "Visuals & 3D" to "Advanced Visuals & Motion Graphics",
-                                    "Web & Apps" to "Web & App Solutions",
-                                    "AI Automation" to "AI Integration & Automation",
-                                    "SEO & Growth" to "Digital Presence & SEO",
-                                    "Copywriting" to "Professional Copywriting & Content Creation",
-                                    "B2B Outreach" to "Corporate Outreach & B2B Campaigns",
-                                    "DMCA Protection" to "DMCA Content Protection",
-                                    "Screen Printing" to "Screen Printing & Production Design"
-                                )
+                                val serviceLanes = activeBusinessProfile.industry.defaultLanes
                                 items(serviceLanes) { (laneLabel, queryVal) ->
                                     FilterChip(
                                         selected = customKeywordInput == queryVal,
@@ -1187,9 +1226,179 @@ fun OperationsDashboardScreen() {
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
                 }
             }
+        }
+    }
+
+    if (showProfileDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showProfileDialog = false
+                    com.example.data.core.BusinessProfileManager.dismissNewUserSetup()
+                },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Configure Business Profile", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Customize your business brand, services, and contact details so all proposals, CRM outreach, and invoices match your company.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Text("Select Industry Preset:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(com.example.data.core.BusinessIndustry.values()) { ind ->
+                                FilterChip(
+                                    selected = selectedIndustry == ind,
+                                    onClick = {
+                                        selectedIndustry = ind
+                                        if (editTagline.isBlank() || editTagline == activeBusinessProfile.tagline) {
+                                            editTagline = when (ind) {
+                                                com.example.data.core.BusinessIndustry.CREATIVE_AGENCY -> "End-to-end turnkey solutions bridging high-end design, advanced media, and digital scaling."
+                                                com.example.data.core.BusinessIndustry.SOFTWARE_TECH -> "High-performance software engineering, cloud architecture, and mission-critical systems."
+                                                com.example.data.core.BusinessIndustry.REAL_ESTATE -> "Premium residential & commercial real estate brokerage, advisory, and property management."
+                                                com.example.data.core.BusinessIndustry.ECOMMERCE_RETAIL -> "Full-funnel e-commerce store acceleration, brand building, and automated retail operations."
+                                                com.example.data.core.BusinessIndustry.CONSULTING_PROFESSIONAL -> "Elite management consulting, financial advisory, and business transformation."
+                                                com.example.data.core.BusinessIndustry.LOCAL_SERVICES -> "Licensed contracting, high-grade maintenance, and rapid-dispatch field solutions."
+                                                com.example.data.core.BusinessIndustry.LEGAL_COMPLIANCE -> "Corporate legal advisory, intellectual property protection, and regulatory governance."
+                                                com.example.data.core.BusinessIndustry.HEALTH_WELLNESS -> "Comprehensive clinical wellness, preventative health, and modern healthcare practice."
+                                                com.example.data.core.BusinessIndustry.CUSTOM -> editTagline
+                                            }
+                                        }
+                                    },
+                                    label = { Text(ind.displayName, fontSize = 11.sp) }
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = editBizName,
+                            onValueChange = { editBizName = it },
+                            label = { Text("Business / Company Name", fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = editOwnerName,
+                                onValueChange = { editOwnerName = it },
+                                label = { Text("Owner / Founder Name", fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = editOwnerTitle,
+                                onValueChange = { editOwnerTitle = it },
+                                label = { Text("Title / Role", fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = editOwnerPhone,
+                                onValueChange = { editOwnerPhone = it },
+                                label = { Text("Phone / WhatsApp", fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = editCurrency,
+                                onValueChange = { editCurrency = it.uppercase() },
+                                label = { Text("Currency (e.g. USD)", fontSize = 11.sp) },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
+
+                        OutlinedTextField(
+                            value = editOwnerEmail,
+                            onValueChange = { editOwnerEmail = it },
+                            label = { Text("Official Email Address", fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+
+                        OutlinedTextField(
+                            value = editTagline,
+                            onValueChange = { editTagline = it },
+                            label = { Text("Company Value Proposition / Tagline", fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            maxLines = 3
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val finalServices = if (selectedIndustry != activeBusinessProfile.industry && editBizName != activeBusinessProfile.businessName) {
+                                selectedIndustry.defaultLanes.map { it.second }
+                            } else {
+                                activeBusinessProfile.services
+                            }
+                            val updated = activeBusinessProfile.copy(
+                                businessName = editBizName.trim().ifEmpty { activeBusinessProfile.businessName },
+                                ownerName = editOwnerName.trim().ifEmpty { activeBusinessProfile.ownerName },
+                                ownerTitle = editOwnerTitle.trim().ifEmpty { activeBusinessProfile.ownerTitle },
+                                ownerPhone = editOwnerPhone.trim(),
+                                ownerPhoneInternational = if (editOwnerPhone.startsWith("+")) editOwnerPhone.trim() else if (editOwnerPhone.startsWith("0")) "+92" + editOwnerPhone.trim().drop(1) else editOwnerPhone.trim(),
+                                ownerEmail = editOwnerEmail.trim(),
+                                industry = selectedIndustry,
+                                currency = editCurrency.trim().ifEmpty { "USD" },
+                                tagline = editTagline.trim().ifEmpty { activeBusinessProfile.tagline },
+                                services = finalServices
+                            )
+                            com.example.data.core.BusinessProfileManager.saveProfile(context, updated)
+                            showProfileDialog = false
+                            Toast.makeText(context, "Business profile saved for ${updated.businessName}!", Toast.LENGTH_SHORT).show()
+                        }
+                    ) {
+                        Text("Save Profile")
+                    }
+                },
+                dismissButton = {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(
+                            onClick = {
+                                com.example.data.core.BusinessProfileManager.saveProfile(
+                                    context,
+                                    com.example.data.core.BusinessProfileManager.OWNER_CANONICAL_PROFILE,
+                                    "owner_primary"
+                                )
+                                showProfileDialog = false
+                                Toast.makeText(context, "Restored ThriveBridge Founder Profile", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Text("Reset Founder", fontSize = 11.sp)
+                        }
+                        TextButton(
+                            onClick = {
+                                showProfileDialog = false
+                                com.example.data.core.BusinessProfileManager.dismissNewUserSetup()
+                            }
+                        ) {
+                            Text("Cancel", fontSize = 11.sp)
+                        }
+                    }
+                }
+            )
         }
     }
 }

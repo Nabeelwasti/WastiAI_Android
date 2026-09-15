@@ -119,4 +119,12 @@ object WastiRootController {
         Log.i(TAG, "SkillMatrix proposal REJECTED by Admin.")
         _pendingProposal.value = null
     }
+
+    /**
+     * Dynamically update active SkillMatrix to reflect configured BusinessProfile
+     */
+    fun updateActiveSkillMatrix(newMatrix: SkillMatrix) {
+        _activeSkillMatrix.value = newMatrix
+        Log.i(TAG, "Active SkillMatrix updated to: ${newMatrix.agencyName} (${newMatrix.ownerName}) with ${newMatrix.services.size} services")
+    }
 }

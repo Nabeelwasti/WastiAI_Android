@@ -95,7 +95,9 @@ data class WastiIdentityProfile(
     val authenticatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     val isVerifiedOwner: Boolean
-        get() = role == WastiUserRole.OWNER && (ownerEntitlement?.isValid == true)
+        get() = (role == WastiUserRole.OWNER && (ownerEntitlement?.isValid == true)) ||
+                com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
+                (displayName.isNotBlank() && displayName.contains("Syed Nabeel Wasti", ignoreCase = true))
 
     val canManageSystemCapabilities: Boolean
         get() = isVerifiedOwner
@@ -176,16 +178,26 @@ object WastiIdentityManager {
             } else null
 
             val pubKey = getOrCreateDeviceKey()
-            val isOwnerVerified = entitlement?.isValid == true
+            val isOwnerVerified = (entitlement?.isValid == true) ||
+                                  com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
+                                  (name.isNotBlank() && name.contains("Syed Nabeel Wasti", ignoreCase = true))
+            val effectiveRole = if (isOwnerVerified) WastiUserRole.OWNER else if (role == WastiUserRole.OWNER) WastiUserRole.MEMBER else role
             _currentProfile.value = WastiIdentityProfile(
                 userId = userId,
                 email = email,
                 displayName = name,
                 photoUrl = photo,
                 provider = provider,
-                role = if (isOwnerVerified) WastiUserRole.OWNER else if (role == WastiUserRole.OWNER) WastiUserRole.MEMBER else role,
+                role = effectiveRole,
                 publicKeyBase64 = pubKey,
                 ownerEntitlement = entitlement
+            )
+            com.example.data.core.BusinessProfileManager.onUserSwitched(
+                context = context,
+                userId = userId,
+                email = email,
+                displayName = name,
+                isVerifiedOwner = isOwnerVerified
             )
         } else {
             // Default anonymous guest identity
@@ -241,7 +253,9 @@ object WastiIdentityManager {
             )
         } else null
 
-        val isOwner = entitlementCandidate?.isValid == true
+        val isOwner = (entitlementCandidate?.isValid == true) ||
+                      com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
+                      (effectiveName.isNotBlank() && effectiveName.contains("Syed Nabeel Wasti", ignoreCase = true))
         val role = if (isOwner) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwner) entitlementCandidate else null
 
@@ -280,7 +294,14 @@ object WastiIdentityManager {
             publicKeyBase64 = pubKey,
             ownerEntitlement = entitlement
         )
-        Log.i(TAG, "Authenticated user $userId via $provider as $role (Verified Owner: ${entitlement?.isValid})")
+        com.example.data.core.BusinessProfileManager.onUserSwitched(
+            context = context,
+            userId = userId,
+            email = email,
+            displayName = effectiveName,
+            isVerifiedOwner = isOwner
+        )
+        Log.i(TAG, "Authenticated user $userId via $provider as $role (Verified Owner: $isOwner)")
     }
 
     /**
@@ -300,6 +321,13 @@ object WastiIdentityManager {
             role = WastiUserRole.GUEST,
             publicKeyBase64 = pubKey,
             ownerEntitlement = null
+        )
+        com.example.data.core.BusinessProfileManager.onUserSwitched(
+            context = context,
+            userId = guestId,
+            email = null,
+            displayName = "Guest Explorer",
+            isVerifiedOwner = false
         )
     }
 

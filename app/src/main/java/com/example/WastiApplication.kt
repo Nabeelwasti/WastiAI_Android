@@ -173,6 +173,8 @@ class WastiApplication : Application(), Configuration.Provider {
                     val workerJob = async(Dispatchers.IO) {
                         val t = System.currentTimeMillis()
                         try {
+                            com.example.data.auth.WastiIdentityManager.initialize(this@WastiApplication)
+                            com.example.data.core.BusinessProfileManager.init(this@WastiApplication)
                             com.example.data.core.LeadRadarRepository.initDatabase(this@WastiApplication)
                             com.example.data.core.ClientInvoiceManager.initDatabase(this@WastiApplication)
 

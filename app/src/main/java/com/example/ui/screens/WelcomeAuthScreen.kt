@@ -425,6 +425,14 @@ fun WelcomeAuthScreen(
                                     val client = GoogleAuthClient(context)
                                     when (val result = client.signIn()) {
                                         is GoogleAuthResult.Success -> {
+                                            com.example.data.auth.WastiIdentityManager.onAuthenticated(
+                                                context = context,
+                                                userId = result.user.uid,
+                                                email = result.user.email,
+                                                displayName = result.user.displayName,
+                                                photoUrl = result.user.photoUrl?.toString(),
+                                                provider = com.example.data.auth.AuthProviderType.GOOGLE
+                                            )
                                             try {
                                                 CloudSyncManager.syncToLocal(context, result.user.uid)
                                             } catch (e: Exception) {
@@ -481,6 +489,15 @@ fun WelcomeAuthScreen(
                                         val client = MicrosoftAuthClient(context)
                                         when (val result = client.signIn(activity)) {
                                             is MicrosoftAuthResult.Success -> {
+                                                val uid = result.user?.uid ?: ("ms_" + (result.accountEmail.hashCode().toLong() and 0xFFFFFFFFL).toString())
+                                                com.example.data.auth.WastiIdentityManager.onAuthenticated(
+                                                    context = context,
+                                                    userId = uid,
+                                                    email = result.accountEmail,
+                                                    displayName = result.displayName,
+                                                    photoUrl = result.user?.photoUrl?.toString(),
+                                                    provider = com.example.data.auth.AuthProviderType.MICROSOFT
+                                                )
                                                 isMicrosoftAuthenticating = false
                                                 userDisplayName = result.displayName
                                                 showPostSignInBiometricCard = true
@@ -548,7 +565,10 @@ fun WelcomeAuthScreen(
 
                     // Secondary guest workspace entry
                     OutlinedButton(
-                        onClick = onLaunchWorkspace,
+                        onClick = {
+                            com.example.data.auth.WastiIdentityManager.initialize(context)
+                            onLaunchWorkspace()
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)

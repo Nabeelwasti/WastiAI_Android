@@ -435,8 +435,21 @@ class WastiRepository(private val db: WastiDatabase) {
         val previousMessages = db.messageDao().getMessagesListForConversation(conversationId)
         val historyContent = buildGeminiHistory(previousMessages, userPrompt)
 
+        val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
+        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
+        val isOwnerUser = identityProfile?.isVerifiedOwner == true ||
+                          com.example.data.core.BusinessProfileManager.isFounderEmail(identityProfile?.email)
+
+        val masterIdentityIntro = if (isOwnerUser) {
+            """You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine and Mobile OS Executive Assistant created for Syed Nabeel Wasti.
+            You know everything about your creator, his background, his autobiography, his ventures (ThriveBridge Growth Solutions), his 10-service catalog, and his vision."""
+        } else {
+            """You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine, Business Operating System, and Mobile Executive Assistant for ${activeBizProfile.ownerName} (${activeBizProfile.businessName}, ${activeBizProfile.industry.displayName}).
+            You provide turnkey business automation, lead generation, client proposal drafting, invoice tracking, and intelligent mobile execution tailored specifically for ${activeBizProfile.businessName}."""
+        }
+
         val masterUnifiedSuperAgentPrompt = """
-            You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine and Mobile OS Executive Assistant created for Syed Nabeel Wasti.
+            $masterIdentityIntro
             You combine ALL specialized domain capabilities (Software Engineering, UI/UX Material 3 Design, Business Strategy, Research, Technical Writing, Workflow Automation, Long-Term Memory, and Multilingual Speech) into ONE seamless, unified brain.
 
             [REAL-TIME CLOCK & WORLD TIME CONTEXT]:
@@ -537,15 +550,36 @@ class WastiRepository(private val db: WastiDatabase) {
      * section of the system prompt.
      */
     private suspend fun buildMemoryContextBlock(conversationId: String): String {
+        val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
+        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
+        val isOwnerUser = identityProfile?.isVerifiedOwner == true ||
+                          com.example.data.core.BusinessProfileManager.isFounderEmail(identityProfile?.email)
+
         val memoryDigest = try {
-            db.memoryDao().getMemoriesList()
-                .take(MAX_MEMORY_ENTRIES)
-                .takeIf { it.isNotEmpty() }
-                ?.joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
-                ?: "- User Identity: Syed Nabeel Wasti (Master & Creator of Wasti OS)\n- Default Persona: J.A.R.V.I.S.-style executive super-agent"
+            val allMemories = db.memoryDao().getMemoriesList()
+            if (isOwnerUser) {
+                allMemories.take(MAX_MEMORY_ENTRIES)
+                    .takeIf { it.isNotEmpty() }
+                    ?.joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
+                    ?: "- User Identity: Syed Nabeel Wasti (Master & Creator of Wasti OS)\n- Default Persona: J.A.R.V.I.S.-style executive super-agent"
+            } else {
+                val userMemories = allMemories.filter {
+                    !it.key.contains("Founder", ignoreCase = true) && !it.value.contains("Nabeel", ignoreCase = true)
+                }
+                val profileHeader = "- User Identity: ${activeBizProfile.ownerName} (${activeBizProfile.ownerTitle}, ${activeBizProfile.businessName})\n- Industry: ${activeBizProfile.industry.displayName}\n- Contact: ${activeBizProfile.ownerEmail} | ${activeBizProfile.ownerPhone}\n- Tagline: ${activeBizProfile.tagline}\n- Services: ${activeBizProfile.services.joinToString(", ")}"
+                if (userMemories.isNotEmpty()) {
+                    "$profileHeader\n" + userMemories.take(MAX_MEMORY_ENTRIES).joinToString("\n") { "- [${it.category}] ${it.key}: ${it.value}" }
+                } else {
+                    profileHeader
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch long-term memories for orchestration context", e)
-            "- User Identity: Syed Nabeel Wasti (Master & Creator of Wasti OS)\n- Default Persona: J.A.R.V.I.S.-style executive super-agent"
+            if (isOwnerUser) {
+                "- User Identity: Syed Nabeel Wasti (Master & Creator of Wasti OS)\n- Default Persona: J.A.R.V.I.S.-style executive super-agent"
+            } else {
+                "- User Identity: ${activeBizProfile.ownerName} (${activeBizProfile.ownerTitle}, ${activeBizProfile.businessName})\n- Industry: ${activeBizProfile.industry.displayName}"
+            }
         }
 
         val crossSessionHighlights = try {
