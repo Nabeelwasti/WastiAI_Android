@@ -177,19 +177,20 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             val activeAgentName = "Wasti AI"
 
             val navItems = listOf(
-                WastiNavDestination("chat", "AI Chat", Icons.AutoMirrored.Filled.Chat),
-                WastiNavDestination("dashboard", "Executive", Icons.Default.Dashboard),
+                WastiNavDestination("chat", "Chat", Icons.AutoMirrored.Filled.Chat),
+                WastiNavDestination("terminal", "Terminal", Icons.Default.Terminal),
+                WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
+                WastiNavDestination("memory", "Memory", Icons.Default.Memory),
+                WastiNavDestination("connections_vault", "Vault & Hub", Icons.Default.VpnKey),
+                WastiNavDestination("settings", "Settings", Icons.Default.Settings)
+            )
+
+            val drawerExtendedItems = listOf(
+                WastiNavDestination("dashboard", "Executive Hub", Icons.Default.Dashboard),
                 WastiNavDestination("capabilities", "Reality Matrix", Icons.Default.Checklist),
                 WastiNavDestination("brain", "Brain & Neural", Icons.Default.Hub),
                 WastiNavDestination("operations", "Telemetry", Icons.Default.Analytics),
-                WastiNavDestination("agents", "Wasti AI", Icons.Default.Psychology),
-                WastiNavDestination("memory", "Memory", Icons.Default.Memory),
-                WastiNavDestination("projects", "Projects", Icons.Default.AccountTree),
-                WastiNavDestination("terminal", "Terminal", Icons.Default.Terminal),
-                WastiNavDestination("code", "Code", Icons.Default.Code),
-                WastiNavDestination("integrations", "Connectors", Icons.Default.Extension),
-                WastiNavDestination("account_hub", "Account Hub", Icons.Default.VpnKey),
-                WastiNavDestination("settings", "Settings", Icons.Default.Settings)
+                WastiNavDestination("agents", "Wasti AI Agents", Icons.Default.Psychology)
             )
 
             WastiTheme(darkTheme = darkTheme) {
@@ -288,6 +289,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onEditAndResendMessage = { mId, newContent -> viewModel.editMessageAndResend(mId, newContent) },
                                 onCreateNewConversation = { title -> viewModel.createNewConversation(title) },
                                 onCancelGeneration = { viewModel.cancelActiveGeneration() },
+                                onReplyNow = { viewModel.replyNow() },
                                 triggerVoiceCallSignal = triggerVoiceModalSignal,
                                 onToggleNavigationDrawer = toggleDrawer
                             )
@@ -362,6 +364,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onOpenAccountHub = { viewModel.selectTab("account_hub") }
                             )
                             "account_hub" -> AccountHubScreen(
+                                onNavigateBack = { viewModel.selectTab("settings") }
+                            )
+                            "connections_vault" -> ConnectionsAndVaultScreen(
                                 onNavigateBack = { viewModel.selectTab("settings") }
                             )
                             "wakeword_settings" -> com.example.ui.screens.WakeWordSettingsScreen(
@@ -471,7 +476,53 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                             .verticalScroll(rememberScrollState())
                                             .padding(horizontal = 12.dp, vertical = 8.dp)
                                     ) {
+                                        Text(
+                                            text = "Core Workspace",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
                                         navItems.forEach { nav ->
+                                            val isSelected = activeTab == nav.id
+                                            NavigationDrawerItem(
+                                                label = {
+                                                    Text(
+                                                        text = nav.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                                    )
+                                                },
+                                                icon = {
+                                                    Icon(
+                                                        imageVector = nav.icon,
+                                                        contentDescription = nav.title,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                },
+                                                selected = isSelected,
+                                                onClick = {
+                                                    focusManager.clearFocus()
+                                                    viewModel.selectTab(nav.id)
+                                                    drawerScope.launch { drawerState.close() }
+                                                },
+                                                modifier = Modifier
+                                                    .padding(vertical = 2.dp)
+                                                    .testTag("drawer_item_${nav.id}"),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "Executive & Reality Matrix",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                        )
+
+                                        drawerExtendedItems.forEach { nav ->
                                             val isSelected = activeTab == nav.id
                                             NavigationDrawerItem(
                                                 label = {
@@ -601,39 +652,37 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                         )
                                     },
                                     bottomBar = {
-                                        ScrollableTabRow(
-                                            selectedTabIndex = navItems.indexOfFirst { it.id == activeTab }.coerceAtLeast(0),
-                                            edgePadding = 8.dp,
+                                        NavigationBar(
                                             containerColor = MaterialTheme.colorScheme.surface,
                                             contentColor = MaterialTheme.colorScheme.primary,
-                                            divider = {},
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .windowInsetsPadding(WindowInsets.navigationBars)
                                                 .testTag("main_bottom_nav")
                                         ) {
                                             navItems.forEach { nav ->
-                                                val isSelected = activeTab == nav.id
-                                                Tab(
+                                                val isSelected = activeTab == nav.id ||
+                                                    (nav.id == "terminal" && activeTab == "code") ||
+                                                    (nav.id == "connections_vault" && (activeTab == "account_hub" || activeTab == "integrations"))
+                                                NavigationBarItem(
                                                     selected = isSelected,
                                                     onClick = {
                                                         focusManager.clearFocus()
                                                         viewModel.selectTab(nav.id)
                                                     },
                                                     modifier = Modifier.testTag("nav_item_${nav.id}"),
-                                                    text = {
+                                                    label = {
                                                         Text(
                                                             text = nav.title,
-                                                            fontSize = 10.sp,
+                                                            fontSize = 11.sp,
                                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                            maxLines = 1
                                                         )
                                                     },
                                                     icon = {
                                                         Icon(
                                                             imageVector = nav.icon,
                                                             contentDescription = nav.title,
-                                                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                             modifier = Modifier.size(20.dp)
                                                         )
                                                     }

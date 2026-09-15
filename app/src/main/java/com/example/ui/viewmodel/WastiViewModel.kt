@@ -362,6 +362,14 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
         com.example.data.core.WastiCore.setActiveJob(null)
     }
 
+    /**
+     * Fast-forwards background multi-model deliberation and immediately yields the response
+     * from the strongest available neural brain.
+     */
+    fun replyNow() {
+        com.example.data.agent.runtime.ModelOrchestrator.triggerReplyNow()
+    }
+
     private suspend fun ensureActiveConversation(title: String, agentId: String): String {
         activeConversationId.value?.let { return it }
 

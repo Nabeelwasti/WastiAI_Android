@@ -37,9 +37,22 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.wre.*
 import com.example.ui.viewmodel.WastiViewModel
+import android.content.Context
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import com.example.data.tool.ToolRegistry
+import com.example.data.tool.WastiTool
+import com.example.ui.components.CodeBlockView
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID
+
+enum class TerminalWorkspaceMode(val displayName: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    CONSOLE("Terminal", Icons.Default.Terminal),
+    CODE_STUDIO("Code Studio", Icons.Default.Code),
+    PACKAGES("Packages", Icons.Default.Inventory2),
+    FILES("Files", Icons.Default.Folder)
+}
 
 data class TerminalLine(
     val id: String = UUID.randomUUID().toString(),
@@ -72,12 +85,59 @@ data class TerminalSessionTab(
 fun TerminalWorkspaceScreen(
     wreManager: WreManager,
     viewModel: WastiViewModel? = null,
-    onNavigateBack: () -> Unit = {}
+    onNavigateBack: () -> Unit = {},
+    initialMode: TerminalWorkspaceMode = TerminalWorkspaceMode.CONSOLE,
+    activeCodeContext: String = "fun main() {\n    println(\"Wasti OS Code Engine\")\n}",
+    onCodeContextChange: (String) -> Unit = {},
+    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit = { _, _ -> }
 ) {
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    var workspaceMode by remember { mutableStateOf(initialMode) }
+    var codeStudioContent by remember(activeCodeContext) { mutableStateOf(activeCodeContext) }
+    var codeStudioPath by remember { mutableStateOf("home/wasti/scripts/workspace_script.sh") }
+    var codeStudioOutput by remember { mutableStateOf("") }
+    var codeStudioStderr by remember { mutableStateOf("") }
+    var codeStudioExitCode by remember { mutableStateOf<Int?>(null) }
+    var codeStudioVerified by remember { mutableStateOf(false) }
+    var codeStudioEvidence by remember { mutableStateOf<String?>(null) }
+    var isCodeExecuting by remember { mutableStateOf(false) }
     var currentInput by remember { mutableStateOf("") }
+
+    // Dialog and workspace states for unified Code/Terminal/Packages/Files
+    var showNewFileDialog by remember { mutableStateOf(false) }
+    var newFileNameInput by remember { mutableStateOf("") }
+    var showRegisterToolDialog by remember { mutableStateOf(false) }
+    var registerToolName by remember { mutableStateOf("") }
+    var registerToolDesc by remember { mutableStateOf("") }
+    var showInstallBundleDialog by remember { mutableStateOf(false) }
+    var installBundlePathOrJson by remember { mutableStateOf("") }
+    var showTestToolDialog by remember { mutableStateOf<WastiTool?>(null) }
+    var testToolArgs by remember { mutableStateOf("") }
+    var toolSearchQuery by remember { mutableStateOf("") }
+    var selectedCategoryFilter by remember { mutableStateOf("All") }
+    var workspaceFileList by remember { mutableStateOf(listOf<String>()) }
+
+    fun refreshWorkspaceFiles() {
+        val list = mutableListOf<String>()
+        val folders = listOf("home/wasti", "home/wasti/scripts", "home/wasti/bin", "projects", "scripts", "bin")
+        folders.forEach { folder ->
+            val dirRes = wreManager.workspaceManager.resolve(folder)
+            val dir = dirRes.getOrNull()
+            if (dir != null && dir.exists() && dir.isDirectory) {
+                dir.listFiles()?.filter { it.isFile }?.forEach { f ->
+                    list.add(wreManager.workspaceManager.getVirtualPath(f).removePrefix("/"))
+                }
+            }
+        }
+        workspaceFileList = list.distinct().sorted()
+    }
+
+    LaunchedEffect(Unit) {
+        refreshWorkspaceFiles()
+    }
 
     // Multi-session tabs
     val sessionTabs = remember {
@@ -531,8 +591,41 @@ fun TerminalWorkspaceScreen(
                 .padding(paddingValues)
                 .background(Color(0xFF0B0F17))
         ) {
-            // Multi-Session Tab Bar
-            ScrollableTabRow(
+            // Unified Mode Selector: Terminal | Code Studio | Packages | Files
+            TabRow(
+                selectedTabIndex = workspaceMode.ordinal,
+                containerColor = Color(0xFF0F172A),
+                contentColor = Color(0xFF38BDF8)
+            ) {
+                TerminalWorkspaceMode.values().forEach { mode ->
+                    Tab(
+                        selected = workspaceMode == mode,
+                        onClick = { workspaceMode = mode },
+                        text = {
+                            Text(
+                                text = mode.displayName,
+                                fontSize = 12.sp,
+                                fontWeight = if (workspaceMode == mode) FontWeight.Bold else FontWeight.Normal,
+                                color = if (workspaceMode == mode) Color.White else Color(0xFF94A3B8)
+                            )
+                        },
+                        icon = {
+                            Icon(
+                                imageVector = mode.icon,
+                                contentDescription = mode.displayName,
+                                modifier = Modifier.size(16.dp),
+                                tint = if (workspaceMode == mode) Color(0xFF38BDF8) else Color(0xFF64748B)
+                            )
+                        }
+                    )
+                }
+            }
+
+            when (workspaceMode) {
+                TerminalWorkspaceMode.CONSOLE -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Multi-Session Tab Bar
+                        ScrollableTabRow(
                 selectedTabIndex = activeTabIndex,
                 containerColor = Color(0xFF111827),
                 contentColor = Color(0xFF38BDF8),
@@ -843,7 +936,192 @@ fun TerminalWorkspaceScreen(
                 }
             }
         }
+        TerminalWorkspaceMode.CODE_STUDIO -> {
+            CodeStudioWorkspacePanel(
+                wreManager = wreManager,
+                activeVirtualPath = codeStudioPath,
+                onPathChange = { path ->
+                    codeStudioPath = path
+                    val fileRes = wreManager.workspaceManager.resolve(path)
+                    val f = fileRes.getOrNull()
+                    if (f != null && f.exists() && f.isFile) {
+                        codeStudioContent = f.readText()
+                        onCodeContextChange(codeStudioContent)
+                    }
+                },
+                codeContent = codeStudioContent,
+                onCodeContentChange = { newCode ->
+                    codeStudioContent = newCode
+                    onCodeContextChange(newCode)
+                },
+                consoleOutput = codeStudioOutput,
+                consoleStderr = codeStudioStderr,
+                consoleExitCode = codeStudioExitCode,
+                consoleVerified = codeStudioVerified,
+                consoleEvidence = codeStudioEvidence,
+                isExecuting = isCodeExecuting,
+                onExecute = {
+                    coroutineScope.launch {
+                        isCodeExecuting = true
+                        codeStudioOutput = ""
+                        codeStudioStderr = ""
+                        codeStudioExitCode = null
+                        codeStudioVerified = false
+                        codeStudioEvidence = null
+
+                        val targetFileRes = wreManager.workspaceManager.resolve(codeStudioPath)
+                        val targetFile = targetFileRes.getOrNull()
+                        if (targetFile != null) {
+                            targetFile.parentFile?.mkdirs()
+                            targetFile.writeText(codeStudioContent)
+                        }
+
+                        val commandToRun = if (codeStudioPath.endsWith(".sh") || !codeStudioPath.contains(".")) {
+                            "sh $codeStudioPath"
+                        } else if (codeStudioPath.endsWith(".py")) {
+                            "python3 $codeStudioPath"
+                        } else if (codeStudioPath.endsWith(".js")) {
+                            "node $codeStudioPath"
+                        } else {
+                            "cat $codeStudioPath"
+                        }
+
+                        val req = ExecutionRequest(
+                            command = commandToRun,
+                            workingDirectory = "home/wasti",
+                            initiatedBy = "TerminalWorkspace.CodeStudio"
+                        )
+                        val res = wreManager.execute(req)
+                        codeStudioOutput = res.stdout
+                        codeStudioStderr = res.stderr
+                        codeStudioExitCode = res.exitCode
+                        codeStudioVerified = res.verified
+                        codeStudioEvidence = res.verificationEvidence
+                        isCodeExecuting = false
+
+                        viewModel?.recordTerminalSession(
+                            command = commandToRun,
+                            output = res.stdout,
+                            stderr = res.stderr,
+                            workingDirectory = "home/wasti",
+                            status = res.status.name,
+                            exitCode = res.exitCode,
+                            durationMs = res.durationMs,
+                            verified = res.verified,
+                            verificationEvidence = res.verificationEvidence
+                        )
+                    }
+                },
+                onSave = {
+                    val fileRes = wreManager.workspaceManager.resolve(codeStudioPath)
+                    val file = fileRes.getOrNull()
+                    if (file != null) {
+                        file.parentFile?.mkdirs()
+                        file.writeText(codeStudioContent)
+                        refreshWorkspaceFiles()
+                        Toast.makeText(context, "Saved to $codeStudioPath", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Failed to resolve path", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onOpenRegisterTool = {
+                    registerToolName = codeStudioPath.substringAfterLast('/').substringBeforeLast('.')
+                    registerToolDesc = "Dynamic WRE tool created from $codeStudioPath"
+                    showRegisterToolDialog = true
+                },
+                onExportWasti = {
+                    val pkgName = codeStudioPath.substringAfterLast('/').substringBeforeLast('.')
+                    wreManager.packageManager.installOrUpdateScriptPackage(
+                        name = pkgName,
+                        scriptContent = codeStudioContent,
+                        description = "Exported from Code Studio"
+                    )
+                    val expRes = wreManager.packageManager.exportPackage(pkgName)
+                    if (expRes.isSuccess) {
+                        val f = expRes.getOrThrow()
+                        refreshWorkspaceFiles()
+                        Toast.makeText(context, "Exported .wasti bundle: ${f.name}", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "Export error: ${expRes.exceptionOrNull()?.message}", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                workspaceFileList = workspaceFileList,
+                onRefreshFiles = {
+                    refreshWorkspaceFiles()
+                    Toast.makeText(context, "Workspace refreshed (${workspaceFileList.size} files)", Toast.LENGTH_SHORT).show()
+                },
+                onNewFile = { showNewFileDialog = true },
+                onClearConsole = {
+                    codeStudioOutput = ""
+                    codeStudioStderr = ""
+                    codeStudioExitCode = null
+                },
+                onAskAIChat = { prompt, code ->
+                    onSendMessageToChat(prompt, code)
+                }
+            )
+        }
+        TerminalWorkspaceMode.PACKAGES -> {
+            WrePackagesWorkspacePanel(
+                wreManager = wreManager,
+                searchQuery = toolSearchQuery,
+                onSearchQueryChange = { toolSearchQuery = it },
+                selectedCategory = selectedCategoryFilter,
+                onCategoryChange = { selectedCategoryFilter = it },
+                onInstallBundleClick = { showInstallBundleDialog = true },
+                onTestToolClick = { tool ->
+                    showTestToolDialog = tool
+                    testToolArgs = ""
+                },
+                onExportToolClick = { pkgName ->
+                    val exp = wreManager.packageManager.exportPackage(pkgName)
+                    if (exp.isSuccess) {
+                        Toast.makeText(context, "Exported ${pkgName}.wasti", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onUninstallToolClick = { pkgName ->
+                    wreManager.packageManager.removePackage(pkgName)
+                    Toast.makeText(context, "Uninstalled $pkgName", Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
+        TerminalWorkspaceMode.FILES -> {
+            WorkspaceFilesPanel(
+                wreManager = wreManager,
+                workspaceFileList = workspaceFileList,
+                onRefresh = {
+                    refreshWorkspaceFiles()
+                    Toast.makeText(context, "Refreshed files", Toast.LENGTH_SHORT).show()
+                },
+                onNewFile = { showNewFileDialog = true },
+                onOpenFile = { path ->
+                    val fileRes = wreManager.workspaceManager.resolve(path)
+                    val f = fileRes.getOrNull()
+                    if (f != null && f.exists() && f.isFile) {
+                        codeStudioPath = path
+                        codeStudioContent = f.readText()
+                        onCodeContextChange(codeStudioContent)
+                        workspaceMode = TerminalWorkspaceMode.CODE_STUDIO
+                    }
+                },
+                onRunInTerminal = { path ->
+                    workspaceMode = TerminalWorkspaceMode.CONSOLE
+                    val cmd = if (path.endsWith(".sh")) "sh $path" else if (path.endsWith(".py")) "python3 $path" else "cat $path"
+                    submitCommand(cmd)
+                },
+                onDeleteFile = { path ->
+                    val f = wreManager.workspaceManager.resolve(path).getOrNull()
+                    if (f != null && f.exists()) {
+                        f.delete()
+                        refreshWorkspaceFiles()
+                        Toast.makeText(context, "Deleted $path", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            )
+        }
     }
+}
+}
 
     // Interactive Sovereign Nano / Wedit Text Editor Dialog
     if (isEditorOpen) {
@@ -944,6 +1222,238 @@ fun TerminalWorkspaceScreen(
             }
         }
     }
+
+    // Dialog: New File
+    if (showNewFileDialog) {
+        AlertDialog(
+            onDismissRequest = { showNewFileDialog = false },
+            title = { Text("Create New Workspace File") },
+            text = {
+                Column {
+                    Text("Enter relative path inside /home/wasti (e.g. scripts/test.sh, data/config.json):", fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newFileNameInput,
+                        onValueChange = { newFileNameInput = it },
+                        placeholder = { Text("scripts/new_tool.sh") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val path = newFileNameInput.trim().removePrefix("/")
+                        if (path.isNotEmpty()) {
+                            val fileRes = wreManager.workspaceManager.resolve(path)
+                            val file = fileRes.getOrNull()
+                            if (file != null) {
+                                file.parentFile?.mkdirs()
+                                file.writeText("#!/bin/sh\n# $path\necho 'Running $path'\n")
+                                codeStudioPath = path
+                                codeStudioContent = file.readText()
+                                onCodeContextChange(codeStudioContent)
+                                refreshWorkspaceFiles()
+                                showNewFileDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Create")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFileDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Dialog: Register Tool
+    if (showRegisterToolDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegisterToolDialog = false },
+            title = { Text("Register Tool in Wasti ToolRegistry") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Make this script an autonomous capability that the Chat Brain, Floating Bubble, and Multi-Agent Orchestrator can execute.", fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = registerToolName,
+                        onValueChange = { registerToolName = it },
+                        label = { Text("Tool Name / Identifier") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = registerToolDesc,
+                        onValueChange = { registerToolDesc = it },
+                        label = { Text("Description & Capabilities") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (registerToolName.isNotBlank()) {
+                            val res = wreManager.packageManager.installOrUpdateScriptPackage(
+                                name = registerToolName.trim(),
+                                scriptContent = codeStudioContent,
+                                description = registerToolDesc.ifBlank { "Dynamic capability" },
+                                runtime = if (codeStudioPath.endsWith(".py")) "py" else if (codeStudioPath.endsWith(".js")) "js" else "sh",
+                                entryPoint = codeStudioPath
+                            )
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Tool '${registerToolName}' registered in ToolRegistry!", Toast.LENGTH_LONG).show()
+                                showRegisterToolDialog = false
+                            }
+                        }
+                    }
+                ) {
+                    Text("Register Capability")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegisterToolDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Dialog: Install .wasti Bundle
+    if (showInstallBundleDialog) {
+        AlertDialog(
+            onDismissRequest = { showInstallBundleDialog = false },
+            title = { Text("Install .wasti Capability Bundle") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter relative workspace path (e.g. packages/my_tool.wasti) or paste package JSON directly:", fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = installBundlePathOrJson,
+                        onValueChange = { installBundlePathOrJson = it },
+                        placeholder = { Text("packages/sysinfo.wasti") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 100.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val input = installBundlePathOrJson.trim()
+                        if (input.isNotEmpty()) {
+                            val installRes = if (input.startsWith("{")) {
+                                val tempFileRes = wreManager.workspaceManager.resolve("tmp/temp_bundle.wasti")
+                                val tempFile = tempFileRes.getOrNull()
+                                if (tempFile != null) {
+                                    tempFile.writeText(input)
+                                    wreManager.packageManager.installWastiPackage("tmp/temp_bundle.wasti")
+                                } else {
+                                    Result.failure(IllegalStateException("Could not resolve tmp path"))
+                                }
+                            } else {
+                                wreManager.packageManager.installWastiPackage(input)
+                            }
+
+                            if (installRes.isSuccess) {
+                                val pkg = installRes.getOrThrow()
+                                Toast.makeText(context, "Installed .wasti package '${pkg.name}' v${pkg.version}!", Toast.LENGTH_LONG).show()
+                                refreshWorkspaceFiles()
+                                showInstallBundleDialog = false
+                            } else {
+                                Toast.makeText(context, "Install failed: ${installRes.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                ) {
+                    Text("Install Package")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showInstallBundleDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // Dialog: Test Tool Execution
+    if (showTestToolDialog != null) {
+        val tool = showTestToolDialog!!
+        var testResult by remember { mutableStateOf<String?>(null) }
+        var isTesting by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showTestToolDialog = null },
+            title = { Text("Test Capability: ${tool.definition.name}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tool.definition.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = testToolArgs,
+                        onValueChange = { testToolArgs = it },
+                        label = { Text("Arguments / Parameters") },
+                        placeholder = { Text("e.g. status or --verbose") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (testResult != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Execution Result:", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF1E1E1E),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 120.dp)
+                        ) {
+                            Text(
+                                text = testResult ?: "",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = Color.White,
+                                modifier = Modifier.padding(8.dp)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            isTesting = true
+                            try {
+                                val params = mutableMapOf<String, Any>()
+                                if (testToolArgs.isNotBlank()) {
+                                    params["args"] = testToolArgs
+                                    params["input"] = testToolArgs
+                                }
+                                val out = tool.execute(params)
+                                testResult = out
+                            } catch (e: Exception) {
+                                testResult = "Execution Error: ${e.message}"
+                            } finally {
+                                isTesting = false
+                            }
+                        }
+                    },
+                    enabled = !isTesting
+                ) {
+                    Text(if (isTesting) "Running..." else "Execute")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTestToolDialog = null }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+}
+
 }
 
 @Composable
@@ -998,4 +1508,642 @@ fun TerminalLineItem(line: TerminalLine) {
         )
     }
 }
+
+@Composable
+fun CodeStudioWorkspacePanel(
+    wreManager: WreManager,
+    activeVirtualPath: String,
+    onPathChange: (String) -> Unit,
+    codeContent: String,
+    onCodeContentChange: (String) -> Unit,
+    consoleOutput: String,
+    consoleStderr: String,
+    consoleExitCode: Int?,
+    consoleVerified: Boolean,
+    consoleEvidence: String?,
+    isExecuting: Boolean,
+    onExecute: () -> Unit,
+    onSave: () -> Unit,
+    onOpenRegisterTool: () -> Unit,
+    onExportWasti: () -> Unit,
+    workspaceFileList: List<String>,
+    onRefreshFiles: () -> Unit,
+    onNewFile: () -> Unit,
+    onClearConsole: () -> Unit,
+    onAskAIChat: (prompt: String, code: String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp)
+            .testTag("code_studio_screen")
+    ) {
+        // File Selector and Actions Bar
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+            shape = RoundedCornerShape(10.dp)
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "/$activeVirtualPath",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color.White
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        IconButton(
+                            onClick = onNewFile,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.AddCircleOutline, contentDescription = "New File", tint = Color(0xFF38BDF8), modifier = Modifier.size(18.dp))
+                        }
+                        IconButton(
+                            onClick = onRefreshFiles,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF94A3B8), modifier = Modifier.size(18.dp))
+                        }
+                    }
+                }
+
+                if (workspaceFileList.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        workspaceFileList.forEach { path ->
+                            val isSelected = activeVirtualPath == path
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onPathChange(path) },
+                                label = {
+                                    Text(
+                                        path.substringAfterLast('/'),
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = if (isSelected) Color.White else Color(0xFF94A3B8)
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        if (path.endsWith(".sh")) Icons.Default.Terminal else Icons.Default.Description,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (isSelected) Color(0xFF38BDF8) else Color(0xFF64748B)
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = Color(0xFF0284C7),
+                                    containerColor = Color(0xFF0F172A)
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Code Editor Input Area
+        OutlinedTextField(
+            value = codeContent,
+            onValueChange = onCodeContentChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .testTag("code_editor_input"),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = Color(0xFFF1F5F9)
+            ),
+            placeholder = { Text("# Enter shell, python, or script code...", fontFamily = FontFamily.Monospace, color = Color(0xFF64748B)) },
+            shape = RoundedCornerShape(8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color(0xFF0A0E17),
+                unfocusedContainerColor = Color(0xFF0A0E17),
+                focusedBorderColor = Color(0xFF38BDF8),
+                unfocusedBorderColor = Color(0xFF334155),
+                cursorColor = Color(0xFF38BDF8)
+            )
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Actions Toolbar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(
+                onClick = onExecute,
+                enabled = !isExecuting,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                modifier = Modifier.testTag("run_code_button")
+            ) {
+                if (isExecuting) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Running...", fontSize = 12.sp)
+                } else {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Run Script", fontSize = 12.sp)
+                }
+            }
+
+            OutlinedButton(
+                onClick = onSave,
+                modifier = Modifier.testTag("save_file_button"),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF38BDF8))
+            ) {
+                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Save", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = onOpenRegisterTool,
+                modifier = Modifier.testTag("register_tool_button"),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFBBF24))
+            ) {
+                Icon(Icons.Default.Extension, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Register Tool", fontSize = 12.sp)
+            }
+
+            OutlinedButton(
+                onClick = onExportWasti,
+                modifier = Modifier.testTag("export_pkg_button"),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF34D399))
+            ) {
+                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Export .wasti", fontSize = 12.sp)
+            }
+        }
+
+        // Live Execution Console Panel
+        if (consoleOutput.isNotBlank() || consoleStderr.isNotBlank() || consoleExitCode != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 160.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = CircleShape,
+                                color = if (consoleExitCode == 0) Color(0xFF4ADE80) else Color(0xFFF87171),
+                                modifier = Modifier.size(8.dp)
+                            ) {}
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Exit Code: ${consoleExitCode ?: 0}",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            if (consoleVerified) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "✓ Verified Evidence",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF4ADE80)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = onClearConsole,
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear", tint = Color(0xFF64748B), modifier = Modifier.size(14.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        if (consoleOutput.isNotBlank()) {
+                            item {
+                                Text(
+                                    text = consoleOutput,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFE2E8F0)
+                                )
+                            }
+                        }
+                        if (consoleStderr.isNotBlank()) {
+                            item {
+                                Text(
+                                    text = consoleStderr,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFF87171)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WrePackagesWorkspacePanel(
+    wreManager: WreManager,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    selectedCategory: String,
+    onCategoryChange: (String) -> Unit,
+    onInstallBundleClick: () -> Unit,
+    onTestToolClick: (WastiTool) -> Unit,
+    onExportToolClick: (String) -> Unit,
+    onUninstallToolClick: (String) -> Unit
+) {
+    val allTools = remember { ToolRegistry.getAllWastiTools() }
+    val filteredTools = allTools.filter { tool ->
+        val matchesQuery = tool.definition.name.contains(searchQuery, ignoreCase = true) ||
+                tool.definition.description.contains(searchQuery, ignoreCase = true) ||
+                tool.definition.category.contains(searchQuery, ignoreCase = true)
+        val matchesCategory = selectedCategory == "All" || tool.definition.category.equals(selectedCategory, ignoreCase = true)
+        matchesQuery && matchesCategory
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp)
+            .testTag("tool_registry_list"),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Top Header
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Capabilities & Packages",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${allTools.size} autonomous capabilities loaded in Sovereign ToolRegistry",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+
+                    Button(
+                        onClick = onInstallBundleClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                        modifier = Modifier.testTag("install_bundle_button")
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Install .wasti", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+
+        // Search Box
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                placeholder = { Text("Search capabilities, tools, packages...", color = Color(0xFF64748B)) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF64748B)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("search_tools_input"),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFF0A0E17),
+                    unfocusedContainerColor = Color(0xFF0A0E17),
+                    focusedBorderColor = Color(0xFF38BDF8),
+                    unfocusedBorderColor = Color(0xFF334155),
+                    cursorColor = Color(0xFF38BDF8)
+                )
+            )
+        }
+
+        // Tool Items
+        items(filteredTools) { tool ->
+            val isDynamic = tool.definition.id.startsWith("wre_tool_")
+            val pkgName = if (isDynamic) tool.definition.id.removePrefix("wre_tool_") else null
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("tool_card_${tool.definition.id}"),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (isDynamic) Icons.Default.Terminal else Icons.Default.SettingsSuggest,
+                                contentDescription = null,
+                                tint = Color(0xFF38BDF8),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = tool.definition.name,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = tool.definition.id,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFF0F172A)
+                        ) {
+                            Text(
+                                text = tool.definition.category,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                color = Color(0xFF38BDF8)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = tool.definition.description,
+                        fontSize = 12.sp,
+                        color = Color(0xFFCBD5E1)
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isDynamic && pkgName != null) {
+                            OutlinedButton(
+                                onClick = { onExportToolClick(pkgName) },
+                                modifier = Modifier
+                                    .padding(end = 6.dp)
+                                    .testTag("export_tool_button"),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF34D399))
+                            ) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Export", fontSize = 11.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = { onUninstallToolClick(pkgName) },
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFF87171)),
+                                modifier = Modifier
+                                    .padding(end = 6.dp)
+                                    .testTag("uninstall_tool_button")
+                            ) {
+                                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Uninstall", fontSize = 11.sp)
+                            }
+                        }
+
+                        Button(
+                            onClick = { onTestToolClick(tool) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                            modifier = Modifier.testTag("test_tool_button")
+                        ) {
+                            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Test Capability", fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WorkspaceFilesPanel(
+    wreManager: WreManager,
+    workspaceFileList: List<String>,
+    onRefresh: () -> Unit,
+    onNewFile: () -> Unit,
+    onOpenFile: (String) -> Unit,
+    onRunInTerminal: (String) -> Unit,
+    onDeleteFile: (String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Workspace Files",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "${workspaceFileList.size} files in /home/wasti and project trees",
+                            fontSize = 12.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(
+                            onClick = onNewFile,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("New File", fontSize = 12.sp)
+                        }
+
+                        IconButton(onClick = onRefresh) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Color(0xFF38BDF8))
+                        }
+                    }
+                }
+            }
+        }
+
+        if (workspaceFileList.isEmpty()) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No files found in workspace.", color = Color(0xFF64748B), fontSize = 13.sp)
+                }
+            }
+        }
+
+        items(workspaceFileList) { path ->
+            val fileRes = wreManager.workspaceManager.resolve(path)
+            val file = fileRes.getOrNull()
+            val fileSizeStr = if (file != null && file.exists()) "${file.length()} bytes" else ""
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF111827)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                path.endsWith(".sh") -> Icons.Default.Terminal
+                                path.endsWith(".py") -> Icons.Default.Code
+                                path.endsWith(".json") -> Icons.Default.DataObject
+                                else -> Icons.Default.InsertDriveFile
+                            },
+                            contentDescription = null,
+                            tint = Color(0xFF38BDF8),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = path.substringAfterLast('/'),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color.White
+                            )
+                            Text(
+                                text = "/$path ($fileSizeStr)",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(
+                            onClick = { onOpenFile(path) },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF38BDF8))
+                        ) {
+                            Text("Edit", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        TextButton(
+                            onClick = { onRunInTerminal(path) },
+                            colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFF4ADE80))
+                        ) {
+                            Text("Run", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        IconButton(
+                            onClick = { onDeleteFile(path) },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color(0xFFF87171), modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 
