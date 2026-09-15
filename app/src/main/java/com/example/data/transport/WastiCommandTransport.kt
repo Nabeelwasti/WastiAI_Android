@@ -242,6 +242,7 @@ class WastiCommandTransport(
             CommandOrigin.TERMINAL,
             CommandOrigin.FLOATING_BUBBLE,
             CommandOrigin.VOICE,
+            CommandOrigin.DEV_ASSISTANT,
             CommandOrigin.PROJECTS,
             CommandOrigin.OPERATIONS,
             CommandOrigin.NOTIFICATION,
