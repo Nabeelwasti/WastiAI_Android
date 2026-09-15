@@ -95,8 +95,10 @@ data class WastiIdentityProfile(
     val authenticatedAtEpochMs: Long = System.currentTimeMillis()
 ) {
     val isVerifiedOwner: Boolean
-        get() = (role == WastiUserRole.OWNER && (ownerEntitlement?.isValid == true)) ||
-                com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
+        get() = role == WastiUserRole.OWNER && (ownerEntitlement?.isValid == true)
+
+    val isFounderIdentity: Boolean
+        get() = com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
                 (displayName.isNotBlank() && displayName.contains("Syed Nabeel Wasti", ignoreCase = true))
 
     val canManageSystemCapabilities: Boolean
@@ -178,9 +180,7 @@ object WastiIdentityManager {
             } else null
 
             val pubKey = getOrCreateDeviceKey()
-            val isOwnerVerified = (entitlement?.isValid == true) ||
-                                  com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
-                                  (name.isNotBlank() && name.contains("Syed Nabeel Wasti", ignoreCase = true))
+            val isOwnerVerified = entitlement?.isValid == true
             val effectiveRole = if (isOwnerVerified) WastiUserRole.OWNER else if (role == WastiUserRole.OWNER) WastiUserRole.MEMBER else role
             _currentProfile.value = WastiIdentityProfile(
                 userId = userId,
@@ -190,7 +190,7 @@ object WastiIdentityManager {
                 provider = provider,
                 role = effectiveRole,
                 publicKeyBase64 = pubKey,
-                ownerEntitlement = entitlement
+                ownerEntitlement = if (isOwnerVerified) entitlement else null
             )
             com.example.data.core.BusinessProfileManager.onUserSwitched(
                 context = context,
@@ -253,11 +253,9 @@ object WastiIdentityManager {
             )
         } else null
 
-        val isOwner = (entitlementCandidate?.isValid == true) ||
-                      com.example.data.core.BusinessProfileManager.isFounderEmail(email) ||
-                      (effectiveName.isNotBlank() && effectiveName.contains("Syed Nabeel Wasti", ignoreCase = true))
-        val role = if (isOwner) WastiUserRole.OWNER else WastiUserRole.MEMBER
-        val entitlement = if (isOwner) entitlementCandidate else null
+        val isOwnerVerified = entitlementCandidate?.isValid == true
+        val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
+        val entitlement = if (isOwnerVerified) entitlementCandidate else null
 
         prefs.edit().apply {
             putString(KEY_USER_ID, userId)
@@ -299,9 +297,9 @@ object WastiIdentityManager {
             userId = userId,
             email = email,
             displayName = effectiveName,
-            isVerifiedOwner = isOwner
+            isVerifiedOwner = isOwnerVerified
         )
-        Log.i(TAG, "Authenticated user $userId via $provider as $role (Verified Owner: $isOwner)")
+        Log.i(TAG, "Authenticated user $userId via $provider as $role (Verified Owner: $isOwnerVerified)")
     }
 
     /**
@@ -373,5 +371,73 @@ object WastiIdentityManager {
             Log.w(TAG, "Sign payload failed: ${e.message}")
             null
         }
+    }
+}
+
+/**
+ * Developer Mode PIN enrollment, session management, and background locking.
+ * Decouples Developer Mode privileges from founder ownership.
+ */
+object WastiDeveloperSecurityManager {
+    private const val PREFS_NAME = "wasti_developer_security"
+    private const val KEY_PIN_HASH = "developer_pin_hash"
+    private const val KEY_PIN_SALT = "developer_pin_salt"
+    private const val SESSION_TIMEOUT_MS = 15 * 60 * 1000L // 15 minutes
+
+    private var sessionUnlockedUntilEpochMs: Long = 0L
+
+    fun isPinEnrolled(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return !prefs.getString(KEY_PIN_HASH, null).isNullOrBlank()
+    }
+
+    fun enrollPin(context: Context, pin: String): Boolean {
+        if (pin.length < 4) return false
+        val salt = UUID.randomUUID().toString()
+        val hash = hashPin(pin, salt)
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putString(KEY_PIN_HASH, hash)
+            .putString(KEY_PIN_SALT, salt)
+            .apply()
+        unlockSession()
+        return true
+    }
+
+    fun authenticatePin(context: Context, pin: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val storedHash = prefs.getString(KEY_PIN_HASH, null) ?: return false
+        val salt = prefs.getString(KEY_PIN_SALT, "") ?: ""
+        val computed = hashPin(pin, salt)
+        val matches = java.security.MessageDigest.isEqual(
+            storedHash.toByteArray(Charsets.UTF_8),
+            computed.toByteArray(Charsets.UTF_8)
+        )
+        if (matches) {
+            unlockSession()
+        }
+        return matches
+    }
+
+    fun isSessionUnlocked(): Boolean {
+        return System.currentTimeMillis() < sessionUnlockedUntilEpochMs
+    }
+
+    fun unlockSession() {
+        sessionUnlockedUntilEpochMs = System.currentTimeMillis() + SESSION_TIMEOUT_MS
+    }
+
+    fun lockSession() {
+        sessionUnlockedUntilEpochMs = 0L
+    }
+
+    fun onAppBackgrounded() {
+        lockSession()
+    }
+
+    private fun hashPin(pin: String, salt: String): String {
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest("$salt:$pin".toByteArray(Charsets.UTF_8))
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 }

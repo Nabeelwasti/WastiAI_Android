@@ -71,12 +71,15 @@ object CapabilityEvolutionPipeline {
         val item = pipelineItems[gapId] ?: return@withContext Result.failure(IllegalArgumentException("Gap ID $gapId not found in pipeline"))
 
         // Stage: TEST
-        if (testEvidence.isBlank() || testEvidence.contains("mock_evidence") || testEvidence.contains("fake")) {
+        val engine = com.example.data.agent.runtime.WastiVerificationEngine()
+        if (testEvidence.isBlank() || engine.isSyntheticOrMock(testEvidence)) {
             return@withContext Result.failure(IllegalStateException("Honest Failure: Test evidence invalid or synthetic."))
         }
 
-        // Stage: VERIFY
-        val verified = verificationEvidence.isNotBlank() && !verificationEvidence.contains("UNVERIFIED")
+        // Stage: VERIFY - Canonical Verification Authority check
+        val verified = verificationEvidence.isNotBlank() &&
+                       !engine.isSyntheticOrMock(verificationEvidence) &&
+                       !verificationEvidence.contains("UNVERIFIED")
         if (!verified) {
             return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence required."))
         }

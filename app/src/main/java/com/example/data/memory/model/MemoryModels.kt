@@ -37,6 +37,28 @@ data class EmbeddingVector(
     }
 }
 
+enum class MemoryTier {
+    EPHEMERAL,
+    USER_MEMORY,
+    PROJECT_MEMORY,
+    SYSTEM_MEMORY,
+    VERIFIED_KNOWLEDGE,
+    GLOBAL_SKILL,
+    CREDENTIAL,
+    SECURITY_EVENT;
+
+    /**
+     * Governs boundary gating: Credentials and private user memories must NEVER
+     * leak or be automatically promoted into global knowledge / skills.
+     */
+    fun canPromoteTo(targetTier: MemoryTier): Boolean {
+        if (this == CREDENTIAL) return false // Credentials can NEVER be promoted
+        if (this == USER_MEMORY && targetTier == GLOBAL_SKILL) return false // Private user data cannot become global skill
+        if (this == USER_MEMORY && targetTier == VERIFIED_KNOWLEDGE) return false // Private user data cannot become global knowledge
+        return true
+    }
+}
+
 data class MemoryItem(
     val id: String,
     val key: String,
@@ -48,7 +70,8 @@ data class MemoryItem(
     val embedding: EmbeddingVector? = null,
     val isArchived: Boolean = false,
     val accessCount: Int = 0,
-    val lastAccessedTimestamp: Long = System.currentTimeMillis()
+    val lastAccessedTimestamp: Long = System.currentTimeMillis(),
+    val tier: MemoryTier = MemoryTier.SYSTEM_MEMORY
 )
 
 data class MemorySearchQuery(

@@ -34,6 +34,19 @@ data class IntentSafetyEvaluation(
     val suggestedScopeConstraint: String? = null
 )
 
+enum class IntentSafetyDecision {
+    ALLOW,
+    REQUIRE_APPROVAL,
+    DENY
+}
+
+data class IntentSafetyDecisionResult(
+    val decision: IntentSafetyDecision,
+    val evaluation: IntentSafetyEvaluation,
+    val evidenceHash: String,
+    val reason: String
+)
+
 data class OwnerAdminSafetyAlert(
     val id: String = UUID.randomUUID().toString(),
     val requestingUser: String,
@@ -184,5 +197,70 @@ object WastiIntentSafetyAuditor {
         _pendingAlerts.value = list
         Log.i(TAG, "Owner resolved safety alert $alertId -> $resolution (Scope: $scopeConstraint)")
         return true
+    }
+
+    /**
+     * Mandatory pre-execution boundary with explicit ALLOW, REQUIRE_APPROVAL, DENY decisions.
+     * Evaluates action risk, environment bounds, caller authority, and generates auditable evidence.
+     */
+    fun authorizeAction(
+        actionName: String,
+        targetResource: String = "",
+        parameters: Map<String, Any?> = emptyMap(),
+        callerUserId: String = "unknown",
+        callerIsVerifiedOwner: Boolean = false
+    ): IntentSafetyDecisionResult {
+        val composite = "$actionName $targetResource ${parameters.entries.joinToString(" ") { "${it.key}=${it.value}" }}".trim()
+        val evaluation = evaluateIntent(composite)
+
+        val md = MessageDigest.getInstance("SHA-256")
+        val hash = md.digest("$callerUserId:$composite:${System.currentTimeMillis()}".toByteArray())
+            .fold("") { s, b -> s + "%02x".format(b) }
+
+        return when (evaluation.severity) {
+            IntentRiskSeverity.CRITICAL_BLOCKED -> {
+                escalateToOwnerDashboard(composite, evaluation)
+                IntentSafetyDecisionResult(
+                    decision = IntentSafetyDecision.DENY,
+                    evaluation = evaluation,
+                    evidenceHash = hash,
+                    reason = "CRITICAL_BLOCKED: ${evaluation.summary}"
+                )
+            }
+            IntentRiskSeverity.HIGH_RISK_GATED -> {
+                if (callerIsVerifiedOwner) {
+                    IntentSafetyDecisionResult(
+                        decision = IntentSafetyDecision.ALLOW,
+                        evaluation = evaluation,
+                        evidenceHash = hash,
+                        reason = "AUTHORIZED_BY_VERIFIED_OWNER"
+                    )
+                } else {
+                    escalateToOwnerDashboard(composite, evaluation)
+                    IntentSafetyDecisionResult(
+                        decision = IntentSafetyDecision.REQUIRE_APPROVAL,
+                        evaluation = evaluation,
+                        evidenceHash = hash,
+                        reason = "HIGH_RISK_GATED: Requires owner approval"
+                    )
+                }
+            }
+            IntentRiskSeverity.ELEVATED_NOTICE -> {
+                IntentSafetyDecisionResult(
+                    decision = IntentSafetyDecision.ALLOW,
+                    evaluation = evaluation,
+                    evidenceHash = hash,
+                    reason = "ELEVATED_NOTICE_PERMITTED"
+                )
+            }
+            IntentRiskSeverity.SAFE -> {
+                IntentSafetyDecisionResult(
+                    decision = IntentSafetyDecision.ALLOW,
+                    evaluation = evaluation,
+                    evidenceHash = hash,
+                    reason = "SAFE_OPERATION_PERMITTED"
+                )
+            }
+        }
     }
 }

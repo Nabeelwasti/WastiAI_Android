@@ -15,6 +15,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
+enum class CredentialClassification {
+    PUBLIC_CLIENT_SAFE,
+    USER_SECRET,
+    SERVER_SECRET,
+    SIGNING_SECRET,
+    SECURITY_SECRET
+}
+
 enum class CredentialCategory(val title: String) {
     MODEL_PROVIDERS("AI & Model Providers"),
     DESIGN_BACKUP("Design & Cloud Backup"),
@@ -37,6 +45,7 @@ data class CredentialEntry(
     val category: CredentialCategory,
     val isDefaultActive: Boolean = true,
     val description: String = "",
+    val classification: CredentialClassification = CredentialClassification.USER_SECRET,
     val testConnection: suspend (value: String) -> Pair<Boolean, String>
 )
 
@@ -56,36 +65,6 @@ object CredentialRegistry {
                 .build()
         } catch (_: Throwable) {
             OkHttpClient()
-        }
-    }
-
-    private const val SEED_VAULT_KEY = "WastiOS-MasterSeed-com.aistudio.wastios.k9v2pz"
-
-    fun decryptSeedVault(bytes: ByteArray): String {
-        val keyBytes = SEED_VAULT_KEY.toByteArray(Charsets.UTF_8)
-        val output = ByteArray(bytes.size)
-        for (i in bytes.indices) {
-            output[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
-        }
-        return String(output, Charsets.UTF_8)
-    }
-
-    private fun loadSeedVaultJson(assetManager: android.content.res.AssetManager): org.json.JSONObject? {
-        return try {
-            val assetsList = assetManager.list("") ?: emptyArray()
-            when {
-                "wasti_seed_vault.bin" in assetsList -> {
-                    val bytes = assetManager.open("wasti_seed_vault.bin").use { it.readBytes() }
-                    org.json.JSONObject(decryptSeedVault(bytes))
-                }
-                "wasti_seed_vault.json" in assetsList -> {
-                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
-                    org.json.JSONObject(jsonStr)
-                }
-                else -> null
-            }
-        } catch (_: Throwable) {
-            null
         }
     }
 
@@ -297,6 +276,7 @@ object CredentialRegistry {
             category = CredentialCategory.DESIGN_BACKUP,
             isDefaultActive = true,
             description = "OAuth Client ID for automated Google Drive workspace backup.",
+            classification = CredentialClassification.PUBLIC_CLIENT_SAFE,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else Pair(true, "Configured (${value.take(12)}...)")
@@ -308,6 +288,7 @@ object CredentialRegistry {
             category = CredentialCategory.DESIGN_BACKUP,
             isDefaultActive = true,
             description = "OAuth Secret for Google Drive workspace synchronization.",
+            classification = CredentialClassification.USER_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else Pair(true, "Configured (Secret Set)")
@@ -319,6 +300,7 @@ object CredentialRegistry {
             category = CredentialCategory.DESIGN_BACKUP,
             isDefaultActive = true,
             description = "OAuth 2.0 Web Application Client ID for CredentialManager Google Auth & Firebase Auth.",
+            classification = CredentialClassification.PUBLIC_CLIENT_SAFE,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else Pair(true, "Configured (${value.take(12)}...)")
@@ -330,6 +312,7 @@ object CredentialRegistry {
             category = CredentialCategory.DESIGN_BACKUP,
             isDefaultActive = true,
             description = "OAuth 2.0 Android Client ID matching package com.aistudio.wastios.k9v2pz and release keystore SHA-256.",
+            classification = CredentialClassification.PUBLIC_CLIENT_SAFE,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else Pair(true, "Configured (${value.take(12)}...)")
@@ -343,6 +326,7 @@ object CredentialRegistry {
             category = CredentialCategory.BUSINESS_PAYMENTS,
             isDefaultActive = true,
             description = "Transactional email, SMS, and marketing automation suite.",
+            classification = CredentialClassification.USER_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else httpGetCheck("https://api.brevo.com/v3/account", mapOf("api-key" to value))
@@ -354,6 +338,7 @@ object CredentialRegistry {
             category = CredentialCategory.BUSINESS_PAYMENTS,
             isDefaultActive = true,
             description = "Model Context Protocol server token for Brevo CRM tool calls.",
+            classification = CredentialClassification.USER_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else Pair(true, "Configured (Token Set)")
@@ -365,6 +350,7 @@ object CredentialRegistry {
             category = CredentialCategory.BUSINESS_PAYMENTS,
             isDefaultActive = true,
             description = "Client-side payment tokenization and Checkout SDK initialization.",
+            classification = CredentialClassification.PUBLIC_CLIENT_SAFE,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else if (value.startsWith("pk_")) Pair(true, "Valid Publishable Key Format")
@@ -377,6 +363,7 @@ object CredentialRegistry {
             category = CredentialCategory.BUSINESS_PAYMENTS,
             isDefaultActive = true,
             description = "Server-side billing & charge finalization routed via Cloudflare Worker Proxy (Isolated from Client).",
+            classification = CredentialClassification.SERVER_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(true, "Isolated Server-Side (Cloudflare Worker Active)")
                 else Pair(true, "Migrated to Cloudflare Worker Edge Server")
@@ -388,6 +375,7 @@ object CredentialRegistry {
             category = CredentialCategory.BUSINESS_PAYMENTS,
             isDefaultActive = true,
             description = "Restricted sandbox token for safe testing of payment Webhooks.",
+            classification = CredentialClassification.USER_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else httpGetCheck("https://api.stripe.com/v1/balance", mapOf("Authorization" to "Bearer $value"))
@@ -401,6 +389,7 @@ object CredentialRegistry {
             category = CredentialCategory.CODE_REPOS,
             isDefaultActive = true,
             description = "Primary scoped token for GitHub repository actions, commits, & MCP agent sync.",
+            classification = CredentialClassification.SECURITY_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else httpGetCheck("https://api.github.com/user", mapOf("Authorization" to "Bearer $value"))
@@ -412,6 +401,7 @@ object CredentialRegistry {
             category = CredentialCategory.CODE_REPOS,
             isDefaultActive = false,
             description = "Classic Personal Access Token (secondary fallback if fine-grained is unconfigured).",
+            classification = CredentialClassification.SECURITY_SECRET,
             testConnection = { value ->
                 if (value.isBlank()) Pair(false, "Not Configured (Empty Key)")
                 else httpGetCheck("https://api.github.com/user", mapOf("Authorization" to "token $value"))
@@ -737,18 +727,6 @@ object CredentialRegistry {
                     return prefVal
                 }
             }
-            // 2.5. Compile-Time Seed Vault Asset fallback (wasti_seed_vault.bin or wasti_seed_vault.json)
-            val seedJson = loadSeedVaultJson(targetCtx.assets)
-            if (seedJson != null) {
-                for (ck in candidateKeys) {
-                    val v = seedJson.optString(ck, "")
-                    if (v.isNotBlank() && !isPlaceholder(v)) {
-                        // Automatically persist to securePrefs so future lookups hit hardware vault
-                        securePrefs.edit().putString(lowerKey, v).putString(keyName, v).apply()
-                        return v
-                    }
-                }
-            }
         }
 
         // 3. Dynamic Safe BuildConfig property resolution
@@ -855,24 +833,6 @@ object CredentialRegistry {
                 }
             } catch (ignored: Throwable) {
                 // Ignore if reflection is restricted
-            }
-
-            // 3. Inspect packaged compile-time seed asset (wasti_seed_vault.bin or wasti_seed_vault.json) if present
-            val seedJson = loadSeedVaultJson(context.assets)
-            if (seedJson != null) {
-                val keys = seedJson.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val v = seedJson.optString(k, "")
-                    val existingLower = securePrefs.getString(k.lowercase(), null)
-                    val existingUpper = securePrefs.getString(k, null)
-                    val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
-                                        (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
-                    if (!hasVaultValue && v.isNotBlank() && !isPlaceholder(v)) {
-                        android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving seed asset secret [$k] into Vault")
-                        saveCredential(k, v, context)
-                    }
-                }
             }
         }
     }

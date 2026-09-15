@@ -187,6 +187,28 @@ class UnifiedExecutionFabric(
         }
 
         try {
+            // 1.5. Mandatory Pre-Execution Intent Safety Check
+            val currentProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
+            val safetyResult = com.example.data.security.WastiIntentSafetyAuditor.authorizeAction(
+                actionName = request.capabilityId,
+                targetResource = request.parameters["path"]?.toString() ?: request.parameters["url"]?.toString() ?: "",
+                parameters = request.parameters,
+                callerUserId = currentProfile?.userId ?: "anonymous",
+                callerIsVerifiedOwner = currentProfile?.isVerifiedOwner == true
+            )
+            if (safetyResult.decision == com.example.data.security.IntentSafetyDecision.DENY) {
+                return createResult(
+                    request = request,
+                    status = UnifiedExecutionStatus.FAILED,
+                    output = "Action execution blocked by security policy: ${safetyResult.reason}",
+                    error = "INTENT_SAFETY_BLOCKED: ${safetyResult.reason}",
+                    executor = "WastiIntentSafetyAuditor",
+                    startedAt = startedAt,
+                    verificationStatus = UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "EvidenceHash: ${safetyResult.evidenceHash}"
+                )
+            }
+
             // 2. Capability Reality Check
             val reality = realityRegistry.getCapabilityReality(request.capabilityId)
             when (reality.realityState) {

@@ -105,12 +105,13 @@ object SelfTrainingKnowledgeDistillationEngine {
         ) {
             return null
         }
+        val derivedConfidence = provenanceEntry.confidence.toFloat().takeIf { it in 0.01f..1.0f } ?: 0.85f
         return recordVerifiedInteractionAndDistill(
             taskPrompt = taskPrompt,
             successfulExecutionEvidence = provenanceEntry.evidenceSummary,
             winningModelId = winningModelId,
             provenanceEntryId = provenanceEntry.entryId,
-            evidenceConfidence = 0.95f,
+            evidenceConfidence = derivedConfidence,
             isVerified = true
         )
     }
@@ -120,7 +121,7 @@ object SelfTrainingKnowledgeDistillationEngine {
         successfulExecutionEvidence: String,
         winningModelId: String,
         provenanceEntryId: String? = null,
-        evidenceConfidence: Float = 0.90f,
+        evidenceConfidence: Float = 0.85f,
         isVerified: Boolean = false
     ): DistilledKnowledgeArtifact? {
         if (taskPrompt.isBlank() ||
@@ -186,7 +187,7 @@ object SelfTrainingKnowledgeDistillationEngine {
                 key = "Skill_${artifact.artifactId}",
                 category = "Distilled Skills",
                 value = "[DISTILLED_SKILL] Specialization: ${artifact.targetSpecialization} | Pattern: ${artifact.taskPattern} | Model: ${artifact.sourceModel} | Evidence: ${artifact.executionEvidence}",
-                importanceScore = 0.9f
+                importanceScore = if (artifact.isFactuallyVerified) artifact.confidenceScore else 0.5f
             )
         } catch (_: Exception) {
             // Non-critical fallback if memory engine is initializing

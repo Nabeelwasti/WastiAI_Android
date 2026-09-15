@@ -13,6 +13,7 @@ import com.example.data.memory.model.MemoryItem
 import com.example.data.memory.model.MemoryObservabilityStats
 import com.example.data.memory.model.MemorySearchQuery
 import com.example.data.memory.model.MemorySearchResult
+import com.example.data.memory.model.MemoryTier
 import com.example.data.memory.model.SearchType
 import com.example.data.memory.policy.MemoryPolicyEngine
 import com.example.data.memory.storage.VectorIndex
@@ -68,7 +69,8 @@ object MemoryManager {
                     importanceScore = entity.importanceScore,
                     timestamp = entity.timestamp,
                     sourceMessageId = entity.sourceMessageId,
-                    embedding = embedding
+                    embedding = embedding,
+                    tier = resolveTierForCategory(entity.category, entity.key)
                 )
                 activeMemoriesMap[entity.id] = item
                 vectorIndex.indexVector(entity.id, embedding, "{\"key\":\"${entity.key}\"}")
@@ -77,6 +79,41 @@ object MemoryManager {
         } catch (e: Exception) {
             Log.e("MemoryManager", "Failed to load memories from Room database", e)
         }
+    }
+
+    fun resolveTierForCategory(category: String, key: String): MemoryTier {
+        val catLower = category.lowercase()
+        val keyLower = key.lowercase()
+        return when {
+            catLower.contains("credential") || keyLower.contains("secret") || keyLower.contains("key") || keyLower.contains("token") || keyLower.contains("password") -> MemoryTier.CREDENTIAL
+            catLower.contains("security") || keyLower.contains("security") -> MemoryTier.SECURITY_EVENT
+            catLower.contains("preference") || catLower.contains("user") -> MemoryTier.USER_MEMORY
+            catLower.contains("project") -> MemoryTier.PROJECT_MEMORY
+            catLower.contains("skill") || keyLower.startsWith("skill_") -> MemoryTier.GLOBAL_SKILL
+            catLower.contains("verified") || keyLower.contains("verified") -> MemoryTier.VERIFIED_KNOWLEDGE
+            catLower.contains("ephemeral") || catLower.contains("session") -> MemoryTier.EPHEMERAL
+            else -> MemoryTier.SYSTEM_MEMORY
+        }
+    }
+
+    /**
+     * Checks whether a memory can be promoted to the target tier.
+     * Boundary gating: CREDENTIAL can never be promoted; USER_MEMORY cannot become global knowledge/skill.
+     */
+    fun canPromoteMemory(memory: MemoryItem, targetTier: MemoryTier): Boolean {
+        return memory.tier.canPromoteTo(targetTier)
+    }
+
+    suspend fun promoteMemoryTier(memoryId: String, targetTier: MemoryTier): Boolean = withContext(Dispatchers.IO) {
+        val existing = activeMemoriesMap[memoryId] ?: return@withContext false
+        if (!canPromoteMemory(existing, targetTier)) {
+            Log.w("MemoryManager", "Security Boundary Violation: Cannot promote memory ${existing.id} of tier ${existing.tier} to target tier $targetTier")
+            return@withContext false
+        }
+        val updated = existing.copy(tier = targetTier)
+        activeMemoriesMap[memoryId] = updated
+        _memoriesFlow.value = activeMemoriesMap.values.toList()
+        true
     }
 
     /**
@@ -108,7 +145,8 @@ object MemoryManager {
                 category = "User Preferences",
                 value = userPrompt.trim(),
                 importanceScore = 0.95f,
-                sourceMessageId = sourceMessageId
+                sourceMessageId = sourceMessageId,
+                tier = MemoryTier.USER_MEMORY
             )
             Log.i("MemoryManager", "Explicit memory intent processed & indexed: $key")
         }
@@ -119,7 +157,8 @@ object MemoryManager {
         category: String,
         value: String,
         importanceScore: Float = 0.9f,
-        sourceMessageId: String? = null
+        sourceMessageId: String? = null,
+        tier: MemoryTier = resolveTierForCategory(category, key)
     ): MemoryItem = withContext(Dispatchers.IO) {
         val existingDuplicate = activeMemoriesMap.values.find {
             policyEngine.isDuplicate(it.value, value)
@@ -150,7 +189,8 @@ object MemoryManager {
             importanceScore = importanceScore,
             timestamp = System.currentTimeMillis(),
             sourceMessageId = sourceMessageId,
-            embedding = embedding
+            embedding = embedding,
+            tier = tier
         )
 
         activeMemoriesMap[id] = newItem
@@ -198,9 +238,10 @@ object MemoryManager {
                 activeMemoriesMap
             )
 
-            if (results.isEmpty()) return@withContext ""
+            val safeResults = results.filter { it.memory.tier != MemoryTier.CREDENTIAL }
+            if (safeResults.isEmpty()) return@withContext ""
 
-            val contextLines = results.mapIndexed { idx, res ->
+            val contextLines = safeResults.mapIndexed { idx, res ->
                 val expl = explanations.getOrNull(idx)
                 val reasonStr = expl?.provenanceReason ?: "Relevance: ${"%.2f".format(res.relevanceScore)}"
                 "${idx + 1}. [${res.memory.category}] ${res.memory.key}: ${res.memory.value} ($reasonStr)"

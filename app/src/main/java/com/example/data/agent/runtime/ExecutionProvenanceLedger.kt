@@ -24,7 +24,8 @@ data class ProvenanceEntry(
     val isVerified: Boolean,
     val timestamp: Long,
     val previousEntryHash: String,
-    val entryHash: String
+    val entryHash: String,
+    val confidence: Double = 0.0
 )
 
 /**
@@ -79,7 +80,8 @@ object ExecutionProvenanceLedger {
             isVerified = isVerified,
             timestamp = timestamp,
             previousEntryHash = prevHash,
-            entryHash = entryHash
+            entryHash = entryHash,
+            confidence = evidence?.confidence ?: 0.0
         )
 
         _entries.value = currentList + entry

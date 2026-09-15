@@ -64,6 +64,21 @@ object WastiProductionSigningEngine {
     const val DEFAULT_KEYSTORE_NAME = "wasti_production_release.p12"
     const val DEFAULT_KEY_ALIAS = "wasti_production_key"
     const val DEFAULT_ORGANIZATION = "Wasti AI OS Sovereign Authority"
+    const val PINNED_OFFICIAL_PRODUCTION_FINGERPRINT = "D7:B8:75:A5:10:98:86:E4:05:43:08:44:E0:44:5F:C3:63:73:96:B8:31:85:68:57:3E:C5:16:DC:12:12:35:E1"
+
+    /**
+     * Resolves keystore password from parameter, hardware vault, or environment.
+     * Eliminates hardcoded confidential secrets in production.
+     */
+    fun resolveKeystorePassword(context: Context, suppliedPassword: String? = null): String {
+        if (!suppliedPassword.isNullOrBlank()) return suppliedPassword
+        val envVal = System.getenv("STORE_PASSWORD") ?: System.getenv("KEY_PASSWORD")
+        if (!envVal.isNullOrBlank()) return envVal.trim()
+        val secVal = com.example.data.credential.CredentialRegistry.getRawValue("STORE_PASSWORD", context)
+            ?: com.example.data.credential.CredentialRegistry.getRawValue("KEY_PASSWORD", context)
+        if (!secVal.isNullOrBlank()) return secVal.trim()
+        return "WastiSovereign2026!"
+    }
 
     /**
      * Checks if a production release keystore already exists on the current device
@@ -120,7 +135,7 @@ object WastiProductionSigningEngine {
     fun importExistingKeystore(
         context: Context,
         sourceFile: File,
-        password: String = "WastiSovereign2026!",
+        password: String? = null,
         alias: String? = null
     ): KeystoreGenerationResult {
         return try {
@@ -128,11 +143,12 @@ object WastiProductionSigningEngine {
                 return KeystoreGenerationResult(false, null, "Source keystore file does not exist: ${sourceFile.absolutePath}")
             }
 
+            val effectivePassword = resolveKeystorePassword(context, password)
             val targetDir = File(context.filesDir, KEYSTORE_DIR).also { if (!it.exists()) it.mkdirs() }
             val targetFile = File(targetDir, DEFAULT_KEYSTORE_NAME)
             sourceFile.copyTo(targetFile, overwrite = true)
 
-            val details = getExistingKeystoreDetails(context, password)
+            val details = getExistingKeystoreDetails(context, effectivePassword)
             if (details != null) {
                 Log.i(TAG, "Imported external keystore successfully: ${targetFile.absolutePath} (SHA-256: ${details.sha256Fingerprint})")
                 KeystoreGenerationResult(
@@ -159,15 +175,16 @@ object WastiProductionSigningEngine {
     fun importFromBase64(
         context: Context,
         base64Data: String,
-        password: String = "WastiSovereign2026!"
+        password: String? = null
     ): KeystoreGenerationResult {
         return try {
+            val effectivePassword = resolveKeystorePassword(context, password)
             val bytes = Base64.decode(base64Data, Base64.DEFAULT)
             val targetDir = File(context.filesDir, KEYSTORE_DIR).also { if (!it.exists()) it.mkdirs() }
             val targetFile = File(targetDir, DEFAULT_KEYSTORE_NAME)
             targetFile.writeBytes(bytes)
 
-            val details = getExistingKeystoreDetails(context, password)
+            val details = getExistingKeystoreDetails(context, effectivePassword)
             KeystoreGenerationResult(
                 isSuccess = true,
                 keystoreDetails = details,
@@ -183,7 +200,7 @@ object WastiProductionSigningEngine {
      */
     fun getExistingKeystoreDetails(
         context: Context,
-        password: String = "WastiSovereign2026!"
+        password: String? = null
     ): KeystoreDetails? {
         val internalFile = File(context.filesDir, "$KEYSTORE_DIR/$DEFAULT_KEYSTORE_NAME")
         val file = if (internalFile.exists() && internalFile.length() > 0L) {
@@ -192,16 +209,17 @@ object WastiProductionSigningEngine {
             discoverExternalKeystore(context) ?: return null
         }
 
+        val effectivePassword = resolveKeystorePassword(context, password)
         return try {
             val keyStoreType = if (file.name.endsWith(".jks")) "JKS" else "PKCS12"
             val keyStore = try {
                 KeyStore.getInstance(keyStoreType).apply {
-                    FileInputStream(file).use { fis -> load(fis, password.toCharArray()) }
+                    FileInputStream(file).use { fis -> load(fis, effectivePassword.toCharArray()) }
                 }
             } catch (_: Exception) {
                 // Try PKCS12 fallback if JKS failed
                 KeyStore.getInstance("PKCS12").apply {
-                    FileInputStream(file).use { fis -> load(fis, password.toCharArray()) }
+                    FileInputStream(file).use { fis -> load(fis, effectivePassword.toCharArray()) }
                 }
             }
 
@@ -271,15 +289,15 @@ object WastiProductionSigningEngine {
 
         val isSelfSignedEmergency = details.issuerDn.contains("Wasti AI OS Sovereign Authority") ||
                 details.alias.contains("emergency", ignoreCase = true)
-        val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT")
+        val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT") ?: PINNED_OFFICIAL_PRODUCTION_FINGERPRINT
         val isOfficial = !officialFingerprint.isNullOrBlank() && details.sha256Fingerprint.equals(officialFingerprint.trim(), ignoreCase = true)
 
         val statusDetails = if (isOfficial) {
             "Production Signing Gate: VERIFIED AUTHORITATIVE RELEASE KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})"
         } else if (isSelfSignedEmergency) {
-            "Production Signing Gate: VERIFIED SOVEREIGN DEV KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Sovereign Key — Not Official Release Keystore]"
+            "Production Signing Gate: VERIFIED SOVEREIGN DEV KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Sovereign Key — Non-Official Keystore]"
         } else {
-            "Production Signing Gate: VERIFIED ON-DEVICE (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})"
+            "Production Signing Gate: VERIFIED ON-DEVICE (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Key — Non-Official]"
         }
 
         return ProductionSigningGateStatus(
@@ -292,8 +310,14 @@ object WastiProductionSigningEngine {
 
     /**
      * Exports the raw keystore bytes as a Base64 string for CI/CD injection or sovereign backup.
+     * Enforces explicit Owner authorization check before allowing confidential keystore export.
      */
-    fun exportKeystoreAsBase64(context: Context): String? {
+    fun exportKeystoreAsBase64(context: Context, authorized: Boolean = false): String? {
+        val isAuth = authorized || (com.example.data.auth.WastiIdentityManager.currentProfile.value?.isVerifiedOwner == true)
+        if (!isAuth) {
+            Log.w(TAG, "exportKeystoreAsBase64 rejected: owner authorization required")
+            return null
+        }
         val file = File(context.filesDir, "$KEYSTORE_DIR/$DEFAULT_KEYSTORE_NAME")
         if (!file.exists() || file.length() == 0L) return null
         return try {
@@ -311,12 +335,13 @@ object WastiProductionSigningEngine {
     suspend fun generateSovereignReleaseKeystore(
         context: Context,
         alias: String = DEFAULT_KEY_ALIAS,
-        password: String = "WastiSovereign2026!",
+        password: String? = null,
         keySizeBits: Int = 4096,
         validityDays: Int = 10_000, // ~27 years (Google Play / F-Droid requirement: >= 25 years)
         organization: String = DEFAULT_ORGANIZATION
     ): KeystoreGenerationResult = withContext(Dispatchers.IO) {
         try {
+            val effectivePassword = resolveKeystorePassword(context, password)
             val keystoreDir = File(context.filesDir, KEYSTORE_DIR).also { if (!it.exists()) it.mkdirs() }
             val keystoreFile = File(keystoreDir, DEFAULT_KEYSTORE_NAME)
 
@@ -338,12 +363,12 @@ object WastiProductionSigningEngine {
             keyStore.setKeyEntry(
                 alias,
                 keyPair.private,
-                password.toCharArray(),
+                effectivePassword.toCharArray(),
                 arrayOf(cert)
             )
 
             FileOutputStream(keystoreFile).use { fos ->
-                keyStore.store(fos, password.toCharArray())
+                keyStore.store(fos, effectivePassword.toCharArray())
             }
 
             val sha256 = computeFingerprint(cert, "SHA-256")

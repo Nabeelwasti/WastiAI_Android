@@ -171,3 +171,67 @@ data class VerifiedExecutionEvidence(
     val observedAt: Long = System.currentTimeMillis(),
     val confidence: Double = 1.0
 )
+
+/**
+ * Execution simulation result, permanently marked as SIMULATION_ONLY / TEST_ONLY.
+ * Cannot masquerade as physical Android reality or real execution.
+ */
+data class SimulationResult(
+    val simulationId: String = java.util.UUID.randomUUID().toString(),
+    val targetCapabilityId: String,
+    val simulatedOutput: String,
+    val simulatedState: String,
+    val executionTier: String = "SIMULATION_ONLY",
+    val isSimulationOnly: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
+ * Evidence produced exclusively within test suites / Robolectric host execution.
+ * Permanently labeled isTestOnly = true and cannot satisfy physical device readiness gates.
+ */
+data class TestVerifiedEvidence(
+    val testId: String = java.util.UUID.randomUUID().toString(),
+    val targetSubject: String,
+    val testScope: String,
+    val testEvidence: String,
+    val isTestOnly: Boolean = true,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+/**
+ * An observed physical or runtime execution fact collected by observation engine.
+ */
+data class ObservedExecutionFact(
+    val factId: String = java.util.UUID.randomUUID().toString(),
+    val actionId: String,
+    val capabilityId: String,
+    val observedState: String,
+    val evidenceSource: EvidenceSource,
+    val environmentBound: Boolean = true,
+    val observedAtEpochMs: Long = System.currentTimeMillis()
+)
+
+/**
+ * A capability verified exclusively through canonical Reality/Verification authority.
+ */
+data class RealityVerifiedCapability(
+    val capabilityId: String,
+    val canonicalVerifier: String = "WastiVerificationEngine",
+    val verificationEvidence: VerifiedExecutionEvidence,
+    val verifiedAtEpochMs: Long = System.currentTimeMillis(),
+    val isRealityVerified: Boolean = true
+)
+
+/**
+ * Provenance-bound, consensus-backed trusted knowledge.
+ */
+data class TrustedKnowledge(
+    val knowledgeId: String = java.util.UUID.randomUUID().toString(),
+    val topic: String,
+    val distilledContent: String,
+    val provenanceEvidenceHash: String,
+    val consensusScore: Float,
+    val isFactuallyVerified: Boolean = true,
+    val registeredAtEpochMs: Long = System.currentTimeMillis()
+)

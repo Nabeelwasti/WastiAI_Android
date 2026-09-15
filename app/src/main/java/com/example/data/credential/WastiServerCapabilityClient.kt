@@ -32,7 +32,10 @@ data class ScopedCapabilityGrant(
     val scopes: List<String>,
     val rateLimitPerHour: Int,
     val grantType: CapabilityGrantType = CapabilityGrantType.SERVER_GRANT,
-    val isOwnerAuthorized: Boolean = false
+    val isOwnerAuthorized: Boolean = false,
+    val tenantId: String = "default",
+    val userId: String = "anonymous",
+    val nonce: String = ""
 ) {
     val isValid: Boolean
         get() = token.isNotBlank() && System.currentTimeMillis() < expiresAtEpochMs
@@ -40,26 +43,35 @@ data class ScopedCapabilityGrant(
 
 object WastiServerCapabilityClient {
     private const val TAG = "ServerCapabilityClient"
+    // Tenant-isolated and user-bound grant cache: "$tenantId:$userId:$capabilityName"
     private val grantCache = ConcurrentHashMap<String, ScopedCapabilityGrant>()
 
     /**
      * Obtains a narrowly scoped capability token for a requested operation.
      * Uses server exchange when backend is configured, or fails closed safely.
+     * Enforces tenant-isolation and replay-resistance.
      */
     suspend fun acquireCapability(
         context: Context,
         capabilityName: String,
-        requestedScope: String = "execute"
+        requestedScope: String = "execute",
+        tenantId: String = "default"
     ): ScopedCapabilityGrant? = withContext(Dispatchers.IO) {
-        val cached = grantCache[capabilityName]
+        val profile = WastiIdentityManager.currentProfile.value
+        val userId = profile?.userId ?: "anonymous"
+        val cacheKey = "$tenantId:$userId:$capabilityName"
+
+        val cached = grantCache[cacheKey]
         if (cached != null && cached.isValid) {
             return@withContext cached
         }
 
-        val profile = WastiIdentityManager.currentProfile.value
         val backendUrl = CredentialRegistry.getRawValue("WASTI_BACKEND_URL")
             ?: CredentialRegistry.getRawValue("PUBLIC_API_BASE_URL")
             ?: "http://127.0.0.1:8080"
+
+        val requestNonce = java.util.UUID.randomUUID().toString()
+        val requestTimestamp = System.currentTimeMillis()
 
         try {
             val url = URL("$backendUrl/api/capabilities/grant")
@@ -69,11 +81,14 @@ object WastiServerCapabilityClient {
             conn.readTimeout = 4000
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("X-Wasti-User-Id", profile?.userId ?: "anonymous")
+            conn.setRequestProperty("X-Wasti-User-Id", userId)
+            conn.setRequestProperty("X-Wasti-Tenant-Id", tenantId)
             conn.setRequestProperty("X-Wasti-Role", profile?.role?.name ?: "GUEST")
+            conn.setRequestProperty("X-Wasti-Nonce", requestNonce)
+            conn.setRequestProperty("X-Wasti-Timestamp", requestTimestamp.toString())
 
             // Attach signed attestation if available
-            val payloadBytes = "${profile?.userId}:$capabilityName:${System.currentTimeMillis()}".toByteArray()
+            val payloadBytes = "$userId:$tenantId:$capabilityName:$requestNonce:$requestTimestamp".toByteArray()
             val attestationSig = WastiIdentityManager.signPayload(payloadBytes)
             if (attestationSig != null) {
                 conn.setRequestProperty("X-Wasti-Attestation", attestationSig)
@@ -82,7 +97,10 @@ object WastiServerCapabilityClient {
             val requestJson = JSONObject().apply {
                 put("capability", capabilityName)
                 put("scope", requestedScope)
-                put("userId", profile?.userId ?: "anonymous")
+                put("userId", userId)
+                put("tenantId", tenantId)
+                put("nonce", requestNonce)
+                put("timestamp", requestTimestamp)
                 put("isOwner", profile?.isVerifiedOwner ?: false)
             }
 
@@ -94,6 +112,10 @@ object WastiServerCapabilityClient {
             if (conn.responseCode in 200..299) {
                 val respStr = conn.inputStream.bufferedReader().use { it.readText() }
                 val respJson = JSONObject(respStr)
+                val serverClaimsOwner = respJson.optBoolean("isOwnerAuthorized", false)
+                // Epistemic security gate: Only allow owner authorization if caller is verified owner
+                val verifiedOwnerAuth = serverClaimsOwner && (profile?.isVerifiedOwner == true)
+
                 val grant = ScopedCapabilityGrant(
                     capabilityName = capabilityName,
                     token = respJson.optString("token", ""),
@@ -101,11 +123,14 @@ object WastiServerCapabilityClient {
                     scopes = listOf(requestedScope),
                     rateLimitPerHour = respJson.optInt("rateLimitPerHour", 100),
                     grantType = CapabilityGrantType.SERVER_GRANT,
-                    isOwnerAuthorized = respJson.optBoolean("isOwnerAuthorized", profile?.isVerifiedOwner ?: false)
+                    isOwnerAuthorized = verifiedOwnerAuth,
+                    tenantId = tenantId,
+                    userId = userId,
+                    nonce = requestNonce
                 )
                 if (grant.isValid) {
-                    grantCache[capabilityName] = grant
-                    Log.i(TAG, "Acquired server capability grant for: $capabilityName")
+                    grantCache[cacheKey] = grant
+                    Log.i(TAG, "Acquired server capability grant for: $capabilityName (Tenant: $tenantId, User: $userId)")
                     return@withContext grant
                 }
             }
@@ -114,7 +139,7 @@ object WastiServerCapabilityClient {
         }
 
         // Sovereign Offline Fallback: If hardware Keystore or local credential exists, use local bound token.
-        // Never convert a local credential into a server-authorized owner capability.
+        // HARDENED RULE: LOCAL_CAPABILITY can NEVER claim SERVER_GRANT or owner authority.
         val localKey = CredentialRegistry.getRawValue(capabilityName)
         if (!localKey.isNullOrBlank()) {
             val localGrant = ScopedCapabilityGrant(
@@ -124,9 +149,12 @@ object WastiServerCapabilityClient {
                 scopes = listOf(requestedScope),
                 rateLimitPerHour = 1000,
                 grantType = CapabilityGrantType.LOCAL_CAPABILITY,
-                isOwnerAuthorized = false
+                isOwnerAuthorized = false,
+                tenantId = tenantId,
+                userId = userId,
+                nonce = requestNonce
             )
-            grantCache[capabilityName] = localGrant
+            grantCache[cacheKey] = localGrant
             return@withContext localGrant
         }
 

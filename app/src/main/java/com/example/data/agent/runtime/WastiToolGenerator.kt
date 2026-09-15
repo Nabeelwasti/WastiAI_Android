@@ -4,12 +4,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+enum class ToolEvolutionStage {
+    GENERATED,
+    STATIC_ANALYZED,
+    SANDBOX_TESTED,
+    REAL_EXECUTION_REQUIRED,
+    EXECUTED,
+    OBSERVED,
+    INDEPENDENTLY_VERIFIED,
+    TRUSTED
+}
+
 data class GeneratedToolArtifact(
     val toolId: String,
     val toolName: String,
     val targetCapabilityId: String,
     val generatedCode: String,
     val testFixtureCode: String,
+    val stage: ToolEvolutionStage = ToolEvolutionStage.GENERATED,
     val isVerified: Boolean = false,
     val verificationEvidence: String? = null,
     val verificationConfidence: Double = 0.0,
@@ -52,7 +64,7 @@ object WastiToolGenerator {
             }
         """.trimIndent()
 
-        // Epistemic Truth Invariant: Generated tools start strictly UNVERIFIED.
+        // Epistemic Truth Invariant: Generated tools start strictly UNVERIFIED in GENERATED stage.
         // Self-assigned verification upon synthesis is strictly prohibited.
         val artifact = GeneratedToolArtifact(
             toolId = "tool_$sanitizedId",
@@ -60,6 +72,7 @@ object WastiToolGenerator {
             targetCapabilityId = missingCapabilityId,
             generatedCode = code,
             testFixtureCode = testFixture,
+            stage = ToolEvolutionStage.GENERATED,
             isVerified = false,
             verificationEvidence = null,
             verificationConfidence = 0.0
@@ -69,10 +82,58 @@ object WastiToolGenerator {
         return artifact
     }
 
+    fun markStaticAnalyzed(toolId: String, analysisEvidence: String): Boolean {
+        if (analysisEvidence.isBlank() || WastiVerificationEngine().isSyntheticOrMock(analysisEvidence)) return false
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+        current[index] = current[index].copy(stage = ToolEvolutionStage.STATIC_ANALYZED)
+        _generatedTools.value = current
+        return true
+    }
+
+    fun markSandboxTested(toolId: String, testEvidence: String): Boolean {
+        if (testEvidence.isBlank() || WastiVerificationEngine().isSyntheticOrMock(testEvidence)) return false
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+        current[index] = current[index].copy(stage = ToolEvolutionStage.SANDBOX_TESTED)
+        _generatedTools.value = current
+        return true
+    }
+
+    fun markRealExecutionRequired(toolId: String): Boolean {
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+        current[index] = current[index].copy(stage = ToolEvolutionStage.REAL_EXECUTION_REQUIRED)
+        _generatedTools.value = current
+        return true
+    }
+
+    fun recordExecution(toolId: String, fact: ObservedExecutionFact): Boolean {
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+        current[index] = current[index].copy(stage = ToolEvolutionStage.EXECUTED)
+        _generatedTools.value = current
+        return true
+    }
+
+    fun recordObservation(toolId: String, observation: ObservationResult): Boolean {
+        if (observation.status != ObservationStatus.OBSERVED && observation.status != ObservationStatus.CHANGED) return false
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+        current[index] = current[index].copy(stage = ToolEvolutionStage.OBSERVED)
+        _generatedTools.value = current
+        return true
+    }
+
     /**
      * Gated verification transition: Promotes a generated tool to VERIFIED ONLY when backed
      * by real execution, observation, evidence collection, security analysis, and
-     * independent canonical verification.
+     * independent canonical verification. Reaches INDEPENDENTLY_VERIFIED or TRUSTED.
      */
     fun promoteToolWithCanonicalVerification(
         toolId: String,
@@ -91,7 +152,14 @@ object WastiToolGenerator {
         if (index == -1) return false
 
         val existing = current[index]
+        val targetStage = if (verificationResult.confidence >= 0.95) {
+            ToolEvolutionStage.TRUSTED
+        } else {
+            ToolEvolutionStage.INDEPENDENTLY_VERIFIED
+        }
+
         current[index] = existing.copy(
+            stage = targetStage,
             isVerified = true,
             verificationEvidence = verificationResult.evidence,
             verificationConfidence = verificationResult.confidence,

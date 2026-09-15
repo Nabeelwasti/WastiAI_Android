@@ -2,8 +2,12 @@ package com.example.data.wre
 
 import android.content.Context
 import android.util.Log
+import com.example.data.agent.runtime.ActionVerificationStatus
+import com.example.data.agent.runtime.EvidenceSource
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
+import com.example.data.agent.runtime.VerifiedExecutionEvidence
 import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.agent.runtime.WastiVerificationEngine
 import com.example.data.db.TerminalSessionEntity
 import com.example.data.db.WastiDatabase
 import kotlinx.coroutines.CancellationException
@@ -279,6 +283,7 @@ class WreManager(val context: Context) {
 
     /**
      * Inspects and validates real execution side-effects against physical disk/process truth.
+     * Sole Verification Authority: Delegates exclusively to canonical WastiVerificationEngine.
      */
     fun observeAndVerify(result: ExecutionResult, request: ExecutionRequest): ExecutionResult {
         // Truth Invariant 1: If exitCode != 0 or status != SUCCESS, cannot be verified
@@ -288,6 +293,8 @@ class WreManager(val context: Context) {
                 verificationEvidence = result.verificationEvidence ?: if (result.stderr.isNotBlank()) result.stderr else "Execution returned non-zero exit code ${result.exitCode}"
             )
         }
+
+        val verificationEngine = WastiVerificationEngine()
 
         // Truth Invariant 2: Filesystem Mutation Verification
         val workingDirResult = workspaceManager.resolve(request.workingDirectory)
@@ -312,9 +319,23 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: directory '$path' does not exist on disk"
                             )
                         }
+                        val structured = VerifiedExecutionEvidence(
+                            evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                            subject = target?.canonicalPath ?: path,
+                            verifiedState = "DIRECTORY_EXISTS",
+                            confidence = 0.95,
+                            observedAt = System.currentTimeMillis()
+                        )
+                        val vRes = verificationEngine.verifyStructuredEvidence(
+                            taskId = request.executionId,
+                            actionId = cmd,
+                            capabilityId = "filesystem",
+                            evidence = structured
+                        )
                         return result.copy(
-                            verified = true,
-                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath}"
+                            verified = vRes.status == ActionVerificationStatus.VERIFIED,
+                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath}",
+                            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
                         )
                     }
                 }
@@ -329,9 +350,23 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: file '$path' does not exist on disk"
                             )
                         }
+                        val structured = VerifiedExecutionEvidence(
+                            evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                            subject = target?.canonicalPath ?: path,
+                            verifiedState = "FILE_EXISTS_SIZE_${target?.length() ?: 0}_BYTES",
+                            confidence = 0.95,
+                            observedAt = System.currentTimeMillis()
+                        )
+                        val vRes = verificationEngine.verifyStructuredEvidence(
+                            taskId = request.executionId,
+                            actionId = cmd,
+                            capabilityId = "filesystem",
+                            evidence = structured
+                        )
                         return result.copy(
-                            verified = true,
-                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath} (${target?.length()} bytes)"
+                            verified = vRes.status == ActionVerificationStatus.VERIFIED,
+                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath} (${target?.length()} bytes)",
+                            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
                         )
                     }
                 }
@@ -346,9 +381,23 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: file '$path' still exists on disk"
                             )
                         }
+                        val structured = VerifiedExecutionEvidence(
+                            evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                            subject = path,
+                            verifiedState = "FILE_DELETED",
+                            confidence = 0.95,
+                            observedAt = System.currentTimeMillis()
+                        )
+                        val vRes = verificationEngine.verifyStructuredEvidence(
+                            taskId = request.executionId,
+                            actionId = cmd,
+                            capabilityId = "filesystem",
+                            evidence = structured
+                        )
                         return result.copy(
-                            verified = true,
-                            verificationEvidence = "Filesystem deletion confirmed on disk: $path"
+                            verified = vRes.status == ActionVerificationStatus.VERIFIED,
+                            verificationEvidence = "Filesystem deletion confirmed on disk: $path",
+                            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
                         )
                     }
                 }
@@ -363,24 +412,75 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: destination '$dest' does not exist on disk"
                             )
                         }
+                        val structured = VerifiedExecutionEvidence(
+                            evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                            subject = target?.canonicalPath ?: dest,
+                            verifiedState = "FILE_EXISTS_AT_DESTINATION",
+                            confidence = 0.95,
+                            observedAt = System.currentTimeMillis()
+                        )
+                        val vRes = verificationEngine.verifyStructuredEvidence(
+                            taskId = request.executionId,
+                            actionId = cmd,
+                            capabilityId = "filesystem",
+                            evidence = structured
+                        )
                         return result.copy(
-                            verified = true,
-                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath}"
+                            verified = vRes.status == ActionVerificationStatus.VERIFIED,
+                            verificationEvidence = "Filesystem state verified on disk: ${target?.canonicalPath}",
+                            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
                         )
                     }
                 }
             }
         }
 
-        // If provider already supplied verified flag and evidence, preserve it
-        if (result.verified && !result.verificationEvidence.isNullOrBlank()) {
-            return result
+        // Truth Invariant 3: Redirection Verification (e.g. echo "content" > file)
+        if (request.command.contains(">")) {
+            val redirectedFile = request.command.substringAfterLast(">").trim().split(" ", "\t").firstOrNull() ?: ""
+            if (redirectedFile.isNotBlank()) {
+                val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$redirectedFile").getOrNull()
+                if (target != null && target.exists() && target.isFile) {
+                    val structured = VerifiedExecutionEvidence(
+                        evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                        subject = target.canonicalPath,
+                        verifiedState = "FILE_REDIRECTION_VERIFIED",
+                        confidence = 0.95,
+                        observedAt = System.currentTimeMillis()
+                    )
+                    val vRes = verificationEngine.verifyStructuredEvidence(
+                        taskId = request.executionId,
+                        actionId = "redirection",
+                        capabilityId = "filesystem",
+                        evidence = structured
+                    )
+                    return result.copy(
+                        verified = vRes.status == ActionVerificationStatus.VERIFIED,
+                        verificationEvidence = "Filesystem state verified on disk: ${target.canonicalPath} (${target.length()} bytes)",
+                        verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
+                    )
+                }
+            }
         }
 
-        // For non-mutating successful commands, populate truthful verification
+        // Canonical verification for successful process execution (e.g. pwd, whoami, python, etc.)
+        val structured = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+            subject = "wre_process:${request.command.take(64)}",
+            verifiedState = "PROCESS_EXIT_0_STDOUT_OBSERVED",
+            confidence = 0.90,
+            observedAt = System.currentTimeMillis()
+        )
+        val vRes = verificationEngine.verifyStructuredEvidence(
+            taskId = request.executionId,
+            actionId = request.command.take(32),
+            capabilityId = "terminal_execution",
+            evidence = structured
+        )
         return result.copy(
-            verified = true,
-            verificationEvidence = result.verificationEvidence ?: "Execution succeeded with exit code 0"
+            verified = vRes.status == ActionVerificationStatus.VERIFIED,
+            verificationEvidence = result.verificationEvidence ?: "Execution verified with exit code 0",
+            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
         )
     }
 

@@ -152,7 +152,7 @@ class NativeCommandProvider(
                 stderr = "",
                 durationMs = 0L,
                 status = ExecutionStatus.SUCCESS,
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             )
         }
 
@@ -218,7 +218,7 @@ class NativeCommandProvider(
             stderr = "",
             durationMs = System.currentTimeMillis() - startTime,
             status = ExecutionStatus.SUCCESS,
-            verified = true
+            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
         )
     }
 
@@ -257,7 +257,7 @@ class NativeCommandProvider(
             stderr = "",
             durationMs = System.currentTimeMillis() - startTime,
             status = ExecutionStatus.SUCCESS,
-            verified = true
+            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
         )
     }
 
@@ -308,7 +308,7 @@ class NativeCommandProvider(
                 val vpath = workspaceManager.getVirtualPath(workingDir)
                 stdout.append(vpath)
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 verificationEvidence = "Resolved path: $vpath"
             }
 
@@ -336,7 +336,7 @@ class NativeCommandProvider(
                             val vpath = workspaceManager.getVirtualPath(dir)
                             stdout.append("Working directory: $vpath")
                             exitCode = 0
-                            verified = true
+                            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                             verificationEvidence = "Directory verified: $vpath"
                         } else {
                             stderr.append("cd: ${args.firstOrNull() ?: targetPath}: No such directory")
@@ -377,7 +377,7 @@ class NativeCommandProvider(
                         stdout.append(filtered.joinToString("  ") { if (it.isDirectory) "${it.name}/" else it.name })
                     }
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     verificationEvidence = "Listed ${filtered.size} items from disk"
                 }
             }
@@ -395,7 +395,7 @@ class NativeCommandProvider(
                             if (created || dir.exists()) {
                                 stdout.append("Created: ${workspaceManager.getVirtualPath(dir)}")
                                 exitCode = 0
-                                verified = dir.exists() && dir.isDirectory
+                                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                 verificationEvidence = "Directory confirmed on disk: ${dir.canonicalPath}"
                             } else {
                                 stderr.append("mkdir: cannot create directory '$path'")
@@ -427,7 +427,7 @@ class NativeCommandProvider(
                             }
                             stdout.append("Touched: ${workspaceManager.getVirtualPath(file)}")
                             exitCode = 0
-                            verified = file.exists()
+                            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                             verificationEvidence = "File verified on disk: ${file.canonicalPath}"
                         },
                         onFailure = {
@@ -458,7 +458,7 @@ class NativeCommandProvider(
                             }
                             stdout.append("Wrote ${content.length} chars to ${workspaceManager.getVirtualPath(file)}")
                             exitCode = 0
-                            verified = file.exists() && file.length() > 0
+                            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                             verificationEvidence = "File size verified: ${file.length()} bytes"
                         },
                         onFailure = {
@@ -470,7 +470,7 @@ class NativeCommandProvider(
                     val textToPrint = if (stdin != null && fullText.isEmpty()) stdin else fullText
                     stdout.append(textToPrint)
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     verificationEvidence = "Printed ${textToPrint.length} characters"
                 }
             }
@@ -479,7 +479,7 @@ class NativeCommandProvider(
                 if (args.isEmpty() && stdin != null) {
                     stdout.append(stdin)
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else if (args.isEmpty()) {
                     stderr.append("cat: missing file operand")
                     exitCode = 1
@@ -491,7 +491,7 @@ class NativeCommandProvider(
                             if (file.exists() && file.isFile) {
                                 stdout.append(file.readText().trimEnd())
                                 exitCode = 0
-                                verified = true
+                                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                 verificationEvidence = "Read ${file.length()} bytes from disk"
                             } else {
                                 stderr.append("cat: $fileName: No such file or directory")
@@ -524,7 +524,7 @@ class NativeCommandProvider(
                     if (matches.isNotEmpty()) {
                         stdout.append(matches.joinToString("\n"))
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     } else {
                         exitCode = 1
                     }
@@ -546,7 +546,7 @@ class NativeCommandProvider(
                                 if (deleted) {
                                     stdout.append("Removed: ${workspaceManager.getVirtualPath(file)}")
                                     exitCode = 0
-                                    verified = !file.exists()
+                                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                     verificationEvidence = "File deletion confirmed on disk"
                                 } else {
                                     stderr.append("rm: cannot remove '${fileName}'")
@@ -569,7 +569,7 @@ class NativeCommandProvider(
                 if (args.isEmpty()) {
                     stdout.append("WRE Package & Runtime Manager. Usage: wre pkg <list|install|remove> | wre status | wre env")
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else when (args[0]) {
                     "pkg" -> {
                         val subAction = if (args.size > 1) args[1] else "list"
@@ -582,7 +582,7 @@ class NativeCommandProvider(
                                     stdout.append(String.format("%-16s %-8s %-8s %s\n", p.name, p.version, p.runtime, p.description))
                                 }
                                 exitCode = 0
-                                verified = true
+                                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                 verificationEvidence = "Listed ${pkgs.size} packages"
                             }
                             "info" -> {
@@ -605,7 +605,7 @@ class NativeCommandProvider(
                                             """.trimIndent()
                                         )
                                         exitCode = 0
-                                        verified = true
+                                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                         verificationEvidence = "Package ${pkg.name} verified in registry"
                                     } else {
                                         stderr.append("Package '$pkgName' not found.")
@@ -626,7 +626,7 @@ class NativeCommandProvider(
                                         val vpath = workspaceManager.getVirtualPath(file)
                                         stdout.append("Exported package '$pkgName' to $vpath (${file.length()} bytes)")
                                         exitCode = 0
-                                        verified = file.exists() && file.length() > 0
+                                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                         verificationEvidence = "Package bundle verified on disk at $vpath (${file.length()} bytes)"
                                     } else {
                                         val errorMsg = exportRes?.exceptionOrNull()?.message ?: "Unknown export failure"
@@ -647,7 +647,7 @@ class NativeCommandProvider(
                                             val pkg = installRes.getOrThrow()
                                             stdout.append("Installed .wasti package '${pkg.name}' v${pkg.version} (${pkg.runtime})")
                                             exitCode = 0
-                                            verified = true
+                                            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                             verificationEvidence = "Extracted and registered package '${pkg.name}' into ToolRegistry"
                                         } else {
                                             val err = installRes?.exceptionOrNull()?.message ?: "Package install failed"
@@ -681,7 +681,7 @@ class NativeCommandProvider(
                                         if (success) {
                                             stdout.append("Package '$pkgName' installed successfully and registered in ToolRegistry.")
                                             exitCode = 0
-                                            verified = true
+                                            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                             verificationEvidence = "WrePackage metadata written & ToolRegistry synced"
                                         } else {
                                             stderr.append("Failed to install package '$pkgName'")
@@ -700,7 +700,7 @@ class NativeCommandProvider(
                                     if (removed) {
                                         stdout.append("Package '$pkgName' removed.")
                                         exitCode = 0
-                                        verified = true
+                                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                                     } else {
                                         stderr.append("Failed to remove package '$pkgName'")
                                         exitCode = 1
@@ -726,13 +726,13 @@ class NativeCommandProvider(
                             """.trimIndent()
                         )
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     }
                     "env" -> {
                         val envVars = environmentManager.getAll()
                         stdout.append(envVars.entries.joinToString("\n") { "${it.key}=${it.value}" })
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     }
                     else -> {
                         stderr.append("Unknown wre option: ${args[0]}")
@@ -745,19 +745,19 @@ class NativeCommandProvider(
                 val envVars = environmentManager.getAll()
                 stdout.append(envVars.entries.joinToString("\n") { "${it.key}=${it.value}" })
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "date" -> {
                 stdout.append(SimpleDateFormat("EEE MMM dd HH:mm:ss z yyyy", Locale.US).format(Date()))
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "whoami" -> {
                 stdout.append("wasti")
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "uname" -> {
@@ -767,7 +767,7 @@ class NativeCommandProvider(
                     stdout.append("Linux")
                 }
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "status" -> {
@@ -784,7 +784,7 @@ class NativeCommandProvider(
                     """.trimIndent()
                 )
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "ps" -> {
@@ -795,7 +795,7 @@ class NativeCommandProvider(
                     stdout.append(String.format("%-12s %-10s %-12s %s\n", p.processId, p.status, p.providerName, p.executionRequest.command.take(24)))
                 }
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "jobs" -> {
@@ -806,7 +806,7 @@ class NativeCommandProvider(
                     stdout.append(String.format("%-12s %-10s %-20s %s\n", j.jobId, j.status, j.name.take(18), if (j.isBackground) "YES" else "NO"))
                 }
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "kill" -> {
@@ -819,7 +819,7 @@ class NativeCommandProvider(
                     if (killed) {
                         stdout.append("Process $pid terminated.")
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     } else {
                         stderr.append("kill: ($pid) - No such active process")
                         exitCode = 1
@@ -829,17 +829,17 @@ class NativeCommandProvider(
 
             "exit" -> {
                 exitCode = args.firstOrNull()?.toIntOrNull() ?: 0
-                verified = (exitCode == 0)
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "set", "export" -> {
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "true" -> {
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "false" -> {
@@ -861,30 +861,30 @@ class NativeCommandProvider(
                 } else {
                     exitCode = 0
                 }
-                verified = (exitCode == 0)
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             "python", "python3" -> {
                 if (args.isEmpty()) {
                     stdout.append("Python 3.10.0 (WRE Native Virtual Environment)\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.")
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else if (args.contains("-m") && args.contains("unittest")) {
                     stdout.append("Ran 1 test in 0.005s\n\nOK")
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else if (args.contains("-c")) {
                     val codeIdx = args.indexOf("-c")
                     val code = if (codeIdx + 1 < args.size) args[codeIdx + 1] else ""
                     stdout.append("Evaluated python expression: $code")
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else {
                     val scriptFile = File(workingDir, args.last())
                     if (scriptFile.exists()) {
                         stdout.append("Python executed ${scriptFile.name}")
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     } else {
                         stderr.append("python3: can't open file '${args.last()}': [Errno 2] No such file or directory. Python runtime is not currently available on this device.")
                         exitCode = 127
@@ -897,13 +897,13 @@ class NativeCommandProvider(
                 if (args.isEmpty()) {
                     stdout.append("Welcome to Node.js v18.0.0 (WRE Native Virtual Environment).\nType \".help\" for more information.")
                     exitCode = 0
-                    verified = true
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                 } else {
                     val scriptFile = File(workingDir, args.last())
                     if (scriptFile.exists()) {
                         stdout.append("Node.js executed ${scriptFile.name}")
                         exitCode = 0
-                        verified = true
+                        verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     } else {
                         stderr.append("node: cannot find module '${args.last()}'. Node runtime is not currently available on this device.")
                         exitCode = 127
@@ -928,7 +928,7 @@ class NativeCommandProvider(
                     """.trimIndent()
                 )
                 exitCode = 0
-                verified = true
+                verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             }
 
             else -> {
@@ -938,7 +938,7 @@ class NativeCommandProvider(
                     stdout.append(execRes.stdout)
                     stderr.append(execRes.stderr)
                     exitCode = execRes.exitCode
-                    verified = execRes.verified
+                    verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
                     verificationEvidence = execRes.verificationEvidence
                 } else {
                     stderr.append("wsh: command not found: $cmd")
@@ -958,7 +958,7 @@ class NativeCommandProvider(
             durationMs = duration,
             status = status,
             executionTier = ProcessExecutionTier.SANDBOX_PROCESS,
-            verified = verified,
+            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = verificationEvidence
         )
     }
@@ -1032,7 +1032,7 @@ class NativeCommandProvider(
             durationMs = duration,
             status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
             executionTier = ProcessExecutionTier.REAL_PROCESS,
-            verified = (exitCode == 0),
+            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = if (exitCode == 0) "Native binary '${binFile.name}' executed with exit code 0" else null
         )
     }
@@ -1147,7 +1147,7 @@ class NativeCommandProvider(
             stderr = stderr.toString().trimEnd(),
             durationMs = duration,
             status = status,
-            verified = exitCode == 0,
+            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = "Script executed via WRE $runtime runtime"
         )
     }

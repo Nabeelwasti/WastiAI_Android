@@ -299,7 +299,7 @@ class ModelOrchestrator(
             try {
                 com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt).finalSynthesis
             } catch (_: Exception) {
-                "Wasti AI Sovereign Core: Reasoned through '$prompt' across active on-device neural parameters."
+                "[HEURISTIC_NON_NEURAL] Wasti AI Sovereign Core: Reasoned through '$prompt' across active on-device parameters."
             }
         }
 
@@ -338,7 +338,7 @@ class ModelOrchestrator(
             try {
                 com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt).finalSynthesis
             } catch (_: Exception) {
-                "[NON_NEURAL_HEURISTIC_FALLBACK] (${provider.name}): Evaluated '$prompt' against on-device configuration (Non-Neural Heuristic Fallback)."
+                "[HEURISTIC_NON_NEURAL] (${provider.name}): Evaluated '$prompt' against on-device configuration (Non-Neural Heuristic Fallback)."
             }
         }
     }
