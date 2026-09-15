@@ -1226,6 +1226,7 @@ fun OperationsDashboardScreen() {
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
                 }
             }
         }
@@ -1401,7 +1402,6 @@ fun OperationsDashboardScreen() {
             )
         }
     }
-}
 
 @Composable
 fun MetricSummaryChip(label: String, value: String, icon: ImageVector) {
