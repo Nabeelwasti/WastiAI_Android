@@ -565,7 +565,7 @@ object WastiCore {
         }
 
         updateProgress(ProgressStage.SCRAPING, "Scraping live RSS job feeds for '$query'...")
-        val skillMatrix = SkillMatrix()
+        val skillMatrix = BusinessProfileManager.getActiveProfile().toSkillMatrix()
         val leads = LeadScraperEngine.fetchLeadsForQuery(query)
 
         if (leads.isEmpty()) {

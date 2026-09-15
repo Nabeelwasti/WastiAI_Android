@@ -491,7 +491,7 @@ object LeadScraperEngine {
      */
     fun evaluateLeadMatch(
         jobPostText: String,
-        skillMatrix: SkillMatrix = SkillMatrix(),
+        skillMatrix: SkillMatrix? = null,
         extractedEmail: String = "",
         extractedPhone: String = "",
         extractedCompany: String = "",
@@ -499,8 +499,12 @@ object LeadScraperEngine {
         targetCategory: String = "",
         businessProfile: BusinessProfile? = null
     ): LeadEvaluationResult {
-        val activeProfile = businessProfile ?: BusinessProfileManager.getActiveProfile()
-        val matrix = activeProfile.toSkillMatrix()
+        val matrix = when {
+            skillMatrix != null && skillMatrix.services != SkillMatrix().services -> skillMatrix
+            businessProfile != null -> businessProfile.toSkillMatrix()
+            skillMatrix != null -> skillMatrix
+            else -> (businessProfile ?: BusinessProfileManager.getActiveProfile()).toSkillMatrix()
+        }
         val textLower = jobPostText.lowercase()
 
         // Match against active business services
