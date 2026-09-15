@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -255,7 +255,7 @@ class ModelOrchestrator(
                     val pLatency = System.currentTimeMillis() - pStart
                     val md = MessageDigest.getInstance("SHA-256")
                     val hash = md.digest("${provider.providerId}:$outputSnippet".toByteArray())
-                        .fold("") { s, b -> s + "%02x".format(b) }
+                        .fold("") { s: String, b: Byte -> s + "%02x".format(b) }
 
                     contributions[provider.providerId] = DeliberationContribution(
                         modelId = provider.providerId,
@@ -316,7 +316,7 @@ class ModelOrchestrator(
                     val resp = localProvider.generate(com.example.data.ai.model.ProviderRequest(prompt = prompt))
                     resp.content
                 } else {
-                    com.example.data.ai.runtime.WastiLocalModelRuntime.executeModelInference(context, provider.providerId, prompt)
+                    com.example.data.ai.runtime.WastiLocalModelRuntime(context).executeInference(modelId = provider.providerId, prompt = prompt)
                 }
             } else {
                 val aiResponse = com.example.data.ai.AIManager.execute(
@@ -329,7 +329,7 @@ class ModelOrchestrator(
                     com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt).finalSynthesis
                 }
             }
-        } catch (e: Exception) {
+        } catch (ignored: Exception) {
             try {
                 com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt).finalSynthesis
             } catch (_: Exception) {

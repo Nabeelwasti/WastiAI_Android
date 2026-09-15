@@ -579,6 +579,7 @@ private fun SecretVaultTabContent(
         }
 
         items(filtered) { state ->
+            val entry: CredentialEntry = state.entry
             val isPersisted = state.status is CredentialStatus.Connected || (state.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(state.rawValue))
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -590,8 +591,8 @@ private fun SecretVaultTabContent(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(state.entry.displayName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(state.entry.keyName, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(entry.displayName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(entry.keyName, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = if (isPersisted) "🔒 Persisted in Keystore" else "⚪ Unconfigured (Fail-Closed)",
                             fontSize = 10.sp,

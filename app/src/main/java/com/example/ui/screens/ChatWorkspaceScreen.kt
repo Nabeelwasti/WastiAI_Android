@@ -328,6 +328,18 @@ fun ChatWorkspaceScreen(
                 if (status == TextToSpeech.SUCCESS) {
                     tts?.setPitch(0.95f)
                     tts?.setSpeechRate(1.0f)
+                    tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {
+                            isTtsSpeaking = true
+                        }
+                        override fun onDone(utteranceId: String?) {
+                            isTtsSpeaking = false
+                        }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            isTtsSpeaking = false
+                        }
+                    })
                 }
             }
             ttsEngine = tts
