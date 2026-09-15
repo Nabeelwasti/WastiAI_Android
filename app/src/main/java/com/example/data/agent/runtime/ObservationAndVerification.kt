@@ -138,6 +138,7 @@ data class TargetSelectionResult(
 
 enum class EvidenceSource {
     FILESYSTEM,
+    FILESYSTEM_AUDIT,
     DATABASE_QUERY,
     HTTP_CONTRACT,
     PROCESS_TELEMETRY,

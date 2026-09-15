@@ -958,7 +958,7 @@ class NativeCommandProvider(
             durationMs = duration,
             status = status,
             executionTier = ProcessExecutionTier.SANDBOX_PROCESS,
-            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
+            verified = false, // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = verificationEvidence
         )
     }
@@ -1032,7 +1032,7 @@ class NativeCommandProvider(
             durationMs = duration,
             status = if (exitCode == 0) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
             executionTier = ProcessExecutionTier.REAL_PROCESS,
-            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
+            verified = false, // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = if (exitCode == 0) "Native binary '${binFile.name}' executed with exit code 0" else null
         )
     }
@@ -1147,7 +1147,7 @@ class NativeCommandProvider(
             stderr = stderr.toString().trimEnd(),
             durationMs = duration,
             status = status,
-            verified = false // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
+            verified = false, // Execution provider cannot self-verify; delegated to canonical WastiVerificationEngine
             verificationEvidence = "Script executed via WRE $runtime runtime"
         )
     }
