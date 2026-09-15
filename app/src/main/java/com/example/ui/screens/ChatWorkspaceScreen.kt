@@ -276,6 +276,30 @@ fun ChatWorkspaceScreen(
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
     var showVoiceModal by remember { mutableStateOf(false) }
+    var isAutoSpeakEnabled by remember {
+        mutableStateOf(
+            context.getSharedPreferences("wasti_chat_prefs", android.content.Context.MODE_PRIVATE)
+                .getBoolean("auto_speak_replies", false)
+        )
+    }
+
+    val lastAssistantMessageId = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(messages, isAutoSpeakEnabled) {
+        val latestAssistantMsg = messages.lastOrNull { it.role == "assistant" }
+        if (latestAssistantMsg != null && latestAssistantMsg.id != lastAssistantMessageId.value) {
+            lastAssistantMessageId.value = latestAssistantMsg.id
+            if (isAutoSpeakEnabled && !isTtsSpeaking) {
+                val cleanText = latestAssistantMsg.content
+                    .replace(Regex("<[^>]*>"), "")
+                    .replace(Regex("[#*`_~]"), "")
+                    .trim()
+                if (cleanText.isNotBlank()) {
+                    ttsEngine?.speak(cleanText, TextToSpeech.QUEUE_FLUSH, null, "AUTO_REPLY_${latestAssistantMsg.id}")
+                    isTtsSpeaking = true
+                }
+            }
+        }
+    }
 
     LaunchedEffect(triggerVoiceCallSignal) {
         if (triggerVoiceCallSignal > 0) {
@@ -752,6 +776,36 @@ fun ChatWorkspaceScreen(
                                 imageVector = if (isSearchActive) Icons.Default.SearchOff else Icons.Default.Search,
                                 contentDescription = "Search Messages",
                                 tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+
+                        // 5. Speaker / Auto-Read Toggle Button
+                        IconButton(
+                            onClick = {
+                                isAutoSpeakEnabled = !isAutoSpeakEnabled
+                                context.getSharedPreferences("wasti_chat_prefs", android.content.Context.MODE_PRIVATE)
+                                    .edit()
+                                    .putBoolean("auto_speak_replies", isAutoSpeakEnabled)
+                                    .apply()
+                                if (!isAutoSpeakEnabled && isTtsSpeaking) {
+                                    ttsEngine?.stop()
+                                    isTtsSpeaking = false
+                                }
+                                Toast.makeText(
+                                    context,
+                                    if (isAutoSpeakEnabled) "🔊 Auto-Read AI Replies: ON" else "🔇 Auto-Read AI Replies: OFF (Muted)",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier
+                                .size(30.dp)
+                                .testTag("chat_auto_speak_toggle_btn")
+                        ) {
+                            Icon(
+                                imageVector = if (isAutoSpeakEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                                contentDescription = if (isAutoSpeakEnabled) "Disable Auto-Read" else "Enable Auto-Read",
+                                tint = if (isAutoSpeakEnabled) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(17.dp)
                             )
                         }
