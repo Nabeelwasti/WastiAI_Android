@@ -632,6 +632,7 @@ jobs:
         rm -f /tmp/release.keystore
         rm -f debug.keystore
         rm -f .env
+        rm -f app/src/main/assets/wasti_seed_vault.*
         echo "Cleaned up temporary sensitive build files."
 
     - name: Upload Debug Artifact

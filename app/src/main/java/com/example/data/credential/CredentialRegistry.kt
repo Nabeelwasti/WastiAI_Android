@@ -59,6 +59,36 @@ object CredentialRegistry {
         }
     }
 
+    private const val SEED_VAULT_KEY = "WastiOS-MasterSeed-com.aistudio.wastios.k9v2pz"
+
+    fun decryptSeedVault(bytes: ByteArray): String {
+        val keyBytes = SEED_VAULT_KEY.toByteArray(Charsets.UTF_8)
+        val output = ByteArray(bytes.size)
+        for (i in bytes.indices) {
+            output[i] = (bytes[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+        }
+        return String(output, Charsets.UTF_8)
+    }
+
+    private fun loadSeedVaultJson(assetManager: android.content.res.AssetManager): org.json.JSONObject? {
+        return try {
+            val assetsList = assetManager.list("") ?: emptyArray()
+            when {
+                "wasti_seed_vault.bin" in assetsList -> {
+                    val bytes = assetManager.open("wasti_seed_vault.bin").use { it.readBytes() }
+                    org.json.JSONObject(decryptSeedVault(bytes))
+                }
+                "wasti_seed_vault.json" in assetsList -> {
+                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
+                    org.json.JSONObject(jsonStr)
+                }
+                else -> null
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
     fun isPlaceholder(valString: String): Boolean {
         if (valString.isBlank()) return true
         val upper = valString.trim().uppercase()
@@ -707,24 +737,17 @@ object CredentialRegistry {
                     return prefVal
                 }
             }
-            // 2.5. Compile-Time Seed Vault Asset fallback (wasti_seed_vault.json)
-            try {
-                val assetManager = targetCtx.assets
-                val assetsList = assetManager.list("") ?: emptyArray()
-                if ("wasti_seed_vault.json" in assetsList) {
-                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(jsonStr)
-                    for (ck in candidateKeys) {
-                        val v = json.optString(ck, "")
-                        if (v.isNotBlank() && !isPlaceholder(v)) {
-                            // Automatically persist to securePrefs so future lookups hit hardware vault
-                            securePrefs.edit().putString(lowerKey, v).putString(keyName, v).apply()
-                            return v
-                        }
+            // 2.5. Compile-Time Seed Vault Asset fallback (wasti_seed_vault.bin or wasti_seed_vault.json)
+            val seedJson = loadSeedVaultJson(targetCtx.assets)
+            if (seedJson != null) {
+                for (ck in candidateKeys) {
+                    val v = seedJson.optString(ck, "")
+                    if (v.isNotBlank() && !isPlaceholder(v)) {
+                        // Automatically persist to securePrefs so future lookups hit hardware vault
+                        securePrefs.edit().putString(lowerKey, v).putString(keyName, v).apply()
+                        return v
                     }
                 }
-            } catch (_: Throwable) {
-                // Ignore if asset is missing
             }
         }
 
@@ -834,29 +857,22 @@ object CredentialRegistry {
                 // Ignore if reflection is restricted
             }
 
-            // 3. Inspect packaged compile-time seed asset (wasti_seed_vault.json) if present
-            try {
-                val assetManager = context.assets
-                val assetsList = assetManager.list("") ?: emptyArray()
-                if ("wasti_seed_vault.json" in assetsList) {
-                    val jsonStr = assetManager.open("wasti_seed_vault.json").bufferedReader().use { it.readText() }
-                    val json = org.json.JSONObject(jsonStr)
-                    val keys = json.keys()
-                    while (keys.hasNext()) {
-                        val k = keys.next()
-                        val v = json.optString(k, "")
-                        val existingLower = securePrefs.getString(k.lowercase(), null)
-                        val existingUpper = securePrefs.getString(k, null)
-                        val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
-                                            (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
-                        if (!hasVaultValue && v.isNotBlank() && !isPlaceholder(v)) {
-                            android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving seed asset secret [$k] into Vault")
-                            saveCredential(k, v, context)
-                        }
+            // 3. Inspect packaged compile-time seed asset (wasti_seed_vault.bin or wasti_seed_vault.json) if present
+            val seedJson = loadSeedVaultJson(context.assets)
+            if (seedJson != null) {
+                val keys = seedJson.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val v = seedJson.optString(k, "")
+                    val existingLower = securePrefs.getString(k.lowercase(), null)
+                    val existingUpper = securePrefs.getString(k, null)
+                    val hasVaultValue = (!existingLower.isNullOrBlank() && !isPlaceholder(existingLower)) ||
+                                        (!existingUpper.isNullOrBlank() && !isPlaceholder(existingUpper))
+                    if (!hasVaultValue && v.isNotBlank() && !isPlaceholder(v)) {
+                        android.util.Log.i("CredentialRegistry", "Vault Ingestion: Auto-saving seed asset secret [$k] into Vault")
+                        saveCredential(k, v, context)
                     }
                 }
-            } catch (_: Throwable) {
-                // Ignore if asset is not packaged
             }
         }
     }
