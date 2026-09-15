@@ -69,6 +69,8 @@ class Stage21WasmAndActionFabricTest {
         engine.authorizeAction(intent, userApproved = true)
         val res = engine.executeAction(intent, wasmAdapter)
         assertEquals(ActionAuthorizationState.SUCCEEDED, res.authorizationState)
+        assertEquals(LiveConnectionStatus.NOT_VERIFIED, res.verificationState)
+        engine.markIndependentlyVerified(res, "Tool executed calc returning 10")
         assertEquals(LiveConnectionStatus.VERIFIED, res.verificationState)
     }
 

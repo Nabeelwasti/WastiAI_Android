@@ -2091,7 +2091,7 @@ fun WorkspaceFilesPanel(
                                 path.endsWith(".sh") -> Icons.Default.Terminal
                                 path.endsWith(".py") -> Icons.Default.Code
                                 path.endsWith(".json") -> Icons.Default.DataObject
-                                else -> Icons.Default.InsertDriveFile
+                                else -> Icons.AutoMirrored.Filled.InsertDriveFile
                             },
                             contentDescription = null,
                             tint = Color(0xFF38BDF8),
