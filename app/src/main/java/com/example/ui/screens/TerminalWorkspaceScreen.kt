@@ -936,6 +936,7 @@ fun TerminalWorkspaceScreen(
                 }
             }
         }
+        }
         TerminalWorkspaceMode.CODE_STUDIO -> {
             CodeStudioWorkspacePanel(
                 wreManager = wreManager,
@@ -1452,8 +1453,6 @@ fun TerminalWorkspaceScreen(
             }
         )
     }
-}
-
 }
 
 @Composable

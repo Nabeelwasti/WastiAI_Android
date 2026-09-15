@@ -367,6 +367,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onNavigateBack = { viewModel.selectTab("settings") }
                             )
                             "connections_vault" -> ConnectionsAndVaultScreen(
+                                integrations = integrations,
+                                logs = logs,
+                                onClearLogs = { viewModel.clearLogs() },
+                                onToggleIntegration = { id, connected -> viewModel.toggleIntegration(id, connected) },
                                 onNavigateBack = { viewModel.selectTab("settings") }
                             )
                             "wakeword_settings" -> com.example.ui.screens.WakeWordSettingsScreen(

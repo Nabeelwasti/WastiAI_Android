@@ -340,7 +340,7 @@ fun ConnectionsAndVaultScreen(
                 Button(onClick = {
                     if (newCustomKeyName.isNotBlank() && newCustomKeyValue.isNotBlank()) {
                         scope.launch {
-                            CredentialRegistry.saveCredential(context, newCustomKeyName.trim().uppercase(), newCustomKeyValue.trim())
+                            CredentialRegistry.saveCredential(newCustomKeyName.trim().uppercase(), newCustomKeyValue.trim(), context)
                             showAddCustomDialog = false
                             newCustomKeyName = ""
                             newCustomKeyValue = ""
@@ -506,8 +506,8 @@ private fun ConnectorsTabContent(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(item.name, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(item.category, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(item.serviceName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(item.provider, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(
                         checked = item.isConnected,
@@ -572,13 +572,14 @@ private fun SecretVaultTabContent(
                     FilterChip(
                         selected = categoryFilter == cat,
                         onClick = { onSelectCategory(cat) },
-                        label = { Text("${cat.displayName} ($count)", fontSize = 11.sp) }
+                        label = { Text("${cat.title} ($count)", fontSize = 11.sp) }
                     )
                 }
             }
         }
 
         items(filtered) { state ->
+            val isPersisted = state.status is CredentialStatus.Connected || (state.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(state.rawValue))
             Card(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -590,23 +591,23 @@ private fun SecretVaultTabContent(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(state.entry.displayName, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        Text(state.entry.key, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(state.entry.keyName, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = if (state.status == CredentialStatus.STORED_LOCAL) "🔒 Persisted in Keystore" else "⚪ Unconfigured (Fail-Closed)",
+                            text = if (isPersisted) "🔒 Persisted in Keystore" else "⚪ Unconfigured (Fail-Closed)",
                             fontSize = 10.sp,
-                            color = if (state.status == CredentialStatus.STORED_LOCAL) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isPersisted) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Surface(
                         shape = CircleShape,
-                        color = if (state.status == CredentialStatus.STORED_LOCAL) Color(0xFF10B981).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                        color = if (isPersisted) Color(0xFF10B981).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.size(24.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = if (state.status == CredentialStatus.STORED_LOCAL) Icons.Default.Check else Icons.Default.Close,
+                                imageVector = if (isPersisted) Icons.Default.Check else Icons.Default.Close,
                                 contentDescription = null,
-                                tint = if (state.status == CredentialStatus.STORED_LOCAL) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = if (isPersisted) Color(0xFF047857) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
@@ -806,7 +807,7 @@ private fun AdminAlertsAndLogsTabContent(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "[${log.level}] ${log.tag}: ${log.message}",
+                    text = "[${log.level}] ${log.source}: ${log.message}",
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
