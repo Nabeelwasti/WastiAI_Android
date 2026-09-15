@@ -1936,12 +1936,13 @@ class UnifiedExecutionFabric(
             !wreResult.verified
         
         val finalStatus = when {
-            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.COMPLETED
+            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> if (wreResult.verified) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.COMPLETED
             wreResult.status == com.example.data.wre.ExecutionStatus.UNAVAILABLE || (isPythonOrNode && isUnavailableOutput) -> UnifiedExecutionStatus.UNAVAILABLE
             wreResult.status == com.example.data.wre.ExecutionStatus.DENIED -> UnifiedExecutionStatus.FAILED
             else -> UnifiedExecutionStatus.FAILED
         }
         val finalVerStatus = when {
+            finalStatus == UnifiedExecutionStatus.VERIFIED -> UnifiedVerificationStatus.VERIFIED
             finalStatus == UnifiedExecutionStatus.COMPLETED -> UnifiedVerificationStatus.UNVERIFIED
             finalStatus == UnifiedExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
             else -> UnifiedVerificationStatus.FAILED
