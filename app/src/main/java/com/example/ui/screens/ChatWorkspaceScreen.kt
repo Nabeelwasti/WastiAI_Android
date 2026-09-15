@@ -298,22 +298,18 @@ fun ChatWorkspaceScreen(
     }
 
     DisposableEffect(context) {
-        lateinit var tts: TextToSpeech
-        tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts.setPitch(0.95f)
-                tts.setSpeechRate(1.0f)
-                tts.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { isTtsSpeaking = true }
-                    override fun onDone(utteranceId: String?) { isTtsSpeaking = false }
-                    override fun onError(utteranceId: String?) { isTtsSpeaking = false }
-                })
+        var tts: TextToSpeech? = null
+        try {
+            tts = TextToSpeech(context.applicationContext) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    tts?.setPitch(0.95f)
+                    tts?.setSpeechRate(1.0f)
+                }
             }
-        }
-        ttsEngine = tts
+            ttsEngine = tts
+        } catch (_: Throwable) {}
         onDispose {
-            tts.stop()
-            tts.shutdown()
+            // Decouple from Composable lifecycle: preserve active playback across navigation/minimization
         }
     }
 
@@ -354,14 +350,6 @@ fun ChatWorkspaceScreen(
     LaunchedEffect(filteredMessages.size) {
         if (filteredMessages.isNotEmpty() && searchQuery.isBlank()) {
             listState.animateScrollToItem(filteredMessages.size - 1)
-            val lastMsg = filteredMessages.last()
-            
-            // Execute intent if message contains app launch / system action
-            WastiIntentParser.parseAndExecute(context, lastMsg.content)
-
-            if (lastMsg.role == "assistant" && isVoiceActive) {
-                speakDualPipelineTts(ttsEngine, lastMsg.content)
-            }
         }
     }
 
@@ -1838,18 +1826,26 @@ private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
         }
     }
 
-    try {
-        val result = ttsEngine.setLanguage(targetLocale)
-        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            ttsEngine.language = Locale.ENGLISH
+    if (ttsEngine != null) {
+        try {
+            val result = ttsEngine.setLanguage(targetLocale)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                ttsEngine.language = Locale.ENGLISH
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ChatWorkspaceTTS", "Error setting TTS language", e)
         }
-    } catch (e: Exception) {
-        android.util.Log.e("ChatWorkspaceTTS", "Error setting TTS language", e)
-    }
 
-    val params = android.os.Bundle()
-    params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
-    ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
+        val params = android.os.Bundle()
+        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
+        ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
+    } else {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                VoiceManager.synthesizeSpeech(ttsTextToSpeak)
+            } catch (_: Throwable) {}
+        }
+    }
 }
 
 @Composable

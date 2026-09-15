@@ -63,15 +63,41 @@ object WastiFirebaseIntegrity {
         }
     }
 
+enum class FirebaseReachabilityState {
+    UNCONFIGURED_OPTIONAL_OFFLINE,
+    CONFIGURED_PENDING_PROBE,
+    CONFIGURED_AND_REACHABLE,
+    CONFIGURED_NETWORK_UNREACHABLE
+}
+
     /**
      * Truthfully reports runtime capability state for Firebase integration.
-     * Prevents unconfigured or missing Firebase from ever reporting as ready.
+     * Prevents unconfigured or missing Firebase from ever reporting as ready,
+     * and keeps configured state distinct from live network reachability.
      */
     fun getFirebaseRuntimeState(context: Context? = null): String {
         return if (isAuthenticFirebaseConfigured(context)) {
-            "AUTHENTIC_FIREBASE_ONLINE"
+            "AUTHENTIC_FIREBASE_CONFIGURED_PENDING_PROBE"
         } else {
             "UNCONFIGURED_OPTIONAL_OFFLINE"
+        }
+    }
+
+    suspend fun probeReachability(context: Context? = null): FirebaseReachabilityState {
+        if (!isAuthenticFirebaseConfigured(context)) {
+            return FirebaseReachabilityState.UNCONFIGURED_OPTIONAL_OFFLINE
+        }
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val firestore = getSafeFirestore(context)
+                if (firestore != null) {
+                    FirebaseReachabilityState.CONFIGURED_AND_REACHABLE
+                } else {
+                    FirebaseReachabilityState.CONFIGURED_PENDING_PROBE
+                }
+            } catch (_: Throwable) {
+                FirebaseReachabilityState.CONFIGURED_NETWORK_UNREACHABLE
+            }
         }
     }
 

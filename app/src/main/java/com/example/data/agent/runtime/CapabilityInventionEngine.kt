@@ -317,7 +317,7 @@ object CapabilityInventionEngine {
             capabilityId = def.capabilityId,
             category = def.category,
             implementationStatus = ImplementationStatus.READY,
-            liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+            liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
             executionStatus = CapabilityExecutionStatus.OPERATIONAL,
             authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
             provider = "CapabilityInventionEngine",

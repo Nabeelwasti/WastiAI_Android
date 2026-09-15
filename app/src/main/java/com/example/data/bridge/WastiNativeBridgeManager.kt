@@ -64,20 +64,20 @@ class WastiNativeBridgeManager(
             )
         )
 
-        // Termux Bridge Capability
+        // Termux Developer/Compatibility Bridge Capability (Strictly secondary to native Wasti production environment)
         val termuxExists = File("/data/data/com.termux").exists()
         UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
             CapabilityReality(
                 capabilityId = "TERMUX_BRIDGE",
                 category = "RUNTIME_BRIDGE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = if (termuxExists) LiveConnectionStatus.VERIFIED else LiveConnectionStatus.NOT_VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = if (termuxExists) CapabilityExecutionStatus.OPERATIONAL else CapabilityExecutionStatus.DEGRADED,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiNativeBridgeManager",
                 supportedOperations = listOf("execute_termux_command", "run_pkg", "apt"),
-                limitations = listOf("Requires Termux app and permissions on Android host"),
-                realityState = if (termuxExists) CapabilityRealityState.LIVE_CONNECTED else CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+                limitations = listOf("Compatibility and developer bridge only. Production execution defaults to Native Wasti Runtime."),
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
     }

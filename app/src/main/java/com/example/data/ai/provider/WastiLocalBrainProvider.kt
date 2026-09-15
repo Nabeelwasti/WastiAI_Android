@@ -84,7 +84,8 @@ class WastiLocalBrainProvider(
         val isProven = runtime.isGenuineNeuralExecutionProven(id)
         return when {
             isProven && progressive == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED -> LocalBrainRuntimeState.VERIFIED_NEURAL_INFERENCE
-            isProven -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+            progressive == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE || isProven -> LocalBrainRuntimeState.EXECUTABLE_NEURAL
+            progressive == com.example.data.ai.runtime.LocalNeuralProgressiveState.LOADABLE -> LocalBrainRuntimeState.NATIVE_RUNTIME_PRESENT
             else -> LocalBrainRuntimeState.MODEL_PRESENT
         }
     }

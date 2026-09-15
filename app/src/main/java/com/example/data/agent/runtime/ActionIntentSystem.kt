@@ -253,17 +253,10 @@ class ActionIntentEngine(
             action.authorizationState = ActionAuthorizationState.SUCCEEDED
             action.resultMessage = result.diagnosticMessage
 
-            if (resolvedAdapter.capabilityId.equals("ANDROID_DEVICE", ignoreCase = true)) {
-                action.executionTruthState = ActionExecutionTruthState.EXECUTOR_COMPLETED
-                action.verificationState = LiveConnectionStatus.NOT_VERIFIED
-                timeline.appendPhase(action.taskId, TaskTimelinePhase.DISPATCHED, "Android action dispatched to the device executor; dispatch is not proof of post-state completion.", mapOf("actionId" to action.actionId, "status" to "DISPATCHED"))
-                timeline.appendPhase(action.taskId, TaskTimelinePhase.EXECUTOR_COMPLETED, "Android executor reported completion, but no independent post-state verification evidence is available.", mapOf("actionId" to action.actionId, "status" to "COMPLETED_UNVERIFIED"))
-            } else {
-                action.executionTruthState = ActionExecutionTruthState.COMPLETED_VERIFIED
-                action.verificationState = LiveConnectionStatus.VERIFIED
-                timeline.appendPhase(action.taskId, TaskTimelinePhase.VERIFYING, "Adapter supplied a successful execution result accepted by the existing non-device verification contract.", mapOf("actionId" to action.actionId))
-                timeline.appendPhase(action.taskId, TaskTimelinePhase.COMPLETED, "Action completed and verified: ${result.diagnosticMessage}", mapOf("actionId" to action.actionId, "status" to "VERIFIED"))
-            }
+            action.executionTruthState = ActionExecutionTruthState.EXECUTOR_COMPLETED
+            action.verificationState = LiveConnectionStatus.NOT_VERIFIED
+            timeline.appendPhase(action.taskId, TaskTimelinePhase.DISPATCHED, "Action dispatched to executor; dispatch is not proof of post-state completion.", mapOf("actionId" to action.actionId, "status" to "DISPATCHED"))
+            timeline.appendPhase(action.taskId, TaskTimelinePhase.EXECUTOR_COMPLETED, "Executor reported completion: ${result.diagnosticMessage}. Independent post-state verification required.", mapOf("actionId" to action.actionId, "status" to "COMPLETED_UNVERIFIED"))
         } else {
             action.authorizationState = ActionAuthorizationState.FAILED
             action.executionTruthState = ActionExecutionTruthState.EXECUTION_FAILED

@@ -116,7 +116,7 @@ class WastiCommandTransport(
                 capabilityId = "CROSS_INTERFACE_TRANSPORT",
                 category = "TRANSPORT",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.AUTHENTICATED,
                 provider = "WastiCommandTransport",
@@ -126,7 +126,7 @@ class WastiCommandTransport(
                     "dispatch_desktop_companion", "device_pairing", "idempotent_dispatch"
                 ),
                 limitations = listOf("Requires valid origin and security token validation"),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
     }
@@ -236,12 +236,22 @@ class WastiCommandTransport(
         authToken: String? = null,
         deviceId: String? = null
     ): Boolean {
-        // 1. Local device native interfaces (Chat, Terminal, Bubble, Voice, System) are trusted locally
-        if (origin.isLocal && (clientHost == "127.0.0.1" || clientHost == "localhost" || clientHost == "::1")) {
+        // 1. Direct in-process UI components within the app sandbox are trusted locally
+        val isInternalAppUi = origin in setOf(
+            CommandOrigin.CHAT,
+            CommandOrigin.TERMINAL,
+            CommandOrigin.FLOATING_BUBBLE,
+            CommandOrigin.VOICE,
+            CommandOrigin.PROJECTS,
+            CommandOrigin.OPERATIONS,
+            CommandOrigin.NOTIFICATION,
+            CommandOrigin.ACCESSIBILITY
+        )
+        if (isInternalAppUi && (clientHost == "127.0.0.1" || clientHost == "localhost" || clientHost == "::1")) {
             return true
         }
 
-        // 2. Token-authenticated sessions
+        // 2. Token-authenticated sessions (zero-trust pipeline enforced on localhost network endpoints)
         if (authToken != null) {
             if (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken)) {
                 return true

@@ -156,6 +156,20 @@ object HardwareCapabilityDetector {
 
 object ModelArtifactManager {
 
+    const val UNKNOWN_UNTRUSTED_CHECKSUM = "UNKNOWN_UNTRUSTED_CHECKSUM"
+
+    /**
+     * Determines whether a checksum string is an authoritative, cryptographically valid SHA-256 hash.
+     * Prevents placeholder strings (e.g. repeated zeros, unverified stubs) from satisfying integrity verification.
+     */
+    fun isAuthoritativeChecksum(checksum: String?): Boolean {
+        if (checksum.isNullOrBlank()) return false
+        if (checksum == UNKNOWN_UNTRUSTED_CHECKSUM) return false
+        if (checksum.all { it == '0' } || checksum.all { it == 'f' || it == 'F' }) return false
+        if (checksum.length != 64) return false
+        return checksum.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }
+    }
+
     private val _modelStatuses = MutableStateFlow<Map<String, ModelRuntimeStatus>>(emptyMap())
     val modelStatuses: StateFlow<Map<String, ModelRuntimeStatus>> = _modelStatuses.asStateFlow()
 
@@ -385,6 +399,7 @@ object ModelArtifactManager {
     }
 
     suspend fun verifyModelIntegrity(file: File, expectedSha256: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isAuthoritativeChecksum(expectedSha256)) return@withContext false
         if (!file.exists()) return@withContext false
         try {
             val digest = MessageDigest.getInstance("SHA-256")

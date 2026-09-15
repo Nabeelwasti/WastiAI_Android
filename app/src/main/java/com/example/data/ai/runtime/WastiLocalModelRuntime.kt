@@ -416,8 +416,16 @@ class WastiLocalModelRuntime(
                         false
                     }
                 } else false
+                val evalProbeOk = if (hasTensors && probeOk) {
+                    try {
+                        val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
+                        testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
+                    } catch (_: Throwable) {
+                        false
+                    }
+                } else false
                 NativeLlamaBridge.freeModel(handle)
-                hasTensors && probeOk
+                hasTensors && probeOk && evalProbeOk
             } else false
         } catch (_: Throwable) {
             false
@@ -439,7 +447,7 @@ class WastiLocalModelRuntime(
         }
 
         val header = parseGgufHeader(modelFile)
-        if (!header.isValidGguf) {
+        if (!header.isValidGguf || header.tensorCount == 0uL) {
             return LocalNeuralProgressiveState.CONFIGURED
         }
 
@@ -459,11 +467,21 @@ class WastiLocalModelRuntime(
                         false
                     }
                 } else false
+                val evalProbeOk = if (hasTensors && isNeuralProbeOk) {
+                    try {
+                        val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
+                        testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
+                    } catch (_: Throwable) {
+                        false
+                    }
+                } else false
                 NativeLlamaBridge.freeModel(handle)
-                if (hasTensors && isNeuralProbeOk) {
+                if (hasTensors && isNeuralProbeOk && evalProbeOk) {
                     LocalNeuralProgressiveState.VERIFIED
-                } else if (hasTensors) {
+                } else if (hasTensors && isNeuralProbeOk) {
                     LocalNeuralProgressiveState.EXECUTABLE
+                } else if (hasTensors) {
+                    LocalNeuralProgressiveState.LOADABLE
                 } else {
                     LocalNeuralProgressiveState.LOADABLE
                 }

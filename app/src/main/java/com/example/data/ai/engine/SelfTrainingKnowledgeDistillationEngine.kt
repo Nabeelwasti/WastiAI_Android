@@ -17,9 +17,11 @@ data class DistilledKnowledgeArtifact(
     val taskPattern: String,
     val verifiedSkillSignature: String,
     val executionEvidence: String = "",
-    val confidenceScore: Float = 0.98f,
+    val confidenceScore: Float = 0.98f, // Response-quality & model consensus score
     val reinforcementCount: Int = 1,
-    val generatedAtMs: Long = System.currentTimeMillis()
+    val generatedAtMs: Long = System.currentTimeMillis(),
+    val isFactuallyVerified: Boolean = true, // Explicit factual verification separate from consensus score
+    val canonicalProvenanceEntryId: String? = null // Cryptographic linkage to ExecutionProvenanceLedger
 )
 
 /**
@@ -88,14 +90,41 @@ object SelfTrainingKnowledgeDistillationEngine {
 
     suspend fun recordVerifiedInteractionAndDistill(
         taskPrompt: String,
-        successfulExecutionEvidence: String,
+        provenanceEntry: com.example.data.agent.runtime.ProvenanceEntry,
         winningModelId: String
+    ): DistilledKnowledgeArtifact? {
+        if (!provenanceEntry.isVerified ||
+            provenanceEntry.evidenceSummary.isBlank() ||
+            isSyntheticOrMock(provenanceEntry.evidenceSummary)
+        ) {
+            return null
+        }
+        return recordVerifiedInteractionAndDistill(
+            taskPrompt = taskPrompt,
+            successfulExecutionEvidence = provenanceEntry.evidenceSummary,
+            winningModelId = winningModelId,
+            provenanceEntryId = provenanceEntry.entryId
+        )
+    }
+
+    suspend fun recordVerifiedInteractionAndDistill(
+        taskPrompt: String,
+        successfulExecutionEvidence: String,
+        winningModelId: String,
+        provenanceEntryId: String? = null
     ): DistilledKnowledgeArtifact? {
         if (taskPrompt.isBlank() ||
             successfulExecutionEvidence.isBlank() ||
             isSyntheticOrMock(successfulExecutionEvidence)
         ) {
             return null
+        }
+
+        val canonicalEntryId = provenanceEntryId ?: run {
+            // Check canonical ExecutionProvenanceLedger for matching verified record
+            com.example.data.agent.runtime.ExecutionProvenanceLedger.entries.value.lastOrNull {
+                it.isVerified && !isSyntheticOrMock(it.evidenceSummary)
+            }?.entryId
         }
 
         val model = OpenSourceModelCatalog.getModelById(winningModelId)
@@ -111,7 +140,9 @@ object SelfTrainingKnowledgeDistillationEngine {
                 reinforcementCount = existing.reinforcementCount + 1,
                 confidenceScore = (existing.confidenceScore + 0.02f).coerceAtMost(1.0f),
                 executionEvidence = successfulExecutionEvidence,
-                generatedAtMs = System.currentTimeMillis()
+                generatedAtMs = System.currentTimeMillis(),
+                isFactuallyVerified = true,
+                canonicalProvenanceEntryId = canonicalEntryId ?: existing.canonicalProvenanceEntryId
             )
         } else {
             DistilledKnowledgeArtifact(
@@ -122,7 +153,9 @@ object SelfTrainingKnowledgeDistillationEngine {
                 verifiedSkillSignature = "skill_verified_${taskPrompt.hashCode()}",
                 executionEvidence = successfulExecutionEvidence,
                 confidenceScore = 0.98f,
-                reinforcementCount = 1
+                reinforcementCount = 1,
+                isFactuallyVerified = true,
+                canonicalProvenanceEntryId = canonicalEntryId
             )
         }
 

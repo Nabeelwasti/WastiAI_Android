@@ -59,6 +59,10 @@ object CodingEnvironmentInstallerBridge {
             MIRROR_URL="$mirrorUrl"
 
             echo "[Wasti Installer] Target path: ${'$'}TARGET_FILE"
+            if [ "${'$'}EXPECTED_SHA" = "${ModelArtifactManager.UNKNOWN_UNTRUSTED_CHECKSUM}" ] || [ ${'$'}{#EXPECTED_SHA} -ne 64 ]; then
+                echo "❌ Manifest for ${manifest.modelId} has untrusted or unknown SHA-256 checksum. Refusing unverified installation."
+                exit 1
+            fi
 
             if [ -f "${'$'}TARGET_FILE" ]; then
                 echo "[Wasti Installer] Existing weights found. Verifying checksum..."
@@ -103,13 +107,14 @@ object CodingEnvironmentInstallerBridge {
             ?: ModelArtifactManifest(
                 modelId = modelId,
                 canonicalFileName = "$modelId.gguf",
-                expectedSha256 = "0".repeat(64),
+                expectedSha256 = ModelArtifactManager.UNKNOWN_UNTRUSTED_CHECKSUM,
                 byteSize = 1024L * 1024L * 1024L,
                 quantization = com.example.data.ai.model.QuantizationType.Q4_K_M,
                 downloadUrl = "https://huggingface.co/models",
                 license = "Open-Source",
                 minRamRequiredMb = 256,
-                requiredHardwareBackend = com.example.data.ai.model.LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR
+                requiredHardwareBackend = com.example.data.ai.model.LocalExecutionBackend.MOBILE_NPU_CPU_TENSOR,
+                isChecksumVerifiedPublished = false
             )
 
         val script = generateTermuxInstallScript(context, manifest)

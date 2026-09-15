@@ -172,22 +172,21 @@ class WastiAutonomousToolSynthesizer(
 
             ToolRegistry.registerTool(dynamicTool)
 
-            // Register into Capability Reality Registry.
-            // LIVE_CONNECTED is the canonical live/verified state in the current registry.
+            // Register into Capability Reality Registry as SYNTHESIZED pending verification fact
             UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
                 CapabilityReality(
                     capabilityId = toolId,
                     category = "SYNTHESIZED_TOOL",
                     implementationStatus = ImplementationStatus.READY,
-                    liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                    liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                     executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                     authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiAutonomousToolSynthesizer",
                     supportedOperations = listOf("execute"),
-                    limitations = emptyList(),
+                    limitations = listOf("Synthesized tool pending runtime verification fact"),
                     lastVerifiedAt = System.currentTimeMillis(),
                     verificationMethod = "SYNTHESIS_EXECUTION_TEST",
-                    realityState = CapabilityRealityState.LIVE_CONNECTED
+                    realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
                 )
             )
 

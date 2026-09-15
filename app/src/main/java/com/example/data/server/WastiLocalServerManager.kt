@@ -213,7 +213,7 @@ class WastiLocalServerManager(
                     capabilityId = "LOCAL_SERVER",
                     category = "TRANSPORT",
                     implementationStatus = ImplementationStatus.READY,
-                    liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                    liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                     executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                     authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiLocalServerManager",
@@ -221,8 +221,8 @@ class WastiLocalServerManager(
                         "start_server", "stop_server", "get_status", "http_gateway",
                         "transport_gateway", "terminal_gateway", "events_stream", "websocket_fabric"
                     ),
-                    limitations = listOf("Bound to local interface 127.0.0.1:$selectedPort (HTTP) & $actualWsPort (WS)"),
-                    realityState = CapabilityRealityState.NATIVE
+                    limitations = listOf("Bound to local interface 127.0.0.1:$selectedPort (HTTP) & $actualWsPort (WS). Pending live probe verification."),
+                    realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
                 )
             )
 
@@ -297,6 +297,12 @@ class WastiLocalServerManager(
             )
             Result.failure(e)
         }
+    }
+
+    @Synchronized
+    fun restartServer(preferredPort: Int = 8080): Result<LocalServerInfo> {
+        stopServer("Server restart requested")
+        return startServer(preferredPort)
     }
 
     private fun incrementRequestCount() {

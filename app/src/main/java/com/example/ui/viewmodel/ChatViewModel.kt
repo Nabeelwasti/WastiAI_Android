@@ -260,4 +260,22 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _activeGenerationCount.value = count
         isGenerating.value = count > 0
     }
+
+    // Persistent TTS / Voice runtime integration
+    val isTtsSpeaking: StateFlow<Boolean> = com.example.data.voice.VoiceManager.isSpeaking
+
+    fun speakMessage(text: String) {
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            try {
+                com.example.data.voice.VoiceManager.synthesizeSpeech(text)
+            } catch (e: Exception) {
+                Log.w("ChatViewModel", "Voice playback error: ${e.message}")
+            }
+        }
+    }
+
+    fun stopSpeaking() {
+        com.example.data.voice.VoiceManager.stopSpeaking()
+    }
 }
