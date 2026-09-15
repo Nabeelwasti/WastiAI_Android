@@ -253,8 +253,7 @@ object BusinessProfileManager {
         displayName: String?,
         isVerifiedOwner: Boolean
     ) {
-        val isOwner = isVerifiedOwner || isFounderEmail(email) ||
-                      (displayName != null && displayName.contains("Syed Nabeel Wasti", ignoreCase = true))
+        val isOwner = isVerifiedOwner
 
         if (isOwner) {
             // Owner logged in: restore founder profile

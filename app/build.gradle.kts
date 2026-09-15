@@ -180,8 +180,12 @@ android {
     buildConfig = true
   }
 
+  val isReleaseBuild = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
+  }
+
   lint {
-    abortOnError = false
+    abortOnError = isReleaseBuild
     checkReleaseBuilds = true
     warningsAsErrors = false
     ignoreTestSources = true

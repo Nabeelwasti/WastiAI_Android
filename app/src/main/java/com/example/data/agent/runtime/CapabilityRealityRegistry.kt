@@ -692,18 +692,24 @@ class CapabilityRealityRegistry {
      * Updates capability reality based on an observed and verified ExecutionFact.
      * Replaces optimistic assumptions with factual post-execution truth.
      */
+    /**
+     * Updates capability reality based on an observed and verified ExecutionFact.
+     * Structurally separates simulation/test evidence from real Android execution facts.
+     */
     fun recordExecutionFact(fact: ExecutionFact) {
         val key = normalizedKey(fact.capabilityId)
         val existing = getCapabilityReality(fact.capabilityId)
-        val isHostSimulated = fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST
+        val isSimulatedOrTest = fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST ||
+                fact.environmentTier == ExecutionEnvironmentTier.TEST_SUITE
 
         if (fact.isVerifiedSuccess) {
             val updated = existing.copy(
-                liveConnectionStatus = if (isHostSimulated) LiveConnectionStatus.NOT_VERIFIED else LiveConnectionStatus.VERIFIED,
-                realityState = if (isHostSimulated) CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED else CapabilityRealityState.LIVE_CONNECTED,
+                liveConnectionStatus = if (isSimulatedOrTest) LiveConnectionStatus.NOT_VERIFIED else LiveConnectionStatus.VERIFIED,
+                realityState = if (isSimulatedOrTest) CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED else CapabilityRealityState.LIVE_CONNECTED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 lastVerifiedAt = fact.completedAt,
-                verificationMethod = if (isHostSimulated) "ROBOLECTRIC_HOST_SIMULATED_VERIFIED" else "EXECUTION_FACT_VERIFIED"
+                verificationMethod = if (isSimulatedOrTest) "SIMULATION_ONLY_TEST_VERIFIED" else "EXECUTION_FACT_VERIFIED",
+                limitations = if (isSimulatedOrTest) (existing.limitations + "SIMULATION_ONLY: Verified in host/test environment only").distinct() else existing.limitations
             )
             capabilityMap[key] = updated
         } else if (fact.terminalTruthState == TerminalTruthState.EXECUTION_FAILED || fact.terminalTruthState == TerminalTruthState.VERIFICATION_FAILED) {
@@ -712,10 +718,26 @@ class CapabilityRealityRegistry {
                 realityState = CapabilityRealityState.FAILED,
                 executionStatus = CapabilityExecutionStatus.DEGRADED,
                 lastVerifiedAt = fact.completedAt,
-                verificationMethod = if (isHostSimulated) "ROBOLECTRIC_HOST_SIMULATED_FAILED" else "EXECUTION_FACT_FAILED"
+                verificationMethod = if (isSimulatedOrTest) "SIMULATION_ONLY_TEST_FAILED" else "EXECUTION_FACT_FAILED"
             )
             capabilityMap[key] = updated
         }
+    }
+
+    /**
+     * Read-only canonical projection from immutable reality-verified authority.
+     */
+    fun projectCanonicalReality(realityVerified: RealityVerifiedCapability) {
+        val key = normalizedKey(realityVerified.capabilityId)
+        val existing = getCapabilityReality(realityVerified.capabilityId)
+        val updated = existing.copy(
+            liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+            realityState = CapabilityRealityState.LIVE_CONNECTED,
+            executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+            lastVerifiedAt = realityVerified.verifiedAtEpochMs,
+            verificationMethod = "CANONICAL_REALITY_VERIFIED:${realityVerified.canonicalVerifier}"
+        )
+        capabilityMap[key] = updated
     }
 
     /**

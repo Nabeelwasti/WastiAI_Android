@@ -192,13 +192,21 @@ object OpenSourceModelCatalog {
 
     fun resolveModelStage(context: android.content.Context, modelId: String): ModelLifecycleStage {
         val model = getModelById(modelId) ?: return ModelLifecycleStage.DECLARED
-        val isWeightsPresent = if (model.isLocalExecutionSupported) {
-            com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, model.id)
-        } else false
-        return when {
-            isWeightsPresent -> ModelLifecycleStage.EXECUTABLE
-            model.isLocalExecutionSupported -> ModelLifecycleStage.CONFIGURED
-            else -> ModelLifecycleStage.DECLARED
+        val manifest = com.example.data.ai.engine.ModelArtifactManager.manifests[model.id]
+        if (manifest == null || !model.isLocalExecutionSupported) {
+            return ModelLifecycleStage.DECLARED
+        }
+
+        val isWeightsPresent = com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, model.id)
+        if (!isWeightsPresent) {
+            return ModelLifecycleStage.CONFIGURED
+        }
+
+        val runnableCheck = com.example.data.ai.engine.ModelArtifactManager.isModelRunnableLocally(context, model.id)
+        return if (runnableCheck.first) {
+            ModelLifecycleStage.EXECUTABLE
+        } else {
+            ModelLifecycleStage.AVAILABLE
         }
     }
 }

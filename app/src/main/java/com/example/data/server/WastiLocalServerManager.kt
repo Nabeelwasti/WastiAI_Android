@@ -606,10 +606,15 @@ class WastiLocalServerManager(
             val requestId = exchange.requestHeaders.getFirst("X-Wasti-Request-Id") ?: json.optString("requestId").takeIf { it.isNotBlank() }
             val correlationId = exchange.requestHeaders.getFirst("X-Wasti-Correlation-Id") ?: json.optString("correlationId").takeIf { it.isNotBlank() }
 
-            val origin = try {
+            val rawOrigin = try {
                 CommandOrigin.valueOf(originName.uppercase())
             } catch (_: Exception) {
                 CommandOrigin.LOCAL_SERVER
+            }
+            val origin = if (rawOrigin.isLocal && rawOrigin != CommandOrigin.LOCAL_SERVER) {
+                CommandOrigin.LOCAL_SERVER
+            } else {
+                rawOrigin
             }
 
             scope.launch {

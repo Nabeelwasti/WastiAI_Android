@@ -40,33 +40,72 @@ enum class AuthProviderType(val displayName: String) {
     CUSTOM_OIDC("Custom OIDC")
 }
 
+const val PINNED_OWNER_ENTITLEMENT_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyUwcbtCpWCDOtzH9oEyrb3xLtmUrcp/i1dM5ARNz0+JD7JY8wk7qxgM3Ctq4f3OeejDEVmJbaC4sqO+5hqCTaQ==
+-----END PUBLIC KEY-----"""
+
+fun getPinnedOwnerPublicKey(): java.security.PublicKey {
+    val clean = PINNED_OWNER_ENTITLEMENT_PUBLIC_KEY_PEM
+        .replace("-----BEGIN PUBLIC KEY-----", "")
+        .replace("-----END PUBLIC KEY-----", "")
+        .replace("\n", "")
+        .replace("\r", "")
+        .trim()
+    val decoded = android.util.Base64.decode(clean, android.util.Base64.DEFAULT)
+    val keySpec = java.security.spec.X509EncodedKeySpec(decoded)
+    return java.security.KeyFactory.getInstance("EC").generatePublic(keySpec)
+}
+
 data class SignedOwnerEntitlement(
     val token: String,
-    val ownerId: String,
+    val subjectId: String,
     val issuedAtEpochMs: Long,
     val expiresAtEpochMs: Long,
-    val serverSignatureHex: String,
-    val authorizedCapabilities: List<String>,
+    val signatureBase64: String,
+    val authorizedCapabilities: List<String> = emptyList(),
     val subjectDeviceId: String = "",
     val audience: String = "wasti-authoritative-runtime",
-    val nonce: String = ""
+    val nonce: String = "",
+    val revocationVersion: Int = 1
 ) {
-    fun computeExpectedSignature(secret: String): String {
-        val payload = "$ownerId:$subjectDeviceId:$audience:$nonce:$expiresAtEpochMs:${authorizedCapabilities.sorted().joinToString(",")}"
-        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
-        val keySpec = javax.crypto.spec.SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256")
-        mac.init(keySpec)
-        return mac.doFinal(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    }
+    // ABI and backward compatibility alias for legacy callers
+    val ownerId: String get() = subjectId
+    val serverSignatureHex: String get() = signatureBase64
 
-    fun verifySignature(secret: String?): Boolean {
-        if (secret.isNullOrBlank()) return false
+    constructor(
+        token: String,
+        ownerId: String,
+        issuedAtEpochMs: Long,
+        expiresAtEpochMs: Long,
+        serverSignatureHex: String,
+        authorizedCapabilities: List<String>,
+        subjectDeviceId: String = "",
+        audience: String = "wasti-authoritative-runtime",
+        nonce: String = "",
+        revocationVersion: Int = 1
+    ) : this(
+        token = token,
+        subjectId = ownerId,
+        issuedAtEpochMs = issuedAtEpochMs,
+        expiresAtEpochMs = expiresAtEpochMs,
+        signatureBase64 = serverSignatureHex,
+        authorizedCapabilities = authorizedCapabilities,
+        subjectDeviceId = subjectDeviceId,
+        audience = audience,
+        nonce = nonce,
+        revocationVersion = revocationVersion
+    )
+
+    val canonicalPayload: String
+        get() = "$subjectId:$subjectDeviceId:$audience:$issuedAtEpochMs:$expiresAtEpochMs:$nonce:$revocationVersion:${authorizedCapabilities.sorted().joinToString(",")}"
+
+    fun verifyAsymmetricSignature(publicKey: java.security.PublicKey = getPinnedOwnerPublicKey()): Boolean {
         return try {
-            val expected = computeExpectedSignature(secret)
-            java.security.MessageDigest.isEqual(
-                expected.toByteArray(Charsets.UTF_8),
-                serverSignatureHex.toByteArray(Charsets.UTF_8)
-            )
+            val sig = java.security.Signature.getInstance("SHA256withECDSA")
+            sig.initVerify(publicKey)
+            sig.update(canonicalPayload.toByteArray(Charsets.UTF_8))
+            val rawSig = android.util.Base64.decode(signatureBase64, android.util.Base64.DEFAULT)
+            sig.verify(rawSig)
         } catch (_: Exception) {
             false
         }
@@ -74,12 +113,14 @@ data class SignedOwnerEntitlement(
 
     val isValid: Boolean
         get() {
-            if (token.isBlank() || ownerId.isBlank() || serverSignatureHex.isBlank()) return false
-            if (subjectDeviceId.isBlank() || audience.isBlank() || nonce.isBlank()) return false
-            if (System.currentTimeMillis() >= expiresAtEpochMs) return false
-            val secret = com.example.data.credential.CredentialRegistry.getRawValue("WASTI_BACKEND_AUTH_SECRET")
-                ?: System.getenv("WASTI_BACKEND_AUTH_SECRET")
-            return verifySignature(secret)
+            if (token.isBlank() || subjectId.isBlank() || signatureBase64.isBlank()) return false
+            if (subjectDeviceId.isBlank() || audience != "wasti-authoritative-runtime" || nonce.isBlank()) return false
+            val now = System.currentTimeMillis()
+            if (now >= expiresAtEpochMs) return false
+            if (issuedAtEpochMs > now + 60_000L) return false // Clock skew tolerance
+            if (revocationVersion < WastiIdentityManager.MIN_REVOCATION_VERSION) return false
+            if (!WastiIdentityManager.isNonceValid(nonce)) return false
+            return verifyAsymmetricSignature()
         }
 }
 
@@ -127,21 +168,62 @@ object WastiIdentityManager {
     private const val KEY_OWNER_DEVICE_ID = "identity_owner_device_id"
     private const val KEY_OWNER_AUDIENCE = "identity_owner_audience"
     private const val KEY_OWNER_NONCE = "identity_owner_nonce"
+    const val MIN_REVOCATION_VERSION = 1
+
+    private val consumedNonces = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun isNonceValid(nonce: String): Boolean {
+        if (nonce.isBlank()) return false
+        val timestamp = consumedNonces[nonce] ?: return true
+        return System.currentTimeMillis() - timestamp > 24 * 60 * 60 * 1000L
+    }
+
+    fun consumeNonce(nonce: String) {
+        if (nonce.isNotBlank()) {
+            consumedNonces[nonce] = System.currentTimeMillis()
+        }
+    }
+
+    fun getDeviceId(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        var devId = prefs.getString("wasti_device_id", null)
+        if (devId.isNullOrBlank() || (!devId.startsWith("wasti_hw_") && devId.length < 32)) {
+            val pubKey = getOrCreateDeviceKey()
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val hash = md.digest(pubKey.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+            devId = "wasti_hw_" + hash.take(24)
+            prefs.edit().putString("wasti_device_id", devId).apply()
+        }
+        return devId
+    }
+
+    data class DeviceAttestationResult(
+        val deviceId: String,
+        val publicKeyBase64: String,
+        val challenge: String,
+        val signatureBase64: String,
+        val isHardwareBacked: Boolean = true,
+        val timestamp: Long = System.currentTimeMillis()
+    )
+
+    fun attestDevice(context: Context, challenge: String): DeviceAttestationResult? {
+        val devId = getDeviceId(context)
+        val pubKey = getOrCreateDeviceKey()
+        val payload = "$devId:$pubKey:$challenge:${System.currentTimeMillis()}"
+        val sig = signPayload(payload.toByteArray(Charsets.UTF_8)) ?: return null
+        return DeviceAttestationResult(
+            deviceId = devId,
+            publicKeyBase64 = pubKey,
+            challenge = challenge,
+            signatureBase64 = sig,
+            isHardwareBacked = true
+        )
+    }
 
     private val _currentProfile = MutableStateFlow<WastiIdentityProfile?>(null)
     val currentProfile: StateFlow<WastiIdentityProfile?> = _currentProfile.asStateFlow()
 
     private var isInitialized = false
-
-    fun getDeviceId(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        var devId = prefs.getString("wasti_device_id", null)
-        if (devId.isNullOrBlank()) {
-            devId = "device_" + UUID.randomUUID().toString().replace("-", "").take(16)
-            prefs.edit().putString("wasti_device_id", devId).apply()
-        }
-        return devId
-    }
 
     fun initialize(context: Context) {
         if (isInitialized) return
@@ -256,6 +338,9 @@ object WastiIdentityManager {
         val isOwnerVerified = entitlementCandidate?.isValid == true
         val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwnerVerified) entitlementCandidate else null
+        if (isOwnerVerified && entitlementCandidate != null) {
+            consumeNonce(entitlementCandidate.nonce)
+        }
 
         prefs.edit().apply {
             putString(KEY_USER_ID, userId)

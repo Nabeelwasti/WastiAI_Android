@@ -32,7 +32,10 @@ data class DeepResearchSynthesisResult(
     val detectedContradictions: List<String>,
     val synthesisSummary: String,
     val citations: List<String>,
-    val isEvidenceVerified: Boolean
+    val isEvidenceCollected: Boolean = false,
+    val requiresCanonicalVerification: Boolean = true,
+    @Deprecated("Renamed to isEvidenceCollected to prevent self-verification", ReplaceWith("isEvidenceCollected"))
+    val isEvidenceVerified: Boolean = false
 )
 
 object WebSearchEngine {
@@ -412,10 +415,10 @@ object WebSearchEngine {
             Log.w(TAG, "Error parsing search JSON for deep research: ${e.message}")
         }
 
-        val isVerified = sources.isNotEmpty() && verifiedFacts.isNotEmpty()
+        val isCollected = sources.isNotEmpty() && verifiedFacts.isNotEmpty()
         val synthesis = StringBuilder()
         synthesis.append("### Deep Research Synthesis: $topic\n\n")
-        if (isVerified) {
+        if (isCollected) {
             synthesis.append("**Key Evidence & Findings:**\n")
             verifiedFacts.distinct().take(6).forEach { fact ->
                 synthesis.append("- $fact\n")
@@ -435,7 +438,9 @@ object WebSearchEngine {
             detectedContradictions = emptyList(),
             synthesisSummary = synthesis.toString(),
             citations = citations.distinct(),
-            isEvidenceVerified = isVerified
+            isEvidenceCollected = isCollected,
+            requiresCanonicalVerification = true,
+            isEvidenceVerified = false
         )
     }
 

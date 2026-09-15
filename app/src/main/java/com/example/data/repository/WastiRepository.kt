@@ -436,9 +436,7 @@ class WastiRepository(private val db: WastiDatabase) {
         val historyContent = buildGeminiHistory(previousMessages, userPrompt)
 
         val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
-        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
-        val isOwnerUser = identityProfile?.isVerifiedOwner == true ||
-                          com.example.data.core.BusinessProfileManager.isFounderEmail(identityProfile?.email)
+        val isOwnerUser = identityProfile?.isVerifiedOwner == true
 
         val masterIdentityIntro = if (isOwnerUser) {
             """You are "Wasti AI Super Agent", the supreme consolidated Master Intelligence Engine and Mobile OS Executive Assistant created for Syed Nabeel Wasti.
@@ -551,9 +549,7 @@ class WastiRepository(private val db: WastiDatabase) {
      */
     private suspend fun buildMemoryContextBlock(conversationId: String): String {
         val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
-        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
-        val isOwnerUser = identityProfile?.isVerifiedOwner == true ||
-                          com.example.data.core.BusinessProfileManager.isFounderEmail(identityProfile?.email)
+        val isOwnerUser = identityProfile?.isVerifiedOwner == true
 
         val memoryDigest = try {
             val allMemories = db.memoryDao().getMemoriesList()

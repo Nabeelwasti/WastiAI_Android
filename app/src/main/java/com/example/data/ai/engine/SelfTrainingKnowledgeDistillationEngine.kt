@@ -66,7 +66,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             winningModelId = winningModelId,
             provenanceEntryId = verificationResult.actionId,
             evidenceConfidence = verificationResult.confidence.toFloat(),
-            isVerified = true
+            isVerified = true,
+            isFactuallyVerified = true
         )
     }
 
@@ -90,7 +91,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             winningModelId = winningModelId,
             provenanceEntryId = null,
             evidenceConfidence = verifiedEvidence.confidence.toFloat(),
-            isVerified = true
+            isVerified = true,
+            isFactuallyVerified = false
         )
     }
 
@@ -112,7 +114,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             winningModelId = winningModelId,
             provenanceEntryId = provenanceEntry.entryId,
             evidenceConfidence = derivedConfidence,
-            isVerified = true
+            isVerified = true,
+            isFactuallyVerified = false
         )
     }
 
@@ -122,7 +125,8 @@ object SelfTrainingKnowledgeDistillationEngine {
         winningModelId: String,
         provenanceEntryId: String? = null,
         evidenceConfidence: Float = 0.85f,
-        isVerified: Boolean = false
+        isVerified: Boolean = false,
+        isFactuallyVerified: Boolean = false
     ): DistilledKnowledgeArtifact? {
         if (taskPrompt.isBlank() ||
             successfulExecutionEvidence.isBlank() ||
@@ -155,7 +159,7 @@ object SelfTrainingKnowledgeDistillationEngine {
                 confidenceScore = derivedConfidence,
                 executionEvidence = successfulExecutionEvidence,
                 generatedAtMs = System.currentTimeMillis(),
-                isFactuallyVerified = existing.isFactuallyVerified || isVerified,
+                isFactuallyVerified = existing.isFactuallyVerified || isFactuallyVerified,
                 canonicalProvenanceEntryId = canonicalEntryId ?: existing.canonicalProvenanceEntryId
             )
         } else {
@@ -168,7 +172,7 @@ object SelfTrainingKnowledgeDistillationEngine {
                 executionEvidence = successfulExecutionEvidence,
                 confidenceScore = if (isVerified) evidenceConfidence else evidenceConfidence.coerceAtMost(0.85f),
                 reinforcementCount = 1,
-                isFactuallyVerified = isVerified,
+                isFactuallyVerified = isFactuallyVerified,
                 canonicalProvenanceEntryId = canonicalEntryId
             )
         }

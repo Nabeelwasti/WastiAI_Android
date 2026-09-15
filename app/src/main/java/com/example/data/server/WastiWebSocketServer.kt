@@ -370,7 +370,8 @@ class WastiWebSocketServer private constructor(
 
                 val command = json.optString("command", "")
                 val originStr = json.optString("origin", "WEB_COMPANION")
-                val origin = try { CommandOrigin.valueOf(originStr) } catch (e: Exception) { CommandOrigin.WEB_COMPANION }
+                val rawOrigin = try { CommandOrigin.valueOf(originStr) } catch (e: Exception) { CommandOrigin.WEB_COMPANION }
+                val origin = if (rawOrigin.isLocal) CommandOrigin.WEB_COMPANION else rawOrigin
                 val requestId = json.optString("requestId", "ws_req_${System.currentTimeMillis()}")
                 val correlationId = json.optString("correlationId", "ws_corr_${System.currentTimeMillis()}")
 
@@ -815,7 +816,7 @@ class WastiWebSocketServer private constructor(
             "NODE_TASK_RESULT" -> {
                 val taskId = json.optString("taskId", "")
                 val nodeId = json.optString("nodeId", session.deviceId ?: "")
-                val isSuccess = json.optBoolean("isSuccess", true)
+                val isSuccess = json.optBoolean("isSuccess", false)
                 val output = json.optString("output", "")
                 val error = json.optString("error", "")
 

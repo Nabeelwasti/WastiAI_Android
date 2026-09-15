@@ -77,7 +77,7 @@ object WastiProductionSigningEngine {
         val secVal = com.example.data.credential.CredentialRegistry.getRawValue("STORE_PASSWORD", context)
             ?: com.example.data.credential.CredentialRegistry.getRawValue("KEY_PASSWORD", context)
         if (!secVal.isNullOrBlank()) return secVal.trim()
-        return "WastiSovereign2026!"
+        throw IllegalStateException("Signing credentials unavailable: keystore passphrase must be configured via environment or credential vault.")
     }
 
     /**
@@ -209,7 +209,11 @@ object WastiProductionSigningEngine {
             discoverExternalKeystore(context) ?: return null
         }
 
-        val effectivePassword = resolveKeystorePassword(context, password)
+        val effectivePassword = try {
+            resolveKeystorePassword(context, password)
+        } catch (_: Exception) {
+            return null
+        }
         return try {
             val keyStoreType = if (file.name.endsWith(".jks")) "JKS" else "PKCS12"
             val keyStore = try {
@@ -265,13 +269,18 @@ object WastiProductionSigningEngine {
      * Verifies the Production Release Signing Gate on-device.
      * Evaluates whether the loaded keystore is an emergency self-signed key, a rejected debug key,
      * or the official authoritative production key.
+     * Enforces that production release verification is true ONLY for the official pinned production key.
      */
     fun verifyProductionReadinessSigningGate(context: Context): ProductionSigningGateStatus {
-        val details = getExistingKeystoreDetails(context)
+        val details = try {
+            getExistingKeystoreDetails(context)
+        } catch (_: Exception) {
+            null
+        }
         if (details == null || !details.keystoreFile.exists() || details.keystoreFile.length() == 0L) {
             return ProductionSigningGateStatus(
                 isVerified = false,
-                details = "Production Signing Gate: PENDING (Run 'keystore generate' or complete Sovereign Onboarding)",
+                details = "Production Signing Gate: PENDING (Keystore not found or credentials unconfigured)",
                 isOfficialProductionKey = false
             )
         }
@@ -287,46 +296,27 @@ object WastiProductionSigningEngine {
             )
         }
 
-        val isSelfSignedEmergency = details.issuerDn.contains("Wasti AI OS Sovereign Authority") ||
-                details.alias.contains("emergency", ignoreCase = true)
         val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT") ?: PINNED_OFFICIAL_PRODUCTION_FINGERPRINT
         val isOfficial = !officialFingerprint.isNullOrBlank() && details.sha256Fingerprint.equals(officialFingerprint.trim(), ignoreCase = true)
 
-        val statusDetails = if (isOfficial) {
-            "Production Signing Gate: VERIFIED AUTHORITATIVE RELEASE KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})"
-        } else if (isSelfSignedEmergency) {
-            "Production Signing Gate: VERIFIED SOVEREIGN DEV KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Sovereign Key — Non-Official Keystore]"
-        } else {
-            "Production Signing Gate: VERIFIED ON-DEVICE (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Key — Non-Official]"
+        if (!isOfficial) {
+            val isSelfSignedEmergency = details.issuerDn.contains("Wasti AI OS Sovereign Authority") ||
+                    details.alias.contains("emergency", ignoreCase = true)
+            val classification = if (isSelfSignedEmergency) "Self-signed emergency" else "Unknown or device-generated"
+            return ProductionSigningGateStatus(
+                isVerified = false,
+                details = "Production Signing Gate: REJECTED ($classification key SHA-256: ${details.sha256Fingerprint}; official production signing fingerprint required).",
+                sha256Fingerprint = details.sha256Fingerprint,
+                isOfficialProductionKey = false
+            )
         }
 
         return ProductionSigningGateStatus(
             isVerified = true,
-            details = statusDetails,
+            details = "Production Signing Gate: VERIFIED AUTHORITATIVE RELEASE KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})",
             sha256Fingerprint = details.sha256Fingerprint,
-            isOfficialProductionKey = isOfficial
+            isOfficialProductionKey = true
         )
-    }
-
-    /**
-     * Exports the raw keystore bytes as a Base64 string for CI/CD injection or sovereign backup.
-     * Enforces explicit Owner authorization check before allowing confidential keystore export.
-     */
-    fun exportKeystoreAsBase64(context: Context, authorized: Boolean = false): String? {
-        val isAuth = authorized || (com.example.data.auth.WastiIdentityManager.currentProfile.value?.isVerifiedOwner == true)
-        if (!isAuth) {
-            Log.w(TAG, "exportKeystoreAsBase64 rejected: owner authorization required")
-            return null
-        }
-        val file = File(context.filesDir, "$KEYSTORE_DIR/$DEFAULT_KEYSTORE_NAME")
-        if (!file.exists() || file.length() == 0L) return null
-        return try {
-            val bytes = file.readBytes()
-            Base64.encodeToString(bytes, Base64.NO_WRAP)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error exporting keystore as base64: ${e.message}")
-            null
-        }
     }
 
     /**

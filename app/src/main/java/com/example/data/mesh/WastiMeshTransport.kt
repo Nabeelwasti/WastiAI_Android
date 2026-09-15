@@ -488,21 +488,41 @@ class WebSocketMeshTransport(
             WastiMeshMessageType.TASK_RESULT -> {
                 val resultPayload = if (envelope.payloadBytes.isNotEmpty()) String(envelope.payloadBytes, Charsets.UTF_8) else "{}"
                 val resObj = try { JSONObject(resultPayload) } catch (_: Exception) { JSONObject() }
-                val statusStr = resObj.optString("status", "COMPLETED")
-                val vStatusStr = resObj.optString("verificationStatus", "VERIFIED")
+                val statusStr = resObj.optString("status", "")
+                val vStatusStr = resObj.optString("verificationStatus", "")
+
+                // Strictly reject malformed or unknown remote/mesh execution statuses instead of defaulting to COMPLETED
+                val parsedStatus = try {
+                    if (statusStr.isNotBlank()) com.example.data.agent.runtime.UnifiedExecutionStatus.valueOf(statusStr) else null
+                } catch (_: Exception) {
+                    null
+                }
+
+                val finalStatus = parsedStatus ?: com.example.data.agent.runtime.UnifiedExecutionStatus.FAILED
+                val rawError = resObj.optString("error").takeIf { it.isNotBlank() }
+                val finalError = if (parsedStatus == null) {
+                    "MALFORMED_OR_UNKNOWN_REMOTE_STATUS: '$statusStr' received from node ${envelope.senderNodeId}${rawError?.let { " ($it)" } ?: ""}"
+                } else {
+                    rawError
+                }
+
+                // Never accept remote VERIFIED as local VERIFIED; remote claims arrive as UNVERIFIED candidate evidence
+                val finalVerificationStatus = com.example.data.agent.runtime.UnifiedVerificationStatus.UNVERIFIED
+                val remoteReportedEvidence = resObj.optString("verificationEvidence", "")
+                val candidateEvidence = "REMOTE_CANDIDATE_EVIDENCE[node=${envelope.senderNodeId}, remoteStatus=$statusStr, remoteVerification=$vStatusStr, evidence=${remoteReportedEvidence.ifBlank { "none" }}]"
 
                 val result = com.example.data.agent.runtime.UnifiedExecutionResult(
                     taskId = resObj.optString("taskId", envelope.requestId),
                     actionId = resObj.optString("actionId", "mesh_task"),
                     capabilityId = resObj.optString("capabilityId", "mesh_computation"),
-                    status = try { com.example.data.agent.runtime.UnifiedExecutionStatus.valueOf(statusStr) } catch (_: Exception) { com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED },
+                    status = finalStatus,
                     output = resObj.optString("output", resultPayload),
-                    error = resObj.optString("error").takeIf { it.isNotBlank() },
+                    error = finalError,
                     executor = resObj.optString("executor", "MeshRemote_${envelope.senderNodeId}"),
                     startedAt = resObj.optLong("startedAt", envelope.timestamp),
                     completedAt = resObj.optLong("completedAt", System.currentTimeMillis()),
-                    verificationStatus = try { com.example.data.agent.runtime.UnifiedVerificationStatus.valueOf(vStatusStr) } catch (_: Exception) { com.example.data.agent.runtime.UnifiedVerificationStatus.VERIFIED },
-                    verificationEvidence = resObj.optString("verificationEvidence", "Verified via Wasti Binary Mesh")
+                    verificationStatus = finalVerificationStatus,
+                    verificationEvidence = candidateEvidence
                 )
 
                 pendingTaskResults.remove(envelope.requestId)?.complete(result)

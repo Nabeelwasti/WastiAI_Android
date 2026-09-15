@@ -1194,16 +1194,16 @@ class UnifiedExecutionFabric(
         return when (operation) {
             "deep_search", "deep_research" -> {
                 val researchResult = WebSearchEngine.executeDeepResearch(query, maxSources = 3, context = context)
-                val ok = researchResult.isEvidenceVerified
+                val ok = researchResult.isEvidenceCollected
                 createResult(
                     request = request,
-                    status = if (ok) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (ok) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = researchResult.synthesisSummary,
-                    error = if (ok) null else "Deep research could not verify online sources for topic",
+                    error = if (ok) null else "Deep research could not collect online sources for topic",
                     executor = "WebSearchEngine_DeepResearch",
                     startedAt = startedAt,
-                    verificationStatus = if (ok) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-                    verificationEvidence = "Sources verified: ${researchResult.sourcesConsulted.size}, Facts extracted: ${researchResult.verifiedFacts.size}"
+                    verificationStatus = if (ok) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "CANDIDATE_RESEARCH_EVIDENCE[sources=${researchResult.sourcesConsulted.size}, facts=${researchResult.verifiedFacts.size}, pendingCanonicalVerification=true]"
                 )
             }
             "read_web_page" -> {
@@ -1211,13 +1211,13 @@ class UnifiedExecutionFabric(
                 val ok = !pageData.startsWith("Failed to fetch")
                 createResult(
                     request = request,
-                    status = if (ok) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (ok) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = pageData,
                     error = if (ok) null else pageData,
                     executor = "WebSearchEngine",
                     startedAt = startedAt,
-                    verificationStatus = if (ok) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-                    verificationEvidence = "HTTP fetch result length: ${pageData.length}"
+                    verificationStatus = if (ok) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "CANDIDATE_WEB_SCRAPE_EVIDENCE[length=${pageData.length}, pendingCanonicalVerification=true]"
                 )
             }
             else -> {
@@ -1225,13 +1225,13 @@ class UnifiedExecutionFabric(
                 val ok = !searchRes.contains("\"error\"") && !searchRes.contains("Exception")
                 createResult(
                     request = request,
-                    status = if (ok) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (ok) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = searchRes,
                     error = if (ok) null else "Web search returned error structure",
                     executor = "WebSearchEngine",
                     startedAt = startedAt,
-                    verificationStatus = if (ok) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
-                    verificationEvidence = "WebSearch query executed"
+                    verificationStatus = if (ok) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationEvidence = "CANDIDATE_WEB_SEARCH_EVIDENCE[queryExecuted=true, pendingCanonicalVerification=true]"
                 )
             }
         }
@@ -1936,13 +1936,13 @@ class UnifiedExecutionFabric(
             !wreResult.verified
         
         val finalStatus = when {
-            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.VERIFIED
+            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.COMPLETED
             wreResult.status == com.example.data.wre.ExecutionStatus.UNAVAILABLE || (isPythonOrNode && isUnavailableOutput) -> UnifiedExecutionStatus.UNAVAILABLE
             wreResult.status == com.example.data.wre.ExecutionStatus.DENIED -> UnifiedExecutionStatus.FAILED
             else -> UnifiedExecutionStatus.FAILED
         }
         val finalVerStatus = when {
-            finalStatus == UnifiedExecutionStatus.VERIFIED -> UnifiedVerificationStatus.VERIFIED
+            finalStatus == UnifiedExecutionStatus.COMPLETED -> UnifiedVerificationStatus.UNVERIFIED
             finalStatus == UnifiedExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
             else -> UnifiedVerificationStatus.FAILED
         }

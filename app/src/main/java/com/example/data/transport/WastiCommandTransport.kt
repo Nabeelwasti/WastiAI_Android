@@ -82,6 +82,13 @@ class WastiCommandTransport(
 ) {
     companion object {
         private const val TAG = "WastiCommandTransport"
+        private const val SESSION_TTL_MS = 24 * 60 * 60 * 1000L // 24 hours
+
+        private fun generateCryptographicToken(): String {
+            val bytes = ByteArray(32)
+            java.security.SecureRandom().nextBytes(bytes)
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
 
         @Volatile
         private var instance: WastiCommandTransport? = null
@@ -101,7 +108,7 @@ class WastiCommandTransport(
     private val pairedDevices = ConcurrentHashMap<String, PairedCompanionDevice>()
     private val pendingPairingChallenges = ConcurrentHashMap<String, PairingChallenge>()
     private val idempotencyCache = ConcurrentHashMap<String, IdempotencyRecord>()
-    private var defaultLocalToken: String = "wasti-local-secure-token-${System.currentTimeMillis() % 100000}"
+    private var defaultLocalToken: String = "wasti-local-sec-" + generateCryptographicToken()
 
     val activeContext: StateFlow<GlobalExecutionContext> = runtime.activeContext
     val executionHistory = runtime.executionHistory
@@ -230,6 +237,7 @@ class WastiCommandTransport(
     /**
      * Transport Security Gate: Validates request origin, IP address, and security tokens.
      * Network transports (HTTP/WebSocket/remote) NEVER trust localhost/origin headers as authentication.
+     * Remote/network callers are strictly forbidden from spoofing internal UI origins.
      */
     fun validateRequestSecurity(
         origin: CommandOrigin,
@@ -238,16 +246,41 @@ class WastiCommandTransport(
         deviceId: String? = null,
         isNetworkRequest: Boolean = false
     ): Boolean {
-        // 1. Network requests (or remote origins) always require genuine authentication
-        val isNetwork = isNetworkRequest || origin in setOf(
+        val isLoopback = clientHost == "127.0.0.1" || clientHost == "localhost" || clientHost == "::1"
+
+        // 1. Internal UI components are strictly local within the Android sandbox
+        val isInternalAppUi = origin in setOf(
+            CommandOrigin.CHAT,
+            CommandOrigin.TERMINAL,
+            CommandOrigin.FLOATING_BUBBLE,
+            CommandOrigin.VOICE,
+            CommandOrigin.DEV_ASSISTANT,
+            CommandOrigin.PROJECTS,
+            CommandOrigin.OPERATIONS,
+            CommandOrigin.NOTIFICATION,
+            CommandOrigin.ACCESSIBILITY,
+            CommandOrigin.BACKGROUND_WORKER
+        )
+
+        // If an external network caller attempts to spoof an internal UI origin, immediately reject
+        if (isNetworkRequest || !isLoopback) {
+            if (isInternalAppUi) {
+                Log.w(TAG, "Transport security rejected network request attempting to spoof internal origin: origin=$origin, host=$clientHost")
+                return false
+            }
+        }
+
+        val isNetwork = isNetworkRequest || !isLoopback || origin in setOf(
             CommandOrigin.LOCAL_SERVER,
             CommandOrigin.WEB_COMPANION,
-            CommandOrigin.DESKTOP_COMPANION
+            CommandOrigin.DESKTOP_COMPANION,
+            CommandOrigin.REMOTE_DEVICE,
+            CommandOrigin.EXTERNAL_NODE
         )
 
         if (isNetwork) {
-            // Check session token
-            if (authToken != null && (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken))) {
+            // Check session token with TTL validation
+            if (authToken != null && isValidSessionToken(authToken)) {
                 return true
             }
             // Check paired device
@@ -262,24 +295,13 @@ class WastiCommandTransport(
             return false
         }
 
-        // 2. Direct in-process UI components within the app sandbox are trusted locally
-        val isInternalAppUi = origin in setOf(
-            CommandOrigin.CHAT,
-            CommandOrigin.TERMINAL,
-            CommandOrigin.FLOATING_BUBBLE,
-            CommandOrigin.VOICE,
-            CommandOrigin.DEV_ASSISTANT,
-            CommandOrigin.PROJECTS,
-            CommandOrigin.OPERATIONS,
-            CommandOrigin.NOTIFICATION,
-            CommandOrigin.ACCESSIBILITY
-        )
-        if (isInternalAppUi) {
+        // 2. Direct in-process UI components within the app sandbox on loopback are trusted locally
+        if (isInternalAppUi && isLoopback) {
             return true
         }
 
         // 3. Fallback for authenticated sessions
-        if (authToken != null && (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken))) {
+        if (authToken != null && isValidSessionToken(authToken)) {
             return true
         }
 
@@ -291,7 +313,22 @@ class WastiCommandTransport(
 
     fun isValidSessionToken(authToken: String?): Boolean {
         if (authToken.isNullOrBlank()) return false
-        return authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken)
+        if (authToken == defaultLocalToken) return true
+        val createdAt = authenticatedSessions[authToken] ?: return false
+        if (System.currentTimeMillis() - createdAt > SESSION_TTL_MS) {
+            authenticatedSessions.remove(authToken)
+            return false
+        }
+        return true
+    }
+
+    fun revokeSessionToken(token: String): Boolean {
+        val removed = authenticatedSessions.remove(token) != null
+        if (token == defaultLocalToken) {
+            defaultLocalToken = "wasti-local-sec-" + generateCryptographicToken()
+            return true
+        }
+        return removed
     }
 
     /**
@@ -419,7 +456,7 @@ class WastiCommandTransport(
     }
 
     fun generateSessionToken(): String {
-        val token = "wasti-session-${java.util.UUID.randomUUID()}"
+        val token = "wasti-session-" + generateCryptographicToken()
         authenticatedSessions[token] = System.currentTimeMillis()
         return token
     }

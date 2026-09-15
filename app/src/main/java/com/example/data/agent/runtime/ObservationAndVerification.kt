@@ -233,6 +233,6 @@ data class TrustedKnowledge(
     val distilledContent: String,
     val provenanceEvidenceHash: String,
     val consensusScore: Float,
-    val isFactuallyVerified: Boolean = true,
+    val isFactuallyVerified: Boolean = false,
     val registeredAtEpochMs: Long = System.currentTimeMillis()
 )

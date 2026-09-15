@@ -48,6 +48,18 @@ class WastiCommandTransportTest {
         // Remote origin with valid generated session token should be approved
         val token = transport.generateSessionToken()
         assertTrue(transport.validateRequestSecurity(CommandOrigin.WEB_COMPANION, "192.168.1.50", token))
+
+        // Remote or network request attempting to claim internal origin CHAT must be rejected even with token
+        assertFalse(transport.validateRequestSecurity(CommandOrigin.CHAT, "192.168.1.50", token))
+        assertFalse(transport.validateRequestSecurity(CommandOrigin.CHAT, "127.0.0.1", token, isNetworkRequest = true))
+    }
+
+    @Test
+    fun testSessionRevocation() {
+        val token = transport.generateSessionToken()
+        assertTrue(transport.isValidSessionToken(token))
+        assertTrue(transport.revokeSessionToken(token))
+        assertFalse(transport.isValidSessionToken(token))
     }
 
     @Test

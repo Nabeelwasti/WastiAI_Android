@@ -77,11 +77,20 @@ object CapabilityEvolutionPipeline {
         }
 
         // Stage: VERIFY - Canonical Verification Authority check
-        val verified = verificationEvidence.isNotBlank() &&
-                       !engine.isSyntheticOrMock(verificationEvidence) &&
-                       !verificationEvidence.contains("UNVERIFIED")
-        if (!verified) {
-            return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence required."))
+        val vRes = engine.verifyStructuredEvidence(
+            taskId = gapId,
+            actionId = "evolve_capability",
+            capabilityId = item.capabilityName,
+            evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                evidenceSource = com.example.data.agent.runtime.EvidenceSource.RUNTIME_DIAGNOSTIC,
+                subject = item.capabilityName,
+                verifiedState = verificationEvidence,
+                observedAt = System.currentTimeMillis()
+            )
+        )
+        val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
+        if (!isCanonicallyVerified) {
+            return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence verified by canonical WastiVerificationEngine required."))
         }
 
         val capabilityId = "evolved_${item.capabilityName.lowercase().replace(" ", "_")}"
@@ -105,7 +114,7 @@ object CapabilityEvolutionPipeline {
             stage = EvolutionStage.MONITOR,
             prototypeCode = prototypeCode,
             testEvidence = testEvidence,
-            isVerified = true,
+            isVerified = isCanonicallyVerified,
             registeredCapabilityId = capabilityId
         )
 
