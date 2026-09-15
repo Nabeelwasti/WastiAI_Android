@@ -1,12 +1,7 @@
 package com.example.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,7 +16,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -36,8 +30,11 @@ import com.example.data.auth.AuthProviderType
 import com.example.data.auth.GoogleAuthClient
 import com.example.data.auth.GoogleAuthResult
 import com.example.data.auth.WastiIdentityManager
-import com.example.data.auth.WastiUserRole
-import com.example.data.credential.*
+import com.example.data.credential.CredentialCategory
+import com.example.data.credential.CredentialEntry
+import com.example.data.credential.CredentialRegistry
+import com.example.data.credential.CredentialState
+import com.example.data.credential.CredentialStatus
 import com.example.data.db.IntegrationEntity
 import com.example.data.db.SystemLogEntity
 import com.example.data.security.WastiIntentSafetyAuditor
@@ -151,7 +148,7 @@ fun ConnectionsAndVaultScreen(
                     } else {
                         IconButton(onClick = {
                             isDevModeUnlocked = false
-                            BiometricSecurityManager.lockDevMode(context)
+                            BiometricSecurityManager.setDevModeUnlocked(context, false)
                             Toast.makeText(context, "Developer Mode locked.", Toast.LENGTH_SHORT).show()
                         }) {
                             Icon(Icons.Default.LockClock, contentDescription = "Lock Dev Mode")
@@ -277,9 +274,9 @@ fun ConnectionsAndVaultScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (BiometricSecurityManager.verifyDevModePin(enteredPin)) {
+                    if (BiometricSecurityManager.verifyPin(context, enteredPin)) {
                         isDevModeUnlocked = true
-                        BiometricSecurityManager.unlockDevMode(context)
+                        BiometricSecurityManager.setDevModeUnlocked(context, true)
                         showPinDialog = false
                         enteredPin = ""
                         Toast.makeText(context, "Developer Mode unlocked.", Toast.LENGTH_SHORT).show()
@@ -300,9 +297,12 @@ fun ConnectionsAndVaultScreen(
                             subtitle = "Verify thumbprint to unlock Developer Mode",
                             onSuccess = {
                                 isDevModeUnlocked = true
-                                BiometricSecurityManager.unlockDevMode(context)
+                                BiometricSecurityManager.setDevModeUnlocked(context, true)
                                 showPinDialog = false
                                 Toast.makeText(context, "Biometric verified! Dev Mode unlocked.", Toast.LENGTH_SHORT).show()
+                            },
+                            onError = { err ->
+                                Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()
                             }
                         )
                     }

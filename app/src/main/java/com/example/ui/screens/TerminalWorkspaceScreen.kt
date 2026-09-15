@@ -37,12 +37,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.data.wre.*
 import com.example.ui.viewmodel.WastiViewModel
-import android.content.Context
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.tool.ToolRegistry
 import com.example.data.tool.WastiTool
-import com.example.ui.components.CodeBlockView
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.UUID

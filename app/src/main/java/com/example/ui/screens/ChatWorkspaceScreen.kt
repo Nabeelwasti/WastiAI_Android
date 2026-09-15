@@ -274,7 +274,6 @@ fun ChatWorkspaceScreen(
 
     // TextToSpeech setup for Wasti multilingual voice response
     var ttsEngine by remember { mutableStateOf<TextToSpeech?>(null) }
-    var isVoiceActive by remember { mutableStateOf(true) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
     var showVoiceModal by remember { mutableStateOf(false) }
 

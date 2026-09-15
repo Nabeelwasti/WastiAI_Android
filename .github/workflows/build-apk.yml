@@ -66,6 +66,7 @@ jobs:
     - name: Upload Detekt Quality Report
       if: always()
       uses: actions/upload-artifact@v4
+      continue-on-error: true
       with:
         name: Detekt-Quality-Report
         path: build/reports/detekt/
@@ -635,6 +636,7 @@ jobs:
 
     - name: Upload Debug Artifact
       uses: actions/upload-artifact@v4
+      continue-on-error: true
       with:
         name: WastiAI-Debug-APK
         if-no-files-found: warn
@@ -665,6 +667,7 @@ jobs:
     - name: Upload Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
       uses: actions/upload-artifact@v4
+      continue-on-error: true
       with:
         name: WastiAI-Release-Artifacts
         if-no-files-found: warn

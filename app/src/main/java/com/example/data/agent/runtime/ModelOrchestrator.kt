@@ -8,12 +8,17 @@ import android.os.PowerManager
 import android.util.Log
 import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.model.OpenSourceModelCatalog
-import com.example.data.ai.runtime.WastiLocalModelRuntime
 import com.example.data.credential.CredentialRegistry
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -230,7 +235,7 @@ class ModelOrchestrator(
                 if (desc.isLocalNative) {
                     ModelArtifactManager.isWeightsPresent(context, desc.providerId) || desc.providerId == "LOCAL_ON_DEVICE" || desc.providerId == "wasti-smollm"
                 } else {
-                    !isBatteryLow && CredentialRegistry.hasValidKey(desc.credentialRef.key)
+                    !isBatteryLow && CredentialRegistry.isConfigured(desc.credentialRef.keyName, context)
                 }
             }
 
