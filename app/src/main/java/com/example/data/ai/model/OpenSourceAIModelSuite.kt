@@ -192,7 +192,7 @@ object OpenSourceModelCatalog {
 
     fun resolveModelStage(context: android.content.Context, modelId: String): ModelLifecycleStage {
         val model = getModelById(modelId) ?: return ModelLifecycleStage.DECLARED
-        val manifest = com.example.data.ai.engine.ModelArtifactManager.manifests[model.id]
+        val manifest = com.example.data.ai.engine.ModelArtifactManager.getManifest(model.id)
         if (manifest == null || !model.isLocalExecutionSupported) {
             return ModelLifecycleStage.DECLARED
         }

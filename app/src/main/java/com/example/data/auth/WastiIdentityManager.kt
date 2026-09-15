@@ -72,30 +72,6 @@ data class SignedOwnerEntitlement(
     val ownerId: String get() = subjectId
     val serverSignatureHex: String get() = signatureBase64
 
-    constructor(
-        token: String,
-        ownerId: String,
-        issuedAtEpochMs: Long,
-        expiresAtEpochMs: Long,
-        serverSignatureHex: String,
-        authorizedCapabilities: List<String>,
-        subjectDeviceId: String = "",
-        audience: String = "wasti-authoritative-runtime",
-        nonce: String = "",
-        revocationVersion: Int = 1
-    ) : this(
-        token = token,
-        subjectId = ownerId,
-        issuedAtEpochMs = issuedAtEpochMs,
-        expiresAtEpochMs = expiresAtEpochMs,
-        signatureBase64 = serverSignatureHex,
-        authorizedCapabilities = authorizedCapabilities,
-        subjectDeviceId = subjectDeviceId,
-        audience = audience,
-        nonce = nonce,
-        revocationVersion = revocationVersion
-    )
-
     val canonicalPayload: String
         get() = "$subjectId:$subjectDeviceId:$audience:$issuedAtEpochMs:$expiresAtEpochMs:$nonce:$revocationVersion:${authorizedCapabilities.sorted().joinToString(",")}"
 
@@ -250,10 +226,10 @@ object WastiIdentityManager {
             val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis()) {
                 SignedOwnerEntitlement(
                     token = ownerToken,
-                    ownerId = userId,
+                    subjectId = userId,
                     issuedAtEpochMs = System.currentTimeMillis() - 60000,
                     expiresAtEpochMs = ownerExpiry,
-                    serverSignatureHex = ownerSig,
+                    signatureBase64 = ownerSig,
                     authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),
                     subjectDeviceId = ownerDeviceId,
                     audience = ownerAudience,
@@ -324,10 +300,10 @@ object WastiIdentityManager {
         val entitlementCandidate = if (!serverOwnerToken.isNullOrBlank() && !serverOwnerSig.isNullOrBlank() && serverOwnerExpiry > System.currentTimeMillis()) {
             SignedOwnerEntitlement(
                 token = serverOwnerToken,
-                ownerId = userId,
+                subjectId = userId,
                 issuedAtEpochMs = System.currentTimeMillis(),
                 expiresAtEpochMs = serverOwnerExpiry,
-                serverSignatureHex = serverOwnerSig,
+                signatureBase64 = serverOwnerSig,
                 authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),
                 subjectDeviceId = effectiveDeviceId,
                 audience = audience,

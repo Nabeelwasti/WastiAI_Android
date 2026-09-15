@@ -699,8 +699,9 @@ class CapabilityRealityRegistry {
     fun recordExecutionFact(fact: ExecutionFact) {
         val key = normalizedKey(fact.capabilityId)
         val existing = getCapabilityReality(fact.capabilityId)
-        val isSimulatedOrTest = fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST ||
-                fact.environmentTier == ExecutionEnvironmentTier.TEST_SUITE
+        val isSimulatedOrTest = fact.environmentTier.isSimulated ||
+                fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST ||
+                fact.environmentTier == ExecutionEnvironmentTier.EMULATOR
 
         if (fact.isVerifiedSuccess) {
             val updated = existing.copy(

@@ -436,6 +436,7 @@ class WastiRepository(private val db: WastiDatabase) {
         val historyContent = buildGeminiHistory(previousMessages, userPrompt)
 
         val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
+        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
         val isOwnerUser = identityProfile?.isVerifiedOwner == true
 
         val masterIdentityIntro = if (isOwnerUser) {
@@ -549,6 +550,7 @@ class WastiRepository(private val db: WastiDatabase) {
      */
     private suspend fun buildMemoryContextBlock(conversationId: String): String {
         val activeBizProfile = com.example.data.core.BusinessProfileManager.activeProfile.value
+        val identityProfile = com.example.data.auth.WastiIdentityManager.currentProfile.value
         val isOwnerUser = identityProfile?.isVerifiedOwner == true
 
         val memoryDigest = try {
