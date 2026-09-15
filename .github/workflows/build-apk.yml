@@ -28,16 +28,16 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '21'
         distribution: 'temurin'
 
     - name: Setup Python 3
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.12'
 
@@ -65,7 +65,7 @@ jobs:
 
     - name: Upload Detekt Quality Report
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       continue-on-error: true
       with:
         name: Detekt-Quality-Report
@@ -83,13 +83,13 @@ jobs:
 
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Validate Gradle Wrapper
-      uses: gradle/actions/wrapper-validation@v4
+      uses: gradle/actions/wrapper-validation@v5
 
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         java-version: '21'
         distribution: 'temurin'
@@ -112,7 +112,7 @@ jobs:
         echo "Android SDK licenses accepted deterministically."
 
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v5
       with:
         cache-read-only: false
 
@@ -635,7 +635,7 @@ jobs:
         echo "Cleaned up temporary sensitive build files."
 
     - name: Upload Debug Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       continue-on-error: true
       with:
         name: WastiAI-Debug-APK
@@ -666,7 +666,7 @@ jobs:
 
     - name: Upload Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       continue-on-error: true
       with:
         name: WastiAI-Release-Artifacts
