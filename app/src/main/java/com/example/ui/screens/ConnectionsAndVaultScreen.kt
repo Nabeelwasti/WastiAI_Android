@@ -261,12 +261,25 @@ fun ConnectionsAndVaultScreen(
             title = { Text("Enter Developer PIN") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter Master Security PIN or authenticate via Biometrics to access the Secret Vault.", fontSize = 12.sp)
+                    if (!BiometricSecurityManager.isPinConfigured(context)) {
+                        Text(
+                            "No Developer PIN enrolled. Authenticate via Biometrics to enroll your PIN and unlock.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            "Enter Developer PIN (or authenticate via Biometrics) to access privileged development tools.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     OutlinedTextField(
                         value = enteredPin,
-                        onValueChange = { enteredPin = it },
-                        label = { Text("Security PIN") },
+                        onValueChange = { if (it.length <= 10 && it.all { ch -> ch.isDigit() }) enteredPin = it },
+                        label = { Text(if (!BiometricSecurityManager.isPinConfigured(context)) "New PIN (4-10 digits)" else "Developer PIN") },
                         visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -274,17 +287,19 @@ fun ConnectionsAndVaultScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    if (BiometricSecurityManager.verifyPin(context, enteredPin)) {
+                    if (!BiometricSecurityManager.isPinConfigured(context)) {
+                        Toast.makeText(context, "PIN not enrolled. Use Biometric button to enroll PIN.", Toast.LENGTH_SHORT).show()
+                    } else if (BiometricSecurityManager.verifyPin(context, enteredPin)) {
                         isDevModeUnlocked = true
                         BiometricSecurityManager.setDevModeUnlocked(context, true)
                         showPinDialog = false
                         enteredPin = ""
-                        Toast.makeText(context, "Developer Mode unlocked.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Developer Mode unlocked (15-min privileged session).", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "Invalid PIN.", Toast.LENGTH_SHORT).show()
                     }
                 }) {
-                    Text("Unlock")
+                    Text(if (!BiometricSecurityManager.isPinConfigured(context)) "Enroll (Use Biometric)" else "Unlock")
                 }
             },
             dismissButton = {
@@ -296,10 +311,15 @@ fun ConnectionsAndVaultScreen(
                             title = "Developer Authentication",
                             subtitle = "Verify thumbprint to unlock Developer Mode",
                             onSuccess = {
+                                if (!BiometricSecurityManager.isPinConfigured(context) && enteredPin.length in 4..10 && enteredPin.all { ch -> ch.isDigit() }) {
+                                    BiometricSecurityManager.enrollPinWithAuthorization(context, enteredPin, true)
+                                    Toast.makeText(context, "PIN enrolled with biometric authorization.", Toast.LENGTH_SHORT).show()
+                                }
                                 isDevModeUnlocked = true
                                 BiometricSecurityManager.setDevModeUnlocked(context, true)
                                 showPinDialog = false
-                                Toast.makeText(context, "Biometric verified! Dev Mode unlocked.", Toast.LENGTH_SHORT).show()
+                                enteredPin = ""
+                                Toast.makeText(context, "Biometric verified! Dev Mode unlocked (15-min session).", Toast.LENGTH_SHORT).show()
                             },
                             onError = { err ->
                                 Toast.makeText(context, "Authentication failed: $err", Toast.LENGTH_SHORT).show()

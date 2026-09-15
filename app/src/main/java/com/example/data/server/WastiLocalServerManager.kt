@@ -472,6 +472,20 @@ class WastiLocalServerManager(
                 return
             }
 
+            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token")
+                ?: exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")?.trim()
+            val clientHost = exchange.remoteAddress?.hostString ?: "127.0.0.1"
+            val isAuthorized = WastiCommandTransport.getInstance(context).validateRequestSecurity(
+                origin = CommandOrigin.LOCAL_SERVER,
+                clientHost = clientHost,
+                authToken = authToken,
+                isNetworkRequest = true
+            )
+            if (!isAuthorized) {
+                sendJsonResponse(exchange, 401, JSONObject().put("error", "AUTHENTICATION_REQUIRED: Valid X-Wasti-Auth-Token required.").toString())
+                return
+            }
+
             val body = InputStreamReader(exchange.requestBody).readText()
             val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
             val prompt = json.optString("prompt", "")
@@ -513,6 +527,20 @@ class WastiLocalServerManager(
             incrementRequestCount()
             if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
                 sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token")
+                ?: exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")?.trim()
+            val clientHost = exchange.remoteAddress?.hostString ?: "127.0.0.1"
+            val isAuthorized = WastiCommandTransport.getInstance(context).validateRequestSecurity(
+                origin = CommandOrigin.LOCAL_SERVER,
+                clientHost = clientHost,
+                authToken = authToken,
+                isNetworkRequest = true
+            )
+            if (!isAuthorized) {
+                sendJsonResponse(exchange, 401, JSONObject().put("error", "AUTHENTICATION_REQUIRED: Valid X-Wasti-Auth-Token required.").toString())
                 return
             }
 
@@ -594,7 +622,8 @@ class WastiLocalServerManager(
                     authToken = authToken,
                     deviceId = deviceId,
                     requestId = requestId,
-                    correlationId = correlationId
+                    correlationId = correlationId,
+                    isNetworkRequest = true
                 )
 
                 when (result) {
@@ -1185,6 +1214,20 @@ class WastiLocalServerManager(
             incrementRequestCount()
             if (!exchange.requestMethod.equals("POST", ignoreCase = true)) {
                 sendJsonResponse(exchange, 405, JSONObject().put("error", "Method not allowed. Use POST.").toString())
+                return
+            }
+
+            val authToken = exchange.requestHeaders.getFirst("X-Wasti-Auth-Token")
+                ?: exchange.requestHeaders.getFirst("Authorization")?.removePrefix("Bearer ")?.trim()
+            val clientHost = exchange.remoteAddress?.hostString ?: "127.0.0.1"
+            val isAuthorized = WastiCommandTransport.getInstance(context).validateRequestSecurity(
+                origin = CommandOrigin.LOCAL_SERVER,
+                clientHost = clientHost,
+                authToken = authToken,
+                isNetworkRequest = true
+            )
+            if (!isAuthorized) {
+                sendJsonResponse(exchange, 401, JSONObject().put("error", "AUTHENTICATION_REQUIRED: Valid X-Wasti-Auth-Token required.").toString())
                 return
             }
 

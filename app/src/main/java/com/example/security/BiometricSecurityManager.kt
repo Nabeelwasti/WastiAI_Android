@@ -23,6 +23,9 @@ object BiometricSecurityManager {
 
     private fun getPrefs(context: Context) = WastiSecureStorage.getEncryptedPreferences(context, PREF_FILE_NAME)
 
+    private const val SESSION_DURATION_MS = 15 * 60 * 1000L // 15-minute privileged session window
+    private var privilegedSessionExpiryEpochMs: Long = 0L
+
     fun isPinConfigured(context: Context): Boolean = !getPrefs(context).getString(KEY_PIN, null).isNullOrBlank()
 
     fun getPin(context: Context): String? = getPrefs(context).getString(KEY_PIN, null)
@@ -32,12 +35,22 @@ object BiometricSecurityManager {
         check(getPrefs(context).edit().putString(KEY_PIN, newPin).commit()) { "Unable to persist PIN securely" }
     }
 
+    /**
+     * Enrolls Developer PIN. Requires authenticated authorization (e.g. biometric or device credential).
+     */
+    fun enrollPinWithAuthorization(context: Context, newPin: String, isAuthorized: Boolean): Boolean {
+        if (!isAuthorized) return false
+        setPin(context, newPin)
+        return true
+    }
+
+    /**
+     * Verifies entered PIN against stored PIN.
+     * Fails closed: Never auto-enrolls an arbitrary valid PIN on first attempt.
+     */
     fun verifyPin(context: Context, inputPin: String): Boolean {
         val stored = getPin(context)
-        return if (stored != null) inputPin == stored else if (inputPin.length in 4..10 && inputPin.all { it.isDigit() }) {
-            setPin(context, inputPin)
-            true
-        } else false
+        return if (stored != null) inputPin == stored else false
     }
 
     fun isBiometricLoginEnabled(context: Context): Boolean = getPrefs(context).getBoolean(KEY_BIOMETRIC_LOGIN_ENABLED, false)
@@ -46,10 +59,28 @@ object BiometricSecurityManager {
         check(getPrefs(context).edit().putBoolean(KEY_BIOMETRIC_LOGIN_ENABLED, enabled).commit()) { "Unable to persist biometric setting securely" }
     }
 
-    fun isDevModeUnlocked(context: Context): Boolean = getPrefs(context).getBoolean(KEY_DEV_MODE_UNLOCKED, false)
+    /**
+     * Developer Mode privileged session status.
+     * Enforces active session expiration window; auto-locks when window has elapsed.
+     */
+    fun isDevModeUnlocked(context: Context): Boolean {
+        val stored = getPrefs(context).getBoolean(KEY_DEV_MODE_UNLOCKED, false)
+        if (!stored) return false
+        val now = System.currentTimeMillis()
+        if (privilegedSessionExpiryEpochMs > 0L && now > privilegedSessionExpiryEpochMs) {
+            lockDevMode(context)
+            return false
+        }
+        return true
+    }
 
     fun setDevModeUnlocked(context: Context, unlocked: Boolean) {
+        privilegedSessionExpiryEpochMs = if (unlocked) System.currentTimeMillis() + SESSION_DURATION_MS else 0L
         check(getPrefs(context).edit().putBoolean(KEY_DEV_MODE_UNLOCKED, unlocked).commit()) { "Unable to persist development security state" }
+    }
+
+    fun lockDevMode(context: Context) {
+        setDevModeUnlocked(context, false)
     }
 
     fun canAuthenticate(context: Context): Int = BiometricManager.from(context).canAuthenticate(

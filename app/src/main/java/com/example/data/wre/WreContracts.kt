@@ -70,7 +70,8 @@ data class ExecutionResult(
     val executionTier: ProcessExecutionTier = ProcessExecutionTier.EMULATED,
     val verified: Boolean = false,
     val verificationEvidence: String? = null,
-    val metadata: Map<String, String> = emptyMap()
+    val metadata: Map<String, String> = emptyMap(),
+    val verifiedExecutionEvidence: com.example.data.agent.runtime.VerifiedExecutionEvidence? = null
 )
 
 data class WastiProcess(

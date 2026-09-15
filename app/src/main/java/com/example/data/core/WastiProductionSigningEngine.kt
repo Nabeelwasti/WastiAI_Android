@@ -102,8 +102,7 @@ object WastiProductionSigningEngine {
             "/storage/emulated/0/wasti_production_release.p12",
             "/data/data/com.termux/files/home/release.jks",
             "/data/data/com.termux/files/home/wasti_production_release.p12",
-            "/data/data/com.termux/files/home/release.keystore",
-            "/data/data/com.termux/files/home/debug.keystore"
+            "/data/data/com.termux/files/home/release.keystore"
         )
 
         for (path in candidatePaths) {
@@ -240,26 +239,55 @@ object WastiProductionSigningEngine {
     data class ProductionSigningGateStatus(
         val isVerified: Boolean,
         val details: String,
-        val sha256Fingerprint: String? = null
+        val sha256Fingerprint: String? = null,
+        val isOfficialProductionKey: Boolean = false
     )
 
     /**
      * Verifies the Production Release Signing Gate on-device.
+     * Evaluates whether the loaded keystore is an emergency self-signed key, a rejected debug key,
+     * or the official authoritative production key.
      */
     fun verifyProductionReadinessSigningGate(context: Context): ProductionSigningGateStatus {
         val details = getExistingKeystoreDetails(context)
-        return if (details != null && details.keystoreFile.exists() && details.keystoreFile.length() > 0L) {
-            ProductionSigningGateStatus(
-                isVerified = true,
-                details = "Production Signing Gate: VERIFIED ON-DEVICE (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})",
-                sha256Fingerprint = details.sha256Fingerprint
-            )
-        } else {
-            ProductionSigningGateStatus(
+        if (details == null || !details.keystoreFile.exists() || details.keystoreFile.length() == 0L) {
+            return ProductionSigningGateStatus(
                 isVerified = false,
-                details = "Production Signing Gate: PENDING (Run 'keystore generate' or complete Sovereign Onboarding)"
+                details = "Production Signing Gate: PENDING (Run 'keystore generate' or complete Sovereign Onboarding)",
+                isOfficialProductionKey = false
             )
         }
+
+        val isDebugKey = details.alias.contains("debug", ignoreCase = true) ||
+                details.issuerDn.contains("Android Debug", ignoreCase = true)
+        if (isDebugKey) {
+            return ProductionSigningGateStatus(
+                isVerified = false,
+                details = "Production Signing Gate: REJECTED (Debug keystore detected; debug keys cannot satisfy production release signing).",
+                sha256Fingerprint = details.sha256Fingerprint,
+                isOfficialProductionKey = false
+            )
+        }
+
+        val isSelfSignedEmergency = details.issuerDn.contains("Wasti AI OS Sovereign Authority") ||
+                details.alias.contains("emergency", ignoreCase = true)
+        val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT")
+        val isOfficial = !officialFingerprint.isNullOrBlank() && details.sha256Fingerprint.equals(officialFingerprint.trim(), ignoreCase = true)
+
+        val statusDetails = if (isOfficial) {
+            "Production Signing Gate: VERIFIED AUTHORITATIVE RELEASE KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})"
+        } else if (isSelfSignedEmergency) {
+            "Production Signing Gate: VERIFIED SOVEREIGN DEV KEY (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter}) [Local Sovereign Key — Not Official Release Keystore]"
+        } else {
+            "Production Signing Gate: VERIFIED ON-DEVICE (SHA-256: ${details.sha256Fingerprint}, Algorithm: ${details.keyAlgorithm} ${details.keySizeBits}-bit, Valid until: ${details.notAfter})"
+        }
+
+        return ProductionSigningGateStatus(
+            isVerified = true,
+            details = statusDetails,
+            sha256Fingerprint = details.sha256Fingerprint,
+            isOfficialProductionKey = isOfficial
+        )
     }
 
     /**

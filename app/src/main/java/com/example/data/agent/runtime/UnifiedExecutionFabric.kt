@@ -321,7 +321,55 @@ class UnifiedExecutionFabric(
                 else -> { /* Authorized */ }
             }
 
-            // 4. Dry Run Preview
+            // 4. Intent Safety Pre-Execution Gate (WastiIntentSafetyAuditor)
+            val intentCandidate = listOfNotNull(
+                request.parameters["command"] as? String,
+                request.parameters["prompt"] as? String,
+                request.parameters["script"] as? String,
+                request.parameters["input"] as? String,
+                request.parameters["action"] as? String
+            ).firstOrNull() ?: "${request.capabilityId}: ${request.parameters}"
+
+            val intentEvaluation = com.example.data.security.WastiIntentSafetyAuditor.evaluateIntent(intentCandidate)
+            when (intentEvaluation.severity) {
+                com.example.data.security.IntentRiskSeverity.CRITICAL_BLOCKED -> {
+                    val alert = com.example.data.security.WastiIntentSafetyAuditor.escalateToOwnerDashboard(intentCandidate, intentEvaluation)
+                    eventBus?.emit(AgentEvent.SecurityBlocked(taskId, "Blocked by Intent Safety Auditor: ${intentEvaluation.summary}"))
+                    return createResult(
+                        request = request,
+                        status = UnifiedExecutionStatus.FAILED,
+                        output = "CRITICAL_BLOCKED: ${intentEvaluation.summary}. Destructive operations are prohibited.",
+                        error = "CRITICAL_BLOCKED: ${intentEvaluation.riskFactors.joinToString("; ")}",
+                        executor = "WastiIntentSafetyAuditor",
+                        startedAt = startedAt,
+                        verificationStatus = UnifiedVerificationStatus.FAILED,
+                        verificationEvidence = "EvidenceHash=${alert.evidenceHash}; AlertId=${alert.id}"
+                    )
+                }
+                com.example.data.security.IntentRiskSeverity.HIGH_RISK_GATED -> {
+                    val isOwner = com.example.data.auth.WastiIdentityManager.currentProfile.value?.isVerifiedOwner == true
+                    if (!isOwner) {
+                        val alert = com.example.data.security.WastiIntentSafetyAuditor.escalateToOwnerDashboard(intentCandidate, intentEvaluation)
+                        eventBus?.emit(AgentEvent.WaitingForUser(taskId, "Awaiting Owner authorization: ${intentEvaluation.summary}"))
+                        return createResult(
+                            request = request,
+                            status = UnifiedExecutionStatus.WAITING,
+                            output = "HIGH_RISK_GATED: ${intentEvaluation.summary}. Requires verified Owner authorization.",
+                            error = "Awaiting Owner approval: ${intentEvaluation.riskFactors.joinToString("; ")}",
+                            executor = "WastiIntentSafetyAuditor",
+                            startedAt = startedAt,
+                            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                            verificationEvidence = "EvidenceHash=${alert.evidenceHash}; AlertId=${alert.id}"
+                        )
+                    }
+                }
+                com.example.data.security.IntentRiskSeverity.ELEVATED_NOTICE,
+                com.example.data.security.IntentRiskSeverity.SAFE -> {
+                    // Safe to proceed
+                }
+            }
+
+            // 5. Dry Run Preview
             if (request.dryRun) {
                 return createResult(
                     request = request,
@@ -334,7 +382,7 @@ class UnifiedExecutionFabric(
                 )
             }
 
-            // 5. Real Execution Dispatch
+            // 6. Real Execution Dispatch
             eventBus?.emit(AgentEvent.ToolStarted(taskId, request.capabilityId))
 
             val execResult = try {

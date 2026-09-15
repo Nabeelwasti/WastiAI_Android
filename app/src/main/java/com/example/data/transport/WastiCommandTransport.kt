@@ -229,14 +229,40 @@ class WastiCommandTransport(
 
     /**
      * Transport Security Gate: Validates request origin, IP address, and security tokens.
+     * Network transports (HTTP/WebSocket/remote) NEVER trust localhost/origin headers as authentication.
      */
     fun validateRequestSecurity(
         origin: CommandOrigin,
         clientHost: String = "127.0.0.1",
         authToken: String? = null,
-        deviceId: String? = null
+        deviceId: String? = null,
+        isNetworkRequest: Boolean = false
     ): Boolean {
-        // 1. Direct in-process UI components within the app sandbox are trusted locally
+        // 1. Network requests (or remote origins) always require genuine authentication
+        val isNetwork = isNetworkRequest || origin in setOf(
+            CommandOrigin.LOCAL_SERVER,
+            CommandOrigin.WEB_COMPANION,
+            CommandOrigin.DESKTOP_COMPANION
+        )
+
+        if (isNetwork) {
+            // Check session token
+            if (authToken != null && (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken))) {
+                return true
+            }
+            // Check paired device
+            if (deviceId != null && authToken != null) {
+                val dev = pairedDevices[deviceId]
+                if (dev != null && !dev.isRevoked && (dev.trustState == NodeTrustState.ACTIVE || dev.trustState == NodeTrustState.PAIRED) && dev.sessionToken == authToken) {
+                    pairedDevices[deviceId] = dev.copy(lastSeenAt = System.currentTimeMillis(), trustState = NodeTrustState.ACTIVE)
+                    return true
+                }
+            }
+            Log.w(TAG, "Transport network security rejected unauthenticated request: origin=$origin, host=$clientHost, deviceId=$deviceId")
+            return false
+        }
+
+        // 2. Direct in-process UI components within the app sandbox are trusted locally
         val isInternalAppUi = origin in setOf(
             CommandOrigin.CHAT,
             CommandOrigin.TERMINAL,
@@ -248,28 +274,24 @@ class WastiCommandTransport(
             CommandOrigin.NOTIFICATION,
             CommandOrigin.ACCESSIBILITY
         )
-        if (isInternalAppUi && (clientHost == "127.0.0.1" || clientHost == "localhost" || clientHost == "::1")) {
+        if (isInternalAppUi) {
             return true
         }
 
-        // 2. Token-authenticated sessions (zero-trust pipeline enforced on localhost network endpoints)
-        if (authToken != null) {
-            if (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken)) {
-                return true
-            }
-        }
-
-        // 3. Paired companion devices
-        if (deviceId != null && authToken != null) {
-            val dev = pairedDevices[deviceId]
-            if (dev != null && !dev.isRevoked && (dev.trustState == NodeTrustState.ACTIVE || dev.trustState == NodeTrustState.PAIRED) && dev.sessionToken == authToken) {
-                pairedDevices[deviceId] = dev.copy(lastSeenAt = System.currentTimeMillis(), trustState = NodeTrustState.ACTIVE)
-                return true
-            }
+        // 3. Fallback for authenticated sessions
+        if (authToken != null && (authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken))) {
+            return true
         }
 
         Log.w(TAG, "Transport security rejected command from origin $origin, host=$clientHost, deviceId=$deviceId")
         return false
+    }
+
+    fun getDefaultLocalToken(): String = defaultLocalToken
+
+    fun isValidSessionToken(authToken: String?): Boolean {
+        if (authToken.isNullOrBlank()) return false
+        return authToken == defaultLocalToken || authenticatedSessions.containsKey(authToken)
     }
 
     /**
@@ -285,7 +307,8 @@ class WastiCommandTransport(
         authToken: String? = null,
         deviceId: String? = null,
         requestId: String? = null,
-        correlationId: String? = null
+        correlationId: String? = null,
+        isNetworkRequest: Boolean = false
     ): CommandSubmissionResult {
         // 1. Idempotency Check
         val effectiveReqId = requestId ?: correlationId
@@ -301,7 +324,7 @@ class WastiCommandTransport(
         }
 
         // 2. Security Validation
-        if (!validateRequestSecurity(origin, clientHost, authToken, deviceId)) {
+        if (!validateRequestSecurity(origin, clientHost, authToken, deviceId, isNetworkRequest)) {
             val rejectedResult = CommandSubmissionResult.Rejected(
                 commandId = "",
                 origin = origin,

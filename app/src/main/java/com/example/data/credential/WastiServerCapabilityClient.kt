@@ -20,12 +20,19 @@ import java.util.concurrent.ConcurrentHashMap
  *    strictly necessary for authorized operations.
  * 4. Fails closed safely if the server is unreachable or unauthenticated.
  */
+enum class CapabilityGrantType {
+    SERVER_GRANT,
+    LOCAL_CAPABILITY
+}
+
 data class ScopedCapabilityGrant(
     val capabilityName: String,
     val token: String,
     val expiresAtEpochMs: Long,
     val scopes: List<String>,
-    val rateLimitPerHour: Int
+    val rateLimitPerHour: Int,
+    val grantType: CapabilityGrantType = CapabilityGrantType.SERVER_GRANT,
+    val isOwnerAuthorized: Boolean = false
 ) {
     val isValid: Boolean
         get() = token.isNotBlank() && System.currentTimeMillis() < expiresAtEpochMs
@@ -92,7 +99,9 @@ object WastiServerCapabilityClient {
                     token = respJson.optString("token", ""),
                     expiresAtEpochMs = respJson.optLong("expiresAt", System.currentTimeMillis() + 3600000),
                     scopes = listOf(requestedScope),
-                    rateLimitPerHour = respJson.optInt("rateLimitPerHour", 100)
+                    rateLimitPerHour = respJson.optInt("rateLimitPerHour", 100),
+                    grantType = CapabilityGrantType.SERVER_GRANT,
+                    isOwnerAuthorized = respJson.optBoolean("isOwnerAuthorized", profile?.isVerifiedOwner ?: false)
                 )
                 if (grant.isValid) {
                     grantCache[capabilityName] = grant
@@ -104,7 +113,8 @@ object WastiServerCapabilityClient {
             Log.d(TAG, "Server capability acquisition bypassed or unavailable: ${e.message}")
         }
 
-        // Sovereign Offline Fallback: If hardware Keystore or local credential exists, use local bound token
+        // Sovereign Offline Fallback: If hardware Keystore or local credential exists, use local bound token.
+        // Never convert a local credential into a server-authorized owner capability.
         val localKey = CredentialRegistry.getRawValue(capabilityName)
         if (!localKey.isNullOrBlank()) {
             val localGrant = ScopedCapabilityGrant(
@@ -112,7 +122,9 @@ object WastiServerCapabilityClient {
                 token = localKey,
                 expiresAtEpochMs = System.currentTimeMillis() + 86400000,
                 scopes = listOf(requestedScope),
-                rateLimitPerHour = 1000
+                rateLimitPerHour = 1000,
+                grantType = CapabilityGrantType.LOCAL_CAPABILITY,
+                isOwnerAuthorized = false
             )
             grantCache[capabilityName] = localGrant
             return@withContext localGrant

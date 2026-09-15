@@ -233,7 +233,8 @@ class ModelOrchestrator(
         val availableProviders = providerRegistry.getAvailableProvidersForTask(taskCategory)
             .filter { desc ->
                 if (desc.isLocalNative) {
-                    ModelArtifactManager.isWeightsPresent(context, desc.providerId) || desc.providerId == "LOCAL_ON_DEVICE" || desc.providerId == "wasti-smollm"
+                    // Truthful local model presence: weights must be present on device
+                    ModelArtifactManager.isWeightsPresent(context, desc.providerId)
                 } else {
                     !isBatteryLow && CredentialRegistry.isConfigured(desc.credentialRef.keyName, context)
                 }
@@ -247,21 +248,25 @@ class ModelOrchestrator(
         val deliberationScope = CoroutineScope(Dispatchers.Default + Job())
         activeDeliberationJob = deliberationScope.coroutineContext[Job]
 
+        val providerTimeoutMs = if (isBatteryLow) 1200L else 2500L
         val jobs = availableProviders.take(4).map { provider ->
             deliberationScope.launch {
                 try {
                     val pStart = System.currentTimeMillis()
-                    val outputSnippet = generateModelContribution(context, provider, prompt)
+                    val outputSnippet = kotlinx.coroutines.withTimeoutOrNull(providerTimeoutMs) {
+                        generateModelContribution(context, provider, prompt)
+                    } ?: return@launch
                     val pLatency = System.currentTimeMillis() - pStart
                     val md = MessageDigest.getInstance("SHA-256")
                     val hash = md.digest("${provider.providerId}:$outputSnippet".toByteArray())
                         .fold("") { s: String, b: Byte -> s + "%02x".format(b) }
 
+                    // SHA-256 serves strictly as deterministic content & provenance identity, never verification
                     contributions[provider.providerId] = DeliberationContribution(
                         modelId = provider.providerId,
                         modelName = provider.name,
                         outputText = outputSnippet,
-                        confidenceScore = 0.92f,
+                        confidenceScore = if (provider.isLocalNative) 0.85f else 0.90f,
                         latencyMs = pLatency,
                         provenanceHash = hash,
                         isLocalOnDevice = provider.isLocalNative
@@ -333,7 +338,7 @@ class ModelOrchestrator(
             try {
                 com.example.data.ai.engine.UnifiedBrain.executeCooperativeReasoning(prompt).finalSynthesis
             } catch (_: Exception) {
-                "Sovereign Reasoning (${provider.name}): Evaluated '$prompt' against verified on-device parameters."
+                "[NON_NEURAL_HEURISTIC_FALLBACK] (${provider.name}): Evaluated '$prompt' against on-device configuration (Non-Neural Heuristic Fallback)."
             }
         }
     }
@@ -356,7 +361,7 @@ class ModelOrchestrator(
                 consensusNotes.add("Multi-Cloud: ${cloudVerified.joinToString { it.modelName }}")
             }
             if (localVerified.isNotEmpty()) {
-                consensusNotes.add("Edge Verification: ${localVerified.joinToString { it.modelName }}")
+                consensusNotes.add("Edge Execution: ${localVerified.joinToString { it.modelName }}")
             }
             if (consensusNotes.isNotEmpty()) {
                 sb.append("\n\n*— Unified Deliberation Consensus (${consensusNotes.joinToString(" • ")})*")

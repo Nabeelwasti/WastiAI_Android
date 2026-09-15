@@ -17,10 +17,10 @@ data class DistilledKnowledgeArtifact(
     val taskPattern: String,
     val verifiedSkillSignature: String,
     val executionEvidence: String = "",
-    val confidenceScore: Float = 0.98f, // Response-quality & model consensus score
+    val confidenceScore: Float = 0.85f, // Derived from evidence confidence, bounded
     val reinforcementCount: Int = 1,
     val generatedAtMs: Long = System.currentTimeMillis(),
-    val isFactuallyVerified: Boolean = true, // Explicit factual verification separate from consensus score
+    val isFactuallyVerified: Boolean = false, // Explicit factual verification derived from independent proof
     val canonicalProvenanceEntryId: String? = null // Cryptographic linkage to ExecutionProvenanceLedger
 )
 
@@ -63,7 +63,10 @@ object SelfTrainingKnowledgeDistillationEngine {
         return recordVerifiedInteractionAndDistill(
             taskPrompt = taskPrompt,
             successfulExecutionEvidence = verificationResult.evidence,
-            winningModelId = winningModelId
+            winningModelId = winningModelId,
+            provenanceEntryId = verificationResult.actionId,
+            evidenceConfidence = verificationResult.confidence.toFloat(),
+            isVerified = true
         )
     }
 
@@ -84,7 +87,10 @@ object SelfTrainingKnowledgeDistillationEngine {
         return recordVerifiedInteractionAndDistill(
             taskPrompt = taskPrompt,
             successfulExecutionEvidence = evidenceStr,
-            winningModelId = winningModelId
+            winningModelId = winningModelId,
+            provenanceEntryId = null,
+            evidenceConfidence = verifiedEvidence.confidence.toFloat(),
+            isVerified = true
         )
     }
 
@@ -103,7 +109,9 @@ object SelfTrainingKnowledgeDistillationEngine {
             taskPrompt = taskPrompt,
             successfulExecutionEvidence = provenanceEntry.evidenceSummary,
             winningModelId = winningModelId,
-            provenanceEntryId = provenanceEntry.entryId
+            provenanceEntryId = provenanceEntry.entryId,
+            evidenceConfidence = 0.95f,
+            isVerified = true
         )
     }
 
@@ -111,7 +119,9 @@ object SelfTrainingKnowledgeDistillationEngine {
         taskPrompt: String,
         successfulExecutionEvidence: String,
         winningModelId: String,
-        provenanceEntryId: String? = null
+        provenanceEntryId: String? = null,
+        evidenceConfidence: Float = 0.90f,
+        isVerified: Boolean = false
     ): DistilledKnowledgeArtifact? {
         if (taskPrompt.isBlank() ||
             successfulExecutionEvidence.isBlank() ||
@@ -120,12 +130,9 @@ object SelfTrainingKnowledgeDistillationEngine {
             return null
         }
 
-        val canonicalEntryId = provenanceEntryId ?: run {
-            // Check canonical ExecutionProvenanceLedger for matching verified record
-            com.example.data.agent.runtime.ExecutionProvenanceLedger.entries.value.lastOrNull {
-                it.isVerified && !isSyntheticOrMock(it.evidenceSummary)
-            }?.entryId
-        }
+        // Truth Doctrine: Only bind canonical provenance if explicitly provided for this interaction.
+        // Never attach an unrelated "last verified" entry from the global ledger.
+        val canonicalEntryId = provenanceEntryId
 
         val model = OpenSourceModelCatalog.getModelById(winningModelId)
         val spec = model?.primarySpecialization ?: ModelSpecialization.GENERAL_REASONING
@@ -136,12 +143,18 @@ object SelfTrainingKnowledgeDistillationEngine {
 
         val artifact = if (existingIndex >= 0) {
             val existing = _distilledArtifacts.value[existingIndex]
+            // Factual verification and confidence are evidence-derived, NEVER incremented merely by repetition.
+            val derivedConfidence = if (isVerified) {
+                maxOf(existing.confidenceScore, evidenceConfidence)
+            } else {
+                existing.confidenceScore
+            }
             existing.copy(
                 reinforcementCount = existing.reinforcementCount + 1,
-                confidenceScore = (existing.confidenceScore + 0.02f).coerceAtMost(1.0f),
+                confidenceScore = derivedConfidence,
                 executionEvidence = successfulExecutionEvidence,
                 generatedAtMs = System.currentTimeMillis(),
-                isFactuallyVerified = true,
+                isFactuallyVerified = existing.isFactuallyVerified || isVerified,
                 canonicalProvenanceEntryId = canonicalEntryId ?: existing.canonicalProvenanceEntryId
             )
         } else {
@@ -152,9 +165,9 @@ object SelfTrainingKnowledgeDistillationEngine {
                 taskPattern = taskPrompt.take(100),
                 verifiedSkillSignature = "skill_verified_${taskPrompt.hashCode()}",
                 executionEvidence = successfulExecutionEvidence,
-                confidenceScore = 0.98f,
+                confidenceScore = if (isVerified) evidenceConfidence else evidenceConfidence.coerceAtMost(0.85f),
                 reinforcementCount = 1,
-                isFactuallyVerified = true,
+                isFactuallyVerified = isVerified,
                 canonicalProvenanceEntryId = canonicalEntryId
             )
         }

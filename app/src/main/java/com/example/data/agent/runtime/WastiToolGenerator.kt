@@ -11,7 +11,10 @@ data class GeneratedToolArtifact(
     val generatedCode: String,
     val testFixtureCode: String,
     val isVerified: Boolean = false,
-    val createdAtMs: Long = System.currentTimeMillis()
+    val verificationEvidence: String? = null,
+    val verificationConfidence: Double = 0.0,
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val verifiedAtMs: Long? = null
 )
 
 object WastiToolGenerator {
@@ -35,7 +38,7 @@ object WastiToolGenerator {
                     return mapOf(
                         "status" to "COMPLETED",
                         "capability" to "$missingCapabilityId",
-                        "evidence" to "Generated tool execution proof verified"
+                        "output" to "Generated tool execution completed for $missingCapabilityId"
                     )
                 }
             }
@@ -49,16 +52,52 @@ object WastiToolGenerator {
             }
         """.trimIndent()
 
+        // Epistemic Truth Invariant: Generated tools start strictly UNVERIFIED.
+        // Self-assigned verification upon synthesis is strictly prohibited.
         val artifact = GeneratedToolArtifact(
             toolId = "tool_$sanitizedId",
             toolName = toolName,
             targetCapabilityId = missingCapabilityId,
             generatedCode = code,
             testFixtureCode = testFixture,
-            isVerified = true
+            isVerified = false,
+            verificationEvidence = null,
+            verificationConfidence = 0.0
         )
 
         _generatedTools.value = _generatedTools.value + artifact
         return artifact
+    }
+
+    /**
+     * Gated verification transition: Promotes a generated tool to VERIFIED ONLY when backed
+     * by real execution, observation, evidence collection, security analysis, and
+     * independent canonical verification.
+     */
+    fun promoteToolWithCanonicalVerification(
+        toolId: String,
+        verificationResult: VerificationResult
+    ): Boolean {
+        if (verificationResult.status != ActionVerificationStatus.VERIFIED ||
+            verificationResult.confidence < 0.85 ||
+            verificationResult.evidence.isBlank() ||
+            WastiVerificationEngine().isSyntheticOrMock(verificationResult.evidence)
+        ) {
+            return false
+        }
+
+        val current = _generatedTools.value.toMutableList()
+        val index = current.indexOfFirst { it.toolId == toolId }
+        if (index == -1) return false
+
+        val existing = current[index]
+        current[index] = existing.copy(
+            isVerified = true,
+            verificationEvidence = verificationResult.evidence,
+            verificationConfidence = verificationResult.confidence,
+            verifiedAtMs = System.currentTimeMillis()
+        )
+        _generatedTools.value = current
+        return true
     }
 }

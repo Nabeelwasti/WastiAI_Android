@@ -42,6 +42,7 @@ class WastiWebSocketServer private constructor(
         val inputStream: InputStream,
         val outputStream: OutputStream,
         var deviceId: String? = null,
+        var authToken: String? = null,
         var isAuthenticated: Boolean = false,
         var platform: NodePlatform = NodePlatform.WEB,
         var trustState: NodeTrustState = NodeTrustState.PAIRING,
@@ -341,11 +342,13 @@ class WastiWebSocketServer private constructor(
                         authToken = token,
                         deviceId = deviceId,
                         origin = if (platform == NodePlatform.DESKTOP) CommandOrigin.DESKTOP_COMPANION else CommandOrigin.WEB_COMPANION,
-                        clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1"
+                        clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1",
+                        isNetworkRequest = true
                     )
                 } else false
 
                 session.isAuthenticated = isValid
+                session.authToken = if (isValid) token else null
                 session.trustState = if (isValid) NodeTrustState.ACTIVE else NodeTrustState.REVOKED
 
                 sendTextFrame(session, JSONObject().apply {
@@ -376,10 +379,11 @@ class WastiWebSocketServer private constructor(
                         command = command,
                         origin = origin,
                         deviceId = session.deviceId,
-                        authToken = "ws_session_token",
+                        authToken = session.authToken,
                         requestId = requestId,
                         correlationId = correlationId,
-                        clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1"
+                        clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1",
+                        isNetworkRequest = true
                     )
 
                     sendTextFrame(session, JSONObject().apply {

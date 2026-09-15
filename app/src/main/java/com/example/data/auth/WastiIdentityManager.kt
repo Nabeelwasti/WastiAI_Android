@@ -46,13 +46,41 @@ data class SignedOwnerEntitlement(
     val issuedAtEpochMs: Long,
     val expiresAtEpochMs: Long,
     val serverSignatureHex: String,
-    val authorizedCapabilities: List<String>
+    val authorizedCapabilities: List<String>,
+    val subjectDeviceId: String = "",
+    val audience: String = "wasti-authoritative-runtime",
+    val nonce: String = ""
 ) {
+    fun computeExpectedSignature(secret: String): String {
+        val payload = "$ownerId:$subjectDeviceId:$audience:$nonce:$expiresAtEpochMs:${authorizedCapabilities.sorted().joinToString(",")}"
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        val keySpec = javax.crypto.spec.SecretKeySpec(secret.toByteArray(Charsets.UTF_8), "HmacSHA256")
+        mac.init(keySpec)
+        return mac.doFinal(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
+
+    fun verifySignature(secret: String?): Boolean {
+        if (secret.isNullOrBlank()) return false
+        return try {
+            val expected = computeExpectedSignature(secret)
+            java.security.MessageDigest.isEqual(
+                expected.toByteArray(Charsets.UTF_8),
+                serverSignatureHex.toByteArray(Charsets.UTF_8)
+            )
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     val isValid: Boolean
-        get() = token.isNotBlank() &&
-                ownerId.isNotBlank() &&
-                serverSignatureHex.isNotBlank() &&
-                System.currentTimeMillis() < expiresAtEpochMs
+        get() {
+            if (token.isBlank() || ownerId.isBlank() || serverSignatureHex.isBlank()) return false
+            if (subjectDeviceId.isBlank() || audience.isBlank() || nonce.isBlank()) return false
+            if (System.currentTimeMillis() >= expiresAtEpochMs) return false
+            val secret = com.example.data.credential.CredentialRegistry.getRawValue("WASTI_BACKEND_AUTH_SECRET")
+                ?: System.getenv("WASTI_BACKEND_AUTH_SECRET")
+            return verifySignature(secret)
+        }
 }
 
 data class WastiIdentityProfile(
@@ -92,11 +120,24 @@ object WastiIdentityManager {
     private const val KEY_OWNER_TOKEN = "identity_owner_token"
     private const val KEY_OWNER_EXPIRY = "identity_owner_expiry"
     private const val KEY_OWNER_SIG = "identity_owner_sig"
+    private const val KEY_OWNER_DEVICE_ID = "identity_owner_device_id"
+    private const val KEY_OWNER_AUDIENCE = "identity_owner_audience"
+    private const val KEY_OWNER_NONCE = "identity_owner_nonce"
 
     private val _currentProfile = MutableStateFlow<WastiIdentityProfile?>(null)
     val currentProfile: StateFlow<WastiIdentityProfile?> = _currentProfile.asStateFlow()
 
     private var isInitialized = false
+
+    fun getDeviceId(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        var devId = prefs.getString("wasti_device_id", null)
+        if (devId.isNullOrBlank()) {
+            devId = "device_" + UUID.randomUUID().toString().replace("-", "").take(16)
+            prefs.edit().putString("wasti_device_id", devId).apply()
+        }
+        return devId
+    }
 
     fun initialize(context: Context) {
         if (isInitialized) return
@@ -116,6 +157,10 @@ object WastiIdentityManager {
             val ownerToken = prefs.getString(KEY_OWNER_TOKEN, null)
             val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)
             val ownerSig = prefs.getString(KEY_OWNER_SIG, null)
+            val ownerDeviceId = prefs.getString(KEY_OWNER_DEVICE_ID, null) ?: getDeviceId(context)
+            val ownerAudience = prefs.getString(KEY_OWNER_AUDIENCE, "wasti-authoritative-runtime") ?: "wasti-authoritative-runtime"
+            val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""
+
             val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis()) {
                 SignedOwnerEntitlement(
                     token = ownerToken,
@@ -123,18 +168,22 @@ object WastiIdentityManager {
                     issuedAtEpochMs = System.currentTimeMillis() - 60000,
                     expiresAtEpochMs = ownerExpiry,
                     serverSignatureHex = ownerSig,
-                    authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve")
+                    authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),
+                    subjectDeviceId = ownerDeviceId,
+                    audience = ownerAudience,
+                    nonce = ownerNonce
                 )
             } else null
 
             val pubKey = getOrCreateDeviceKey()
+            val isOwnerVerified = entitlement?.isValid == true
             _currentProfile.value = WastiIdentityProfile(
                 userId = userId,
                 email = email,
                 displayName = name,
                 photoUrl = photo,
                 provider = provider,
-                role = if (entitlement?.isValid == true) WastiUserRole.OWNER else role,
+                role = if (isOwnerVerified) WastiUserRole.OWNER else if (role == WastiUserRole.OWNER) WastiUserRole.MEMBER else role,
                 publicKeyBase64 = pubKey,
                 ownerEntitlement = entitlement
             )
@@ -167,25 +216,34 @@ object WastiIdentityManager {
         provider: AuthProviderType,
         serverOwnerToken: String? = null,
         serverOwnerExpiry: Long = 0L,
-        serverOwnerSig: String? = null
+        serverOwnerSig: String? = null,
+        subjectDeviceId: String? = null,
+        audience: String = "wasti-authoritative-runtime",
+        nonce: String? = null
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val effectiveName = displayName?.takeIf { it.isNotBlank() } ?: (email?.substringBefore("@") ?: "Wasti Operator")
         val pubKey = getOrCreateDeviceKey()
+        val effectiveDeviceId = subjectDeviceId ?: getDeviceId(context)
+        val effectiveNonce = nonce ?: UUID.randomUUID().toString()
 
-        val isOwner = !serverOwnerToken.isNullOrBlank() && !serverOwnerSig.isNullOrBlank() && serverOwnerExpiry > System.currentTimeMillis()
-        val role = if (isOwner) WastiUserRole.OWNER else WastiUserRole.MEMBER
-
-        val entitlement = if (isOwner) {
+        val entitlementCandidate = if (!serverOwnerToken.isNullOrBlank() && !serverOwnerSig.isNullOrBlank() && serverOwnerExpiry > System.currentTimeMillis()) {
             SignedOwnerEntitlement(
                 token = serverOwnerToken,
                 ownerId = userId,
                 issuedAtEpochMs = System.currentTimeMillis(),
                 expiresAtEpochMs = serverOwnerExpiry,
                 serverSignatureHex = serverOwnerSig,
-                authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve")
+                authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),
+                subjectDeviceId = effectiveDeviceId,
+                audience = audience,
+                nonce = effectiveNonce
             )
         } else null
+
+        val isOwner = entitlementCandidate?.isValid == true
+        val role = if (isOwner) WastiUserRole.OWNER else WastiUserRole.MEMBER
+        val entitlement = if (isOwner) entitlementCandidate else null
 
         prefs.edit().apply {
             putString(KEY_USER_ID, userId)
@@ -198,10 +256,16 @@ object WastiIdentityManager {
                 putString(KEY_OWNER_TOKEN, entitlement.token)
                 putLong(KEY_OWNER_EXPIRY, entitlement.expiresAtEpochMs)
                 putString(KEY_OWNER_SIG, entitlement.serverSignatureHex)
+                putString(KEY_OWNER_DEVICE_ID, entitlement.subjectDeviceId)
+                putString(KEY_OWNER_AUDIENCE, entitlement.audience)
+                putString(KEY_OWNER_NONCE, entitlement.nonce)
             } else {
                 remove(KEY_OWNER_TOKEN)
                 remove(KEY_OWNER_EXPIRY)
                 remove(KEY_OWNER_SIG)
+                remove(KEY_OWNER_DEVICE_ID)
+                remove(KEY_OWNER_AUDIENCE)
+                remove(KEY_OWNER_NONCE)
             }
             apply()
         }
