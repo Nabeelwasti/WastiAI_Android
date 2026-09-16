@@ -24,6 +24,10 @@ import org.robolectric.RobolectricTestRunner
  * - Many Bodies Doctrine (Desktop, Laptop, PC, Termux swarm)
  * - Resource Intelligence Law (Dynamic compute placement based on device constraints)
  * - Wi-Fi & Bluetooth transport coordination
+ *
+ * Robolectric cannot provide a real remote desktop peer or Bluetooth link. These tests
+ * therefore verify discovery/decision semantics and fail-closed transport behavior rather
+ * than treating synthetic peer registration as proof of physical execution.
  */
 @RunWith(RobolectricTestRunner::class)
 @TestCategory(
@@ -173,7 +177,9 @@ class Stage23SwarmHardwareOffloadTest {
         )
         WastiNearbyHardwareEngine.registerNodeForTesting(desktopNode)
 
-        // Also register in WastiMeshTransportEngine for loopback test
+        // Registration alone is not physical execution. The Robolectric environment
+        // has no remote mesh server listening on this port, so the canonical transport
+        // must fail closed and the local fallback must report its actual availability.
         WastiMeshTransportEngine.registerDiscoveredPeerForTesting(
             MeshDiscoveredNode(
                 nodeId = "target_desktop_pc",
@@ -195,10 +201,12 @@ class Stage23SwarmHardwareOffloadTest {
 
         val result = AutonomousHardwareOffloader.executeWithOffload(request, desktopNode, context)
 
-        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
-        assertTrue(result.output.contains("remote mesh body") || result.output.contains("Executed"))
-        assertTrue(result.verificationEvidence!!.contains("fp_ryzen_verified"))
+        assertEquals(UnifiedExecutionStatus.UNAVAILABLE, result.status)
+        assertNotEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertTrue(
+            "Synthetic peer registration must never be reported as verified execution",
+            result.verificationStatus != UnifiedVerificationStatus.VERIFIED
+        )
     }
 
     @Test
@@ -227,8 +235,11 @@ class Stage23SwarmHardwareOffloadTest {
 
         val result = AutonomousHardwareOffloader.executeWithOffload(request, btLaptopNode, context)
 
+        // Robolectric does not provide a real Bluetooth adapter/socket. Execution may
+        // therefore be represented as a completed peer dispatch, but it must remain
+        // explicitly UNVERIFIED until an independent observer verifies the remote state.
         assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
         assertTrue(result.output.contains("Bluetooth") || result.output.contains("ThinkPad"))
         assertTrue(result.verificationEvidence!!.contains("fp_bt_thinkpad"))
     }
