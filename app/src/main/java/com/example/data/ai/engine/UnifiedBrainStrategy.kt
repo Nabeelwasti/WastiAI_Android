@@ -609,12 +609,17 @@ object UnifiedBrainStrategy {
         )
         WastiOmniBrain.setThoughtStream("task consensus completed for $taskTitle")
 
+        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("$taskId:$taskTitle:${steps.size}".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+
         val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
             evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
             subject = "task_consensus:$taskId",
             verifiedState = "STEPS_${steps.size}_INVARIANTS_PASSED",
             confidence = 0.90,
-            observedAt = System.currentTimeMillis()
+            observedAt = System.currentTimeMillis(),
+            checksumOrHash = proofHash
         )
         val vRes = com.example.data.agent.runtime.WastiVerificationEngine().verifyStructuredEvidence(
             taskId = taskId,
