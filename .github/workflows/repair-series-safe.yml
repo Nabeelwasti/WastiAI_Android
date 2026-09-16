@@ -27,49 +27,66 @@ jobs:
 
           fabric = Path("app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt")
           chat = Path("app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt")
+          f = fabric.read_text(encoding="utf-8")
 
-          text = fabric.read_text(encoding="utf-8")
-
-          if "val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null" not in text:
+          # Phase 1: carry authentic WRE structured evidence into the unified result
+          if "val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null" not in f:
               old = "    val verificationEvidence: String? = null,\n    val exitCode: Int? = null,"
               new = "    val verificationEvidence: String? = null,\n    val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,\n    val exitCode: Int? = null,"
-              if text.count(old) != 1:
+              if f.count(old) != 1:
                   raise SystemExit("SAFE PATCH ABORT: UnifiedExecutionResult anchor count != 1")
-              text = text.replace(old, new, 1)
+              f = f.replace(old, new, 1)
 
               old = "            verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: \"VERIFIED\" else \"UNVERIFIED\",\n            exitCode = wreResult.exitCode"
               new = "            verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: \"VERIFIED\" else \"UNVERIFIED\",\n            verifiedExecutionEvidence = wreResult.verifiedExecutionEvidence,\n            exitCode = wreResult.exitCode"
-              if text.count(old) != 1:
+              if f.count(old) != 1:
                   raise SystemExit("SAFE PATCH ABORT: WRE result mapping anchor count != 1")
-              text = text.replace(old, new, 1)
+              f = f.replace(old, new, 1)
 
-              pattern = re.compile(r"            val structuredEvidence = if \(result\.status == UnifiedExecutionStatus\.VERIFIED \|\| result\.verificationStatus == UnifiedVerificationStatus\.VERIFIED\) \{.*?\n            \}\n\n            val verRequest = VerificationRequest\(", re.S)
-              replacement = "            val structuredEvidence = result.verifiedExecutionEvidence\n\n            val verRequest = VerificationRequest("
-              text, n = pattern.subn(replacement, text, count=1)
-              if n != 1:
-                  raise SystemExit(f"SAFE PATCH ABORT: synthetic structured-evidence block matches={n}")
+              old = "                executionResult = execResult,\n                observationResult = obsResult\n            )"
+              new = "                executionResult = execResult,\n                observationResult = obsResult,\n                structuredEvidence = execResult.verifiedExecutionEvidence\n            )"
+              if f.count(old) != 1:
+                  raise SystemExit("SAFE PATCH ABORT: VerificationRequest anchor count != 1")
+              f = f.replace(old, new, 1)
 
-              fabric.write_text(text, encoding="utf-8")
+              fabric.write_text(f, encoding="utf-8")
               print("PATCHED: UnifiedExecutionFabric.kt")
-          elif "val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null" in text and "val structuredEvidence = result.verifiedExecutionEvidence" in text:
-              print("ALREADY PATCHED: UnifiedExecutionFabric.kt")
-          else:
-              raise SystemExit("SAFE PATCH ABORT: UnifiedExecutionFabric.kt is in an unexpected partial state")
+              raise SystemExit(0)
 
-          # The second source fix is intentionally deferred to the next push/run.
-          # This workflow commits exactly one production source file per run.
+          # Phase 2: remove the provably unreachable TTS null branch.
+          if "if (ttsEngine != null) {" in chat.read_text(encoding="utf-8"):
+              c = chat.read_text(encoding="utf-8")
+              old = '''    if (ttsEngine != null) {\n        try {\n            val result = ttsEngine.setLanguage(targetLocale)\n            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {\n                ttsEngine.language = Locale.ENGLISH\n            }\n            val params = android.os.Bundle()\n            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")\n            ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")\n        } catch (e: Exception) {\n            android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)\n            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n                try {\n                    VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n                } catch (_: Throwable) {}\n            }\n        }\n    } else {\n        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n            try {\n                VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n            } catch (_: Throwable) {}\n        }\n    }'''
+              new = '''    try {\n        val result = ttsEngine.setLanguage(targetLocale)\n        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {\n            ttsEngine.language = Locale.ENGLISH\n        }\n        val params = android.os.Bundle()\n        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")\n        ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")\n    } catch (e: Exception) {\n        android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)\n        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n            try {\n                VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n            } catch (_: Throwable) {}\n        }\n    }'''
+              if c.count(old) != 1:
+                  raise SystemExit("SAFE PATCH ABORT: TTS unreachable-branch anchor count != 1")
+              chat.write_text(c.replace(old, new, 1), encoding="utf-8")
+              print("PATCHED: ChatWorkspaceScreen.kt")
+              raise SystemExit(0)
+
+          # Phase 3: all planned source repairs are complete; remove this temporary runner.
+          workflow = Path(".github/workflows/repair-series-safe.yml")
+          workflow.unlink()
+          print("CLEANUP: repair runner removed")
           PY
 
-      - name: Commit and push exactly one source-file repair
+      - name: Commit and push exactly one file
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt; then
-            echo "No production-file change to commit on this run."
+          changed=$(git status --porcelain)
+          if [ -z "$changed" ]; then
+            echo "No changes produced."
             exit 0
+          fi
+          count=$(printf '%s\n' "$changed" | wc -l | tr -d ' ')
+          if [ "$count" -ne 1 ]; then
+            echo "SAFE PATCH ABORT: expected exactly one changed path, got $count"
+            printf '%s\n' "$changed"
+            exit 1
           fi
           git config user.name "wasti-safe-repair"
           git config user.email "actions@users.noreply.github.com"
-          git add app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt
-          git commit -m "fix(execution): preserve WRE verified evidence through unified fabric"
+          git add -A
+          git commit -m "fix(execution): apply next safe production repair"
           git push origin HEAD:repair/stage9e-safe-series
