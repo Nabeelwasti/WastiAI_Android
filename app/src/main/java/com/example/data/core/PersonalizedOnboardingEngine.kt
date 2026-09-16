@@ -3,25 +3,12 @@ package com.example.data.core
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import java.io.File
 import com.example.data.db.KnowledgeEntity
 import com.example.data.db.MemoryEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.node.WastiSovereignTunnelEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
-/**
- * [The Eternal Manifesto: The Pilot and Spacecraft Principle & Memory of the Human]
- *
- * "The human provides purpose, Wasti provides execution.
- * Memory of the Human: preserve knowledge, goals, preferences, decisions and creativity by consent."
- *
- * PersonalizedOnboardingEngine:
- * Coordinates the first-run onboarding assessment, aligns Wasti with user goals,
- * profiles device silicon, and autonomously creates the production keystore and
- * sovereign cloud tunnel.
- */
 
 enum class UserPrimaryRole {
     SOFTWARE_ENGINEER,
@@ -64,22 +51,17 @@ object PersonalizedOnboardingEngine {
         return try { UserPrimaryRole.valueOf(str!!) } catch (_: Exception) { UserPrimaryRole.SOFTWARE_ENGINEER }
     }
 
-    /**
-     * Executes the comprehensive first-run personalization and autonomous gate resolution.
-     */
+    /** Executes first-run personalization without manufacturing production readiness. */
     suspend fun applyPersonalizedSetup(
         context: Context,
         plan: PersonalizedSetupPlan
     ) = withContext(Dispatchers.IO) {
         Log.i(TAG, "Applying personalized setup: role=${plan.role}, compute=${plan.computePreference}...")
-
         val db = WastiDatabase.getDatabase(context)
 
-        // 1. Profile Hardware & Silicon
         val hardwareProfile = WastiDeepHardwareProfiler.profileSystem(context)
         val hardwareSummary = WastiDeepHardwareProfiler.generateSystemSummaryMarkdown(hardwareProfile)
 
-        // 2. Commit User Role & Intent into Sovereign Memory
         val roleMemory = MemoryEntity(
             id = "user_intent_role",
             key = "user_primary_mission",
@@ -89,7 +71,6 @@ object PersonalizedOnboardingEngine {
         )
         db.memoryDao().insertMemory(roleMemory)
 
-        // 3. Index Hardware Reality into Knowledge Graph
         val hardwareKnowledge = KnowledgeEntity(
             id = "device_hardware_matrix",
             title = "Physical Host Hardware Reality",
@@ -100,34 +81,30 @@ object PersonalizedOnboardingEngine {
         )
         db.knowledgeDao().insertKnowledge(hardwareKnowledge)
 
-        // Production signing is never manufactured by onboarding. Only the configured official key can satisfy the gate.
         if (plan.autoCreateKeystore) {
             Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")
         }
 
-        // 5. Autonomously Resolve Public Cloud Companion Ingress Gate
+        var tunnelEstablished = false
         if (plan.autoDeployCloudTunnel) {
             try {
                 WastiSovereignTunnelEngine.establishTunnel(context)
-                Log.i(TAG, "Autonomous sovereign cloud tunnel established during first-run setup.")
+                tunnelEstablished = true
+                Log.i(TAG, "Sovereign cloud tunnel setup completed without claiming production readiness.")
             } catch (e: Exception) {
-                Log.w(TAG, "Sovereign tunnel deferral: ${e.message}")
+                Log.w(TAG, "Sovereign tunnel deferred: ${e.message}")
             }
         }
 
-        // 6. Save Setup Completion Flag
         getPrefs(context).edit()
             .putBoolean(KEY_SETUP_COMPLETED, true)
             .putString(KEY_USER_ROLE, plan.role.name)
             .putString(KEY_COMPUTE_MODE, plan.computePreference.name)
             .apply()
 
-        Log.i(TAG, "SUCCESS: Personalized setup complete. Production gates resolved on-device.")
+        Log.i(TAG, "Personalized setup complete. External tunnel established=$tunnelEstablished; production readiness remains evidence-gated.")
     }
 
-    /**
-     * Resets setup state for testing or reconfiguration.
-     */
     fun resetSetupForTesting(context: Context) {
         getPrefs(context).edit().clear().apply()
     }

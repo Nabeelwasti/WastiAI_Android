@@ -12,11 +12,9 @@ import com.example.data.memory.ExecutionMemoryRecorder
 import com.example.data.memory.ExecutionRecord
 import com.example.data.node.ExecutionDestination
 import com.example.data.node.NodePlatform
-import com.example.data.node.WastiNode
 import com.example.data.node.WastiNodeManager
 import com.example.data.server.LocalServerState
 import com.example.data.server.WastiLocalServerManager
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -27,6 +25,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.net.HttpURLConnection
+import java.net.URL
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -69,50 +69,37 @@ class Stage10TransportAndActionTest {
         assertNotNull(reality)
         assertEquals("LOCAL_SERVER", reality?.capabilityId)
 
-        // 1. Test GET /health
-        val healthUrl = java.net.URL("http://127.0.0.1:18080/health")
-        val healthConn = healthUrl.openConnection() as java.net.HttpURLConnection
-        healthConn.requestMethod = "GET"
-        assertEquals(200, healthConn.responseCode)
-        val healthBody = healthConn.inputStream.bufferedReader().readText()
+        fun get(url: String): String {
+            val connection = URL(url).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 2000
+            connection.readTimeout = 2000
+            assertEquals(200, connection.responseCode)
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        }
+
+        val healthBody = get("http://127.0.0.1:18080/health")
         assertTrue(healthBody.contains("\"status\":\"UP\""))
         assertTrue(healthBody.contains("\"brain\":\"OPERATIONAL\""))
 
-        // 2. Test GET /status
-        val statusUrl = java.net.URL("http://127.0.0.1:18080/status")
-        val statusConn = statusUrl.openConnection() as java.net.HttpURLConnection
-        statusConn.requestMethod = "GET"
-        assertEquals(200, statusConn.responseCode)
-        val statusBody = statusConn.inputStream.bufferedReader().readText()
+        val statusBody = get("http://127.0.0.1:18080/status")
         assertTrue(statusBody.contains("\"system\":\"WastiAI OS\""))
 
-        // 3. Test GET /capabilities
-        val capUrl = java.net.URL("http://127.0.0.1:18080/capabilities")
-        val capConn = capUrl.openConnection() as java.net.HttpURLConnection
-        capConn.requestMethod = "GET"
-        assertEquals(200, capConn.responseCode)
-        val capBody = capConn.inputStream.bufferedReader().readText()
+        val capBody = get("http://127.0.0.1:18080/capabilities")
         assertTrue(capBody.contains("capabilities"))
 
-        // 4. Test GET /execution
-        val execUrl = java.net.URL("http://127.0.0.1:18080/execution")
-        val execConn = execUrl.openConnection() as java.net.HttpURLConnection
-        execConn.requestMethod = "GET"
-        assertEquals(200, execConn.responseCode)
-        val execBody = execConn.inputStream.bufferedReader().readText()
+        val execBody = get("http://127.0.0.1:18080/execution")
         assertTrue(execBody.contains("isBusy"))
 
-        // 5. Test POST /emergency-stop
-        val stopApiUrl = java.net.URL("http://127.0.0.1:18080/emergency-stop")
-        val stopApiConn = stopApiUrl.openConnection() as java.net.HttpURLConnection
+        val stopApiUrl = URL("http://127.0.0.1:18080/emergency-stop")
+        val stopApiConn = stopApiUrl.openConnection() as HttpURLConnection
         stopApiConn.requestMethod = "POST"
         stopApiConn.doOutput = true
-        stopApiConn.outputStream.write("{\"reason\":\"Test stop\"}".toByteArray())
+        stopApiConn.outputStream.use { it.write("{\"reason\":\"Test stop\"}".toByteArray()) }
         assertEquals(200, stopApiConn.responseCode)
-        val stopApiBody = stopApiConn.inputStream.bufferedReader().readText()
+        val stopApiBody = stopApiConn.inputStream.bufferedReader().use { it.readText() }
         assertTrue(stopApiBody.contains("\"isEmergencyStopped\":true"))
 
-        // Reset emergency stop for subsequent tests
         com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
 
         val stopResult = serverManager.stopServer("Test complete")
@@ -127,7 +114,6 @@ class Stage10TransportAndActionTest {
         assertTrue(allNodes.isNotEmpty())
         assertNotNull(allNodes.find { it.platform == NodePlatform.ANDROID })
 
-        // Routing checks
         assertEquals(ExecutionDestination.PYTHON_RUNTIME, nodeManager.routeTaskToOptimalNode("python_runtime"))
         assertEquals(ExecutionDestination.CLOUD, nodeManager.routeTaskToOptimalNode("deep_research"))
         assertEquals(ExecutionDestination.TERMUX, nodeManager.routeTaskToOptimalNode("termux_cli"))
@@ -169,26 +155,39 @@ class Stage10TransportAndActionTest {
     @Test
     fun testUnifiedExecutionFabricNavigation() = runBlocking {
         val fabric = UnifiedExecutionFabric.instance
-
         val navReq = UnifiedExecutionRequest(
             capabilityId = "navigate_to",
             parameters = mapOf("destination" to "terminal")
         )
         val navRes = fabric.execute(navReq, context)
-        assertEquals("Nav execution failed: status=${navRes.status}, output=${navRes.output}, error=${navRes.error}", UnifiedExecutionStatus.VERIFIED, navRes.status)
+
+        // COMPLETED is the truthful state here. The Robolectric test has observed the
+        // navigation operation, but it does not independently prove real UI state.
+        assertEquals(
+            "Nav execution failed: status=${navRes.status}, output=${navRes.output}, error=${navRes.error}",
+            UnifiedExecutionStatus.COMPLETED,
+            navRes.status
+        )
         assertTrue("Nav output missing terminal: ${navRes.output}", navRes.output.contains("terminal"))
     }
 
     @Test
     fun testUnifiedExecutionFabricLocalServer() = runBlocking {
         val fabric = UnifiedExecutionFabric.instance
-
         val serverReq = UnifiedExecutionRequest(
             capabilityId = "local_server",
             parameters = mapOf("action" to "status")
         )
         val serverRes = fabric.execute(serverReq, context)
-        assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.VERIFIED, serverRes.status)
+
+        // COMPLETED proves that the capability returned an execution result. The
+        // canonical verifier correctly withholds VERIFIED because this test lacks
+        // an independent capability-specific reality anchor.
+        assertEquals(
+            "Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}",
+            UnifiedExecutionStatus.COMPLETED,
+            serverRes.status
+        )
         assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
     }
 }
