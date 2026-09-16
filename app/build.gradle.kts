@@ -218,7 +218,7 @@ android {
             }
           }
           override fun beforeTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor) {}
-          override fun afterTest(testDescriptor: org.gradle.api.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
+          override fun afterTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
             if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
               println("[TEST FAILED] ${testDescriptor.className} -> ${testDescriptor.name}")
               result.exception?.let { exc ->
