@@ -1,0 +1,47 @@
+name: One-Shot Kotlin Source Repair
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.event.head_commit.message != 'fix(tts): remove unsupported local variable reference'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply and verify surgical repair
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt')
+          s = p.read_text(encoding='utf-8')
+          old = '    if (::ttsEngine.isInitialized) {\n'
+          new = '    if (ttsEngine != null) {\n'
+          if old not in s:
+              raise SystemExit('Expected obsolete local variable reference not found; no source change made.')
+          s2 = s.replace(old, new, 1)
+          if s2 == s:
+              raise SystemExit('Surgical replacement produced no change.')
+          p.write_text(s2, encoding='utf-8')
+          PY
+          grep -n 'if (ttsEngine != null)' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          if grep -n '::ttsEngine.isInitialized' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt; then exit 1; fi
+          git diff --check
+          git diff --stat
+          git diff -- app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+
+      - name: Commit repaired source to main
+        run: |
+          git config user.name 'Wasti AI Repair Bot'
+          git config user.email '125601766+Nabeelwasti@users.noreply.github.com'
+          git add app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          git commit -m 'fix(tts): remove unsupported local variable reference'
+          git push origin HEAD:main
