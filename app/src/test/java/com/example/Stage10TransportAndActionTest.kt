@@ -13,11 +13,9 @@ import com.example.data.memory.ExecutionMemoryRecorder
 import com.example.data.memory.ExecutionRecord
 import com.example.data.node.ExecutionDestination
 import com.example.data.node.NodePlatform
-import com.example.data.node.WastiNode
 import com.example.data.node.WastiNodeManager
 import com.example.data.server.LocalServerState
 import com.example.data.server.WastiLocalServerManager
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -44,14 +42,10 @@ class Stage10TransportAndActionTest {
     fun testActionBusDispatchAndReceive() = runBlocking {
         var receivedAction: WastiAppAction? = null
         val job = launch {
-            WastiAppActionBus.actions.collect { action ->
-                receivedAction = action
-            }
+            WastiAppActionBus.actions.collect { action -> receivedAction = action }
         }
-
         WastiAppActionBus.dispatch(WastiAppAction.NavigateTo("projects"))
         kotlinx.coroutines.delay(50)
-
         assertNotNull(receivedAction)
         assertTrue(receivedAction is WastiAppAction.NavigateTo)
         assertEquals("projects", (receivedAction as WastiAppAction.NavigateTo).destinationId)
@@ -70,44 +64,34 @@ class Stage10TransportAndActionTest {
         assertNotNull(reality)
         assertEquals("LOCAL_SERVER", reality?.capabilityId)
 
-        val healthUrl = java.net.URL("http://127.0.0.1:18080/health")
-        val healthConn = healthUrl.openConnection() as java.net.HttpURLConnection
+        val healthConn = java.net.URL("http://127.0.0.1:18080/health").openConnection() as java.net.HttpURLConnection
         healthConn.requestMethod = "GET"
         assertEquals(200, healthConn.responseCode)
         val healthBody = healthConn.inputStream.bufferedReader().readText()
         assertTrue(healthBody.contains("\"status\":\"UP\""))
         assertTrue(healthBody.contains("\"brain\":\"OPERATIONAL\""))
 
-        val statusUrl = java.net.URL("http://127.0.0.1:18080/status")
-        val statusConn = statusUrl.openConnection() as java.net.HttpURLConnection
+        val statusConn = java.net.URL("http://127.0.0.1:18080/status").openConnection() as java.net.HttpURLConnection
         statusConn.requestMethod = "GET"
         assertEquals(200, statusConn.responseCode)
-        val statusBody = statusConn.inputStream.bufferedReader().readText()
-        assertTrue(statusBody.contains("\"system\":\"WastiAI OS\""))
+        assertTrue(statusConn.inputStream.bufferedReader().readText().contains("\"system\":\"WastiAI OS\""))
 
-        val capUrl = java.net.URL("http://127.0.0.1:18080/capabilities")
-        val capConn = capUrl.openConnection() as java.net.HttpURLConnection
+        val capConn = java.net.URL("http://127.0.0.1:18080/capabilities").openConnection() as java.net.HttpURLConnection
         capConn.requestMethod = "GET"
         assertEquals(200, capConn.responseCode)
-        val capBody = capConn.inputStream.bufferedReader().readText()
-        assertTrue(capBody.contains("capabilities"))
+        assertTrue(capConn.inputStream.bufferedReader().readText().contains("capabilities"))
 
-        val execUrl = java.net.URL("http://127.0.0.1:18080/execution")
-        val execConn = execUrl.openConnection() as java.net.HttpURLConnection
+        val execConn = java.net.URL("http://127.0.0.1:18080/execution").openConnection() as java.net.HttpURLConnection
         execConn.requestMethod = "GET"
         assertEquals(200, execConn.responseCode)
-        val execBody = execConn.inputStream.bufferedReader().readText()
-        assertTrue(execBody.contains("isBusy"))
+        assertTrue(execConn.inputStream.bufferedReader().readText().contains("isBusy"))
 
-        val stopApiUrl = java.net.URL("http://127.0.0.1:18080/emergency-stop")
-        val stopApiConn = stopApiUrl.openConnection() as java.net.HttpURLConnection
+        val stopApiConn = java.net.URL("http://127.0.0.1:18080/emergency-stop").openConnection() as java.net.HttpURLConnection
         stopApiConn.requestMethod = "POST"
         stopApiConn.doOutput = true
         stopApiConn.outputStream.write("{\"reason\":\"Test stop\"}".toByteArray())
         assertEquals(200, stopApiConn.responseCode)
-        val stopApiBody = stopApiConn.inputStream.bufferedReader().readText()
-        assertTrue(stopApiBody.contains("\"isEmergencyStopped\":true"))
-
+        assertTrue(stopApiConn.inputStream.bufferedReader().readText().contains("\"isEmergencyStopped\":true"))
         com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
 
         val stopResult = serverManager.stopServer("Test complete")
@@ -121,7 +105,6 @@ class Stage10TransportAndActionTest {
         val allNodes = nodeManager.getAllNodes()
         assertTrue(allNodes.isNotEmpty())
         assertNotNull(allNodes.find { it.platform == NodePlatform.ANDROID })
-
         assertEquals(ExecutionDestination.PYTHON_RUNTIME, nodeManager.routeTaskToOptimalNode("python_runtime"))
         assertEquals(ExecutionDestination.CLOUD, nodeManager.routeTaskToOptimalNode("deep_research"))
         assertEquals(ExecutionDestination.TERMUX, nodeManager.routeTaskToOptimalNode("termux_cli"))
@@ -135,7 +118,6 @@ class Stage10TransportAndActionTest {
         val pythonResult = bridgeManager.executePythonScript("print('Wasti AI Stage 10 Native Bridge')")
         assertNotNull(pythonResult)
         assertNotNull(pythonResult.bridgeType)
-
         val termuxResult = bridgeManager.executeTermuxCommand("echo 'Hello Termux'")
         assertNotNull(termuxResult)
         assertEquals("TERMUX_CLI_BRIDGE", termuxResult.bridgeType)
@@ -143,16 +125,8 @@ class Stage10TransportAndActionTest {
 
     @Test
     fun testExecutionMemoryRecorder() = runBlocking {
-        val record = ExecutionRecord(
-            taskId = "test_task_101",
-            goal = "Verify Stage 10 Architecture",
-            interpretedIntent = "VERIFY_STAGE_10",
-            selectedCapability = "LOCAL_SERVER",
-            isSuccess = true,
-            verificationEvidence = "Test verified successfully"
-        )
+        val record = ExecutionRecord("test_task_101", "Verify Stage 10 Architecture", "VERIFY_STAGE_10", "LOCAL_SERVER", true, "Test verified successfully")
         ExecutionMemoryRecorder.recordExecutionOutcome(record)
-
         val recent = ExecutionMemoryRecorder.getRecentExecutions(5)
         assertTrue(recent.isNotEmpty())
         val found = recent.find { it.taskId == "test_task_101" }
@@ -162,12 +136,10 @@ class Stage10TransportAndActionTest {
 
     @Test
     fun testUnifiedExecutionFabricNavigation() = runBlocking {
-        val fabric = UnifiedExecutionFabric.instance
-        val navReq = UnifiedExecutionRequest(
-            capabilityId = "navigate_to",
-            parameters = mapOf("destination" to "terminal")
+        val navRes = UnifiedExecutionFabric.instance.execute(
+            UnifiedExecutionRequest(capabilityId = "navigate_to", parameters = mapOf("destination" to "terminal")),
+            context
         )
-        val navRes = fabric.execute(navReq, context)
         assertEquals("Nav execution failed: status=${navRes.status}, output=${navRes.output}, error=${navRes.error}", UnifiedExecutionStatus.COMPLETED, navRes.status)
         assertEquals(UnifiedVerificationStatus.UNVERIFIED, navRes.verificationStatus)
         assertTrue("Nav output missing terminal: ${navRes.output}", navRes.output.contains("terminal"))
@@ -175,14 +147,20 @@ class Stage10TransportAndActionTest {
 
     @Test
     fun testUnifiedExecutionFabricLocalServer() = runBlocking {
-        val fabric = UnifiedExecutionFabric.instance
-        val serverReq = UnifiedExecutionRequest(
-            capabilityId = "local_server",
-            parameters = mapOf("action" to "status")
-        )
-        val serverRes = fabric.execute(serverReq, context)
-        assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.COMPLETED, serverRes.status)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, serverRes.verificationStatus)
-        assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
+        val manager = WastiLocalServerManager(context)
+        val start = manager.startServer(18081)
+        assertTrue(start.isSuccess)
+        try {
+            val serverRes = UnifiedExecutionFabric.instance.execute(
+                UnifiedExecutionRequest(capabilityId = "local_server", parameters = mapOf("action" to "status")),
+                context
+            )
+            assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.COMPLETED, serverRes.status)
+            assertEquals(UnifiedVerificationStatus.UNVERIFIED, serverRes.verificationStatus)
+            assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
+        } finally {
+            com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+            manager.stopServer("Test complete")
+        }
     }
 }
