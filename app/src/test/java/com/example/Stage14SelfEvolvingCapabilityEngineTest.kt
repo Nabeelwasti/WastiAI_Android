@@ -7,21 +7,13 @@ import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.agent.runtime.CapabilityRealityState
 import com.example.data.agent.runtime.InMemoryAgentMemoryStore
 import com.example.data.agent.runtime.UnifiedExecutionFabric
-import com.example.data.agent.runtime.UnifiedExecutionRequest
-import com.example.data.agent.runtime.UnifiedExecutionStatus
-import com.example.data.agent.runtime.WastiCapabilityRegistry
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.tool.ToolDefinition
 import com.example.data.tool.ToolRegistry
 import com.example.data.tool.WastiTool
 import com.example.data.workflow.AutonomousCapabilityOrchestrator
 import com.example.data.workflow.CapabilityResolutionResult
-import com.example.data.wre.ExecutionRequest
-import com.example.data.wre.ExecutionResult
-import com.example.data.wre.ExecutionStatus
-import com.example.data.wre.WreManager
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -36,13 +28,13 @@ import java.io.File
 
 /**
  * Stage 14: Self-Evolving Capability Engine, Autonomous Development & Execution Intelligence Tests
- * Verifies the complete autonomous self-evolution pipeline with static truth validation:
+ * Verifies the autonomous self-evolution pipeline with canonical truth validation:
  * - Test A: Existing Capability Reuse (ToolRegistry & Native capabilities)
  * - Test B: Missing Capability Detection & Dynamic Design
  * - Test C: Security Policy Rejection on Dangerous Pattern
  * - Test D: Bounded Self-Correction Loop & Patch Application
  * - Test E: Bounded Retry Exhaustion & Rollback
- * - Test F: Capability Promotion & Unified Execution
+ * - Test F: Capability registration & Unified Execution
  * - Test G: Emergency Stop Interruption
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -61,11 +53,8 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         val testWorkspaceDir = File(context.filesDir, "wasti_workspace")
-        if (testWorkspaceDir.exists()) {
-            testWorkspaceDir.deleteRecursively()
-        }
+        if (testWorkspaceDir.exists()) testWorkspaceDir.deleteRecursively()
         testWorkspaceDir.mkdirs()
-
         eventBus = AgentEventBus.getInstance()
         memoryStore = InMemoryAgentMemoryStore()
         emergencyStop = WastiEmergencyStopController()
@@ -81,15 +70,12 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     fun tearDown() {
         try {
             val testWorkspaceDir = File(context.filesDir, "wasti_workspace")
-            if (testWorkspaceDir.exists()) {
-                testWorkspaceDir.deleteRecursively()
-            }
+            if (testWorkspaceDir.exists()) testWorkspaceDir.deleteRecursively()
         } catch (_: Exception) {}
     }
 
     @Test
     fun testA_ExistingCapabilityReuse() = runTest(testDispatcher) {
-        // Register an existing tool in ToolRegistry
         val existingToolId = "test_custom_converter"
         val mockTool = object : WastiTool {
             override val definition = ToolDefinition(
@@ -101,21 +87,12 @@ class Stage14SelfEvolvingCapabilityEngineTest {
             override suspend fun execute(parameters: Map<String, Any>): String = "converted"
         }
         ToolRegistry.registerTool(mockTool)
-
-        val result = orchestrator.resolveCapability(
-            capabilityId = existingToolId,
-            description = "Convert temperature units"
-        )
-
+        val result = orchestrator.resolveCapability(existingToolId, "Convert temperature units")
         assertTrue(result is CapabilityResolutionResult.ExistingTool)
         val existingResult = result as CapabilityResolutionResult.ExistingTool
         assertEquals(existingToolId, existingResult.toolId)
         assertEquals("Test Custom Converter", existingResult.tool.definition.name)
-
-        // Native capability reuse
-        val nativeResult = orchestrator.resolveCapability(
-            capabilityId = "send_whatsapp"
-        )
+        val nativeResult = orchestrator.resolveCapability("send_whatsapp")
         assertTrue(nativeResult is CapabilityResolutionResult.NativeCapability)
         assertEquals("send_whatsapp", (nativeResult as CapabilityResolutionResult.NativeCapability).capabilityId)
     }
@@ -124,24 +101,13 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     fun testB_MissingCapabilityDetectionAndDesign() = runTest(testDispatcher) {
         val uniqueCapId = "auto_image_optimizer_${System.currentTimeMillis()}"
         val events = mutableListOf<AgentEvent>()
-
-        val job = launch {
-            eventBus.events.collect { events.add(it) }
-        }
-
-        val result = orchestrator.resolveCapability(
-            capabilityId = uniqueCapId,
-            description = "Dynamically optimize PNG and WebP assets"
-        )
-
+        val job = launch { eventBus.events.collect { events.add(it) } }
+        val result = orchestrator.resolveCapability(uniqueCapId, "Dynamically optimize PNG and WebP assets")
         job.cancel()
-
         assertTrue(result is CapabilityResolutionResult.DynamicCreatedTool)
         val dynamicRes = result as CapabilityResolutionResult.DynamicCreatedTool
         assertTrue(dynamicRes.toolId.contains(uniqueCapId))
         assertTrue(dynamicRes.verificationEvidence.contains("exitCode=0") || dynamicRes.verificationEvidence.contains("passed") || dynamicRes.verificationEvidence.contains("WRE"))
-
-        // Verify lifecycle events were emitted
         assertTrue(events.any { it is AgentEvent.CapabilityDesignStarted && it.capabilityId == uniqueCapId })
         assertTrue(events.any { it is AgentEvent.CapabilityBuildStarted && it.capabilityId == uniqueCapId })
         assertTrue(events.any { it is AgentEvent.CapabilityBuildCompleted && it.capabilityId == uniqueCapId && it.isSuccess })
@@ -157,25 +123,13 @@ class Stage14SelfEvolvingCapabilityEngineTest {
         val dangerousCapId = "danger_cleaner_${System.currentTimeMillis()}"
         val dangerousScript = "#!/bin/sh\nrm -rf / --no-preserve-root\n"
         val events = mutableListOf<AgentEvent>()
-
-        val job = launch {
-            eventBus.events.collect { events.add(it) }
-        }
-
-        val result = orchestrator.resolveCapability(
-            capabilityId = dangerousCapId,
-            description = "Dangerous filesystem cleaner",
-            scriptContentOverride = dangerousScript
-        )
-
+        val job = launch { eventBus.events.collect { events.add(it) } }
+        val result = orchestrator.resolveCapability(dangerousCapId, "Dangerous filesystem cleaner", scriptContentOverride = dangerousScript)
         job.cancel()
-
         assertTrue(result is CapabilityResolutionResult.SecurityBlocked)
         val blocked = result as CapabilityResolutionResult.SecurityBlocked
         assertTrue(blocked.reason.contains("Forbidden script pattern"))
         assertEquals(dangerousCapId, blocked.capabilityId)
-
-        // Verify security event was emitted
         assertTrue(events.any { it is AgentEvent.SecurityBlocked })
         assertTrue(events.any { it is AgentEvent.CapabilityRejected && it.capabilityId == dangerousCapId })
     }
@@ -183,24 +137,15 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     @Test
     fun testD_BoundedSelfCorrectionAndPatchApplication() = runTest(testDispatcher) {
         val faultyCapId = "faulty_then_repaired_${System.currentTimeMillis()}"
-        // First execution fails (exit 1)
-        val initialFaultyScript = "#!/bin/sh\nexit 1\n"
         val events = mutableListOf<AgentEvent>()
-
-        val job = launch {
-            eventBus.events.collect { events.add(it) }
-        }
-
+        val job = launch { eventBus.events.collect { events.add(it) } }
         val result = orchestrator.resolveCapability(
             capabilityId = faultyCapId,
             description = "Faulty capability that recovers via self-correction",
-            scriptContentOverride = initialFaultyScript,
+            scriptContentOverride = "#!/bin/sh\nexit 1\n",
             maxCorrectionAttempts = 2
         )
-
         job.cancel()
-
-        // Should successfully recover via self-correction patch
         assertTrue(result is CapabilityResolutionResult.DynamicCreatedTool)
         assertTrue(events.any { it is AgentEvent.SelfCorrectionStarted })
         assertTrue(events.any { it is AgentEvent.SelfCorrectionCompleted && it.isFixed })
@@ -211,27 +156,17 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     fun testE_BoundedRetryExhaustionAndRollback() = runTest(testDispatcher) {
         val unrecoverableCapId = "unrecoverable_${System.currentTimeMillis()}"
         val events = mutableListOf<AgentEvent>()
-
-        val job = launch {
-            eventBus.events.collect { events.add(it) }
-        }
-
-        // Orchestrator with 0 correction attempts on a failing script
-        val failingScript = "#!/bin/sh\nexit 127\n"
+        val job = launch { eventBus.events.collect { events.add(it) } }
         val result = orchestrator.resolveCapability(
             capabilityId = unrecoverableCapId,
             description = "Unrecoverable script",
-            scriptContentOverride = failingScript,
+            scriptContentOverride = "#!/bin/sh\nexit 127\n",
             maxCorrectionAttempts = 0
         )
-
         job.cancel()
-
         assertTrue(result is CapabilityResolutionResult.ResolutionFailed)
         val failed = result as CapabilityResolutionResult.ResolutionFailed
         assertTrue(failed.reason.contains("failed") || failed.reason.contains("WRE"))
-
-        // Verify rollback was initiated and completed
         assertTrue(events.any { it is AgentEvent.RollbackStarted })
         assertTrue(events.any { it is AgentEvent.RollbackCompleted && it.isSuccess })
         assertTrue(events.any { it is AgentEvent.CapabilityRejected && it.capabilityId == unrecoverableCapId })
@@ -240,25 +175,15 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     @Test
     fun testF_CapabilityPromotionAndUnifiedExecution() = runTest(testDispatcher) {
         val promCapId = "dynamic_text_summarizer_${System.currentTimeMillis()}"
-        val result = orchestrator.resolveCapability(
-            capabilityId = promCapId,
-            description = "Summarize text dynamically"
-        )
-
+        val result = orchestrator.resolveCapability(promCapId, "Summarize text dynamically")
         assertTrue(result is CapabilityResolutionResult.DynamicCreatedTool)
         val dynamicCreated = result as CapabilityResolutionResult.DynamicCreatedTool
-
-        // Verify registered in ToolRegistry
         val registeredTool = ToolRegistry.getTool(dynamicCreated.toolId)
         assertNotNull(registeredTool)
-
-        // Verify registered in CapabilityRealityRegistry with OPERATIONAL status
         val reality = UnifiedExecutionFabric.instance.realityRegistry.getCapabilityReality(dynamicCreated.toolId)
         assertNotNull(reality)
         assertEquals("DYNAMIC_WRE", reality.category)
-        assertEquals(CapabilityRealityState.NATIVE, reality.realityState)
-
-        // Execute dynamic tool
+        assertEquals(CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED, reality.realityState)
         val output = dynamicCreated.tool.execute(mapOf("arguments" to listOf("sample input text")))
         assertNotNull(output)
         assertTrue(output.contains("Executing") || output.isNotEmpty())
@@ -268,15 +193,9 @@ class Stage14SelfEvolvingCapabilityEngineTest {
     fun testG_EmergencyStopInterruption() = runTest(testDispatcher) {
         val haltedCapId = "halted_cap_${System.currentTimeMillis()}"
         emergencyStop.triggerEmergencyStop("Manual test stop triggered")
-
-        val result = orchestrator.resolveCapability(
-            capabilityId = haltedCapId,
-            description = "Capability triggered under emergency stop"
-        )
-
+        val result = orchestrator.resolveCapability(haltedCapId, "Capability triggered under emergency stop")
         assertTrue(result is CapabilityResolutionResult.ResolutionFailed)
         val failed = result as CapabilityResolutionResult.ResolutionFailed
         assertTrue(failed.reason.contains("Emergency stop"))
     }
 }
-
