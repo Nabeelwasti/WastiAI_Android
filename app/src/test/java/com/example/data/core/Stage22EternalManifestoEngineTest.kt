@@ -96,7 +96,7 @@ class Stage22EternalManifestoEngineTest {
         val now=System.currentTimeMillis()
         db.memoryDao().insertMemory(MemoryEntity("dup_1","user_city","Personal","Lahore",timestamp=now-10000)); db.memoryDao().insertMemory(MemoryEntity("dup_2","user_city","Personal","Lahore",timestamp=now))
         db.memoryDao().insertMemory(MemoryEntity("contra_old","user_office","Work","Building A",timestamp=now-50000)); db.memoryDao().insertMemory(MemoryEntity("contra_new","user_office","Work","HQ Campus B",timestamp=now))
-        db.taskDao().insertTask(TaskEntity("task_001","Finalize Wasti OS Release Gate",isCompleted=false,priority="HIGH"))
+        db.taskDao().insertTask(TaskEntity(id="task_001",title="Finalize Wasti OS Release Gate",isCompleted=false,priority="HIGH"))
         val result=MemoryDreamingEngine.executeDreamingCycle(context)
         assertTrue(result.isSuccess); assertEquals(1,result.memoriesConsolidated); assertEquals(1,result.contradictionsResolved); assertTrue(result.triplesExtracted>0); assertTrue(result.executiveBriefing.contains("Finalize Wasti OS Release Gate"))
         assertEquals(2,db.memoryDao().getAllMemoriesSync().size); val archived=db.knowledgeDao().getAllKnowledgeSync().find { it.category=="HistoricalUpdate" }; assertNotNull(archived); assertTrue(archived!!.content.contains("Building A"))
