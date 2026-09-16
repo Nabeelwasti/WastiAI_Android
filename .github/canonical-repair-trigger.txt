@@ -1,1 +1,1 @@
-final authority hardening trigger — deterministic validation
+final authority hardening trigger — retry 2
