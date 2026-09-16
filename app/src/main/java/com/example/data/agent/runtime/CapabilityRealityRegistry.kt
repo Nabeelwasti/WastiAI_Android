@@ -46,7 +46,9 @@ class CapabilityRealityRegistry {
 
     private fun registerDefaults() {
         updateCapabilityReality(CapabilityReality("FILES", "STORAGE", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WorkspaceManager", listOf("read_file", "write_file", "list_files", "delete_file"), listOf("Restricted to workspace boundary")))
-        updateCapabilityReality(CapabilityReality("TERMINAL", "EXECUTION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "LocalAndroidProvider", listOf("execute_code", "run_script"), listOf("Sandboxed execution environment")))
+        // Terminal is an implemented execution route. OPERATIONAL means the fabric may dispatch
+        // to the real executor; it does not claim a live connection, verification, or trust state.
+        updateCapabilityReality(CapabilityReality("TERMINAL", "EXECUTION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.OPERATIONAL, CapabilityAuthStatus.NOT_REQUIRED, "LocalAndroidProvider", listOf("execute_code", "run_script"), listOf("Sandboxed execution environment")))
         // Device control is an implemented execution route. OPERATIONAL means the fabric
         // may dispatch to the real executor; it does NOT claim accessibility permission,
         // live connectivity, verification, or trust. The executor itself reports runtime
