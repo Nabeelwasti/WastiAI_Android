@@ -59,7 +59,7 @@ class Stage22EternalManifestoEngineTest {
         val exec=UnifiedExecutionFabric.instance.execute(UnifiedExecutionRequest(capabilityId=capId,parameters=mapOf("input" to "WastiOS")),context)
         assertEquals(UnifiedExecutionStatus.COMPLETED,exec.status)
         assertEquals("SOitsaW",exec.output.trim())
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED,exec.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE,exec.verificationStatus)
     }
 
     @Test fun testCapabilityInventionRegexExtractor() = runBlocking {
