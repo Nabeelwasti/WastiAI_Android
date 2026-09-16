@@ -1,1 +1,1 @@
-temporary canonical repair trigger
+final authority hardening trigger — deterministic validation
