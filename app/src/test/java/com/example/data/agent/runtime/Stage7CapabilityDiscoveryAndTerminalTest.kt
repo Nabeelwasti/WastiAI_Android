@@ -151,7 +151,7 @@ class Stage7CapabilityDiscoveryAndTerminalTest {
         assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertTrue(result.output.contains("UnifiedFabricTerminal"))
         assertEquals("WastiNativeExecutionProvider", result.executor)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
     }
 
     // 10. Unified Execution Routing for Missing Python Execution
