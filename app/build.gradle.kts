@@ -1,7 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import org.gradle.api.tasks.testing.Test
 import java.time.Duration
-import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -115,11 +114,6 @@ android {
       buildConfigField("String", key, "\"${wastiPublicValue(value)}\"")
     }
 
-    // HARDENED SECURITY INVARIANT:
-    // Confidential backend and provider credentials are NEVER compiled or packaged into the client APK.
-    // Secrets reside in server-side custody, authenticated scoped capability grants (WastiServerCapabilityClient),
-    // or genuinely user-provided credentials stored in Android Keystore / EncryptedSharedPreferences.
-    // Client BuildConfig secret fields are permanently empty strings ("") to prevent raw secret leakage.
     allTrackedCredentialKeys.forEach { key ->
       buildConfigField("String", key, "\"\"")
     }
@@ -220,11 +214,11 @@ android {
               println("========================================================\n")
             } else if (suite.className != null) {
               val status = if (result.failedTestCount > 0) "FAILED" else "PASSED"
-              println("  ✔ [TEST SUITE $status] ${suite.className} (${suite.testCount} tests, ${suite.successfulTestCount} passed)")
+              println("  ✔ [TEST SUITE $status] ${suite.className} (${result.testCount} tests, ${result.successfulTestCount} passed)")
             }
           }
           override fun beforeTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor) {}
-          override fun afterTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
+          override fun afterTest(testDescriptor: org.gradle.api.testing.TestDescriptor, result: org.gradle.api.tasks.testing.TestResult) {
             if (result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.FAILURE) {
               println("[TEST FAILED] ${testDescriptor.className} -> ${testDescriptor.name}")
               result.exception?.let { exc ->
