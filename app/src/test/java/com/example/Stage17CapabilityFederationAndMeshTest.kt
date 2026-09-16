@@ -135,7 +135,8 @@ class Stage17CapabilityFederationAndMeshTest {
         assertEquals("heavy_compiler", heavyCompiler.capabilityId)
         val localLlm = realityRegistry.getCapabilityReality("local_llm_gpu")
         assertNotNull(localLlm)
-        assertEquals(CapabilityRealityState.EXTERNAL_PROVIDER_AVAILABLE, localLlm.realityState)
+        // A remote advertisement cannot independently establish provider availability in canonical reality.
+        assertEquals(CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED, localLlm.realityState)
         assertNotEquals(CapabilityRealityState.NATIVE, heavyCompiler.realityState)
         assertNotEquals(CapabilityRealityState.NATIVE, localLlm.realityState)
     }
@@ -164,7 +165,7 @@ class Stage17CapabilityFederationAndMeshTest {
         val updatedCap = initialCap.copy(version = "16.0", realityState = CapabilityRealityState.EXTERNAL_PROVIDER_AVAILABLE)
         val isUpdated = nodeManager.updateAdvertisedCapability(nodeId, updatedCap)
         assertTrue(isUpdated)
-        assertEquals(CapabilityRealityState.EXTERNAL_PROVIDER_AVAILABLE, realityRegistry.getCapabilityReality("postgres_pool").realityState)
+        assertEquals(CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED, realityRegistry.getCapabilityReality("postgres_pool").realityState)
         val isRemoved = nodeManager.removeAdvertisedCapability(nodeId, "postgres_pool")
         assertTrue(isRemoved)
         assertEquals(CapabilityRealityState.UNAVAILABLE, realityRegistry.getCapabilityReality("postgres_pool").realityState)
