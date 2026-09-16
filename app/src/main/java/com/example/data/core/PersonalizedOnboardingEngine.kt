@@ -3,7 +3,6 @@ package com.example.data.core
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import java.io.File
 import com.example.data.db.KnowledgeEntity
 import com.example.data.db.MemoryEntity
 import com.example.data.db.WastiDatabase
@@ -64,9 +63,6 @@ object PersonalizedOnboardingEngine {
         return try { UserPrimaryRole.valueOf(str!!) } catch (_: Exception) { UserPrimaryRole.SOFTWARE_ENGINEER }
     }
 
-    /**
-     * Executes the comprehensive first-run personalization and autonomous gate resolution.
-     */
     suspend fun applyPersonalizedSetup(
         context: Context,
         plan: PersonalizedSetupPlan
@@ -75,11 +71,9 @@ object PersonalizedOnboardingEngine {
 
         val db = WastiDatabase.getDatabase(context)
 
-        // 1. Profile Hardware & Silicon
         val hardwareProfile = WastiDeepHardwareProfiler.profileSystem(context)
         val hardwareSummary = WastiDeepHardwareProfiler.generateSystemSummaryMarkdown(hardwareProfile)
 
-        // 2. Commit User Role & Intent into Sovereign Memory
         val roleMemory = MemoryEntity(
             id = "user_intent_role",
             key = "user_primary_mission",
@@ -89,7 +83,6 @@ object PersonalizedOnboardingEngine {
         )
         db.memoryDao().insertMemory(roleMemory)
 
-        // 3. Index Hardware Reality into Knowledge Graph
         val hardwareKnowledge = KnowledgeEntity(
             id = "device_hardware_matrix",
             title = "Physical Host Hardware Reality",
@@ -100,12 +93,10 @@ object PersonalizedOnboardingEngine {
         )
         db.knowledgeDao().insertKnowledge(hardwareKnowledge)
 
-        // Production signing is never manufactured by onboarding. Only the configured official key can satisfy the gate.
         if (plan.autoCreateKeystore) {
             Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")
         }
 
-        // 5. Autonomously Resolve Public Cloud Companion Ingress Gate
         if (plan.autoDeployCloudTunnel) {
             try {
                 WastiSovereignTunnelEngine.establishTunnel(context)
@@ -115,7 +106,6 @@ object PersonalizedOnboardingEngine {
             }
         }
 
-        // 6. Save Setup Completion Flag
         getPrefs(context).edit()
             .putBoolean(KEY_SETUP_COMPLETED, true)
             .putString(KEY_USER_ROLE, plan.role.name)
@@ -125,9 +115,6 @@ object PersonalizedOnboardingEngine {
         Log.i(TAG, "SUCCESS: Personalized setup complete. Production gates resolved on-device.")
     }
 
-    /**
-     * Resets setup state for testing or reconfiguration.
-     */
     fun resetSetupForTesting(context: Context) {
         getPrefs(context).edit().clear().apply()
     }
