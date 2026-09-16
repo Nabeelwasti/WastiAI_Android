@@ -70,6 +70,7 @@ data class UnifiedExecutionResult(
     val completedAt: Long = System.currentTimeMillis(),
     val verificationStatus: UnifiedVerificationStatus = UnifiedVerificationStatus.UNVERIFIED,
     val verificationEvidence: String? = null,
+    val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,
     val exitCode: Int? = null,
     val details: Map<String, String> = emptyMap()
 )
@@ -474,7 +475,8 @@ class UnifiedExecutionFabric(
                 capabilityId = request.capabilityId,
                 expectedOutcome = obsRequest.expectedOutcome,
                 executionResult = execResult,
-                observationResult = obsResult
+                observationResult = obsResult,
+                structuredEvidence = execResult.verifiedExecutionEvidence
             )
             val verResult = verificationEngine.verify(verRequest)
 
@@ -1963,6 +1965,7 @@ class UnifiedExecutionFabric(
             startedAt = startedAt,
             verificationStatus = finalVerStatus,
             verificationEvidence = if (wreResult.verified) wreResult.verificationEvidence ?: "VERIFIED" else "UNVERIFIED",
+            verifiedExecutionEvidence = wreResult.verifiedExecutionEvidence,
             exitCode = wreResult.exitCode
         )
     }
