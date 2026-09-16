@@ -68,7 +68,10 @@ class Stage22EternalManifestoEngineTest {
         assertTrue(result.isSuccess)
         val exec=UnifiedExecutionFabric.instance.execute(UnifiedExecutionRequest(capabilityId=capId,parameters=mapOf("text" to "Contact support: +92-300-1234567 for inquiries")),context)
         assertEquals(UnifiedExecutionStatus.COMPLETED,exec.status)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED,exec.verificationStatus)
+        // Execution succeeded, but no independent post-state observer is available for this
+        // synthetic regex capability in Robolectric. Truthful verification therefore remains
+        // explicitly unavailable rather than being promoted to VERIFIED/UNVERIFIED by guesswork.
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE,exec.verificationStatus)
         assertTrue(exec.output.contains("300-1234567"))
     }
 
