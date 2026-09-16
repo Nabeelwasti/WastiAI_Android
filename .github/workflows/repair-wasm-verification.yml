@@ -40,6 +40,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/repair-wasm-verification.yml
           git add app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt .github/workflows/repair-wasm-verification.yml
           git commit -m "fix: repair WASM verification evidence"
           git push origin HEAD:main
