@@ -1,0 +1,102 @@
+name: Wasti One-Time Security Hardening V2
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply authority-boundary hardening
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def edit(path, replacements):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              original = s
+              for old, new in replacements:
+                  if old not in s:
+                      raise SystemExit(f'Missing expected pattern in {path}: {old[:160]!r}')
+                  s = s.replace(old, new, 1)
+              if s != original:
+                  p.write_text(s, encoding='utf-8')
+
+          edit('app/src/main/java/com/example/data/auth/WastiIdentityManager.kt', [
+              ('    private const val KEY_OWNER_EXPIRY = "identity_owner_expiry"\n', '    private const val KEY_OWNER_ISSUED_AT = "identity_owner_issued_at"\n    private const val KEY_OWNER_EXPIRY = "identity_owner_expiry"\n'),
+              ('    private const val KEY_OWNER_NONCE = "identity_owner_nonce"\n', '    private const val KEY_OWNER_NONCE = "identity_owner_nonce"\n    private const val KEY_OWNER_CAPABILITIES = "identity_owner_capabilities"\n    private const val KEY_OWNER_REVOCATION_VERSION = "identity_owner_revocation_version"\n'),
+              ('            if (!WastiIdentityManager.isNonceValid(nonce)) return false\n', ''),
+              ('        val timestamp = consumedNonces[nonce] ?: return true\n        return System.currentTimeMillis() - timestamp > 24 * 60 * 60 * 1000L\n', '        return !consumedNonces.containsKey(nonce)\n'),
+              ('            val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)\n', '            val ownerIssuedAt = prefs.getLong(KEY_OWNER_ISSUED_AT, 0L)\n            val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)\n'),
+              ('            val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""\n\n            val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis()) {\n', '            val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""\n            val ownerCapabilities = prefs.getString(KEY_OWNER_CAPABILITIES, null)\n                ?.split("\\u001f")?.filter { it.isNotBlank() } ?: emptyList()\n            val ownerRevocationVersion = prefs.getInt(KEY_OWNER_REVOCATION_VERSION, MIN_REVOCATION_VERSION)\n            val localDeviceId = getDeviceId(context)\n\n            val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis() &&\n                ownerIssuedAt > 0L && ownerDeviceId == localDeviceId && ownerCapabilities.isNotEmpty()) {\n'),
+              ('                    issuedAtEpochMs = System.currentTimeMillis() - 60000,\n', '                    issuedAtEpochMs = ownerIssuedAt,\n'),
+              ('                    authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),\n', '                    authorizedCapabilities = ownerCapabilities,\n'),
+              ('                    nonce = ownerNonce\n', '                    nonce = ownerNonce,\n                    revocationVersion = ownerRevocationVersion\n'),
+              ('        val effectiveDeviceId = subjectDeviceId ?: getDeviceId(context)\n        val effectiveNonce = nonce ?: UUID.randomUUID().toString()\n', '        val localDeviceId = getDeviceId(context)\n        val effectiveDeviceId = subjectDeviceId ?: localDeviceId\n        val effectiveNonce = nonce ?: UUID.randomUUID().toString()\n        val deviceBindingValid = effectiveDeviceId == localDeviceId\n        val nonceAvailable = isNonceValid(effectiveNonce)\n'),
+              ('        val isOwnerVerified = entitlementCandidate?.isValid == true\n', '        val isOwnerVerified = deviceBindingValid && nonceAvailable && entitlementCandidate?.isValid == true\n'),
+              ('                putString(KEY_OWNER_TOKEN, entitlement.token)\n                putLong(KEY_OWNER_EXPIRY, entitlement.expiresAtEpochMs)\n', '                putString(KEY_OWNER_TOKEN, entitlement.token)\n                putLong(KEY_OWNER_ISSUED_AT, entitlement.issuedAtEpochMs)\n                putLong(KEY_OWNER_EXPIRY, entitlement.expiresAtEpochMs)\n'),
+              ('                putString(KEY_OWNER_NONCE, entitlement.nonce)\n', '                putString(KEY_OWNER_NONCE, entitlement.nonce)\n                putString(KEY_OWNER_CAPABILITIES, entitlement.authorizedCapabilities.joinToString("\\u001f"))\n                putInt(KEY_OWNER_REVOCATION_VERSION, entitlement.revocationVersion)\n'),
+              ('                remove(KEY_OWNER_EXPIRY)\n', '                remove(KEY_OWNER_ISSUED_AT)\n                remove(KEY_OWNER_EXPIRY)\n'),
+              ('                remove(KEY_OWNER_NONCE)\n', '                remove(KEY_OWNER_NONCE)\n                remove(KEY_OWNER_CAPABILITIES)\n                remove(KEY_OWNER_REVOCATION_VERSION)\n'),
+          ])
+
+          edit('app/src/main/java/com/example/data/core/WastiProductionSigningEngine.kt', [
+              ('        val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT") ?: PINNED_OFFICIAL_PRODUCTION_FINGERPRINT\n', '        val officialFingerprint = PINNED_OFFICIAL_PRODUCTION_FINGERPRINT\n'),
+              ('     * Autonomously generates a sovereign production release keystore on-device.\n', '     * Generates a local development/emergency keystore only. Generated keys can never satisfy the official production signing gate.\n'),
+              ('            Log.i(TAG, "Sovereign production keystore created: ${keystoreFile.absolutePath} (SHA-256: $sha256)")\n', '            Log.i(TAG, "Local development/emergency keystore created: ${keystoreFile.absolutePath} (SHA-256: $sha256); it is not an official production signing key.")\n'),
+          ])
+
+          edit('app/src/main/java/com/example/data/core/PersonalizedOnboardingEngine.kt', [
+              ('    val autoCreateKeystore: Boolean = true,\n', '    val autoCreateKeystore: Boolean = false,\n'),
+              ('        // 4. Autonomously Resolve Production Keystore Gate with Automatic Fallback & Discovery\n        if (plan.autoCreateKeystore) {\n            val discoveredExternal = WastiProductionSigningEngine.discoverExternalKeystore(context)\n            if (discoveredExternal != null && discoveredExternal.exists() && !File(context.filesDir, "security/keystore/wasti_production_release.p12").exists()) {\n                val importResult = WastiProductionSigningEngine.importExistingKeystore(context, discoveredExternal)\n                Log.i(TAG, "Discovered existing keystore on device at ${discoveredExternal.absolutePath}. Imported automatically: ${importResult.isSuccess}")\n            } else if (!WastiProductionSigningEngine.hasExistingKeystore(context)) {\n                val keyResult = WastiProductionSigningEngine.generateSovereignReleaseKeystore(\n                    context = context,\n                    organization = "Wasti AI OS Sovereign (${plan.role})"\n                )\n                if (keyResult.isSuccess) {\n                    Log.i(TAG, "Autonomous production keystore created during first-run setup.")\n                }\n            } else {\n                Log.i(TAG, "Existing sovereign keystore preserved. Keystore gate resolved.")\n            }\n        }\n', '        // Production signing is never manufactured by onboarding. Only the configured official key can satisfy the gate.\n        if (plan.autoCreateKeystore) {\n            Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")\n        }\n'),
+          ])
+
+          edit('app/src/main/java/com/example/data/agent/runtime/CapabilityRealityRegistry.kt', [
+              ('                executionStatus = CapabilityExecutionStatus.OPERATIONAL,\n                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,\n                provider = "WreDynamicToolProvider",\n', '                executionStatus = CapabilityExecutionStatus.UNAVAILABLE,\n                authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,\n                provider = "WreDynamicToolProvider",\n'),
+              ('    fun updateCapabilityReality(capability: CapabilityReality) {\n        require(capability.capabilityId.isNotBlank()) {\n            "Capability ID must not be blank."\n        }\n        capabilityMap[normalizedKey(capability.capabilityId)] = capability\n    }\n', '    fun updateCapabilityReality(capability: CapabilityReality) {\n        require(capability.capabilityId.isNotBlank()) {\n            "Capability ID must not be blank."\n        }\n        val canonical = capability.verificationMethod.startsWith("CANONICAL_REALITY_VERIFIED:")\n        val attemptedPromotion = capability.liveConnectionStatus == LiveConnectionStatus.VERIFIED ||\n            capability.realityState == CapabilityRealityState.LIVE_CONNECTED\n        if (attemptedPromotion && !canonical) {\n            capabilityMap[normalizedKey(capability.capabilityId)] = capability.copy(\n                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,\n                executionStatus = if (capability.executionStatus == CapabilityExecutionStatus.OPERATIONAL) CapabilityExecutionStatus.DEGRADED else capability.executionStatus,\n                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED,\n                verificationMethod = "UNVERIFIED_REGISTRATION"\n            )\n            return\n        }\n        capabilityMap[normalizedKey(capability.capabilityId)] = capability\n    }\n'),
+              ('        if (fact.isVerifiedSuccess) {\n', '        if (fact.isVerifiedSuccess &&\n            !isSimulatedOrTest &&\n            fact.environmentTier == ExecutionEnvironmentTier.PHYSICAL_DEVICE &&\n            fact.verificationStatus == UnifiedVerificationStatus.VERIFIED &&\n            fact.evidenceBundle?.independentProbe?.isNotBlank() == true &&\n            fact.evidenceBundle.verificationMethod == "INDEPENDENT_PROBE") {\n'),
+          ])
+
+          edit('app/src/main/java/com/example/data/core/ProductionReadinessGate.kt', [
+              ('        val backendReadinessState = when {\n            backendIsLiveVerified && backendSecretConfigured -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED\n            backendIsLiveVerified -> ProductionReadinessState.TEST_VERIFIED\n            backendSecretConfigured -> ProductionReadinessState.DEVELOPMENT_READY\n            else -> ProductionReadinessState.DEVELOPMENT_READY\n        }\n', '        val backendReadinessState = if (backendIsLiveVerified) ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY\n'),
+              ('                isOperational = backendSecretConfigured || backendIsLiveVerified,\n', '                isOperational = backendIsLiveVerified,\n'),
+              ('                isOperational = true,\n                isLiveVerified = hasDeviceProof,\n', '                isOperational = hasDeviceProof,\n                isLiveVerified = hasDeviceProof,\n'),
+              ('                isOperational = true,\n                isLiveVerified = hasCorePermissionsGranted,\n', '                isOperational = hasCorePermissionsGranted,\n                isLiveVerified = hasCorePermissionsGranted,\n'),
+          ])
+
+          edit('app/src/main/java/com/example/data/agent/runtime/WastiVerificationEngine.kt', [
+              ('                text.contains("returned exit code 0", ignoreCase = true) ||\n                text.contains("FACT_VERIFIED", ignoreCase = true) ||\n                text.contains("Terminal command", ignoreCase = true) ||\n                text.contains("Verified", ignoreCase = true) ||\n                text.contains("Local Server Status", ignoreCase = true) ||\n                text.contains("independent execution proof", ignoreCase = true)\n', '                text.contains("returned exit code 0", ignoreCase = true) &&\n                text.contains("post-state", ignoreCase = true) ||\n                text.contains("filesystem post-state", ignoreCase = true) ||\n                text.contains("independent execution proof:", ignoreCase = true)\n'),
+              ('                text.contains("Navigated to destination screen", ignoreCase = true) ||\n                text.contains("WastiAppActionBus", ignoreCase = true) ||\n                (text.contains("navigation", ignoreCase = true) && text.contains("verified", ignoreCase = true))\n', '                text.contains("Navigated to destination screen", ignoreCase = true) &&\n                (text.contains("active package", ignoreCase = true) || text.contains("window package", ignoreCase = true))\n'),
+              ('                text.contains("returned through the canonical execution fabric", ignoreCase = true) ||\n                text.contains("verified through independent execution proof", ignoreCase = true) ||\n                text.contains("Verified", ignoreCase = true) ||\n', '                text.contains("returned through the canonical execution fabric", ignoreCase = true) &&\n                (text.contains("post-state", ignoreCase = true) || text.contains("independent", ignoreCase = true)) ||\n                text.contains("verified through independent execution proof:", ignoreCase = true) ||\n'),
+              ('                text.contains("Diagnostics for", ignoreCase = true) ||\n                text.contains("Package", ignoreCase = true)\n', '                text.contains("Diagnostics for", ignoreCase = true) ||\n                (text.contains("Package", ignoreCase = true) && text.contains("installed", ignoreCase = true))\n'),
+          ])
+
+          invariant = Path('app/src/test/java/com/example/data/security/WastiAuthorityInvariantTest.kt')
+          invariant.parent.mkdir(parents=True, exist_ok=True)
+          invariant.write_text('''package com.example.data.security\n\nimport org.junit.Assert.assertFalse\nimport org.junit.Assert.assertTrue\nimport org.junit.Test\nimport java.io.File\n\nclass WastiAuthorityInvariantTest {\n    private fun source(path: String): String = File("src/main/$path").readText()\n\n    @Test fun noHardcodedSovereignSigningPassword() {\n        val files = File("src/main").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()\n        assertTrue(files.all { !it.readText().contains("WastiSovereign2026!") })\n    }\n\n    @Test fun officialFingerprintCannotBeOverriddenByEnvironment() {\n        val text = source("java/com/example/data/core/WastiProductionSigningEngine.kt")\n        assertFalse(text.contains("AUTHORITATIVE_PRODUCTION_FINGERPRINT") && text.contains("?: PINNED_OFFICIAL_PRODUCTION_FINGERPRINT"))\n        assertTrue(text.contains("PINNED_OFFICIAL_PRODUCTION_FINGERPRINT"))\n    }\n\n    @Test fun completedIsNotVerificationAuthority() {\n        val files = File("src/main").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()\n        val offenders = files.filter { f ->\n            val t = f.readText()\n            t.contains("COMPLETED") && t.contains("isVerified = true")\n        }\n        assertTrue("COMPLETED must never directly assign verification", offenders.isEmpty())\n    }\n}\n''', encoding='utf-8')
+
+      - name: Compile and run focused authority tests
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --tests com.example.data.security.WastiAuthorityInvariantTest --no-daemon --stacktrace
+
+      - name: Commit verified hardening and remove one-time workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main app/src/test/java/com/example/data/security/WastiAuthorityInvariantTest.kt
+          git rm -f .github/workflows/_wasti_hardening_once.yml .github/workflows/_wasti_hardening_v2.yml
+          git commit -m "security: close authority and verification boundaries"
+          git push origin HEAD:main
