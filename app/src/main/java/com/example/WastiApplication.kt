@@ -18,7 +18,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -30,9 +29,12 @@ class WastiApplication : Application(), Configuration.Provider {
             private set
     }
 
-    override fun getWorkManagerConfiguration(): Configuration = Configuration.Builder()
-        .setMinimumLoggingLevel(Log.INFO)
-        .build()
+    // WorkManager 2.11.x exposes the Provider contract as a Kotlin property.
+    // Keep the configuration explicit and compatible with current Kotlin compiler checks.
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setMinimumLoggingLevel(Log.INFO)
+            .build()
 
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
