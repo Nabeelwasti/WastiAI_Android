@@ -1956,7 +1956,7 @@ private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
         }
     }
 
-    if (ttsEngine != null) {
+    if (::ttsEngine.isInitialized) {
         try {
             val result = ttsEngine.setLanguage(targetLocale)
             if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {

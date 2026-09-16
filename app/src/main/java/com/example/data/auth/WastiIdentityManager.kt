@@ -332,8 +332,8 @@ object WastiIdentityManager {
         val isOwnerVerified = deviceBindingValid && nonceAvailable && entitlementCandidate?.isValid == true
         val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwnerVerified) entitlementCandidate else null
-        if (isOwnerVerified && entitlementCandidate != null) {
-            consumeNonce(entitlementCandidate.nonce)
+        if (isOwnerVerified) {
+            entitlementCandidate?.nonce?.let(::consumeNonce)
         }
 
         prefs.edit().apply {

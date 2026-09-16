@@ -444,7 +444,7 @@ private fun IdentityTabContent(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(if (isAuthenticating) "Connecting..." else "Sign in with Google", fontSize = 11.sp)
                         }
