@@ -58,7 +58,6 @@ class Stage13PhysicalRealityAndWebSocketTest {
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 
-            // 1. Send RFC 6455 Handshake
             val testKey = "dGhlIHNhbXBsZSBub25jZQ=="
             val handshake = "GET /ws HTTP/1.1\r\n" +
                     "Host: 127.0.0.1:$port\r\n" +
@@ -66,32 +65,26 @@ class Stage13PhysicalRealityAndWebSocketTest {
                     "Connection: Upgrade\r\n" +
                     "Sec-WebSocket-Key: $testKey\r\n" +
                     "Sec-WebSocket-Version: 13\r\n\r\n"
-
             out.write(handshake.toByteArray(Charsets.UTF_8))
             out.flush()
 
-            // 2. Verify Handshake Response
             val responseStr = readHttpHeaders(inp)
-
             assertTrue(responseStr.contains("101 Switching Protocols"))
             assertTrue(responseStr.contains("Upgrade: websocket"))
             val expectedAccept = computeExpectedAccept(testKey)
             assertTrue(responseStr.contains("Sec-WebSocket-Accept: $expectedAccept"))
 
-            // 3. Read initial "CONNECTED" frame from server
             val connectedMsg = readServerFrame(inp)
             assertNotNull(connectedMsg)
             val connectedJson = JSONObject(connectedMsg!!)
             assertEquals("CONNECTED", connectedJson.optString("type"))
             assertEquals("RFC-6455", connectedJson.optString("protocol"))
 
-            // 4. Send Client Frame: PING -> expect PONG
             sendClientMaskedFrame(out, JSONObject().put("type", "PING").toString())
             val pongMsg = readServerFrame(inp)
             assertNotNull(pongMsg)
             val pongJson = JSONObject(pongMsg!!)
             assertEquals("PONG", pongJson.optString("type"))
-
             socket.close()
         } finally {
             wsServer.stop()
@@ -106,7 +99,6 @@ class Stage13PhysicalRealityAndWebSocketTest {
         assertTrue(startRes.isSuccess)
         val port = startRes.getOrNull() ?: 9182
 
-        // Pair a test device
         val challenge = transport.createPairingChallenge(
             deviceId = "ws_companion_node",
             deviceName = "WebSocket Companion Terminal",
@@ -121,17 +113,12 @@ class Stage13PhysicalRealityAndWebSocketTest {
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 
-            // Handshake
             val testKey = "x3JJHMbDL1EzLkh9GBhXDw=="
             out.write(("GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $testKey\r\n\r\n").toByteArray())
             out.flush()
-
-            readHttpHeaders(inp) // discard handshake header
-
-            // Read welcome
+            readHttpHeaders(inp)
             readServerFrame(inp)
 
-            // Send AUTHENTICATE frame
             val authPayload = JSONObject().apply {
                 put("type", "AUTHENTICATE")
                 put("token", paired!!.sessionToken)
@@ -146,7 +133,6 @@ class Stage13PhysicalRealityAndWebSocketTest {
             assertEquals("AUTHENTICATED", authJson.optString("type"))
             assertEquals("ACTIVE", authJson.optString("trustState"))
 
-            // Send COMMAND frame
             val cmdPayload = JSONObject().apply {
                 put("type", "COMMAND")
                 put("command", "system_status_check")
@@ -155,10 +141,9 @@ class Stage13PhysicalRealityAndWebSocketTest {
             }.toString()
             sendClientMaskedFrame(out, cmdPayload)
 
-            val cmdResp = readServerFrame(inp)
-            assertNotNull(cmdResp)
-            val cmdJson = JSONObject(cmdResp!!)
-            assertEquals("TASK_ACCEPTED", cmdJson.optString("type"))
+            val cmdJson = readServerFrameUntilType(inp, "TASK_ACCEPTED", maxFrames = 10)
+            assertNotNull(cmdJson)
+            assertEquals("TASK_ACCEPTED", cmdJson!!.optString("type"))
             assertEquals("system_status_check", cmdJson.optString("command"))
 
             socket.close()
@@ -181,23 +166,19 @@ class Stage13PhysicalRealityAndWebSocketTest {
             )
         )
 
-        // 1. Record Heartbeat
         val recorded = nodeManager.recordHeartbeat(desktopNodeId, latencyMs = 12L, load = 0.25f)
         assertTrue(recorded)
         val node = nodeManager.getNode(desktopNodeId)
         assertEquals(12L, node?.latencyMs)
         assertEquals(NodeHealthState.ONLINE, node?.healthState)
 
-        // 2. Route when healthy -> DESKTOP_NODE
         val dest1 = nodeManager.routeTaskWithFailover("render_video_processing", failedNodes = emptySet())
         assertEquals(ExecutionDestination.DESKTOP_NODE, dest1)
 
-        // 3. Autonomous Failover: when all desktop nodes are recorded as failed or offline -> fails over to CLOUD
         val allDesktopIds = nodeManager.getAllNodes().filter { it.platform == NodePlatform.DESKTOP }.map { it.nodeId }.toSet()
         val dest2 = nodeManager.routeTaskWithFailover("render_video_processing", requiresCloudApi = true, failedNodes = allDesktopIds)
         assertEquals(ExecutionDestination.CLOUD, dest2)
 
-        // 4. Node Recovery
         nodeManager.updateNodeTrust(desktopNodeId, NodeTrustState.SUSPENDED)
         val suspended = nodeManager.getNode(desktopNodeId)
         assertEquals(NodeTrustState.SUSPENDED, suspended?.trustState)
@@ -215,7 +196,6 @@ class Stage13PhysicalRealityAndWebSocketTest {
         val info = serverResult.getOrNull()!!
         assertEquals(9098, info.port)
         assertEquals(9099, info.wsPort)
-
         serverManager.stopServer()
     }
 
@@ -226,9 +206,7 @@ class Stage13PhysicalRealityAndWebSocketTest {
             if (b == -1) break
             baos.write(b)
             val current = baos.toString(Charsets.UTF_8.name())
-            if (current.endsWith("\r\n\r\n")) {
-                break
-            }
+            if (current.endsWith("\r\n\r\n")) break
         }
         return baos.toString(Charsets.UTF_8.name())
     }
@@ -244,9 +222,9 @@ class Stage13PhysicalRealityAndWebSocketTest {
         val bytes = text.toByteArray(Charsets.UTF_8)
         val mask = byteArrayOf(0x12, 0x34, 0x56, 0x78)
 
-        out.write(0x81) // FIN=1, Text Opcode=0x1
+        out.write(0x81)
         if (bytes.size <= 125) {
-            out.write(0x80 or bytes.size) // Mask bit = 1
+            out.write(0x80 or bytes.size)
         } else {
             out.write(0x80 or 126)
             out.write((bytes.size shr 8) and 0xFF)
@@ -292,5 +270,14 @@ class Stage13PhysicalRealityAndWebSocketTest {
             read += r
         }
         return String(payload, Charsets.UTF_8)
+    }
+
+    private fun readServerFrameUntilType(inp: InputStream, expectedType: String, maxFrames: Int): JSONObject? {
+        repeat(maxFrames) {
+            val frame = readServerFrame(inp) ?: return null
+            val json = try { JSONObject(frame) } catch (_: Exception) { return@repeat }
+            if (json.optString("type") == expectedType) return json
+        }
+        return null
     }
 }
