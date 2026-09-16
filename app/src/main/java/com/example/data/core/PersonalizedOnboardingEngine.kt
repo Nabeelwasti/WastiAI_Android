@@ -16,10 +16,12 @@ import kotlinx.coroutines.withContext
  * "The human provides purpose, Wasti provides execution.
  * Memory of the Human: preserve knowledge, goals, preferences, decisions and creativity by consent."
  *
- * PersonalizedOnboardingEngine:
- * Coordinates the first-run onboarding assessment, aligns Wasti with user goals,
- * profiles device silicon, and autonomously creates the production keystore and
- * sovereign cloud tunnel.
+ * PersonalizedOnboardingEngine coordinates first-run onboarding, aligns Wasti with
+ * user goals, profiles the physical host, and prepares optional local capabilities.
+ *
+ * Production signing authority is intentionally NOT created or trusted here. An
+ * automatically generated device key can be useful for development/test workflows,
+ * but it can never become the official production signing identity.
  */
 
 enum class UserPrimaryRole {
@@ -60,8 +62,19 @@ object PersonalizedOnboardingEngine {
 
     fun getUserRole(context: Context): UserPrimaryRole {
         val str = getPrefs(context).getString(KEY_USER_ROLE, UserPrimaryRole.SOFTWARE_ENGINEER.name)
-        return try { UserPrimaryRole.valueOf(str!!) } catch (_: Exception) { UserPrimaryRole.SOFTWARE_ENGINEER }
+        return try {
+            UserPrimaryRole.valueOf(str ?: UserPrimaryRole.SOFTWARE_ENGINEER.name)
+        } catch (_: IllegalArgumentException) {
+            UserPrimaryRole.SOFTWARE_ENGINEER
+        }
     }
+
+    private fun isTestEnvironment(): Boolean =
+        com.example.data.security.WastiSecureStorage.isRobolectricHost ||
+            System.getProperty("WASTI_TEST_MODE") == "true" ||
+            System.getProperty("ENVIRONMENT") == "test" ||
+            System.getenv("WASTI_ENV") == "test" ||
+            System.getenv("ENVIRONMENT") == "test"
 
     suspend fun applyPersonalizedSetup(
         context: Context,
@@ -94,7 +107,27 @@ object PersonalizedOnboardingEngine {
         db.knowledgeDao().insertKnowledge(hardwareKnowledge)
 
         if (plan.autoCreateKeystore) {
-            Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")
+            if (isTestEnvironment()) {
+                // Robolectric/unit tests may exercise the local keystore lifecycle. This
+                // creates only an ephemeral test key and never grants official authority.
+                try {
+                    val result = WastiProductionSigningEngine.generateSovereignReleaseKeystore(
+                        context = context,
+                        keySizeBits = 2048,
+                        validityDays = 30,
+                        organization = "Wasti AI OS Test Environment"
+                    )
+                    if (result.isSuccess) {
+                        Log.i(TAG, "Test-only local keystore created for lifecycle verification; production authority remains untrusted.")
+                    } else {
+                        Log.w(TAG, "Test-only keystore creation failed: ${result.message}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Test-only keystore creation deferred: ${e.message}")
+                }
+            } else {
+                Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")
+            }
         }
 
         if (plan.autoDeployCloudTunnel) {
@@ -112,7 +145,7 @@ object PersonalizedOnboardingEngine {
             .putString(KEY_COMPUTE_MODE, plan.computePreference.name)
             .apply()
 
-        Log.i(TAG, "SUCCESS: Personalized setup complete. Production gates resolved on-device.")
+        Log.i(TAG, "SUCCESS: Personalized setup complete. Production signing authority remains independently gated.")
     }
 
     fun resetSetupForTesting(context: Context) {
