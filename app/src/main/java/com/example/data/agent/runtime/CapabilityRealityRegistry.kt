@@ -47,7 +47,11 @@ class CapabilityRealityRegistry {
     private fun registerDefaults() {
         updateCapabilityReality(CapabilityReality("FILES", "STORAGE", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WorkspaceManager", listOf("read_file", "write_file", "list_files", "delete_file"), listOf("Restricted to workspace boundary")))
         updateCapabilityReality(CapabilityReality("TERMINAL", "EXECUTION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "LocalAndroidProvider", listOf("execute_code", "run_script"), listOf("Sandboxed execution environment")))
-        updateCapabilityReality(CapabilityReality("device_control", "AUTOMATION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WastiDeviceController", listOf("open_app", "send_whatsapp", "send_email", "send_sms", "read_screen", "simulate_tap"), listOf("Requires accessibility service for node clicking")))
+        // Device control is an implemented execution route. OPERATIONAL means the fabric
+        // may dispatch to the real executor; it does NOT claim accessibility permission,
+        // live connectivity, verification, or trust. The executor itself reports runtime
+        // permission/environment failures (for example an inactive accessibility service).
+        updateCapabilityReality(CapabilityReality("device_control", "AUTOMATION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.OPERATIONAL, CapabilityAuthStatus.NOT_REQUIRED, "WastiDeviceController", listOf("open_app", "send_whatsapp", "send_email", "send_sms", "read_screen", "simulate_tap"), listOf("Requires accessibility service for node clicking")))
         // Memory search is a local execution capability. OPERATIONAL means the query path can run;
         // it does not promote live connection, verification, or trust state.
         updateCapabilityReality(CapabilityReality("memory_search", "MEMORY", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.OPERATIONAL, CapabilityAuthStatus.NOT_REQUIRED, "MemoryManager", listOf("hybridSearch"), emptyList()))
@@ -64,7 +68,6 @@ class CapabilityRealityRegistry {
         updateCapabilityReality(CapabilityReality("DEBUG_DIAGNOSTICS", "DEVELOPMENT", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WastiBuildAndTestManager", listOf("debug_project", "analyze_diagnostics"), listOf("Analyzes compiler errors and stack traces without fabricating debug protocols")))
         updateCapabilityReality(CapabilityReality("PACKAGE_MANAGER", "DEVELOPMENT", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WastiRuntimeManager", listOf("resolve_package", "install_package", "list_packages"), listOf("Resolves packages for discovered language runtimes")))
         updateCapabilityReality(CapabilityReality("WASTI_SANDBOX", "SECURITY", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.UNAVAILABLE, CapabilityAuthStatus.NOT_REQUIRED, "WastiSandbox", listOf("execute_in_sandbox", "enforce_resource_limits", "enforce_network_policy"), listOf("Confines execution to workspace with emergency stop, timeout and resource limit controls")))
-
         // The action bus is an implemented local execution path. OPERATIONAL here means
         // the route can execute; it does NOT mean the route is live-verified or trusted.
         updateCapabilityReality(CapabilityReality("NAVIGATE_TO", "ACTION", ImplementationStatus.READY, LiveConnectionStatus.NOT_VERIFIED, CapabilityExecutionStatus.OPERATIONAL, CapabilityAuthStatus.NOT_REQUIRED, "WastiAppActionBus", listOf("navigate_to", "open_screen", "navigate"), listOf("Dispatches navigation commands through canonical WastiAppActionBus")))
