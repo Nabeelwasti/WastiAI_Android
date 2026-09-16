@@ -1956,20 +1956,16 @@ private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
         }
     }
 
-    if (::ttsEngine.isInitialized) {
-        try {
-            val result = ttsEngine.setLanguage(targetLocale)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                ttsEngine.language = Locale.ENGLISH
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("ChatWorkspaceTTS", "Error setting TTS language", e)
+    try {
+        val result = ttsEngine.setLanguage(targetLocale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            ttsEngine.language = Locale.ENGLISH
         }
-
         val params = android.os.Bundle()
         params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
         ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
-    } else {
+    } catch (e: Exception) {
+        android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
                 VoiceManager.synthesizeSpeech(ttsTextToSpeak)
