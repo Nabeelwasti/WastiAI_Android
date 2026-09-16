@@ -221,7 +221,6 @@ data class RealityVerifiedCapability(
     val canonicalVerifier: String = "WastiVerificationEngine",
     val verificationEvidence: VerifiedExecutionEvidence,
     val verifiedAtEpochMs: Long = System.currentTimeMillis(),
-    val isRealityVerified: Boolean = true
 )
 
 /**

@@ -30,7 +30,11 @@ class WastiExplainabilityEngine {
         result: UnifiedExecutionResult
     ): ExecutionExplanation {
         val cap = request.capabilityId
-        val outcome = if (result.status == UnifiedExecutionStatus.COMPLETED || result.status == UnifiedExecutionStatus.VERIFIED) "Success" else "Failed (${result.status})"
+        val outcome = when {
+            result.verificationStatus == UnifiedVerificationStatus.VERIFIED -> "Verified"
+            result.status == UnifiedExecutionStatus.COMPLETED -> "Executed"
+            else -> "Failed (${result.status})"
+        }
         val isVerified = result.verificationStatus == UnifiedVerificationStatus.VERIFIED
 
         val rationale = when {

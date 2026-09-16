@@ -67,7 +67,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             provenanceEntryId = verificationResult.actionId,
             evidenceConfidence = verificationResult.confidence.toFloat(),
             isVerified = true,
-            isFactuallyVerified = true
+            isFactuallyVerified = verificationResult.status == ActionVerificationStatus.VERIFIED &&
+                verificationResult.structuredEvidence != null
         )
     }
 
@@ -172,7 +173,7 @@ object SelfTrainingKnowledgeDistillationEngine {
                 executionEvidence = successfulExecutionEvidence,
                 confidenceScore = if (isVerified) evidenceConfidence else evidenceConfidence.coerceAtMost(0.85f),
                 reinforcementCount = 1,
-                isFactuallyVerified = isFactuallyVerified,
+                isFactuallyVerified = isVerified && canonicalEntryId != null && isFactuallyVerified,
                 canonicalProvenanceEntryId = canonicalEntryId
             )
         }

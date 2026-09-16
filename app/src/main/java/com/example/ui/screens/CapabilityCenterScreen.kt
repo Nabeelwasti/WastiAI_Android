@@ -409,7 +409,7 @@ fun CapabilityCenterScreen(
 
                     // Result Display Box
                     lastActionResult?.let { res ->
-                        val isVerified = res.verificationStatus == UnifiedVerificationStatus.VERIFIED || res.status == UnifiedExecutionStatus.COMPLETED
+                        val isVerified = res.verificationStatus == UnifiedVerificationStatus.VERIFIED
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(

@@ -525,10 +525,7 @@ class WastiObservationEngine(
             executorResult.status.name == "OBSERVED"
 
     private fun isVerified(executorResult: UnifiedExecutionResult): Boolean =
-        executorResult.status == UnifiedExecutionStatus.VERIFIED ||
-            executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED ||
-            executorResult.status.name == "OBSERVED"
-
+        executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED
     private fun normalizeCapabilityId(capabilityId: String): String =
         capabilityId.trim().lowercase(Locale.ROOT)
 

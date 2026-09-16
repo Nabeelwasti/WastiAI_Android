@@ -180,7 +180,10 @@ class WastiVerificationEngine {
         val now = System.currentTimeMillis()
         val isStale = (now - evidence.observedAt) > MAX_EVIDENCE_AGE_MS || (evidence.observedAt > now + 30000L)
 
-        val isTrulyVerified = evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&
+        val hasIndependentProof = !evidence.checksumOrHash.isNullOrBlank()
+
+        val isTrulyVerified = hasIndependentProof &&
+            evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&
             evidence.subject.isNotBlank() &&
             evidence.verifiedState.isNotBlank() &&
             !isSyntheticOrMock(evidence.subject) &&

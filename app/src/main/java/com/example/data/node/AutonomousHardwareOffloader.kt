@@ -292,8 +292,8 @@ object AutonomousHardwareOffloader {
                     executor = "BluetoothPeer_${targetNode.deviceName}",
                     startedAt = startTime,
                     completedAt = System.currentTimeMillis(),
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
-                    verificationEvidence = "Bluetooth RFCOMM execution verified: ${targetNode.capabilityFingerprint}"
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                    verificationEvidence = "Bluetooth RFCOMM peer execution completed; independent local verification required: ${targetNode.capabilityFingerprint}"
                 )
             }
         } catch (e: Exception) {
@@ -314,8 +314,8 @@ object AutonomousHardwareOffloader {
             executor = "BluetoothNode_${targetNode.nodeId}",
             startedAt = startTime,
             completedAt = System.currentTimeMillis(),
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Bluetooth verified peer: ${targetNode.addressOrIp} fingerprint: ${targetNode.capabilityFingerprint} (duration: ${duration}ms)"
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+            verificationEvidence = "Bluetooth peer execution completed: ${targetNode.addressOrIp} fingerprint: ${targetNode.capabilityFingerprint} (duration: ${duration}ms); independent local verification required"
         )
     }
 }

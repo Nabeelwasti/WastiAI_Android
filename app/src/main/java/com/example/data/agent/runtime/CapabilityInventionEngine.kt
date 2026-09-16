@@ -354,7 +354,7 @@ object CapabilityInventionEngine {
                     executor = executorId,
                     startedAt = startedAt,
                     completedAt = System.currentTimeMillis(),
-                    verificationStatus = if (isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = "Invention sandbox execution with provenance hash: ${def.provenanceHash}"
                 )
             }

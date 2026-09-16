@@ -2,6 +2,7 @@ package com.example.data.auth
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import android.util.Log
@@ -179,7 +180,7 @@ object WastiIdentityManager {
         val publicKeyBase64: String,
         val challenge: String,
         val signatureBase64: String,
-        val isHardwareBacked: Boolean = true,
+        val isHardwareBacked: Boolean = false,
         val timestamp: Long = System.currentTimeMillis()
     )
 
@@ -188,12 +189,18 @@ object WastiIdentityManager {
         val pubKey = getOrCreateDeviceKey()
         val payload = "$devId:$pubKey:$challenge:${System.currentTimeMillis()}"
         val sig = signPayload(payload.toByteArray(Charsets.UTF_8)) ?: return null
+        val hardwareBacked = try {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+            val privateKey = keyStore.getKey(KEYSTORE_ALIAS, null) as? java.security.PrivateKey
+            if (privateKey == null) false else {
+                val keyFactory = java.security.KeyFactory.getInstance(privateKey.algorithm, "AndroidKeyStore")
+                val keyInfo = keyFactory.getKeySpec(privateKey, KeyInfo::class.java)
+                keyInfo.isInsideSecureHardware
+            }
+        } catch (_: Throwable) { false }
         return DeviceAttestationResult(
-            deviceId = devId,
-            publicKeyBase64 = pubKey,
-            challenge = challenge,
-            signatureBase64 = sig,
-            isHardwareBacked = true
+            deviceId = devId, publicKeyBase64 = pubKey, challenge = challenge,
+            signatureBase64 = sig, isHardwareBacked = hardwareBacked
         )
     }
 

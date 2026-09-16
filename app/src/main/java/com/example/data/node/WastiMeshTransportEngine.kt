@@ -386,7 +386,10 @@ object WastiMeshTransportEngine {
                     executor = resObj.optString("executor", "MeshPeer_${peer.nodeId}"),
                     startedAt = resObj.optLong("startedAt", startTime),
                     completedAt = resObj.optLong("completedAt", System.currentTimeMillis()),
-                    verificationStatus = try { UnifiedVerificationStatus.valueOf(vStatusStr) } catch (_: Exception) { UnifiedVerificationStatus.VERIFIED },
+                    verificationStatus = try {
+                        val remoteStatus = UnifiedVerificationStatus.valueOf(vStatusStr)
+                        if (remoteStatus == UnifiedVerificationStatus.VERIFIED) UnifiedVerificationStatus.UNVERIFIED else remoteStatus
+                    } catch (_: Exception) { UnifiedVerificationStatus.UNVERIFIED },
                     verificationEvidence = resObj.optString("verificationEvidence", "Verified via TCP mesh socket")
                 )
             }
