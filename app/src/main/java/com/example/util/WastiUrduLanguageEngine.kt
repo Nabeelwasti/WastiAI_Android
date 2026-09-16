@@ -2,33 +2,12 @@ package com.example.util
 
 import java.util.Locale
 
-/**
- * Backward-compatible language intelligence layer.
- *
- * The historical name is retained so existing voice/API integrations remain wired, while
- * detection is now language-agnostic. Offline detection uses Unicode scripts plus compact
- * stop-word fingerprints; online models receive the same canonical BCP-47 language tag.
- */
 object WastiUrduLanguageEngine {
-
-    enum class LanguageType {
-        URDU_SCRIPT,
-        PURE_URDU,
-        ROMAN_URDU,
-        ENGLISH,
-        PUNJABI,
-        MIRROR_LANGUAGE
-    }
-
-    data class LanguageProfile(
-        val languageTag: String,
-        val languageName: String,
-        val confidence: Float,
-        val detectionMode: DetectionMode
-    )
-
+    enum class LanguageType { URDU_SCRIPT, PURE_URDU, ROMAN_URDU, ENGLISH, PUNJABI, MIRROR_LANGUAGE }
+    data class LanguageProfile(val languageTag: String, val languageName: String, val confidence: Float, val detectionMode: DetectionMode)
     enum class DetectionMode { SCRIPT, LEXICAL_OFFLINE, DEFAULT }
 
+    private val romanUrduWords = setOf("hai", "hain", "kya", "kaise", "aap", "ap", "mein", "main", "ho", "nahi", "nahin", "bohot", "bht", "shukriya", "shukria", "salam", "kaam", "karo", "karein", "yeh", "ye", "woh", "wo")
     private val lexicalProfiles: Map<String, Set<String>> = mapOf(
         "en" to setOf("the", "and", "is", "are", "you", "what", "how", "with", "this", "that", "please"),
         "es" to setOf("el", "la", "los", "las", "que", "de", "para", "como", "está", "hola"),
@@ -51,7 +30,7 @@ object WastiUrduLanguageEngine {
         "id" to setOf("dan", "yang", "ini", "itu", "untuk", "dengan", "bagaimana", "tidak", "halo", "apa"),
         "ms" to setOf("dan", "yang", "ini", "itu", "untuk", "dengan", "bagaimana", "tidak", "salam", "apa"),
         "vi" to setOf("và", "là", "của", "cho", "với", "như", "không", "xin", "chào", "này"),
-        "sw" to setOf("na", "ya", "ni", "kwa", "hii", "hii ni", "jinsi", "habari", "asante", "sana"),
+        "sw" to setOf("na", "ya", "ni", "kwa", "hii", "jinsi", "habari", "asante", "sana"),
         "ur" to setOf("ہے", "ہیں", "کیا", "آپ", "میں", "کے", "کی", "کا", "اور", "نہیں"),
         "hi" to setOf("है", "हैं", "क्या", "आप", "मैं", "में", "के", "की", "और", "नहीं"),
         "bn" to setOf("এবং", "হয়", "কি", "আপনি", "আমি", "জন্য", "কীভাবে", "না", "হ্যালো", "এই"),
@@ -64,62 +43,40 @@ object WastiUrduLanguageEngine {
         "el" to setOf("και", "είναι", "τι", "εσύ", "εγώ", "για", "δεν", "πώς", "γεια", "αυτό")
     )
 
-    /** Detect a broad language profile without network access. */
     fun detectLanguageProfile(text: String?): LanguageProfile {
         if (text.isNullOrBlank()) return LanguageProfile("en", "English", 0.0f, DetectionMode.DEFAULT)
-
-        val script = detectByScript(text)
-        if (script != null) return script
-
+        detectByScript(text)?.let { return it }
         val tokens = tokenize(text)
         if (tokens.isEmpty()) return LanguageProfile("en", "English", 0.0f, DetectionMode.DEFAULT)
-
-        val scores = lexicalProfiles.mapValues { (_, words) ->
-            tokens.count { it in words }
-        }.filterValues { it > 0 }
-
+        val romanHits = tokens.count { it in romanUrduWords }
+        if (romanHits >= 2 || (romanHits == 1 && tokens.size <= 4)) {
+            return LanguageProfile("ur", "Urdu", (romanHits.toFloat() / tokens.size).coerceIn(0.45f, 0.96f), DetectionMode.LEXICAL_OFFLINE)
+        }
+        val scores = lexicalProfiles.mapValues { (_, words) -> tokens.count { it in words } }.filterValues { it > 0 }
         val winner = scores.maxByOrNull { it.value }
         if (winner != null) {
             val confidence = (winner.value.toFloat() / tokens.size.coerceAtMost(12)).coerceIn(0.35f, 0.98f)
             return LanguageProfile(winner.key, languageName(winner.key), confidence, DetectionMode.LEXICAL_OFFLINE)
         }
-
         return LanguageProfile("en", "English", 0.20f, DetectionMode.DEFAULT)
     }
 
-    /** Canonical BCP-47 language tag used by cloud and local model routing. */
     fun detectLanguageTag(text: String?): String = detectLanguageProfile(text).languageTag
 
-    /**
-     * Preserves the legacy enum contract used by existing Urdu/Punjabi voice paths.
-     * New integrations should use detectLanguageTag()/detectLanguageProfile().
-     */
-    fun detectLanguage(text: String?): LanguageType {
-        val profile = detectLanguageProfile(text)
-        return when (profile.languageTag) {
-            "ur" -> if (text.orEmpty().any { it in '\u0600'..'\u06FF' }) LanguageType.URDU_SCRIPT else LanguageType.ROMAN_URDU
-            "pa" -> LanguageType.PUNJABI
-            "en" -> LanguageType.ENGLISH
-            else -> LanguageType.MIRROR_LANGUAGE
-        }
+    fun detectLanguage(text: String?): LanguageType = when (detectLanguageProfile(text).languageTag) {
+        "ur" -> if (text.orEmpty().any { it in '\u0600'..'\u06FF' }) LanguageType.URDU_SCRIPT else LanguageType.ROMAN_URDU
+        "pa" -> LanguageType.PUNJABI
+        "en" -> LanguageType.ENGLISH
+        else -> LanguageType.MIRROR_LANGUAGE
     }
 
     fun romanUrduToPureUrduScript(romanUrduText: String): String {
         if (romanUrduText.isBlank()) return ""
         val phraseMap = listOf(
-            "assalam-o-alaikum" to "السلام علیکم",
-            "assalam o alaikum" to "السلام علیکم",
-            "assalamoalaikum" to "السلام علیکم",
-            "salam wahi" to "سلام واسطی",
-            "salam" to "سلام",
-            "kya haal hai" to "کیا حال ہے",
-            "kaise ho" to "کیسے ہو",
-            "kaise hain" to "کیسے ہیں",
-            "mera naam" to "میرا نام",
-            "shukriya" to "شکریہ",
-            "shukria" to "شکریہ",
-            "khuda hafiz" to "خدا حافظ",
-            "allah hafiz" to "اللہ حافظ"
+            "assalam-o-alaikum" to "السلام علیکم", "assalam o alaikum" to "السلام علیکم", "assalamoalaikum" to "السلام علیکم",
+            "salam wahi" to "سلام واسطی", "salam" to "سلام", "kya haal hai" to "کیا حال ہے", "kaise ho" to "کیسے ہو",
+            "kaise hain" to "کیسے ہیں", "mera naam" to "میرا نام", "shukriya" to "شکریہ", "shukria" to "شکریہ",
+            "khuda hafiz" to "خدا حافظ", "allah hafiz" to "اللہ حافظ"
         )
         var result = romanUrduText
         phraseMap.forEach { (phrase, replacement) -> result = result.replace(Regex("(?i)\\b$phrase\\b"), replacement) }
@@ -128,16 +85,12 @@ object WastiUrduLanguageEngine {
 
     fun prepareTextForTts(rawText: String): String = WastiSpeechSanitizer.sanitizeForSpeech(rawText).trim()
 
-    /** Builds a deterministic instruction that preserves the user's detected language and script. */
     fun getLanguagePromptMandate(userInput: String): String {
         val profile = detectLanguageProfile(userInput)
-        return "LANGUAGE ROUTING: Detect and preserve the user's language. Detected BCP-47 tag=${profile.languageTag}; language=${profile.languageName}; confidence=${"%.2f".format(Locale.US, profile.confidence)}; detection=${profile.detectionMode}. Reply in the user's language and script by default. Do not translate unless requested. If detection confidence is low, mirror the input conservatively and never silently switch to Urdu, Roman Urdu, or English."
+        return "LANGUAGE ROUTING: Detected BCP-47 tag=${profile.languageTag}; language=${profile.languageName}; confidence=${"%.2f".format(Locale.US, profile.confidence)}; detection=${profile.detectionMode}. Reply in the user's language and script by default. Do not translate unless requested. If detection confidence is low, mirror the input conservatively and never silently switch to Urdu, Roman Urdu, or English."
     }
 
-    private fun tokenize(text: String): Set<String> =
-        text.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{M}]+"))
-            .filter { it.length >= 2 }
-            .toSet()
+    private fun tokenize(text: String): Set<String> = text.lowercase(Locale.ROOT).split(Regex("[^\\p{L}\\p{M}]+" )).filter { it.length >= 2 }.toSet()
 
     private fun detectByScript(text: String): LanguageProfile? {
         fun has(range: CharRange) = text.any { it in range }
@@ -161,8 +114,7 @@ object WastiUrduLanguageEngine {
             has('\u0590'..'\u05ff') -> LanguageProfile("he", "Hebrew", 0.96f, DetectionMode.SCRIPT)
             has('\u0600'..'\u06ff') -> {
                 val urduMarkers = setOf('ٹ', 'ڈ', 'ڑ', 'ں', 'ے', 'ھ')
-                if (text.any { it in urduMarkers }) LanguageProfile("ur", "Urdu", 0.97f, DetectionMode.SCRIPT)
-                else LanguageProfile("ar", "Arabic", 0.90f, DetectionMode.SCRIPT)
+                if (text.any { it in urduMarkers }) LanguageProfile("ur", "Urdu", 0.97f, DetectionMode.SCRIPT) else LanguageProfile("ar", "Arabic", 0.90f, DetectionMode.SCRIPT)
             }
             else -> null
         }
