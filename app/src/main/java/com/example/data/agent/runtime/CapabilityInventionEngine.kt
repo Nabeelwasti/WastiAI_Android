@@ -2,7 +2,6 @@ package com.example.data.agent.runtime
 
 import android.content.Context
 import android.util.Log
-import com.example.data.di.WastiServiceLocator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -35,8 +34,8 @@ data class AcquiredCapabilityDefinition(
     val description: String,
     val version: String = "1.0.0",
     val category: String = "INVENTED",
-    val parameterSchema: Map<String, String>, // paramName -> type (e.g., "text", "number", "path")
-    val executionLogicType: String = "DETERMINISTIC_TRANSFORM", // "DETERMINISTIC_TRANSFORM", "REGEX_EXTRACTOR", "COMPUTED_AGGREGATOR"
+    val parameterSchema: Map<String, String>,
+    val executionLogicType: String = "DETERMINISTIC_TRANSFORM",
     val transformScript: String,
     val testSpecifications: List<CapabilityTestSpecification>,
     val acquiredTimestamp: Long = System.currentTimeMillis(),
@@ -66,9 +65,6 @@ object CapabilityInventionEngine {
     fun getCapability(capabilityId: String): AcquiredCapabilityDefinition? =
         acquiredCapabilities[capabilityId.trim().lowercase()]
 
-    /**
-     * Initializes and restores previously acquired capabilities from internal storage.
-     */
     fun initialize(context: Context) {
         try {
             val file = File(context.filesDir, PERSISTENCE_FILE_NAME)
@@ -91,8 +87,10 @@ object CapabilityInventionEngine {
     }
 
     /**
-     * Autonomous Capability Acquisition:
-     * Synthesizes, sandboxes, tests, verifies, and hot-loads a new capability dynamically.
+     * Autonomous Capability Acquisition.
+     * Sandbox tests prove the synthesized definition is internally consistent; a capability
+     * is only marked VERIFIED/TRUSTED after the actual UnifiedExecutionFabric path has
+     * executed its verification vectors and canonical evidence verification has passed.
      */
     suspend fun acquireCapability(
         context: Context,
@@ -107,7 +105,6 @@ object CapabilityInventionEngine {
 
         val cleanId = capabilityId.trim().lowercase().replace(" ", "_")
 
-        // 1. Safety Guardrails: SelfModificationSafetyEngine check
         if (SelfModificationSafetyEngine.isProtectedPath(cleanId)) {
             return@withContext CapabilityInventionResult(
                 isSuccess = false,
@@ -119,13 +116,11 @@ object CapabilityInventionEngine {
             )
         }
 
-        // 2. Compute provenance hash
         val scriptHash = computeSha256("$cleanId:$transformScript:${System.currentTimeMillis()}")
-
-        // 3. Staged Verification: Run all test specifications in isolated sandbox
         val verificationEngine = WastiVerificationEngine()
-        var lastEvidence: CapabilitySpecificEvidence? = null
+        var lastSandboxEvidence: CapabilitySpecificEvidence? = null
 
+        // Design/build gate: every supplied vector must pass in the bounded sandbox.
         for (test in testSpecifications) {
             val testStart = System.currentTimeMillis()
             val simulatedOutput = executeSandboxTransform(
@@ -135,7 +130,7 @@ object CapabilityInventionEngine {
             )
 
             val passed = simulatedOutput.contains(test.expectedOutputPattern) ||
-                    Regex(test.expectedOutputPattern).containsMatchIn(simulatedOutput)
+                Regex(test.expectedOutputPattern).containsMatchIn(simulatedOutput)
 
             if (!passed) {
                 return@withContext CapabilityInventionResult(
@@ -148,10 +143,9 @@ object CapabilityInventionEngine {
                 )
             }
 
-            // Create structured verification evidence
             val evidence = CapabilitySpecificEvidence(
                 taskId = "invention_task_${UUID.randomUUID().toString().take(8)}",
-                actionId = "verify_test_${test.testName}",
+                actionId = "sandbox_test_${test.testName}",
                 capabilityId = cleanId,
                 executor = "CapabilityInventionEngine",
                 observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,
@@ -180,10 +174,9 @@ object CapabilityInventionEngine {
                     errorDetails = evaluation.explanation
                 )
             }
-            lastEvidence = evidence
+            lastSandboxEvidence = evidence
         }
 
-        // 4. Verification Passed: Construct permanent definition
         val definition = AcquiredCapabilityDefinition(
             capabilityId = cleanId,
             displayName = displayName,
@@ -193,26 +186,102 @@ object CapabilityInventionEngine {
             transformScript = transformScript,
             testSpecifications = testSpecifications,
             provenanceHash = scriptHash,
-            verificationEvidenceId = lastEvidence?.actionId ?: "evidence_${UUID.randomUUID()}"
+            verificationEvidenceId = lastSandboxEvidence?.actionId ?: "evidence_${UUID.randomUUID()}"
         )
 
-        // 5. Hot-load into runtime registry and execution fabric
-        registerCapabilityInRuntime(definition, context, persist = true)
+        // Register as implemented but explicitly not live-verified. This is the only
+        // pre-live state exposed to the canonical reality registry.
+        registerCapabilityInRuntime(definition, context, persist = false)
 
-        Log.i(TAG, "SUCCESS: Capability '$cleanId' invented, verified, and hot-loaded into UnifiedExecutionFabric.")
+        if (testSpecifications.isEmpty()) {
+            return@withContext CapabilityInventionResult(
+                isSuccess = true,
+                capabilityId = cleanId,
+                status = "ACQUIRED_UNVERIFIED",
+                evidence = lastSandboxEvidence,
+                executionOutput = "Capability '$displayName' acquired but not marked verified because no live verification vectors were supplied.",
+                errorDetails = "At least one verification vector is required for VERIFIED status"
+            )
+        }
+
+        // Reality gate: execute the vectors through the same UnifiedExecutionFabric used by
+        // real callers, observe the result, then ask the canonical verifier to validate it.
+        var lastLiveEvidence: CapabilitySpecificEvidence? = null
+        for (test in testSpecifications) {
+            val executionResult = UnifiedExecutionFabric.instance.execute(
+                UnifiedExecutionRequest(
+                    taskId = "invention_live_${UUID.randomUUID().toString().take(8)}",
+                    actionId = "live_verify_${test.testName}",
+                    capabilityId = cleanId,
+                    parameters = test.inputParameters
+                ),
+                context
+            )
+
+            val observedOutput = executionResult.output
+            val outputMatches = observedOutput.contains(test.expectedOutputPattern) ||
+                Regex(test.expectedOutputPattern).containsMatchIn(observedOutput)
+
+            if (executionResult.status == UnifiedExecutionStatus.FAILED || !outputMatches) {
+                return@withContext CapabilityInventionResult(
+                    isSuccess = false,
+                    capabilityId = cleanId,
+                    status = "LIVE_EXECUTION_VERIFICATION_FAILED",
+                    evidence = null,
+                    executionOutput = "Live verification failed for '${test.testName}': status=${executionResult.status}, output='$observedOutput'",
+                    errorDetails = "UnifiedExecutionFabric observation did not satisfy the verification vector"
+                )
+            }
+
+            val liveEvidence = CapabilitySpecificEvidence(
+                taskId = executionResult.taskId,
+                actionId = executionResult.actionId,
+                capabilityId = cleanId,
+                executor = executionResult.executor,
+                observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,
+                timestamp = executionResult.completedAt,
+                artifactOrStateReference = "script_hash:$scriptHash",
+                expectedState = test.expectedOutputPattern,
+                observedState = observedOutput.take(128),
+                checksumOrHash = computeSha256(observedOutput),
+                verifierIdentity = "WastiVerificationEngine_LiveInventionGate",
+                verificationMethod = "LIVE_EXECUTION_TEST"
+            )
+
+            val evaluation = verificationEngine.verify(
+                evidence = liveEvidence,
+                domain = test.verificationDomain,
+                maxAllowedAgeMs = 60_000L
+            )
+
+            if (!evaluation.isVerified) {
+                return@withContext CapabilityInventionResult(
+                    isSuccess = false,
+                    capabilityId = cleanId,
+                    status = "LIVE_EVIDENCE_EVALUATION_FAILED",
+                    evidence = liveEvidence,
+                    executionOutput = "Live evidence rejected: ${evaluation.explanation}",
+                    errorDetails = evaluation.explanation
+                )
+            }
+            lastLiveEvidence = liveEvidence
+        }
+
+        // Only now may the capability cross the LIVE_CONNECTED / VERIFIED boundary.
+        markCapabilityLiveVerified(definition, lastLiveEvidence!!)
+        saveAllToDisk(context)
+
+        Log.i(TAG, "SUCCESS: Capability '$cleanId' passed sandbox and live execution verification and is now trusted.")
 
         CapabilityInventionResult(
             isSuccess = true,
             capabilityId = cleanId,
             status = "ACQUIRED_AND_VERIFIED",
-            evidence = lastEvidence,
-            executionOutput = "Capability '$displayName' successfully acquired and verified against ${testSpecifications.size} tests."
+            evidence = lastLiveEvidence,
+            executionOutput = "Capability '$displayName' acquired, live-executed, observed, and verified against ${testSpecifications.size} vectors."
         )
     }
 
-    /**
-     * Executes the synthesized logic safely inside the sandbox.
-     */
     fun executeSandboxTransform(
         logicType: String,
         script: String,
@@ -260,9 +329,7 @@ object CapabilityInventionEngine {
                     "LOWERCASE" -> input.lowercase()
                     else -> {
                         var result = script
-                        parameters.forEach { (k, v) ->
-                            result = result.replace("{$k}", v)
-                        }
+                        parameters.forEach { (k, v) -> result = result.replace("{$k}", v) }
                         result
                     }
                 }
@@ -302,9 +369,6 @@ object CapabilityInventionEngine {
         }
     }
 
-    /**
-     * Hot-loads the capability into UnifiedExecutionFabric and RealityRegistry.
-     */
     private fun registerCapabilityInRuntime(
         def: AcquiredCapabilityDefinition,
         context: Context,
@@ -312,7 +376,6 @@ object CapabilityInventionEngine {
     ) {
         acquiredCapabilities[def.capabilityId] = def
 
-        // 1. Register in RealityRegistry as LIVE_CONNECTED / NATIVE
         val reality = CapabilityReality(
             capabilityId = def.capabilityId,
             category = def.category,
@@ -322,13 +385,12 @@ object CapabilityInventionEngine {
             authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
             provider = "CapabilityInventionEngine",
             supportedOperations = listOf("execute", "sandbox_eval"),
-            limitations = listOf("Dynamic sandboxed transform execution"),
-            realityState = CapabilityRealityState.LIVE_CONNECTED,
+            limitations = listOf("Dynamic bounded transform execution; live verification required before trust"),
+            realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED,
             verificationMethod = "SANDBOX_UNIT_TEST"
         )
         UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(reality)
 
-        // 2. Register dynamic UnifiedExecutor into UnifiedExecutionFabric
         val dynamicExecutor = object : UnifiedExecutor {
             override val name: String = "InventionExecutor_${def.capabilityId}"
             val executorId: String get() = name
@@ -354,17 +416,34 @@ object CapabilityInventionEngine {
                     executor = executorId,
                     startedAt = startedAt,
                     completedAt = System.currentTimeMillis(),
-                    verificationStatus = if (isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
-                    verificationEvidence = "Invention sandbox execution with provenance hash: ${def.provenanceHash}"
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                    verificationEvidence = "Invention runtime observation; provenance hash: ${def.provenanceHash}"
                 )
             }
         }
         UnifiedExecutionFabric.instance.registerExecutor(dynamicExecutor)
 
-        // 3. Persist to disk if newly acquired
-        if (persist) {
-            saveAllToDisk(context)
-        }
+        if (persist) saveAllToDisk(context)
+    }
+
+    private fun markCapabilityLiveVerified(
+        def: AcquiredCapabilityDefinition,
+        liveEvidence: CapabilitySpecificEvidence
+    ) {
+        val verifiedReality = CapabilityReality(
+            capabilityId = def.capabilityId,
+            category = def.category,
+            implementationStatus = ImplementationStatus.READY,
+            liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+            executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+            authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
+            provider = "CapabilityInventionEngine",
+            supportedOperations = listOf("execute", "sandbox_eval"),
+            limitations = listOf("Bounded dynamic transform; verified against recorded live execution vectors"),
+            realityState = CapabilityRealityState.LIVE_CONNECTED,
+            verificationMethod = liveEvidence.verificationMethod
+        )
+        UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(verifiedReality)
     }
 
     private fun saveAllToDisk(context: Context) {
