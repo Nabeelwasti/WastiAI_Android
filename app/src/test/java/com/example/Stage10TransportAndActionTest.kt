@@ -149,7 +149,7 @@ class Stage10TransportAndActionTest {
             context
         )
         assertEquals("Nav execution failed: status=${navRes.status}, output=${navRes.output}, error=${navRes.error}", UnifiedExecutionStatus.COMPLETED, navRes.status)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, navRes.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, navRes.verificationStatus)
         assertTrue("Nav output missing terminal: ${navRes.output}", navRes.output.contains("terminal"))
     }
 
@@ -164,7 +164,7 @@ class Stage10TransportAndActionTest {
                 context
             )
             assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.COMPLETED, serverRes.status)
-            assertEquals(UnifiedVerificationStatus.UNVERIFIED, serverRes.verificationStatus)
+            assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, serverRes.verificationStatus)
             assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
         } finally {
             com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
