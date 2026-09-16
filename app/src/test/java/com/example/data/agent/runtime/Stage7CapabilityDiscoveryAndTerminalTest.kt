@@ -147,11 +147,12 @@ class Stage7CapabilityDiscoveryAndTerminalTest {
             parameters = mapOf("command" to "sh", "arguments" to listOf("-c", "echo UnifiedFabricTerminal"))
         )
         val result = fabric.execute(req)
-        // Execution status records the lifecycle completion; verificationStatus records truth verification.
-        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
+        // Successful terminal execution now carries authentic WRE evidence through the unified fabric.
+        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
         assertTrue(result.output.contains("UnifiedFabricTerminal"))
         assertEquals("WastiNativeExecutionProvider", result.executor)
-        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertNotNull(result.verifiedExecutionEvidence)
     }
 
     // 10. Unified Execution Routing for Missing Python Execution
