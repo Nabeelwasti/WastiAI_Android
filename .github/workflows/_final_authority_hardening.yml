@@ -20,14 +20,13 @@ jobs:
         run: |
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           def edit(path, replacements):
-              p = Path(path)
-              s = p.read_text()
-              original = s
+              p = Path(path); s = p.read_text(); original = s
               for old, new in replacements:
                   if old not in s:
-                      raise SystemExit(f'MISSING PATTERN in {path}: {old[:160]!r}')
+                      raise SystemExit(f'MISSING PATTERN in {path}: {old[:180]!r}')
                   s = s.replace(old, new, 1)
               if s == original:
                   raise SystemExit(f'NO CHANGE: {path}')
@@ -44,7 +43,7 @@ jobs:
           ])
 
           edit('app/src/main/java/com/example/data/node/AutonomousHardwareOffloader.kt', [
-              ('verificationStatus = UnifiedVerificationStatus.VERIFIED,', 'verificationStatus = UnifiedVerificationStatus.UNVERIFIED,',),
+              ('verificationStatus = UnifiedVerificationStatus.VERIFIED,', 'verificationStatus = UnifiedVerificationStatus.UNVERIFIED,'),
               ('verificationEvidence = "Bluetooth RFCOMM execution verified: ${targetNode.capabilityFingerprint}"', 'verificationEvidence = "Bluetooth RFCOMM peer execution completed; independent local verification required: ${targetNode.capabilityFingerprint}"'),
               ('            verificationStatus = UnifiedVerificationStatus.VERIFIED,\n            verificationEvidence = "Bluetooth verified peer: ${targetNode.addressOrIp} fingerprint: ${targetNode.capabilityFingerprint} (duration: ${duration}ms)"', '            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,\n            verificationEvidence = "Bluetooth peer execution completed: ${targetNode.addressOrIp} fingerprint: ${targetNode.capabilityFingerprint} (duration: ${duration}ms); independent local verification required"')
           ])
@@ -65,9 +64,12 @@ jobs:
               ('val outcome = if (result.status == UnifiedExecutionStatus.COMPLETED || result.status == UnifiedExecutionStatus.VERIFIED) "Success" else "Failed (${result.status})"', 'val outcome = when {\n            result.verificationStatus == UnifiedVerificationStatus.VERIFIED -> "Verified"\n            result.status == UnifiedExecutionStatus.COMPLETED -> "Executed"\n            else -> "Failed (${result.status})"\n        }')
           ])
 
-          edit('app/src/main/java/com/example/data/agent/runtime/WastiObservationEngine.kt', [
-              ('        executorResult.status == UnifiedExecutionStatus.VERIFIED ||\n            executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED ||\n            executorResult.status.name == "COMPLETED"', '        executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED')
-          ])
+          p = Path('app/src/main/java/com/example/data/agent/runtime/WastiObservationEngine.kt')
+          s = p.read_text()
+          s2 = re.sub(r'    private fun isVerified\(executorResult: UnifiedExecutionResult\): Boolean =\n(?:        .*\n)+?(?=\n    )', '    private fun isVerified(executorResult: UnifiedExecutionResult): Boolean =\n        executorResult.verificationStatus == UnifiedVerificationStatus.VERIFIED', s, count=1)
+          if s2 == s:
+              raise SystemExit('MISSING PATTERN in WastiObservationEngine isVerified')
+          p.write_text(s2)
 
           edit('app/src/main/java/com/example/data/ai/engine/SelfTrainingKnowledgeDistillationEngine.kt', [
               ('            isFactuallyVerified = true\n', '            isFactuallyVerified = verificationResult.status == ActionVerificationStatus.VERIFIED &&\n                verificationResult.structuredEvidence != null\n'),
@@ -75,27 +77,25 @@ jobs:
           ])
 
           edit('app/src/main/java/com/example/data/agent/runtime/WastiVerificationEngine.kt', [
-              ('        val isTrulyVerified = evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&\n            evidence.subject.isNotBlank() &&\n            evidence.verifiedState.isNotBlank() &&\n            !isSyntheticOrMock(evidence.subject) &&\n            !isSyntheticOrMock(evidence.verifiedState) &&\n            !isStale', '        val hasIndependentProof = !evidence.checksumOrHash.isNullOrBlank() &&\n            evidence.evidenceSource in setOf(\n                EvidenceSource.FILESYSTEM,\n                EvidenceSource.FILESYSTEM_AUDIT,\n                EvidenceSource.DATABASE_QUERY,\n                EvidenceSource.HTTP_CONTRACT,\n                EvidenceSource.PROCESS_TELEMETRY,\n                EvidenceSource.SYSTEM_SERVICE,\n                EvidenceSource.UI_TREE,\n                EvidenceSource.SENSOR_EVENT,\n                EvidenceSource.LOCAL_MODEL_INFERENCE,\n                EvidenceSource.RUNTIME_DIAGNOSTIC\n            )\n\n        val isTrulyVerified = hasIndependentProof &&\n            evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&\n            evidence.subject.isNotBlank() &&\n            evidence.verifiedState.isNotBlank() &&\n            !isSyntheticOrMock(evidence.subject) &&\n            !isSyntheticOrMock(evidence.verifiedState) &&\n            !isStale')
+              ('        val isTrulyVerified = evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&\n            evidence.subject.isNotBlank() &&\n            evidence.verifiedState.isNotBlank() &&\n            !isSyntheticOrMock(evidence.subject) &&\n            !isSyntheticOrMock(evidence.verifiedState) &&\n            !isStale', '        val hasIndependentProof = !evidence.checksumOrHash.isNullOrBlank() &&\n            evidence.evidenceSource in setOf(\n                EvidenceSource.FILESYSTEM, EvidenceSource.FILESYSTEM_AUDIT, EvidenceSource.DATABASE_QUERY,\n                EvidenceSource.HTTP_CONTRACT, EvidenceSource.PROCESS_TELEMETRY, EvidenceSource.SYSTEM_SERVICE,\n                EvidenceSource.UI_TREE, EvidenceSource.SENSOR_EVENT, EvidenceSource.LOCAL_MODEL_INFERENCE,\n                EvidenceSource.RUNTIME_DIAGNOSTIC\n            )\n\n        val isTrulyVerified = hasIndependentProof &&\n            evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&\n            evidence.subject.isNotBlank() &&\n            evidence.verifiedState.isNotBlank() &&\n            !isSyntheticOrMock(evidence.subject) &&\n            !isSyntheticOrMock(evidence.verifiedState) &&\n            !isStale')
           ])
 
-          # Make the static capability registry honest: implementation existence is not live operation.
           p = Path('app/src/main/java/com/example/data/agent/runtime/CapabilityRealityRegistry.kt')
           s = p.read_text()
           old = 'implementationStatus = ImplementationStatus.READY,\n                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,\n                executionStatus = CapabilityExecutionStatus.OPERATIONAL,'
           new = 'implementationStatus = ImplementationStatus.READY,\n                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,\n                executionStatus = CapabilityExecutionStatus.UNAVAILABLE,'
           if old not in s:
               raise SystemExit('MISSING PATTERN in CapabilityRealityRegistry static state')
-          s = s.replace(old, new)
-          p.write_text(s)
+          p.write_text(s.replace(old, new))
           PY
 
       - name: Authority invariant scan
         shell: bash
         run: |
-          ! grep -R --line-number 'isRealityVerified: Boolean = true' app/src/main || true
-          ! grep -R --line-number 'WastiSovereign2026!' app/src/main || true
-          ! grep -R --line-number 'verificationStatus = UnifiedVerificationStatus.VERIFIED' app/src/main/java/com/example/data/node app/src/main/java/com/example/data/agent/runtime/CapabilityInventionEngine.kt || true
-          ! grep -R --line-number 'res.status == UnifiedExecutionStatus.COMPLETED' app/src/main/java/com/example/ui || true
+          if grep -R --line-number 'isRealityVerified: Boolean = true' app/src/main; then exit 1; fi
+          if grep -R --line-number 'WastiSovereign2026!' app/src/main; then exit 1; fi
+          if grep -R --line-number 'verificationStatus = UnifiedVerificationStatus.VERIFIED' app/src/main/java/com/example/data/node app/src/main/java/com/example/data/agent/runtime/CapabilityInventionEngine.kt; then exit 1; fi
+          if grep -R --line-number 'res.status == UnifiedExecutionStatus.COMPLETED' app/src/main/java/com/example/ui; then exit 1; fi
 
       - name: Compile
         run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
