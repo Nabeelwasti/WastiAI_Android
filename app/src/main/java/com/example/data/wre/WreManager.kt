@@ -319,12 +319,16 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: directory '$path' does not exist on disk"
                             )
                         }
+                        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                            .digest("${target?.canonicalPath ?: path}:DIRECTORY_EXISTS".toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
                         val structured = VerifiedExecutionEvidence(
                             evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                             subject = target?.canonicalPath ?: path,
                             verifiedState = "DIRECTORY_EXISTS",
                             confidence = 0.95,
-                            observedAt = System.currentTimeMillis()
+                            observedAt = System.currentTimeMillis(),
+                            checksumOrHash = proofHash
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -350,12 +354,16 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: file '$path' does not exist on disk"
                             )
                         }
+                        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                            .digest("${target?.canonicalPath ?: path}:FILE_EXISTS_SIZE_${target?.length() ?: 0}".toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
                         val structured = VerifiedExecutionEvidence(
                             evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                             subject = target?.canonicalPath ?: path,
                             verifiedState = "FILE_EXISTS_SIZE_${target?.length() ?: 0}_BYTES",
                             confidence = 0.95,
-                            observedAt = System.currentTimeMillis()
+                            observedAt = System.currentTimeMillis(),
+                            checksumOrHash = proofHash
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -381,12 +389,16 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: file '$path' still exists on disk"
                             )
                         }
+                        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                            .digest("$path:FILE_DELETED".toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
                         val structured = VerifiedExecutionEvidence(
                             evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                             subject = path,
                             verifiedState = "FILE_DELETED",
                             confidence = 0.95,
-                            observedAt = System.currentTimeMillis()
+                            observedAt = System.currentTimeMillis(),
+                            checksumOrHash = proofHash
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -412,12 +424,16 @@ class WreManager(val context: Context) {
                                 verificationEvidence = "Filesystem verification failed: destination '$dest' does not exist on disk"
                             )
                         }
+                        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                            .digest("${target?.canonicalPath ?: dest}:FILE_EXISTS_AT_DESTINATION".toByteArray(Charsets.UTF_8))
+                            .joinToString("") { "%02x".format(it) }
                         val structured = VerifiedExecutionEvidence(
                             evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                             subject = target?.canonicalPath ?: dest,
                             verifiedState = "FILE_EXISTS_AT_DESTINATION",
                             confidence = 0.95,
-                            observedAt = System.currentTimeMillis()
+                            observedAt = System.currentTimeMillis(),
+                            checksumOrHash = proofHash
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -441,12 +457,16 @@ class WreManager(val context: Context) {
             if (redirectedFile.isNotBlank()) {
                 val target = workspaceManager.resolve("${workspaceManager.getVirtualPath(workingDir)}/$redirectedFile").getOrNull()
                 if (target != null && target.exists() && target.isFile) {
+                    val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest("${target.canonicalPath}:FILE_REDIRECTION_VERIFIED:${target.length()}".toByteArray(Charsets.UTF_8))
+                        .joinToString("") { "%02x".format(it) }
                     val structured = VerifiedExecutionEvidence(
                         evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                         subject = target.canonicalPath,
                         verifiedState = "FILE_REDIRECTION_VERIFIED",
                         confidence = 0.95,
-                        observedAt = System.currentTimeMillis()
+                        observedAt = System.currentTimeMillis(),
+                        checksumOrHash = proofHash
                     )
                     val vRes = verificationEngine.verifyStructuredEvidence(
                         taskId = request.executionId,
@@ -464,12 +484,16 @@ class WreManager(val context: Context) {
         }
 
         // Canonical verification for successful process execution (e.g. pwd, whoami, python, etc.)
+        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("${request.executionId}:${request.command}:${result.exitCode}:${result.stdout.hashCode()}".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
         val structured = VerifiedExecutionEvidence(
             evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
             subject = "wre_process:${request.command.take(64)}",
             verifiedState = "PROCESS_EXIT_0_STDOUT_OBSERVED",
             confidence = 0.90,
-            observedAt = System.currentTimeMillis()
+            observedAt = System.currentTimeMillis(),
+            checksumOrHash = proofHash
         )
         val vRes = verificationEngine.verifyStructuredEvidence(
             taskId = request.executionId,

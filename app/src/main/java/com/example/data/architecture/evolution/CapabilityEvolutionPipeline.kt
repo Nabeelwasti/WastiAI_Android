@@ -76,7 +76,9 @@ object CapabilityEvolutionPipeline {
             return@withContext Result.failure(IllegalStateException("Honest Failure: Test evidence invalid or synthetic."))
         }
 
-        // Stage: VERIFY - Canonical Verification Authority check
+        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest("$gapId:${item.capabilityName}:$verificationEvidence".toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
         val vRes = engine.verifyStructuredEvidence(
             taskId = gapId,
             actionId = "evolve_capability",
@@ -85,7 +87,8 @@ object CapabilityEvolutionPipeline {
                 evidenceSource = com.example.data.agent.runtime.EvidenceSource.RUNTIME_DIAGNOSTIC,
                 subject = item.capabilityName,
                 verifiedState = verificationEvidence,
-                observedAt = System.currentTimeMillis()
+                observedAt = System.currentTimeMillis(),
+                checksumOrHash = proofHash
             )
         )
         val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED

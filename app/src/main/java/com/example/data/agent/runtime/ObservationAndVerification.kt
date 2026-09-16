@@ -171,7 +171,18 @@ data class VerifiedExecutionEvidence(
     val checksumOrHash: String? = null,
     val observedAt: Long = System.currentTimeMillis(),
     val confidence: Double = 1.0
-)
+) {
+    fun getEffectiveChecksum(): String {
+        if (!checksumOrHash.isNullOrBlank()) return checksumOrHash
+        return try {
+            val digest = java.security.MessageDigest.getInstance("SHA-256")
+            val payload = "$evidenceSource:$subject:$verifiedState:$observedAt:$confidence"
+            digest.digest(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+        } catch (_: Throwable) {
+            "hash_${subject.hashCode()}_${verifiedState.hashCode()}"
+        }
+    }
+}
 
 /**
  * Execution simulation result, permanently marked as SIMULATION_ONLY / TEST_ONLY.
