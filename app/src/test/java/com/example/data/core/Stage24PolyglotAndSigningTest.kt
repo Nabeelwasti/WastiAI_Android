@@ -84,9 +84,10 @@ class Stage24PolyglotAndSigningTest {
         assertNotNull(retrievedDetails)
         assertEquals(details.sha256Fingerprint, retrievedDetails!!.sha256Fingerprint)
 
-        // Verify Production Readiness Signing Gate
+        // Verify Production Readiness Signing Gate (device-generated key rejected from official production release)
         val gateStatus = WastiProductionSigningEngine.verifyProductionReadinessSigningGate(context)
-        assertTrue(gateStatus.isVerified)
+        assertFalse("Device-generated key must be rejected from official production release", gateStatus.isVerified)
+        assertFalse(gateStatus.isOfficialProductionKey)
         assertTrue(gateStatus.details.contains(details.sha256Fingerprint))
     }
 
