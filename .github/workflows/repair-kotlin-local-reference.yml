@@ -1,0 +1,67 @@
+name: Repair Kotlin Local Reference
+
+on:
+  push:
+    branches:
+      - repair/kotlin-local-reference
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply surgical source repair
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt")
+          text = path.read_text(encoding="utf-8")
+
+          old = '''private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
+              if (ttsEngine == null || text.isBlank()) return
+'''
+          new = '''private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
+              if (text.isBlank()) return
+'''
+          if old not in text:
+              raise SystemExit("Expected TTS function guard was not found; refusing to modify the file.")
+          text = text.replace(old, new, 1)
+
+          old = '''    if (::ttsEngine.isInitialized) {
+'''
+          new = '''    if (ttsEngine != null) {
+'''
+          if old not in text:
+              raise SystemExit("Expected local-variable property-reference was not found; refusing to modify the file.")
+          text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+          print("Applied exactly two surgical substitutions; all other file content preserved.")
+          PY
+
+      - name: Verify surgical repair
+        run: |
+          grep -n 'if (::ttsEngine.isInitialized)' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt && exit 1 || true
+          grep -n 'if (ttsEngine != null)' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          git diff --check
+          git diff -- app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+
+      - name: Promote repaired source to main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "Wasti AI Repair Bot"
+          git config user.email "125601766+Nabeelwasti@users.noreply.github.com"
+          git add app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          git diff --cached --quiet && { echo "No repair diff remains; refusing empty promotion."; exit 1; }
+          git commit -m "fix(tts): remove unsupported local variable reference"
+          git push origin HEAD:main
