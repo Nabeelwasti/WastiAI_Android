@@ -1,4 +1,4 @@
-# phase-2-trigger
+# cleanup-trigger
 name: Safe Repair Series
 
 on:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  repair-one-file:
+  cleanup-repair-runner:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact repair branch
@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch exactly one production file
+      - name: Verify both source repairs and remove temporary runner
         shell: bash
         run: |
           set -euo pipefail
@@ -26,28 +26,30 @@ jobs:
           from pathlib import Path
           fabric = Path("app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt")
           chat = Path("app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt")
+          workflow = Path(".github/workflows/repair-series-safe.yml")
           f = fabric.read_text(encoding="utf-8")
-          if "val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null" not in f:
-              raise SystemExit("SAFE PATCH ABORT: Phase 1 source repair is missing")
-          if "structuredEvidence = execResult.verifiedExecutionEvidence" not in f:
-              raise SystemExit("SAFE PATCH ABORT: Phase 1 verification propagation is missing")
-
           c = chat.read_text(encoding="utf-8")
-          old = '''    if (ttsEngine != null) {\n        try {\n            val result = ttsEngine.setLanguage(targetLocale)\n            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {\n                ttsEngine.language = Locale.ENGLISH\n            }\n            val params = android.os.Bundle()\n            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")\n            ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")\n        } catch (e: Exception) {\n            android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)\n            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n                try {\n                    VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n                } catch (_: Throwable) {}\n            }\n        }\n    } else {\n        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n            try {\n                VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n            } catch (_: Throwable) {}\n        }\n    }'''
-          new = '''    try {\n        val result = ttsEngine.setLanguage(targetLocale)\n        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {\n            ttsEngine.language = Locale.ENGLISH\n        }\n        val params = android.os.Bundle()\n        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")\n        ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")\n    } catch (e: Exception) {\n        android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)\n        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {\n            try {\n                VoiceManager.synthesizeSpeech(ttsTextToSpeak)\n            } catch (_: Throwable) {}\n        }\n    }'''
-          if c.count(old) != 1:
-              raise SystemExit("SAFE PATCH ABORT: TTS unreachable-branch anchor count != 1")
-          chat.write_text(c.replace(old, new, 1), encoding="utf-8")
-          print("PATCHED: ChatWorkspaceScreen.kt")
+          required_fabric = [
+              "val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null",
+              "verifiedExecutionEvidence = wreResult.verifiedExecutionEvidence,",
+              "structuredEvidence = execResult.verifiedExecutionEvidence"
+          ]
+          for marker in required_fabric:
+              if marker not in f:
+                  raise SystemExit(f"CLEANUP ABORT: missing fabric repair marker: {marker}")
+          if "if (ttsEngine != null) {" in c:
+              raise SystemExit("CLEANUP ABORT: unreachable TTS branch still present")
+          workflow.unlink()
+          print("VERIFIED: both source repairs present; temporary runner removed")
           PY
 
-      - name: Commit and push exactly one file
+      - name: Commit runner cleanup only
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "wasti-safe-repair"
           git config user.email "actions@users.noreply.github.com"
-          git add app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
-          git diff --cached --quiet && { echo "No ChatWorkspaceScreen.kt change"; exit 1; }
-          git commit -m "fix(ui): remove unreachable TTS null branch"
+          git add .github/workflows/repair-series-safe.yml
+          git diff --cached --quiet && { echo "Cleanup file already absent"; exit 1; }
+          git commit -m "chore(repair): remove temporary safe repair runner"
           git push origin HEAD:repair/stage9e-safe-series
