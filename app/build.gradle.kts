@@ -63,7 +63,6 @@ fun resolvePublicConfigWithFallback(key: String, safeStaticFallback: String): St
   return safeStaticFallback
 }
 
-
 val activeEnvironment = if (isTestTaskExecution) "test" else (System.getenv("BUILD_ENVIRONMENT") ?: "development")
 
 val wastiPublicConfig = mapOf(
@@ -101,12 +100,12 @@ fun wastiPublicValue(value: String): String =
 
 android {
   namespace = "com.example"
-  compileSdk = 36
+  compileSdk = 37
 
   defaultConfig {
     applicationId = "com.aistudio.wastios.k9v2pz"
     minSdk = 24
-    targetSdk = 36
+    targetSdk = 37
     versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
     versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
     multiDexEnabled = true
@@ -125,7 +124,6 @@ android {
       buildConfigField("String", key, "\"\"")
     }
   }
-
 
   val releaseKeystorePath = System.getenv("KEYSTORE_PATH")
   val releaseStorePassword = System.getenv("STORE_PASSWORD")
@@ -204,8 +202,6 @@ android {
         test.systemProperty("WASTI_ENV", "test")
         test.environment("WASTI_ENV" to "test")
         test.environment("ENVIRONMENT" to "test")
-        // CI must report failures, not print thousands of successful test events.
-        // Excessive per-test stdout makes the suite slower and obscures hangs.
         test.testLogging {
           events("skipped", "failed")
           showStandardStreams = false
@@ -224,7 +220,7 @@ android {
               println("========================================================\n")
             } else if (suite.className != null) {
               val status = if (result.failedTestCount > 0) "FAILED" else "PASSED"
-              println("  ✔ [TEST SUITE $status] ${suite.className} (${result.testCount} tests, ${result.successfulTestCount} passed)")
+              println("  ✔ [TEST SUITE $status] ${suite.className} (${suite.testCount} tests, ${suite.successfulTestCount} passed)")
             }
           }
           override fun beforeTest(testDescriptor: org.gradle.api.tasks.testing.TestDescriptor) {}
@@ -237,15 +233,8 @@ android {
             }
           }
         })
-        // This suite contains process-wide singletons, embedded servers, Room state,
-        // and global emergency-stop state. Keep JVM test classes isolated by process
-        // order rather than introducing cross-class races in CI.
         test.maxParallelForks = 1
-        // Stop at the first real test failure so CI never burns the remaining budget
-        // after the suite has already established a failing state.
         test.failFast = true
-        // Generous safety ceiling for the comprehensive unit test suite in CI.
-        // This applies only to JVM test execution in CI; it does not restrict Wasti OS runtime execution.
         test.timeout.set(Duration.ofMinutes(12))
       }
     }
@@ -324,8 +313,8 @@ dependencies {
   implementation(libs.moshi.kotlin)
   implementation(libs.okhttp)
   implementation(libs.retrofit)
-  implementation("androidx.work:work-runtime-ktx:2.8.1")
-  implementation("androidx.appcompat:appcompat:1.6.1")
+  implementation(libs.androidx.work.runtime.ktx)
+  implementation(libs.androidx.appcompat)
   implementation("com.alphacephei:vosk-android:0.3.47")
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)
@@ -343,6 +332,6 @@ dependencies {
   androidTestImplementation(libs.androidx.runner)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
   debugImplementation(libs.androidx.compose.ui.tooling)
-  "ksp"(libs.androidx.room.compiler)
-  "ksp"(libs.moshi.kotlin.codegen)
+  ksp(libs.androidx.room.compiler)
+  ksp(libs.moshi.kotlin.codegen)
 }
