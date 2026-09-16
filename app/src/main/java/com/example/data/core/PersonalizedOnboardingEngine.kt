@@ -40,7 +40,7 @@ enum class SwarmComputePreference {
 data class PersonalizedSetupPlan(
     val role: UserPrimaryRole,
     val computePreference: SwarmComputePreference,
-    val autoCreateKeystore: Boolean = true,
+    val autoCreateKeystore: Boolean = false,
     val autoDeployCloudTunnel: Boolean = true,
     val userCustomInstructions: String = ""
 )
@@ -100,23 +100,9 @@ object PersonalizedOnboardingEngine {
         )
         db.knowledgeDao().insertKnowledge(hardwareKnowledge)
 
-        // 4. Autonomously Resolve Production Keystore Gate with Automatic Fallback & Discovery
+        // Production signing is never manufactured by onboarding. Only the configured official key can satisfy the gate.
         if (plan.autoCreateKeystore) {
-            val discoveredExternal = WastiProductionSigningEngine.discoverExternalKeystore(context)
-            if (discoveredExternal != null && discoveredExternal.exists() && !File(context.filesDir, "security/keystore/wasti_production_release.p12").exists()) {
-                val importResult = WastiProductionSigningEngine.importExistingKeystore(context, discoveredExternal)
-                Log.i(TAG, "Discovered existing keystore on device at ${discoveredExternal.absolutePath}. Imported automatically: ${importResult.isSuccess}")
-            } else if (!WastiProductionSigningEngine.hasExistingKeystore(context)) {
-                val keyResult = WastiProductionSigningEngine.generateSovereignReleaseKeystore(
-                    context = context,
-                    organization = "Wasti AI OS Sovereign (${plan.role})"
-                )
-                if (keyResult.isSuccess) {
-                    Log.i(TAG, "Autonomous production keystore created during first-run setup.")
-                }
-            } else {
-                Log.i(TAG, "Existing sovereign keystore preserved. Keystore gate resolved.")
-            }
+            Log.w(TAG, "Automatic production-key creation is disabled: production authority must come from the configured official signing key.")
         }
 
         // 5. Autonomously Resolve Public Cloud Companion Ingress Gate

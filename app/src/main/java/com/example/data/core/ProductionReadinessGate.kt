@@ -244,17 +244,12 @@ object ProductionReadinessGate {
         val backendLiveStatus = backendAdapter.getLiveVerificationState()
         val backendIsLiveVerified = backendLiveStatus == com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED
 
-        val backendReadinessState = when {
-            backendIsLiveVerified && backendSecretConfigured -> ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED
-            backendIsLiveVerified -> ProductionReadinessState.TEST_VERIFIED
-            backendSecretConfigured -> ProductionReadinessState.DEVELOPMENT_READY
-            else -> ProductionReadinessState.DEVELOPMENT_READY
-        }
+        val backendReadinessState = if (backendIsLiveVerified) ProductionReadinessState.EXTERNAL_INTEGRATIONS_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY
 
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "CloudBackendOffload",
-                isOperational = backendSecretConfigured || backendIsLiveVerified,
+                isOperational = backendIsLiveVerified,
                 isLiveVerified = backendIsLiveVerified,
                 state = backendReadinessState,
                 notes = when {
@@ -270,7 +265,7 @@ object ProductionReadinessGate {
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "RealDeviceExecutionVerification",
-                isOperational = true,
+                isOperational = hasDeviceProof,
                 isLiveVerified = hasDeviceProof,
                 state = if (hasDeviceProof) ProductionReadinessState.DEVICE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
                 notes = if (hasDeviceProof) "Physical device/emulator instrumentation proof verified (${DeviceVerificationEvidenceTracker.getDeviceProofReport().firstOrNull()?.deviceModel})"
@@ -286,7 +281,7 @@ object ProductionReadinessGate {
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "RuntimePermissionTruth",
-                isOperational = true,
+                isOperational = hasCorePermissionsGranted,
                 isLiveVerified = hasCorePermissionsGranted,
                 state = if (hasCorePermissionsGranted) ProductionReadinessState.DEVICE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
                 notes = if (hasCorePermissionsGranted) "Core runtime permissions (Audio, Notifications) verified granted on device"

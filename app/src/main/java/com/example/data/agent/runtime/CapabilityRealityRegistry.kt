@@ -588,7 +588,7 @@ class CapabilityRealityRegistry {
                 category = "DYNAMIC_WRE",
                 implementationStatus = ImplementationStatus.READY,
                 liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
-                executionStatus = CapabilityExecutionStatus.OPERATIONAL,
+                executionStatus = CapabilityExecutionStatus.UNAVAILABLE,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WreDynamicToolProvider",
                 supportedOperations = listOf("execute"),
@@ -685,6 +685,18 @@ class CapabilityRealityRegistry {
         require(capability.capabilityId.isNotBlank()) {
             "Capability ID must not be blank."
         }
+        val canonical = capability.verificationMethod.startsWith("CANONICAL_REALITY_VERIFIED:")
+        val attemptedPromotion = capability.liveConnectionStatus == LiveConnectionStatus.VERIFIED ||
+            capability.realityState == CapabilityRealityState.LIVE_CONNECTED
+        if (attemptedPromotion && !canonical) {
+            capabilityMap[normalizedKey(capability.capabilityId)] = capability.copy(
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
+                executionStatus = if (capability.executionStatus == CapabilityExecutionStatus.OPERATIONAL) CapabilityExecutionStatus.DEGRADED else capability.executionStatus,
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED,
+                verificationMethod = "UNVERIFIED_REGISTRATION"
+            )
+            return
+        }
         capabilityMap[normalizedKey(capability.capabilityId)] = capability
     }
 
@@ -703,7 +715,12 @@ class CapabilityRealityRegistry {
                 fact.environmentTier == ExecutionEnvironmentTier.ROBOLECTRIC_HOST ||
                 fact.environmentTier == ExecutionEnvironmentTier.EMULATOR
 
-        if (fact.isVerifiedSuccess) {
+        if (fact.isVerifiedSuccess &&
+            !isSimulatedOrTest &&
+            fact.environmentTier == ExecutionEnvironmentTier.PHYSICAL_DEVICE &&
+            fact.verificationStatus == UnifiedVerificationStatus.VERIFIED &&
+            fact.evidenceBundle?.independentProbe?.isNotBlank() == true &&
+            fact.evidenceBundle.verificationMethod == "INDEPENDENT_PROBE") {
             val updated = existing.copy(
                 liveConnectionStatus = if (isSimulatedOrTest) LiveConnectionStatus.NOT_VERIFIED else LiveConnectionStatus.VERIFIED,
                 realityState = if (isSimulatedOrTest) CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED else CapabilityRealityState.LIVE_CONNECTED,

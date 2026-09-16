@@ -95,7 +95,6 @@ data class SignedOwnerEntitlement(
             if (now >= expiresAtEpochMs) return false
             if (issuedAtEpochMs > now + 60_000L) return false // Clock skew tolerance
             if (revocationVersion < WastiIdentityManager.MIN_REVOCATION_VERSION) return false
-            if (!WastiIdentityManager.isNonceValid(nonce)) return false
             return verifyAsymmetricSignature()
         }
 }
@@ -139,19 +138,21 @@ object WastiIdentityManager {
     private const val KEY_USER_PROVIDER = "identity_provider"
     private const val KEY_USER_ROLE = "identity_role"
     private const val KEY_OWNER_TOKEN = "identity_owner_token"
+    private const val KEY_OWNER_ISSUED_AT = "identity_owner_issued_at"
     private const val KEY_OWNER_EXPIRY = "identity_owner_expiry"
     private const val KEY_OWNER_SIG = "identity_owner_sig"
     private const val KEY_OWNER_DEVICE_ID = "identity_owner_device_id"
     private const val KEY_OWNER_AUDIENCE = "identity_owner_audience"
     private const val KEY_OWNER_NONCE = "identity_owner_nonce"
+    private const val KEY_OWNER_CAPABILITIES = "identity_owner_capabilities"
+    private const val KEY_OWNER_REVOCATION_VERSION = "identity_owner_revocation_version"
     const val MIN_REVOCATION_VERSION = 1
 
     private val consumedNonces = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     fun isNonceValid(nonce: String): Boolean {
         if (nonce.isBlank()) return false
-        val timestamp = consumedNonces[nonce] ?: return true
-        return System.currentTimeMillis() - timestamp > 24 * 60 * 60 * 1000L
+        return !consumedNonces.containsKey(nonce)
     }
 
     fun consumeNonce(nonce: String) {
@@ -217,23 +218,30 @@ object WastiIdentityManager {
             val role = try { WastiUserRole.valueOf(roleStr ?: WastiUserRole.GUEST.name) } catch (_: Exception) { WastiUserRole.GUEST }
 
             val ownerToken = prefs.getString(KEY_OWNER_TOKEN, null)
+            val ownerIssuedAt = prefs.getLong(KEY_OWNER_ISSUED_AT, 0L)
             val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)
             val ownerSig = prefs.getString(KEY_OWNER_SIG, null)
             val ownerDeviceId = prefs.getString(KEY_OWNER_DEVICE_ID, null) ?: getDeviceId(context)
             val ownerAudience = prefs.getString(KEY_OWNER_AUDIENCE, "wasti-authoritative-runtime") ?: "wasti-authoritative-runtime"
             val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""
+            val ownerCapabilities = prefs.getString(KEY_OWNER_CAPABILITIES, null)
+                ?.split("\u001f")?.filter { it.isNotBlank() } ?: emptyList()
+            val ownerRevocationVersion = prefs.getInt(KEY_OWNER_REVOCATION_VERSION, MIN_REVOCATION_VERSION)
+            val localDeviceId = getDeviceId(context)
 
-            val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis()) {
+            val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis() &&
+                ownerIssuedAt > 0L && ownerDeviceId == localDeviceId && ownerCapabilities.isNotEmpty()) {
                 SignedOwnerEntitlement(
                     token = ownerToken,
                     subjectId = userId,
-                    issuedAtEpochMs = System.currentTimeMillis() - 60000,
+                    issuedAtEpochMs = ownerIssuedAt,
                     expiresAtEpochMs = ownerExpiry,
                     signatureBase64 = ownerSig,
-                    authorizedCapabilities = listOf("system:all", "keystore:manage", "learning:promote", "alerts:resolve"),
+                    authorizedCapabilities = ownerCapabilities,
                     subjectDeviceId = ownerDeviceId,
                     audience = ownerAudience,
-                    nonce = ownerNonce
+                    nonce = ownerNonce,
+                    revocationVersion = ownerRevocationVersion
                 )
             } else null
 
@@ -294,8 +302,11 @@ object WastiIdentityManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val effectiveName = displayName?.takeIf { it.isNotBlank() } ?: (email?.substringBefore("@") ?: "Wasti Operator")
         val pubKey = getOrCreateDeviceKey()
-        val effectiveDeviceId = subjectDeviceId ?: getDeviceId(context)
+        val localDeviceId = getDeviceId(context)
+        val effectiveDeviceId = subjectDeviceId ?: localDeviceId
         val effectiveNonce = nonce ?: UUID.randomUUID().toString()
+        val deviceBindingValid = effectiveDeviceId == localDeviceId
+        val nonceAvailable = isNonceValid(effectiveNonce)
 
         val entitlementCandidate = if (!serverOwnerToken.isNullOrBlank() && !serverOwnerSig.isNullOrBlank() && serverOwnerExpiry > System.currentTimeMillis()) {
             SignedOwnerEntitlement(
@@ -311,7 +322,7 @@ object WastiIdentityManager {
             )
         } else null
 
-        val isOwnerVerified = entitlementCandidate?.isValid == true
+        val isOwnerVerified = deviceBindingValid && nonceAvailable && entitlementCandidate?.isValid == true
         val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwnerVerified) entitlementCandidate else null
         if (isOwnerVerified && entitlementCandidate != null) {
@@ -327,18 +338,24 @@ object WastiIdentityManager {
             putString(KEY_USER_ROLE, role.name)
             if (entitlement != null) {
                 putString(KEY_OWNER_TOKEN, entitlement.token)
+                putLong(KEY_OWNER_ISSUED_AT, entitlement.issuedAtEpochMs)
                 putLong(KEY_OWNER_EXPIRY, entitlement.expiresAtEpochMs)
                 putString(KEY_OWNER_SIG, entitlement.serverSignatureHex)
                 putString(KEY_OWNER_DEVICE_ID, entitlement.subjectDeviceId)
                 putString(KEY_OWNER_AUDIENCE, entitlement.audience)
                 putString(KEY_OWNER_NONCE, entitlement.nonce)
+                putString(KEY_OWNER_CAPABILITIES, entitlement.authorizedCapabilities.joinToString("\u001f"))
+                putInt(KEY_OWNER_REVOCATION_VERSION, entitlement.revocationVersion)
             } else {
                 remove(KEY_OWNER_TOKEN)
+                remove(KEY_OWNER_ISSUED_AT)
                 remove(KEY_OWNER_EXPIRY)
                 remove(KEY_OWNER_SIG)
                 remove(KEY_OWNER_DEVICE_ID)
                 remove(KEY_OWNER_AUDIENCE)
                 remove(KEY_OWNER_NONCE)
+                remove(KEY_OWNER_CAPABILITIES)
+                remove(KEY_OWNER_REVOCATION_VERSION)
             }
             apply()
         }

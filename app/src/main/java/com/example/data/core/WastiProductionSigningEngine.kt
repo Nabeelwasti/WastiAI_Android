@@ -306,7 +306,7 @@ object WastiProductionSigningEngine {
             )
         }
 
-        val officialFingerprint = System.getenv("AUTHORITATIVE_PRODUCTION_FINGERPRINT") ?: PINNED_OFFICIAL_PRODUCTION_FINGERPRINT
+        val officialFingerprint = PINNED_OFFICIAL_PRODUCTION_FINGERPRINT
         val isOfficial = !officialFingerprint.isNullOrBlank() && details.sha256Fingerprint.equals(officialFingerprint.trim(), ignoreCase = true)
 
         if (!isOfficial) {
@@ -330,7 +330,7 @@ object WastiProductionSigningEngine {
     }
 
     /**
-     * Autonomously generates a sovereign production release keystore on-device.
+     * Generates a local development/emergency keystore only. Generated keys can never satisfy the official production signing gate.
      */
     suspend fun generateSovereignReleaseKeystore(
         context: Context,
@@ -387,7 +387,7 @@ object WastiProductionSigningEngine {
                 createdTimestamp = System.currentTimeMillis()
             )
 
-            Log.i(TAG, "Sovereign production keystore created: ${keystoreFile.absolutePath} (SHA-256: $sha256)")
+            Log.i(TAG, "Local development/emergency keystore created: ${keystoreFile.absolutePath} (SHA-256: $sha256); it is not an official production signing key.")
 
             KeystoreGenerationResult(
                 isSuccess = true,

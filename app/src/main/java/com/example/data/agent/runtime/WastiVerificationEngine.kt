@@ -465,21 +465,18 @@ class WastiVerificationEngine {
                 text.contains("Accessibility observed", ignoreCase = true) ||
                 text.contains("active package matching", ignoreCase = true) ||
                 text.contains("window package", ignoreCase = true) ||
-                text.contains("Navigated to destination screen", ignoreCase = true) ||
-                text.contains("WastiAppActionBus", ignoreCase = true) ||
-                (text.contains("navigation", ignoreCase = true) && text.contains("verified", ignoreCase = true))
+                text.contains("Navigated to destination screen", ignoreCase = true) &&
+                (text.contains("active package", ignoreCase = true) || text.contains("window package", ignoreCase = true))
 
             // Process / Shell / Code / Transform / Server: must anchor to verified execution
             cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ||
                 cap.contains("invented") || cap.contains("transformer") || cap.contains("transform") ||
                 cap.contains("reverse") || cap.contains("extractor") || cap.contains("aggregator") ||
                 cap.startsWith("wre_tool_") || cap.contains("server") ->
-                text.contains("returned exit code 0", ignoreCase = true) ||
-                text.contains("FACT_VERIFIED", ignoreCase = true) ||
-                text.contains("Terminal command", ignoreCase = true) ||
-                text.contains("Verified", ignoreCase = true) ||
-                text.contains("Local Server Status", ignoreCase = true) ||
-                text.contains("independent execution proof", ignoreCase = true)
+                text.contains("returned exit code 0", ignoreCase = true) &&
+                text.contains("post-state", ignoreCase = true) ||
+                text.contains("filesystem post-state", ignoreCase = true) ||
+                text.contains("independent execution proof:", ignoreCase = true)
 
             // Local Neural inference
             cap.contains("neural") || cap.contains("llama") || cap.contains("model") ->
@@ -497,14 +494,14 @@ class WastiVerificationEngine {
                 cap.contains("test") || cap.contains("debug") || cap.contains("diag") ||
                 cap.contains("package") || cap.contains("system") || cap.contains("environment") ||
                 cap.contains("sysinfo") ->
-                text.contains("returned through the canonical execution fabric", ignoreCase = true) ||
-                text.contains("verified through independent execution proof", ignoreCase = true) ||
-                text.contains("Verified", ignoreCase = true) ||
+                text.contains("returned through the canonical execution fabric", ignoreCase = true) &&
+                (text.contains("post-state", ignoreCase = true) || text.contains("independent", ignoreCase = true)) ||
+                text.contains("verified through independent execution proof:", ignoreCase = true) ||
                 text.contains("STATICALLY_VALIDATED", ignoreCase = true) ||
                 text.contains("Syntax validated", ignoreCase = true) ||
                 text.contains("Tests Run", ignoreCase = true) ||
                 text.contains("Diagnostics for", ignoreCase = true) ||
-                text.contains("Package", ignoreCase = true)
+                (text.contains("Package", ignoreCase = true) && text.contains("installed", ignoreCase = true))
 
             else -> false
         }
