@@ -455,6 +455,7 @@ class Stage6ObservationVerificationTest {
             evidenceSource = EvidenceSource.FILESYSTEM,
             subject = "workspace/manifest.json",
             verifiedState = "FILE_EXISTS_SHA256_VALID",
+            checksumOrHash = "sha256:3b5d5c3712955042212316173ccf37be80000000000000000000000000000000",
             confidence = 0.98
         )
 
@@ -744,4 +745,3 @@ class Stage6ObservationVerificationTest {
         assertNotNull(res.capabilitySpecificEvidence)
     }
 }
-
