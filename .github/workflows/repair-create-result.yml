@@ -1,0 +1,48 @@
+name: Safe CreateResult Repair
+
+on:
+  push:
+    branches:
+      - repair/final-create-result-evidence
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Patch one source file with exact anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt")
+          s = p.read_text(encoding="utf-8")
+          old = '''        verificationStatus: UnifiedVerificationStatus,\n        verificationEvidence: String? = null,\n        exitCode: Int? = null,\n        details: Map<String, String> = emptyMap()\n    ): UnifiedExecutionResult {'''
+          new = '''        verificationStatus: UnifiedVerificationStatus,\n        verificationEvidence: String? = null,\n        verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,\n        exitCode: Int? = null,\n        details: Map<String, String> = emptyMap()\n    ): UnifiedExecutionResult {'''
+          if s.count(old) != 1:
+              raise SystemExit("SAFE PATCH ABORT: createResult signature anchor count != 1")
+          s = s.replace(old, new, 1)
+          old = '''            verificationStatus = verificationStatus,\n            verificationEvidence = verificationEvidence,\n            exitCode = exitCode,'''
+          new = '''            verificationStatus = verificationStatus,\n            verificationEvidence = verificationEvidence,\n            verifiedExecutionEvidence = verifiedExecutionEvidence,\n            exitCode = exitCode,'''
+          if s.count(old) != 1:
+              raise SystemExit("SAFE PATCH ABORT: createResult constructor anchor count != 1")
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+          print("PATCHED: UnifiedExecutionFabric.kt")
+          PY
+      - name: Commit one source file
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wasti-safe-repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/example/data/agent/runtime/UnifiedExecutionFabric.kt
+          git diff --cached --quiet && { echo "No source change"; exit 1; }
+          git commit -m "fix(execution): preserve structured evidence in result factory"
+          git push origin HEAD:repair/final-create-result-evidence
