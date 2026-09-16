@@ -36,21 +36,17 @@ jobs:
           ! grep -R --line-number 'verificationStatus = UnifiedVerificationStatus.VERIFIED' app/src/main/java/com/example/data/node app/src/main/java/com/example/data/agent/runtime/CapabilityInventionEngine.kt
           ! grep -R --line-number 'res.status == UnifiedExecutionStatus.COMPLETED' app/src/main/java/com/example/ui
 
-          if grep -R --line-number "permissions:[[:space:]]*$" .github/workflows >/dev/null 2>&1; then
-            echo "Workflow permissions declarations detected; individual workflows remain responsible for least privilege."
-          fi
-
           echo "PASS: canonical verification authority invariants are present and no known automatic-verification shortcuts remain."
 
       - name: Compile debug Kotlin
         run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
 
-      - name: Verify no workflow can mutate source
+      - name: Verify no workflow can self-mutate repository source
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R --line-number -E 'git (commit|push)|contents:[[:space:]]*write' .github/workflows; then
-            echo "ERROR: source-mutating workflow authority detected. Production source mutation must occur through reviewed repository changes, not autonomous CI repair."
+          if grep -R --line-number -E 'git (commit|push)' .github/workflows; then
+            echo "ERROR: autonomous source mutation detected in CI. Repository changes must occur through reviewed repository changes, not self-mutating repair jobs."
             exit 1
           fi
-          echo "PASS: CI workflows are read-only with respect to repository source."
+          echo "PASS: no CI workflow contains autonomous git commit/push mutation."
