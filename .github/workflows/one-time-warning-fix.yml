@@ -24,15 +24,12 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          changed = False
-
           identity = Path('app/src/main/java/com/example/data/auth/WastiIdentityManager.kt')
           text = identity.read_text()
           old = '''        if (isOwnerVerified && entitlementCandidate != null) {\n            consumeNonce(entitlementCandidate.nonce)\n        }'''
           new = '''        if (isOwnerVerified) {\n            entitlementCandidate?.nonce?.let(::consumeNonce)\n        }'''
           if old in text:
               identity.write_text(text.replace(old, new, 1))
-              changed = True
           elif new not in text:
               raise SystemExit('Expected WastiIdentityManager warning pattern was not found')
 
@@ -40,19 +37,15 @@ jobs:
           text = workspace.read_text()
           if 'ttsEngine != null' in text:
               workspace.write_text(text.replace('ttsEngine != null', '::ttsEngine.isInitialized', 1))
-              changed = True
           elif '::ttsEngine.isInitialized' not in text:
               raise SystemExit('Expected ChatWorkspaceScreen ttsEngine warning pattern was not found')
 
           connections = Path('app/src/main/java/com/example/ui/screens/ConnectionsAndVaultScreen.kt')
           text = connections.read_text()
-          if 'Icons.Filled.Login' in text:
-              connections.write_text(text.replace('Icons.Filled.Login', 'Icons.AutoMirrored.Filled.Login', 1))
-              changed = True
+          if 'Icons.Default.Login' in text:
+              connections.write_text(text.replace('Icons.Default.Login', 'Icons.AutoMirrored.Filled.Login', 1))
           elif 'Icons.AutoMirrored.Filled.Login' not in text:
               raise SystemExit('Expected Login icon pattern was not found')
-
-          print(f'warning-fix changes applied: {changed}')
           PY
 
       - name: Verify changed files
