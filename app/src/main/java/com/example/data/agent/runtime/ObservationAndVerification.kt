@@ -2,23 +2,8 @@ package com.example.data.agent.runtime
 
 import java.util.UUID
 
-enum class ObservationStrategy {
-    SCREEN_SCRAPE,
-    ACCESSIBILITY_EVENT,
-    DIRECT_QUERY,
-    TIMED_SNAPSHOT,
-    NONE
-}
-
-enum class ObservationStatus {
-    OBSERVED,
-    NOT_OBSERVED,
-    CHANGED,
-    UNCHANGED,
-    UNKNOWN,
-    TIMEOUT,
-    UNAVAILABLE
-}
+enum class ObservationStrategy { SCREEN_SCRAPE, ACCESSIBILITY_EVENT, DIRECT_QUERY, TIMED_SNAPSHOT, NONE }
+enum class ObservationStatus { OBSERVED, NOT_OBSERVED, CHANGED, UNCHANGED, UNKNOWN, TIMEOUT, UNAVAILABLE }
 
 data class ObservationRequest(
     val taskId: String = UUID.randomUUID().toString(),
@@ -44,18 +29,9 @@ data class ObservationResult(
     val error: String? = null
 )
 
-enum class ActionVerificationStatus {
-    VERIFIED,
-    FAILED,
-    UNKNOWN,
-    NOT_VERIFIABLE,
-    VERIFICATION_UNAVAILABLE
-}
+enum class ActionVerificationStatus { VERIFIED, FAILED, UNKNOWN, NOT_VERIFIABLE, VERIFICATION_UNAVAILABLE }
 
-/**
- * [P0-02] Canonical Capability-Specific Independent Evidence Schema.
- * Every field required by independent verification policy must be strictly validated.
- */
+/** Canonical capability-specific independent evidence schema. */
 data class CapabilitySpecificEvidence(
     val taskId: String,
     val actionId: String,
@@ -113,57 +89,21 @@ data class StructuredUiObservation(
     val correlationId: String? = null
 )
 
-enum class TargetMatchRank {
-    EXACT_RESOURCE_ID,
-    EXACT_NORMALIZED_TEXT,
-    EXACT_CONTENT_DESCRIPTION,
-    NORMALIZED_EXACT_MATCH,
-    PARTIAL_MATCH,
-    COORDINATE_MATCH,
-    NO_MATCH
-}
+enum class TargetMatchRank { EXACT_RESOURCE_ID, EXACT_NORMALIZED_TEXT, EXACT_CONTENT_DESCRIPTION, NORMALIZED_EXACT_MATCH, PARTIAL_MATCH, COORDINATE_MATCH, NO_MATCH }
+enum class TargetSelectionStatus { MATCHED, AMBIGUOUS, NOT_FOUND }
+data class TargetSelectionResult(val status: TargetSelectionStatus, val matchedRank: TargetMatchRank = TargetMatchRank.NO_MATCH, val candidateCount: Int = 0, val details: String = "")
 
-enum class TargetSelectionStatus {
-    MATCHED,
-    AMBIGUOUS,
-    NOT_FOUND
-}
-
-data class TargetSelectionResult(
-    val status: TargetSelectionStatus,
-    val matchedRank: TargetMatchRank = TargetMatchRank.NO_MATCH,
-    val candidateCount: Int = 0,
-    val details: String = ""
-)
-
-enum class EvidenceSource {
-    FILESYSTEM,
-    FILESYSTEM_AUDIT,
-    DATABASE_QUERY,
-    HTTP_CONTRACT,
-    PROCESS_TELEMETRY,
-    SYSTEM_SERVICE,
-    UI_TREE,
-    SENSOR_EVENT,
-    LOCAL_MODEL_INFERENCE,
-    RUNTIME_DIAGNOSTIC
-}
-
+enum class EvidenceSource { FILESYSTEM, FILESYSTEM_AUDIT, DATABASE_QUERY, HTTP_CONTRACT, PROCESS_TELEMETRY, SYSTEM_SERVICE, UI_TREE, SENSOR_EVENT, LOCAL_MODEL_INFERENCE, RUNTIME_DIAGNOSTIC }
 typealias ObservationSource = EvidenceSource
+enum class CapabilityVerificationDomain { GENERAL_COMPUTATION, FILESYSTEM, NETWORK, SYSTEM_DIAGNOSTIC }
 
-enum class CapabilityVerificationDomain {
-    GENERAL_COMPUTATION,
-    FILESYSTEM,
-    NETWORK,
-    SYSTEM_DIAGNOSTIC
-}
+val VerificationResult.isVerified: Boolean get() = status == ActionVerificationStatus.VERIFIED
+val VerificationResult.explanation: String get() = failureReason ?: evidence
 
-val VerificationResult.isVerified: Boolean
-    get() = status == ActionVerificationStatus.VERIFIED
-
-val VerificationResult.explanation: String
-    get() = failureReason ?: evidence
-
+/**
+ * Evidence container. A missing checksum is intentionally NOT converted into a hash of the
+ * claim itself: integrity of a claim is not proof that the claimed state was true.
+ */
 data class VerifiedExecutionEvidence(
     val evidenceSource: EvidenceSource,
     val subject: String,
@@ -172,24 +112,12 @@ data class VerifiedExecutionEvidence(
     val observedAt: Long = System.currentTimeMillis(),
     val confidence: Double = 1.0
 ) {
-    fun getEffectiveChecksum(): String {
-        if (!checksumOrHash.isNullOrBlank()) return checksumOrHash
-        return try {
-            val digest = java.security.MessageDigest.getInstance("SHA-256")
-            val payload = "$evidenceSource:$subject:$verifiedState:$observedAt:$confidence"
-            digest.digest(payload.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-        } catch (_: Throwable) {
-            "hash_${subject.hashCode()}_${verifiedState.hashCode()}"
-        }
-    }
+    fun getEffectiveChecksum(): String = checksumOrHash?.trim().orEmpty()
 }
 
-/**
- * Execution simulation result, permanently marked as SIMULATION_ONLY / TEST_ONLY.
- * Cannot masquerade as physical Android reality or real execution.
- */
+/** Execution simulation result, permanently marked SIMULATION_ONLY / TEST_ONLY. */
 data class SimulationResult(
-    val simulationId: String = java.util.UUID.randomUUID().toString(),
+    val simulationId: String = UUID.randomUUID().toString(),
     val targetCapabilityId: String,
     val simulatedOutput: String,
     val simulatedState: String,
@@ -198,12 +126,9 @@ data class SimulationResult(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-/**
- * Evidence produced exclusively within test suites / Robolectric host execution.
- * Permanently labeled isTestOnly = true and cannot satisfy physical device readiness gates.
- */
+/** Test-only evidence cannot satisfy physical-device readiness gates. */
 data class TestVerifiedEvidence(
-    val testId: String = java.util.UUID.randomUUID().toString(),
+    val testId: String = UUID.randomUUID().toString(),
     val targetSubject: String,
     val testScope: String,
     val testEvidence: String,
@@ -211,11 +136,9 @@ data class TestVerifiedEvidence(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-/**
- * An observed physical or runtime execution fact collected by observation engine.
- */
+/** Observed physical or runtime execution fact collected by an observation engine. */
 data class ObservedExecutionFact(
-    val factId: String = java.util.UUID.randomUUID().toString(),
+    val factId: String = UUID.randomUUID().toString(),
     val actionId: String,
     val capabilityId: String,
     val observedState: String,
@@ -224,9 +147,7 @@ data class ObservedExecutionFact(
     val observedAtEpochMs: Long = System.currentTimeMillis()
 )
 
-/**
- * A capability verified exclusively through canonical Reality/Verification authority.
- */
+/** Capability verified through canonical Reality/Verification authority. */
 data class RealityVerifiedCapability(
     val capabilityId: String,
     val canonicalVerifier: String = "WastiVerificationEngine",
@@ -234,11 +155,9 @@ data class RealityVerifiedCapability(
     val verifiedAtEpochMs: Long = System.currentTimeMillis(),
 )
 
-/**
- * Provenance-bound, consensus-backed trusted knowledge.
- */
+/** Provenance-bound, consensus-backed trusted knowledge. */
 data class TrustedKnowledge(
-    val knowledgeId: String = java.util.UUID.randomUUID().toString(),
+    val knowledgeId: String = UUID.randomUUID().toString(),
     val topic: String,
     val distilledContent: String,
     val provenanceEvidenceHash: String,
