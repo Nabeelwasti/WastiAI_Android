@@ -2027,6 +2027,7 @@ class UnifiedExecutionFabric(
         startedAt: Long,
         verificationStatus: UnifiedVerificationStatus,
         verificationEvidence: String? = null,
+        verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,
         exitCode: Int? = null,
         details: Map<String, String> = emptyMap()
     ): UnifiedExecutionResult {
@@ -2043,6 +2044,7 @@ class UnifiedExecutionFabric(
             completedAt = System.currentTimeMillis(),
             verificationStatus = verificationStatus,
             verificationEvidence = verificationEvidence,
+            verifiedExecutionEvidence = verifiedExecutionEvidence,
             exitCode = exitCode,
             details = details
         )
