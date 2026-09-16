@@ -125,7 +125,15 @@ class Stage10TransportAndActionTest {
 
     @Test
     fun testExecutionMemoryRecorder() = runBlocking {
-        val record = ExecutionRecord("test_task_101", "Verify Stage 10 Architecture", "VERIFY_STAGE_10", "LOCAL_SERVER", true, "Test verified successfully")
+        val record = ExecutionRecord(
+            taskId = "test_task_101",
+            goal = "Verify Stage 10 Architecture",
+            interpretedIntent = "VERIFY_STAGE_10",
+            selectedCapability = "LOCAL_SERVER",
+            isSuccess = true,
+            verificationStatus = "VERIFIED",
+            verificationEvidence = "Test verified successfully"
+        )
         ExecutionMemoryRecorder.recordExecutionOutcome(record)
         val recent = ExecutionMemoryRecorder.getRecentExecutions(5)
         assertTrue(recent.isNotEmpty())
