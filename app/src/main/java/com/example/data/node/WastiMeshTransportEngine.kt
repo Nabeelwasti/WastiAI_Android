@@ -2,7 +2,6 @@ package com.example.data.node
 
 import android.content.Context
 import android.util.Log
-import com.example.data.agent.runtime.CapabilityRealityRegistry
 import com.example.data.agent.runtime.CapabilityRealityState
 import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.UnifiedExecutionRequest
@@ -33,392 +32,146 @@ import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * [The Eternal Manifesto: The Swarm/Mesh Principle & Many Bodies Doctrine]
- *
- * "Android, Linux, Windows, Cloud, Containers, Browsers, GitHub Actions, IoT and future
- * platforms are execution bodies of one brain. Multiple Wasti nodes cooperate under one reality model."
- *
- * Provides peer-to-peer UDP broadcast discovery, capability federation, and remote task dispatch.
- */
-
-data class MeshDiscoveredNode(
-    val nodeId: String,
-    val nodeName: String,
-    val platform: NodePlatform,
-    val ipAddress: String,
-    val port: Int,
-    val advertisedCapabilities: Set<String>,
-    val capabilityFingerprint: String,
-    val lastSeenTimestamp: Long = System.currentTimeMillis()
-)
-
-data class MeshExecutionResult(
-    val isSuccess: Boolean,
-    val targetNodeId: String,
-    val output: String,
-    val executionLatencyMs: Long,
-    val verificationEvidence: String
-)
+data class MeshDiscoveredNode(val nodeId: String,val nodeName: String,val platform: NodePlatform,val ipAddress: String,val port: Int,val advertisedCapabilities: Set<String>,val capabilityFingerprint: String,val lastSeenTimestamp: Long = System.currentTimeMillis())
+data class MeshExecutionResult(val isSuccess: Boolean,val targetNodeId: String,val output: String,val executionLatencyMs: Long,val verificationEvidence: String)
 
 object WastiMeshTransportEngine {
-
     private const val TAG = "MeshTransportEngine"
     const val MESH_BROADCAST_PORT = 35260
     const val MESH_EXECUTION_PORT = 35261
     private const val BEACON_INTERVAL_MS = 10_000L
-
     private val discoveredPeers = ConcurrentHashMap<String, MeshDiscoveredNode>()
     private var beaconJob: Job? = null
     private var listenerJob: Job? = null
     private var executionServerJob: Job? = null
     private var executionServerSocket: ServerSocket? = null
-
-    @Volatile
-    private var isMeshActive = false
+    @Volatile private var isMeshActive = false
 
     fun getDiscoveredPeers(): List<MeshDiscoveredNode> = discoveredPeers.values.toList()
+    fun registerDiscoveredPeerForTesting(peer: MeshDiscoveredNode) { discoveredPeers[peer.nodeId] = peer }
 
-    fun registerDiscoveredPeerForTesting(peer: MeshDiscoveredNode) {
-        discoveredPeers[peer.nodeId] = peer
-    }
-
-    /**
-     * Starts the peer-to-peer discovery beacon and listener.
-     */
     fun startMesh(context: Context, localNodeId: String = "wasti_local_host") {
         if (isMeshActive) return
         isMeshActive = true
-
         val scope = CoroutineScope(Dispatchers.IO)
 
-        // 1. Broadcast presence to local network
         beaconJob = scope.launch {
             var socket: DatagramSocket? = null
             try {
-                socket = DatagramSocket()
-                socket.broadcast = true
-
+                socket = DatagramSocket().apply { broadcast = true }
                 while (isActive && isMeshActive) {
                     try {
-                        val nodeManager = WastiServiceLocator.nodeManager
-                        val localNode = nodeManager.getNode("local_android_node")
+                        val localNode = WastiServiceLocator.nodeManager.getNode("local_android_node")
                         val caps = localNode?.capabilities ?: setOf("terminal", "files", "device_control")
-
-                        val beacon = JSONObject()
-                        beacon.put("header", "WASTI_MESH_BEACON")
-                        beacon.put("version", 1)
-                        beacon.put("nodeId", localNodeId)
-                        beacon.put("nodeName", "Wasti Mobile Host (${android.os.Build.MODEL})")
-                        beacon.put("platform", NodePlatform.ANDROID.name)
-                        beacon.put("port", MESH_BROADCAST_PORT)
-
-                        val capsArray = JSONArray()
-                        caps.forEach { capsArray.put(it) }
-                        beacon.put("capabilities", capsArray)
-                        beacon.put("timestamp", System.currentTimeMillis())
-
+                        val beacon = JSONObject().apply {
+                            put("header", "WASTI_MESH_BEACON")
+                            put("version", 1)
+                            put("nodeId", localNodeId)
+                            put("nodeName", "Wasti Mobile Host (${android.os.Build.MODEL})")
+                            put("platform", NodePlatform.ANDROID.name)
+                            put("port", MESH_BROADCAST_PORT)
+                            put("capabilities", JSONArray(caps.toList()))
+                            put("timestamp", System.currentTimeMillis())
+                        }
                         val data = beacon.toString().toByteArray(Charsets.UTF_8)
-                        val broadcastAddr = InetAddress.getByName("255.255.255.255")
-                        val packet = DatagramPacket(data, data.size, broadcastAddr, MESH_BROADCAST_PORT)
-                        socket.send(packet)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Beacon broadcast tick warning: ${e.message}")
-                    }
+                        socket.send(DatagramPacket(data,data.size,InetAddress.getByName("255.255.255.255"),MESH_BROADCAST_PORT))
+                    } catch (e: Exception) { Log.w(TAG, "Beacon broadcast tick warning: ${e.message}") }
                     delay(BEACON_INTERVAL_MS)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Mesh beacon socket error: ${e.message}", e)
-            } finally {
-                socket?.close()
-            }
+            } catch (e: Exception) { Log.e(TAG, "Mesh beacon socket error: ${e.message}", e) } finally { socket?.close() }
         }
 
-        // 2. Listen for peer broadcasts on local LAN
         listenerJob = scope.launch {
             var socket: DatagramSocket? = null
             try {
                 socket = DatagramSocket(MESH_BROADCAST_PORT)
                 val buffer = ByteArray(4096)
-
                 while (isActive && isMeshActive) {
                     try {
-                        val packet = DatagramPacket(buffer, buffer.size)
+                        val packet = DatagramPacket(buffer,buffer.size)
                         socket.receive(packet)
-
-                        val rawJson = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                        val obj = JSONObject(rawJson)
-
-                        if (obj.optString("header") == "WASTI_MESH_BEACON") {
-                            val peerId = obj.getString("nodeId")
-                            if (peerId != localNodeId) {
-                                val peerName = obj.optString("nodeName", "Remote Wasti Node")
-                                val platformStr = obj.optString("platform", "DESKTOP")
-                                val platform = try { NodePlatform.valueOf(platformStr) } catch (_: Exception) { NodePlatform.DESKTOP }
-
-                                val peerCaps = mutableSetOf<String>()
-                                val cArray = obj.optJSONArray("capabilities") ?: JSONArray()
-                                for (i in 0 until cArray.length()) {
-                                    peerCaps.add(cArray.getString(i))
-                                }
-
-                                val discovered = MeshDiscoveredNode(
-                                    nodeId = peerId,
-                                    nodeName = peerName,
-                                    platform = platform,
-                                    ipAddress = packet.address.hostAddress ?: "127.0.0.1",
-                                    port = obj.optInt("port", MESH_BROADCAST_PORT),
-                                    advertisedCapabilities = peerCaps,
-                                    capabilityFingerprint = computeFingerprint(peerCaps)
-                                )
-
-                                discoveredPeers[peerId] = discovered
-
-                                // Federate into WastiNodeManager
-                                val advertisedMap = peerCaps.associateWith { cap ->
-                                    AdvertisedCapabilityInfo(
-                                        capabilityId = cap,
-                                        version = "1.0.0",
-                                        realityState = CapabilityRealityState.LIVE_CONNECTED,
-                                        provider = peerName,
-                                        isLocallyExecutable = false
-                                    )
-                                }
-
-                                WastiServiceLocator.nodeManager.registerNode(
-                                    WastiNode(
-                                        nodeId = peerId,
-                                        nodeName = peerName,
-                                        platform = platform,
-                                        capabilities = peerCaps,
-                                        advertisedCapabilities = advertisedMap,
-                                        capabilityFingerprint = discovered.capabilityFingerprint,
-                                        connectionState = NodeConnectionState.CONNECTED,
-                                        trustState = NodeTrustState.PAIRED,
-                                        isLocal = false,
-                                        endpointUrl = "http://${discovered.ipAddress}:${discovered.port}",
-                                        networkAddress = discovered.ipAddress,
-                                        dataLocality = NodeDataLocality.TRUSTED_LAN
-                                    )
-                                )
-                                Log.i(TAG, "Federated peer node '$peerName' ($peerId) at ${discovered.ipAddress} with ${peerCaps.size} capabilities.")
-                            }
-                        }
-                    } catch (e: Exception) {
-                        if (isMeshActive) {
-                            Log.w(TAG, "Packet receive warning: ${e.message}")
-                        }
-                    }
+                        val obj = JSONObject(String(packet.data,0,packet.length,Charsets.UTF_8))
+                        if (obj.optString("header") != "WASTI_MESH_BEACON") continue
+                        val peerId = obj.getString("nodeId")
+                        if (peerId == localNodeId) continue
+                        val peerName = obj.optString("nodeName","Remote Wasti Node")
+                        val platform = try { NodePlatform.valueOf(obj.optString("platform","DESKTOP")) } catch (_: Exception) { NodePlatform.DESKTOP }
+                        val peerCaps = mutableSetOf<String>()
+                        val cArray = obj.optJSONArray("capabilities") ?: JSONArray()
+                        for (i in 0 until cArray.length()) peerCaps.add(cArray.getString(i))
+                        val discovered = MeshDiscoveredNode(peerId,peerName,platform,packet.address.hostAddress ?: "127.0.0.1",obj.optInt("port",MESH_BROADCAST_PORT),peerCaps,computeFingerprint(peerCaps))
+                        discoveredPeers[peerId] = discovered
+                        val advertisedMap = peerCaps.associateWith { cap -> AdvertisedCapabilityInfo(cap,"1.0.0",CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED,peerName,false) }
+                        WastiServiceLocator.nodeManager.registerNode(WastiNode(nodeId=peerId,nodeName=peerName,platform=platform,capabilities=peerCaps,advertisedCapabilities=advertisedMap,capabilityFingerprint=discovered.capabilityFingerprint,connectionState=NodeConnectionState.CONNECTED,trustState=NodeTrustState.PAIRED,isLocal=false,endpointUrl="http://${discovered.ipAddress}:${MESH_EXECUTION_PORT}",networkAddress=discovered.ipAddress,dataLocality=NodeDataLocality.TRUSTED_LAN))
+                        Log.i(TAG,"Discovered peer '$peerName' ($peerId); capabilities remain unverified until authenticated execution evidence exists.")
+                    } catch (e: Exception) { if (isMeshActive) Log.w(TAG,"Packet receive warning: ${e.message}") }
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Mesh listener socket error: ${e.message}", e)
-            } finally {
-                socket?.close()
-            }
+            } catch (e: Exception) { Log.e(TAG,"Mesh listener socket error: ${e.message}",e) } finally { socket?.close() }
         }
 
-        // 3. Listen for TCP execution requests from remote mesh nodes
         executionServerJob = scope.launch {
             var serverSocket: ServerSocket? = null
             try {
                 serverSocket = ServerSocket(MESH_EXECUTION_PORT)
                 executionServerSocket = serverSocket
-                Log.i(TAG, "Wasti Mesh TCP Execution Server listening on port $MESH_EXECUTION_PORT.")
-
                 while (isActive && isMeshActive) {
-                    try {
-                        val clientSocket = serverSocket.accept()
-                        launch {
-                            handleClientExecution(clientSocket)
-                        }
-                    } catch (e: Exception) {
-                        if (isMeshActive) {
-                            Log.w(TAG, "Mesh execution socket accept warning: ${e.message}")
-                        }
-                    }
+                    try { val client = serverSocket.accept(); launch { handleClientExecution(client) } }
+                    catch (e: Exception) { if (isMeshActive) Log.w(TAG,"Mesh execution socket accept warning: ${e.message}") }
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Mesh execution server bind warning: ${e.message}")
-            } finally {
-                serverSocket?.close()
-            }
+            } catch (e: Exception) { Log.w(TAG,"Mesh execution server bind warning: ${e.message}") }
+            finally { serverSocket?.close() }
         }
-
-        Log.i(TAG, "Wasti Mesh Transport active on UDP $MESH_BROADCAST_PORT / TCP $MESH_EXECUTION_PORT.")
+        Log.i(TAG,"Wasti Mesh Transport active on UDP $MESH_BROADCAST_PORT / TCP $MESH_EXECUTION_PORT.")
     }
 
-    /**
-     * Handles an incoming TCP client execution request.
-     */
     suspend fun handleClientExecution(socket: Socket) = withContext(Dispatchers.IO) {
         try {
             socket.soTimeout = 15_000
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
-
-            val line = reader.readLine()
-            if (line != null) {
-                val reqObj = JSONObject(line)
-                val paramObj = reqObj.optJSONObject("parameters") ?: JSONObject()
-                val paramMap = mutableMapOf<String, String>()
-                paramObj.keys().forEach { k -> paramMap[k] = paramObj.getString(k) }
-
-                val execReq = UnifiedExecutionRequest(
-                    taskId = reqObj.optString("taskId", UUID.randomUUID().toString()),
-                    actionId = reqObj.optString("actionId", "mesh_remote_action"),
-                    capabilityId = reqObj.optString("capabilityId", "general_computation"),
-                    parameters = paramMap,
-                    originatingNodeId = reqObj.optString("callerNodeId", "mesh_remote")
-                )
-
-                val result = UnifiedExecutionFabric.instance.execute(execReq, null)
-
-                val resObj = JSONObject().apply {
-                    put("taskId", result.taskId)
-                    put("actionId", result.actionId)
-                    put("capabilityId", result.capabilityId)
-                    put("status", result.status.name)
-                    put("output", result.output)
-                    put("error", result.error ?: "")
-                    put("executor", result.executor)
-                    put("startedAt", result.startedAt)
-                    put("completedAt", result.completedAt)
-                    put("verificationStatus", result.verificationStatus.name)
-                    put("verificationEvidence", result.verificationEvidence ?: "")
-                }
-
-                writer.write(resObj.toString())
-                writer.newLine()
-                writer.flush()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error handling client execution: ${e.message}")
-        } finally {
-            try { socket.close() } catch (_: Exception) {}
-        }
+            val reader = BufferedReader(InputStreamReader(socket.getInputStream(),Charsets.UTF_8))
+            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(),Charsets.UTF_8))
+            val line = reader.readLine() ?: return@withContext
+            val reqObj = JSONObject(line)
+            val paramObj = reqObj.optJSONObject("parameters") ?: JSONObject()
+            val paramMap = mutableMapOf<String,String>()
+            paramObj.keys().forEach { k -> paramMap[k] = paramObj.getString(k) }
+            val execReq = UnifiedExecutionRequest(taskId=reqObj.optString("taskId",UUID.randomUUID().toString()),actionId=reqObj.optString("actionId","mesh_remote_action"),capabilityId=reqObj.optString("capabilityId","general_computation"),parameters=paramMap,originatingNodeId=reqObj.optString("callerNodeId","mesh_remote"))
+            val result = UnifiedExecutionFabric.instance.execute(execReq,null)
+            val resObj = JSONObject().apply { put("taskId",result.taskId); put("actionId",result.actionId); put("capabilityId",result.capabilityId); put("status",result.status.name); put("output",result.output); put("error",result.error ?: ""); put("executor",result.executor); put("startedAt",result.startedAt); put("completedAt",result.completedAt); put("verificationStatus",result.verificationStatus.name); put("verificationEvidence",result.verificationEvidence ?: "") }
+            writer.write(resObj.toString()); writer.newLine(); writer.flush()
+        } catch (e: Exception) { Log.w(TAG,"Error handling client execution: ${e.message}") }
+        finally { try { socket.close() } catch (_: Exception) {} }
     }
 
     fun stopMesh() {
-        isMeshActive = false
-        beaconJob?.cancel()
-        listenerJob?.cancel()
-        executionServerJob?.cancel()
+        isMeshActive=false; beaconJob?.cancel(); listenerJob?.cancel(); executionServerJob?.cancel()
+        try { executionServerSocket?.close() } catch (_: Exception) {}
+        executionServerSocket=null; discoveredPeers.clear()
+    }
+
+    suspend fun dispatchRemoteTask(targetNodeId: String,request: UnifiedExecutionRequest): UnifiedExecutionResult = withContext(Dispatchers.IO) {
+        val startTime=System.currentTimeMillis()
+        val peer=discoveredPeers[targetNodeId] ?: WastiServiceLocator.nodeManager.getNode(targetNodeId)?.let { node -> MeshDiscoveredNode(node.nodeId,node.nodeName,node.platform,node.networkAddress?.ifBlank { "127.0.0.1" } ?: "127.0.0.1",MESH_EXECUTION_PORT,node.capabilities,node.capabilityFingerprint) }
+        if (peer==null) return@withContext UnifiedExecutionResult(request.taskId,request.actionId,request.capabilityId,UnifiedExecutionStatus.FAILED,"Remote node '$targetNodeId' not found in active mesh.","NODE_UNREACHABLE","WastiMeshTransportEngine",startTime,System.currentTimeMillis(),UnifiedVerificationStatus.FAILED,"No discovered peer evidence")
         try {
-            executionServerSocket?.close()
-        } catch (_: Exception) {}
-        executionServerSocket = null
-        discoveredPeers.clear()
-        Log.i(TAG, "Wasti Mesh Transport stopped.")
-    }
-
-    /**
-     * Offloads an execution request across the mesh to a remote node.
-     */
-    suspend fun dispatchRemoteTask(
-        targetNodeId: String,
-        request: UnifiedExecutionRequest
-    ): UnifiedExecutionResult = withContext(Dispatchers.IO) {
-        val startTime = System.currentTimeMillis()
-        val peer = discoveredPeers[targetNodeId] ?: WastiServiceLocator.nodeManager.getNode(targetNodeId)?.let { node ->
-            MeshDiscoveredNode(
-                nodeId = node.nodeId,
-                nodeName = node.nodeName,
-                platform = node.platform,
-                ipAddress = node.networkAddress?.ifBlank { "127.0.0.1" } ?: "127.0.0.1",
-                port = MESH_EXECUTION_PORT,
-                advertisedCapabilities = node.capabilities,
-                capabilityFingerprint = node.capabilityFingerprint
-            )
-        }
-
-        if (peer == null) {
-            return@withContext UnifiedExecutionResult(
-                taskId = request.taskId,
-                actionId = request.actionId,
-                capabilityId = request.capabilityId,
-                status = UnifiedExecutionStatus.FAILED,
-                output = "Remote node '$targetNodeId' not found in active mesh.",
-                error = "NODE_UNREACHABLE",
-                executor = "WastiMeshTransportEngine",
-                startedAt = startTime,
-                completedAt = System.currentTimeMillis(),
-                verificationStatus = UnifiedVerificationStatus.FAILED,
-                verificationEvidence = "Mesh target node disconnected"
-            )
-        }
-
-        // Attempt direct TCP socket execution to remote peer
-        try {
-            val socket = Socket()
-            socket.connect(InetSocketAddress(peer.ipAddress, MESH_EXECUTION_PORT), 3000)
-            socket.soTimeout = 10_000
-            val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-
-            val reqObj = JSONObject().apply {
-                put("taskId", request.taskId)
-                put("actionId", request.actionId)
-                put("capabilityId", request.capabilityId)
-                put("callerNodeId", "wasti_mobile_client")
-                val paramsJson = JSONObject()
-                request.parameters.forEach { (k, v) -> paramsJson.put(k, v) }
-                put("parameters", paramsJson)
+            Socket().use { socket ->
+                socket.connect(InetSocketAddress(peer.ipAddress,MESH_EXECUTION_PORT),3000)
+                socket.soTimeout=10_000
+                val writer=BufferedWriter(OutputStreamWriter(socket.getOutputStream(),Charsets.UTF_8))
+                val reader=BufferedReader(InputStreamReader(socket.getInputStream(),Charsets.UTF_8))
+                val reqObj=JSONObject().apply { put("taskId",request.taskId); put("actionId",request.actionId); put("capabilityId",request.capabilityId); put("callerNodeId","wasti_mobile_client"); put("parameters",JSONObject().apply { request.parameters.forEach { (k,v) -> put(k,v) } }) }
+                writer.write(reqObj.toString()); writer.newLine(); writer.flush()
+                val responseLine=reader.readLine()
+                if (responseLine.isNullOrBlank()) throw IllegalStateException("EMPTY_REMOTE_RESPONSE")
+                val resObj=JSONObject(responseLine)
+                val status=try { UnifiedExecutionStatus.valueOf(resObj.optString("status")) } catch (_: Exception) { UnifiedExecutionStatus.FAILED }
+                val remoteVerification=try { UnifiedVerificationStatus.valueOf(resObj.optString("verificationStatus","UNVERIFIED")) } catch (_: Exception) { UnifiedVerificationStatus.UNVERIFIED }
+                return@withContext UnifiedExecutionResult(taskId=resObj.optString("taskId",request.taskId),actionId=resObj.optString("actionId",request.actionId),capabilityId=resObj.optString("capabilityId",request.capabilityId),status=status,output=resObj.optString("output",""),error=resObj.optString("error").takeIf { it.isNotBlank() },executor=resObj.optString("executor","MeshPeer_${peer.nodeId}"),startedAt=resObj.optLong("startedAt",startTime),completedAt=resObj.optLong("completedAt",System.currentTimeMillis()),verificationStatus=if (remoteVerification==UnifiedVerificationStatus.VERIFIED) UnifiedVerificationStatus.UNVERIFIED else remoteVerification,verificationEvidence=resObj.optString("verificationEvidence","Remote execution evidence received; canonical verification not established"))
             }
-
-            writer.write(reqObj.toString())
-            writer.newLine()
-            writer.flush()
-
-            val responseLine = reader.readLine()
-            socket.close()
-
-            if (!responseLine.isNullOrBlank()) {
-                val resObj = JSONObject(responseLine)
-                val statusStr = resObj.optString("status", "COMPLETED")
-                val vStatusStr = resObj.optString("verificationStatus", "VERIFIED")
-                return@withContext UnifiedExecutionResult(
-                    taskId = resObj.optString("taskId", request.taskId),
-                    actionId = resObj.optString("actionId", request.actionId),
-                    capabilityId = resObj.optString("capabilityId", request.capabilityId),
-                    status = try { UnifiedExecutionStatus.valueOf(statusStr) } catch (_: Exception) { UnifiedExecutionStatus.COMPLETED },
-                    output = resObj.optString("output", ""),
-                    error = resObj.optString("error").takeIf { it.isNotBlank() },
-                    executor = resObj.optString("executor", "MeshPeer_${peer.nodeId}"),
-                    startedAt = resObj.optLong("startedAt", startTime),
-                    completedAt = resObj.optLong("completedAt", System.currentTimeMillis()),
-                    verificationStatus = try {
-                        val remoteStatus = UnifiedVerificationStatus.valueOf(vStatusStr)
-                        if (remoteStatus == UnifiedVerificationStatus.VERIFIED) UnifiedVerificationStatus.UNVERIFIED else remoteStatus
-                    } catch (_: Exception) { UnifiedVerificationStatus.UNVERIFIED },
-                    verificationEvidence = resObj.optString("verificationEvidence", "Verified via TCP mesh socket")
-                )
-            }
-        } catch (netEx: Exception) {
-            Log.w(TAG, "Direct TCP execution on ${peer.ipAddress}:$MESH_EXECUTION_PORT failed: ${netEx.message}. Falling back to verified mesh dispatch record.")
+        } catch (e: Exception) {
+            Log.w(TAG,"Direct TCP execution on ${peer.ipAddress}:$MESH_EXECUTION_PORT failed: ${e.message}")
+            UnifiedExecutionResult(taskId=request.taskId,actionId=request.actionId,capabilityId=request.capabilityId,status=UnifiedExecutionStatus.FAILED,output="",error="REMOTE_EXECUTION_FAILED:${e.message ?: "unknown"}",executor="WastiMeshTransportEngine",startedAt=startTime,completedAt=System.currentTimeMillis(),verificationStatus=UnifiedVerificationStatus.UNVERIFIED,verificationEvidence="No independently verified remote execution evidence")
         }
-
-        // Fallback to verified remote representation
-        val latency = System.currentTimeMillis() - startTime
-        val output = "Executed '${request.actionId}' on remote mesh body '${peer.nodeName}' (${peer.platform}) with params ${request.parameters}."
-
-        UnifiedExecutionResult(
-            taskId = request.taskId,
-            actionId = request.actionId,
-            capabilityId = request.capabilityId,
-            status = UnifiedExecutionStatus.COMPLETED,
-            output = output,
-            executor = "MeshPeer_${peer.nodeId}",
-            startedAt = startTime,
-            completedAt = System.currentTimeMillis(),
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Remote execution verified with peer fingerprint: ${peer.capabilityFingerprint} latency: ${latency}ms"
-        )
     }
 
-    private fun computeFingerprint(capabilities: Set<String>): String {
-        val sorted = capabilities.sorted().joinToString(";")
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(sorted.toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
+    private fun computeFingerprint(capabilities:Set<String>):String { val digest=MessageDigest.getInstance("SHA-256"); return digest.digest(capabilities.sorted().joinToString(";").toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) } }
 }
