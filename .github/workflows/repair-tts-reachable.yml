@@ -1,0 +1,98 @@
+name: Safe TTS Reachability Repair
+
+on:
+  push:
+    branches:
+      - repair/tts-reachable-fallback
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Restore reachable TTS fallback with exact anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt")
+          s = p.read_text(encoding="utf-8")
+          old = '''private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
+              if (ttsEngine == null || text.isBlank()) return'''
+          new = '''private fun speakDualPipelineTts(ttsEngine: TextToSpeech?, text: String) {
+              if (text.isBlank()) return'''
+          if s.count(old) != 1:
+              raise SystemExit("SAFE PATCH ABORT: TTS entry anchor count != 1")
+          s = s.replace(old, new, 1)
+          old = '''    try {
+        val result = ttsEngine.setLanguage(targetLocale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            ttsEngine.language = Locale.ENGLISH
+        }
+        val params = android.os.Bundle()
+        params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
+        ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
+    } catch (e: Exception) {
+        android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                VoiceManager.synthesizeSpeech(ttsTextToSpeak)
+            } catch (_: Throwable) {}
+        }
+    }'''
+          new = '''    if (ttsEngine != null) {
+        try {
+            val result = ttsEngine.setLanguage(targetLocale)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                ttsEngine.language = Locale.ENGLISH
+            }
+            val params = android.os.Bundle()
+            params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "chat_tts_dual_pipeline")
+            ttsEngine.speak(ttsTextToSpeak, TextToSpeech.QUEUE_FLUSH, params, "chat_tts_dual_pipeline")
+        } catch (e: Exception) {
+            android.util.Log.e("ChatWorkspaceTTS", "Error in TTS speak, falling back to VoiceManager", e)
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                try {
+                    VoiceManager.synthesizeSpeech(ttsTextToSpeak)
+                } catch (_: Throwable) {}
+            }
+        }
+    } else {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                VoiceManager.synthesizeSpeech(ttsTextToSpeak)
+            } catch (_: Throwable) {}
+        }
+    }'''
+          if s.count(old) != 1:
+              raise SystemExit("SAFE PATCH ABORT: TTS speech block anchor count != 1")
+          s = s.replace(old, new, 1)
+          p.write_text(s, encoding="utf-8")
+          PY
+      - name: Verify exact repair and no unrelated source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'if (ttsEngine != null) {' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          grep -Fq 'if (text.isBlank()) return' app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          git diff --check
+          git diff -- app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt
+          test "$(git diff --numstat -- app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt | awk '{print $1}')" = "17"
+          test "$(git diff --numstat -- app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt | awk '{print $2}')" = "9"
+      - name: Commit repair and remove temporary runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "wasti-safe-repair"
+          git config user.email "actions@users.noreply.github.com"
+          rm .github/workflows/repair-tts-reachable.yml
+          git add app/src/main/java/com/example/ui/screens/ChatWorkspaceScreen.kt .github/workflows/repair-tts-reachable.yml
+          git diff --cached --quiet && { echo "No source change"; exit 1; }
+          git commit -m "fix(tts): restore reachable voice-manager fallback"
+          git push origin HEAD:repair/tts-reachable-fallback
