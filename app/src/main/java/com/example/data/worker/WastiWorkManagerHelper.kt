@@ -31,7 +31,10 @@ object WastiWorkManagerHelper {
         } catch (e: IllegalStateException) {
             try {
                 if (appContext is Configuration.Provider) {
-                    WorkManager.initialize(appContext, appContext.getWorkManagerConfiguration())
+                    // Current WorkManager/Kotlin contract exposes the provider configuration
+                    // as a property. Preserve the application's authoritative configuration
+                    // instead of constructing a second, divergent configuration here.
+                    WorkManager.initialize(appContext, appContext.workManagerConfiguration)
                 } else {
                     val config = Configuration.Builder()
                         .setMinimumLoggingLevel(Log.INFO)
