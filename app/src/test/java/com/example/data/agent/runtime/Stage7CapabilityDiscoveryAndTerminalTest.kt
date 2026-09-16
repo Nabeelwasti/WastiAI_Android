@@ -147,7 +147,8 @@ class Stage7CapabilityDiscoveryAndTerminalTest {
             parameters = mapOf("command" to "sh", "arguments" to listOf("-c", "echo UnifiedFabricTerminal"))
         )
         val result = fabric.execute(req)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        // Execution status records the lifecycle completion; verificationStatus records truth verification.
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertTrue(result.output.contains("UnifiedFabricTerminal"))
         assertEquals("WastiNativeExecutionProvider", result.executor)
         assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
