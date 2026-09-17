@@ -443,6 +443,34 @@ class WastiFloatingService : Service() {
             }
         }
 
+        val emergencyStopBtn = TextView(this).apply {
+            text = "🛑 STOP"
+            setTextColor(Color.parseColor("#EF4444"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(dpToPx(6), dpToPx(4), dpToPx(6), dpToPx(4))
+            background = createCardBackground(
+                fillColor = Color.parseColor("#450A0A"),
+                strokeColor = Color.parseColor("#DC2626"),
+                strokeWidthPx = dpToPx(1),
+                radiusPx = dpToPx(6)
+            )
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                marginEnd = dpToPx(6)
+            }
+            setOnClickListener {
+                com.example.data.agent.runtime.WastiEmergencyStopController.triggerEmergencyStop(
+                    "User initiated emergency stop from floating overlay"
+                )
+                stopSpeech()
+                Toast.makeText(applicationContext, "EMERGENCY STOP TRIGGERED: Active tasks aborted", Toast.LENGTH_SHORT).show()
+                responseTextLabel?.text = "[EMERGENCY STOP ACTIVE] All running tasks, coroutines, and network calls cancelled."
+            }
+        }
+
         val closeBtn = TextView(this).apply {
             text = "✕"
             setTextColor(Color.parseColor("#94A3B8"))
@@ -457,6 +485,7 @@ class WastiFloatingService : Service() {
         headerRow.addView(voiceMicBtn)
         headerRow.addView(expandedStatusTextView)
         headerRow.addView(speakerToggleBtn)
+        headerRow.addView(emergencyStopBtn)
         headerRow.addView(closeBtn)
 
         // -------------------------------------------------------------

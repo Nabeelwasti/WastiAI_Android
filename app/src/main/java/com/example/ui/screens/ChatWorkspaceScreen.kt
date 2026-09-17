@@ -835,7 +835,36 @@ fun ChatWorkspaceScreen(
                             )
                         }
 
-                        // 6. More Options Menu
+                        // 6. Emergency Stop Button (Single-tap abort for active execution and background tasks)
+                        val emergencyStopSnap by com.example.data.agent.runtime.WastiEmergencyStopController.stopStateFlow.collectAsState()
+                        IconButton(
+                            onClick = {
+                                if (emergencyStopSnap.isStopped) {
+                                    com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop()
+                                    Toast.makeText(context, "Emergency stop reset. System ready.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    onCancelGeneration()
+                                    com.example.data.agent.runtime.WastiEmergencyStopController.triggerEmergencyStop(
+                                        "User triggered emergency stop from Chat Workspace"
+                                    )
+                                    ttsEngine?.stop()
+                                    isTtsSpeaking = false
+                                    Toast.makeText(context, "🛑 EMERGENCY STOP: All active execution aborted", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(30.dp)
+                                .testTag("chat_emergency_stop_btn")
+                        ) {
+                            Icon(
+                                imageVector = if (emergencyStopSnap.isStopped) Icons.Default.Warning else Icons.Default.Cancel,
+                                contentDescription = if (emergencyStopSnap.isStopped) "Reset Emergency Stop" else "Emergency Stop",
+                                tint = if (emergencyStopSnap.isStopped) Color(0xFFEF4444) else if (isGenerating) Color(0xFFEF4444) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
+
+                        // 7. More Options Menu
                         Box {
                             IconButton(
                                 onClick = { showMoreOptionsMenu = true },
@@ -853,6 +882,20 @@ fun ChatWorkspaceScreen(
                                 expanded = showMoreOptionsMenu,
                                 onDismissRequest = { showMoreOptionsMenu = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("🛑 Emergency Stop", fontSize = 12.sp, color = Color(0xFFEF4444)) },
+                                    leadingIcon = { Icon(Icons.Default.Cancel, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp)) },
+                                    onClick = {
+                                        showMoreOptionsMenu = false
+                                        onCancelGeneration()
+                                        com.example.data.agent.runtime.WastiEmergencyStopController.triggerEmergencyStop(
+                                            "User triggered emergency stop from menu"
+                                        )
+                                        ttsEngine?.stop()
+                                        isTtsSpeaking = false
+                                        Toast.makeText(context, "🛑 EMERGENCY STOP: Active execution aborted", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
                                 DropdownMenuItem(
                                     text = { Text("New Chat Session", fontSize = 12.sp) },
                                     leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp)) },

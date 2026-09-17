@@ -9,6 +9,8 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.Signature
@@ -98,6 +100,52 @@ data class SignedOwnerEntitlement(
             if (revocationVersion < WastiIdentityManager.MIN_REVOCATION_VERSION) return false
             return verifyAsymmetricSignature()
         }
+
+    fun toJson(): String {
+        val obj = JSONObject()
+        obj.put("token", token)
+        obj.put("subjectId", subjectId)
+        obj.put("issuedAtEpochMs", issuedAtEpochMs)
+        obj.put("expiresAtEpochMs", expiresAtEpochMs)
+        obj.put("signatureBase64", signatureBase64)
+        obj.put("subjectDeviceId", subjectDeviceId)
+        obj.put("audience", audience)
+        obj.put("nonce", nonce)
+        obj.put("revocationVersion", revocationVersion)
+        val caps = JSONArray()
+        authorizedCapabilities.forEach { caps.put(it) }
+        obj.put("authorizedCapabilities", caps)
+        return obj.toString()
+    }
+
+    companion object {
+        fun fromJson(jsonStr: String): SignedOwnerEntitlement? {
+            return try {
+                val obj = JSONObject(jsonStr)
+                val capsList = mutableListOf<String>()
+                val caps = obj.optJSONArray("authorizedCapabilities")
+                if (caps != null) {
+                    for (i in 0 until caps.length()) {
+                        capsList.add(caps.getString(i))
+                    }
+                }
+                SignedOwnerEntitlement(
+                    token = obj.getString("token"),
+                    subjectId = obj.getString("subjectId"),
+                    issuedAtEpochMs = obj.getLong("issuedAtEpochMs"),
+                    expiresAtEpochMs = obj.getLong("expiresAtEpochMs"),
+                    signatureBase64 = obj.getString("signatureBase64"),
+                    authorizedCapabilities = capsList,
+                    subjectDeviceId = obj.optString("subjectDeviceId", ""),
+                    audience = obj.optString("audience", "wasti-authoritative-runtime"),
+                    nonce = obj.optString("nonce", ""),
+                    revocationVersion = obj.optInt("revocationVersion", 1)
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
 }
 
 data class WastiIdentityProfile(
@@ -138,6 +186,7 @@ object WastiIdentityManager {
     private const val KEY_USER_PHOTO = "identity_photo_url"
     private const val KEY_USER_PROVIDER = "identity_provider"
     private const val KEY_USER_ROLE = "identity_role"
+    private const val KEY_OWNER_ENTITLEMENT_JSON = "identity_owner_entitlement_json"
     private const val KEY_OWNER_TOKEN = "identity_owner_token"
     private const val KEY_OWNER_ISSUED_AT = "identity_owner_issued_at"
     private const val KEY_OWNER_EXPIRY = "identity_owner_expiry"
@@ -147,18 +196,82 @@ object WastiIdentityManager {
     private const val KEY_OWNER_NONCE = "identity_owner_nonce"
     private const val KEY_OWNER_CAPABILITIES = "identity_owner_capabilities"
     private const val KEY_OWNER_REVOCATION_VERSION = "identity_owner_revocation_version"
+    private const val PREFS_NONCES_NAME = "wasti_consumed_nonces"
+    private const val NONCE_RETENTION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000L // 7 days
     const val MIN_REVOCATION_VERSION = 1
 
     private val consumedNonces = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile
+    private var noncesLoaded = false
+
+    private fun ensureNoncesLoaded(context: Context) {
+        if (noncesLoaded) return
+        synchronized(consumedNonces) {
+            if (noncesLoaded) return
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NONCES_NAME, Context.MODE_PRIVATE)
+                val all = prefs.all
+                val now = System.currentTimeMillis()
+                val editor = prefs.edit()
+                var pruned = false
+                for ((key, value) in all) {
+                    val timestamp = (value as? Long) ?: (value as? Number)?.toLong() ?: 0L
+                    if (now - timestamp > NONCE_RETENTION_WINDOW_MS) {
+                        editor.remove(key)
+                        pruned = true
+                    } else {
+                        consumedNonces[key] = timestamp
+                    }
+                }
+                if (pruned) editor.apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed loading persistent nonces: ${e.message}")
+            } finally {
+                noncesLoaded = true
+            }
+        }
+    }
 
     fun isNonceValid(nonce: String): Boolean {
         if (nonce.isBlank()) return false
+        val appCtx = com.example.WastiApplication.instance
+        if (appCtx != null) ensureNoncesLoaded(appCtx)
+        return !consumedNonces.containsKey(nonce)
+    }
+
+    fun isNonceValid(context: Context, nonce: String): Boolean {
+        if (nonce.isBlank()) return false
+        ensureNoncesLoaded(context)
         return !consumedNonces.containsKey(nonce)
     }
 
     fun consumeNonce(nonce: String) {
         if (nonce.isNotBlank()) {
-            consumedNonces[nonce] = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            consumedNonces[nonce] = now
+            val appCtx = com.example.WastiApplication.instance
+            if (appCtx != null) {
+                try {
+                    val prefs = appCtx.getSharedPreferences(PREFS_NONCES_NAME, Context.MODE_PRIVATE)
+                    prefs.edit().putLong(nonce, now).apply()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to persist consumed nonce: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun consumeNonce(context: Context, nonce: String) {
+        ensureNoncesLoaded(context)
+        if (nonce.isNotBlank()) {
+            val now = System.currentTimeMillis()
+            consumedNonces[nonce] = now
+            try {
+                val prefs = context.getSharedPreferences(PREFS_NONCES_NAME, Context.MODE_PRIVATE)
+                prefs.edit().putLong(nonce, now).apply()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to persist consumed nonce: ${e.message}")
+            }
         }
     }
 
@@ -213,6 +326,7 @@ object WastiIdentityManager {
         if (isInitialized) return
         isInitialized = true
 
+        ensureNoncesLoaded(context)
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val userId = prefs.getString(KEY_USER_ID, null)
         if (userId != null) {
@@ -224,33 +338,47 @@ object WastiIdentityManager {
             val roleStr = prefs.getString(KEY_USER_ROLE, WastiUserRole.GUEST.name)
             val role = try { WastiUserRole.valueOf(roleStr ?: WastiUserRole.GUEST.name) } catch (_: Exception) { WastiUserRole.GUEST }
 
-            val ownerToken = prefs.getString(KEY_OWNER_TOKEN, null)
-            val ownerIssuedAt = prefs.getLong(KEY_OWNER_ISSUED_AT, 0L)
-            val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)
-            val ownerSig = prefs.getString(KEY_OWNER_SIG, null)
-            val ownerDeviceId = prefs.getString(KEY_OWNER_DEVICE_ID, null) ?: getDeviceId(context)
-            val ownerAudience = prefs.getString(KEY_OWNER_AUDIENCE, "wasti-authoritative-runtime") ?: "wasti-authoritative-runtime"
-            val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""
-            val ownerCapabilities = prefs.getString(KEY_OWNER_CAPABILITIES, null)
-                ?.split("\u001f")?.filter { it.isNotBlank() } ?: emptyList()
-            val ownerRevocationVersion = prefs.getInt(KEY_OWNER_REVOCATION_VERSION, MIN_REVOCATION_VERSION)
             val localDeviceId = getDeviceId(context)
 
-            val entitlement = if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis() &&
-                ownerIssuedAt > 0L && ownerDeviceId == localDeviceId && ownerCapabilities.isNotEmpty()) {
-                SignedOwnerEntitlement(
-                    token = ownerToken,
-                    subjectId = userId,
-                    issuedAtEpochMs = ownerIssuedAt,
-                    expiresAtEpochMs = ownerExpiry,
-                    signatureBase64 = ownerSig,
-                    authorizedCapabilities = ownerCapabilities,
-                    subjectDeviceId = ownerDeviceId,
-                    audience = ownerAudience,
-                    nonce = ownerNonce,
-                    revocationVersion = ownerRevocationVersion
-                )
-            } else null
+            // Prefer atomic signed owner entitlement JSON
+            val rawEntitlementJson = prefs.getString(KEY_OWNER_ENTITLEMENT_JSON, null)
+            val atomicEntitlement = rawEntitlementJson?.let { SignedOwnerEntitlement.fromJson(it) }
+
+            val entitlement = if (atomicEntitlement != null && atomicEntitlement.subjectDeviceId == localDeviceId &&
+                atomicEntitlement.expiresAtEpochMs > System.currentTimeMillis() && atomicEntitlement.issuedAtEpochMs > 0L) {
+                atomicEntitlement
+            } else {
+                // Fallback to legacy decomposed fields if upgrading from older version
+                val ownerToken = prefs.getString(KEY_OWNER_TOKEN, null)
+                val ownerIssuedAt = prefs.getLong(KEY_OWNER_ISSUED_AT, 0L)
+                val ownerExpiry = prefs.getLong(KEY_OWNER_EXPIRY, 0L)
+                val ownerSig = prefs.getString(KEY_OWNER_SIG, null)
+                val ownerDeviceId = prefs.getString(KEY_OWNER_DEVICE_ID, null) ?: localDeviceId
+                val ownerAudience = prefs.getString(KEY_OWNER_AUDIENCE, "wasti-authoritative-runtime") ?: "wasti-authoritative-runtime"
+                val ownerNonce = prefs.getString(KEY_OWNER_NONCE, null) ?: ""
+                val ownerCapabilities = prefs.getString(KEY_OWNER_CAPABILITIES, null)
+                    ?.split("\u001f")?.filter { it.isNotBlank() } ?: emptyList()
+                val ownerRevocationVersion = prefs.getInt(KEY_OWNER_REVOCATION_VERSION, MIN_REVOCATION_VERSION)
+
+                if (!ownerToken.isNullOrBlank() && !ownerSig.isNullOrBlank() && ownerExpiry > System.currentTimeMillis() &&
+                    ownerIssuedAt > 0L && ownerDeviceId == localDeviceId && ownerCapabilities.isNotEmpty()) {
+                    SignedOwnerEntitlement(
+                        token = ownerToken,
+                        subjectId = userId,
+                        issuedAtEpochMs = ownerIssuedAt,
+                        expiresAtEpochMs = ownerExpiry,
+                        signatureBase64 = ownerSig,
+                        authorizedCapabilities = ownerCapabilities,
+                        subjectDeviceId = ownerDeviceId,
+                        audience = ownerAudience,
+                        nonce = ownerNonce,
+                        revocationVersion = ownerRevocationVersion
+                    ).also {
+                        // Automatically migrate legacy preferences to atomic JSON format
+                        prefs.edit().putString(KEY_OWNER_ENTITLEMENT_JSON, it.toJson()).apply()
+                    }
+                } else null
+            }
 
             val pubKey = getOrCreateDeviceKey()
             val isOwnerVerified = entitlement?.isValid == true
@@ -313,7 +441,7 @@ object WastiIdentityManager {
         val effectiveDeviceId = subjectDeviceId ?: localDeviceId
         val effectiveNonce = nonce ?: UUID.randomUUID().toString()
         val deviceBindingValid = effectiveDeviceId == localDeviceId
-        val nonceAvailable = isNonceValid(effectiveNonce)
+        val nonceAvailable = isNonceValid(context, effectiveNonce)
 
         val entitlementCandidate = if (!serverOwnerToken.isNullOrBlank() && !serverOwnerSig.isNullOrBlank() && serverOwnerExpiry > System.currentTimeMillis()) {
             SignedOwnerEntitlement(
@@ -333,7 +461,7 @@ object WastiIdentityManager {
         val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwnerVerified) entitlementCandidate else null
         if (isOwnerVerified) {
-            entitlementCandidate?.nonce?.let(::consumeNonce)
+            entitlementCandidate?.nonce?.let { consumeNonce(context, it) }
         }
 
         prefs.edit().apply {
@@ -344,6 +472,7 @@ object WastiIdentityManager {
             putString(KEY_USER_PROVIDER, provider.name)
             putString(KEY_USER_ROLE, role.name)
             if (entitlement != null) {
+                putString(KEY_OWNER_ENTITLEMENT_JSON, entitlement.toJson())
                 putString(KEY_OWNER_TOKEN, entitlement.token)
                 putLong(KEY_OWNER_ISSUED_AT, entitlement.issuedAtEpochMs)
                 putLong(KEY_OWNER_EXPIRY, entitlement.expiresAtEpochMs)
@@ -354,6 +483,7 @@ object WastiIdentityManager {
                 putString(KEY_OWNER_CAPABILITIES, entitlement.authorizedCapabilities.joinToString("\u001f"))
                 putInt(KEY_OWNER_REVOCATION_VERSION, entitlement.revocationVersion)
             } else {
+                remove(KEY_OWNER_ENTITLEMENT_JSON)
                 remove(KEY_OWNER_TOKEN)
                 remove(KEY_OWNER_ISSUED_AT)
                 remove(KEY_OWNER_EXPIRY)

@@ -35,6 +35,8 @@ enum class IntentStepStatus {
     PENDING,
     IN_PROGRESS,
     AWAITING_AUTHORIZATION,
+    COMPLETED_UNVERIFIED,
+    VERIFIED,
     COMPLETED_VERIFIED,
     FAILED
 }
@@ -147,7 +149,8 @@ fun ReverseAppStoreIntentCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val (icon, color) = when (step.status) {
-                        IntentStepStatus.COMPLETED_VERIFIED -> Icons.Default.CheckCircle to Color(0xFF2E7D32)
+                        IntentStepStatus.VERIFIED, IntentStepStatus.COMPLETED_VERIFIED -> Icons.Default.CheckCircle to Color(0xFF2E7D32)
+                        IntentStepStatus.COMPLETED_UNVERIFIED -> Icons.Default.HourglassEmpty to Color(0xFFF57C00)
                         IntentStepStatus.IN_PROGRESS -> Icons.Default.PlayArrow to Color(0xFF1565C0)
                         IntentStepStatus.AWAITING_AUTHORIZATION -> Icons.Default.Lock to Color(0xFFE65100)
                         IntentStepStatus.FAILED -> Icons.Default.Error to Color(0xFFC62828)
@@ -168,11 +171,12 @@ fun ReverseAppStoreIntentCard(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (step.verificationEvidence != null) {
+                            val isVerified = step.status == IntentStepStatus.VERIFIED || step.status == IntentStepStatus.COMPLETED_VERIFIED
                             Text(
-                                text = "Evidence: ${step.verificationEvidence}",
+                                text = if (isVerified) "Verified: ${step.verificationEvidence}" else "Pending Verification: ${step.verificationEvidence}",
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
-                                color = Color(0xFF2E7D32)
+                                color = if (isVerified) Color(0xFF2E7D32) else Color(0xFFF57C00)
                             )
                         }
                     }

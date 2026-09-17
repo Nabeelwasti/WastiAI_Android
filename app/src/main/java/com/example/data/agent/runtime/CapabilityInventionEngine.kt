@@ -78,8 +78,83 @@ object CapabilityInventionEngine {
         if (persist) saveAllToDisk(context)
     }
     private fun saveAllToDisk(context: Context) {
-        try { val file = File(context.filesDir, PERSISTENCE_FILE_NAME); val jsonArray = JSONArray(); acquiredCapabilities.values.forEach { def -> val obj = JSONObject(); obj.put("capabilityId", def.capabilityId); obj.put("displayName", def.displayName); obj.put("description", def.description); obj.put("version", def.version); obj.put("category", def.category); obj.put("executionLogicType", def.executionLogicType); obj.put("transformScript", def.transformScript); obj.put("acquiredTimestamp", def.acquiredTimestamp); obj.put("provenanceHash", def.provenanceHash); obj.put("verificationEvidenceId", def.verificationEvidenceId); val paramObj = JSONObject(); def.parameterSchema.forEach { (k, v) -> paramObj.put(k, v) }; obj.put("parameterSchema", paramObj); val testsArray = JSONArray(); def.testSpecifications.forEach { test -> val tObj = JSONObject(); tObj.put("testName", test.testName); tObj.put("expectedOutputPattern", test.expectedOutputPattern); val inputObj = JSONObject(); test.inputParameters.forEach { (ik, iv) -> inputObj.put(ik, iv) }; tObj.put("inputParameters", inputObj); testsArray.put(tObj) }; obj.put("testSpecifications", testsArray); jsonArray.put(obj) }; file.writeText(jsonArray.toString(2), Charsets.UTF_8) } catch (e: Exception) { Log.e(TAG, "Failed to persist acquired capabilities: ${e.message}", e) }
+        try {
+            val file = File(context.filesDir, PERSISTENCE_FILE_NAME)
+            val jsonArray = JSONArray()
+            acquiredCapabilities.values.forEach { def ->
+                val obj = JSONObject()
+                obj.put("capabilityId", def.capabilityId)
+                obj.put("displayName", def.displayName)
+                obj.put("description", def.description)
+                obj.put("version", def.version)
+                obj.put("category", def.category)
+                obj.put("executionLogicType", def.executionLogicType)
+                obj.put("transformScript", def.transformScript)
+                obj.put("acquiredTimestamp", def.acquiredTimestamp)
+                obj.put("provenanceHash", def.provenanceHash)
+                obj.put("verificationEvidenceId", def.verificationEvidenceId)
+                val paramObj = JSONObject()
+                def.parameterSchema.forEach { (k, v) -> paramObj.put(k, v) }
+                obj.put("parameterSchema", paramObj)
+                val testsArray = JSONArray()
+                def.testSpecifications.forEach { test ->
+                    val tObj = JSONObject()
+                    tObj.put("testName", test.testName)
+                    tObj.put("expectedOutputPattern", test.expectedOutputPattern)
+                    val inputObj = JSONObject()
+                    test.inputParameters.forEach { (ik, iv) -> inputObj.put(ik, iv) }
+                    tObj.put("inputParameters", inputObj)
+                    testsArray.put(tObj)
+                }
+                obj.put("testSpecifications", testsArray)
+                jsonArray.put(obj)
+            }
+            file.writeText(jsonArray.toString(2), Charsets.UTF_8)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to persist acquired capabilities: ${e.message}", e)
+        }
     }
-    private fun parseDefinition(obj: JSONObject): AcquiredCapabilityDefinition? = try { val paramObj = obj.optJSONObject("parameterSchema") ?: JSONObject(); val paramMap = mutableMapOf<String, String>(); paramObj.keys().forEach { k -> paramMap[k] = paramObj.getString(k) }; val testsArray = obj.optJSONArray("testSpecifications") ?: JSONArray(); val testsList = mutableListOf<CapabilityTestSpecification>(); for (i in 0 until testsArray.length()) { val tObj = testsArray.getJSONObject(i); val inObj = tObj.optJSONObject("inputParameters") ?: JSONObject(); val inMap = mutableMapOf<String, String>(); inObj.keys().forEach { ik -> inMap[ik] = inObj.getString(ik) }; testsList.add(CapabilityTestSpecification(tObj.getString("testName"),inMap,tObj.getString("expectedOutputPattern"))) }; AcquiredCapabilityDefinition(capabilityId = obj.getString("capabilityId"),displayName = obj.getString("displayName"),description = obj.getString("description"),version = obj.optString("version", "1.0.0"),category = obj.optString("category", "INVENTED"),parameterSchema = paramMap,executionLogicType = obj.getString("executionLogicType"),transformScript = obj.getString("transformScript"),testSpecifications = testsList,acquiredTimestamp = obj.optLong("acquiredTimestamp", System.currentTimeMillis()),provenanceHash = obj.optString("provenanceHash", ""),verificationEvidenceId = obj.optString("verificationEvidenceId", "")) } catch (e: Exception) { Log.e(TAG, "Failed to parse capability definition: ${e.message}", e); null }
-    private fun computeSha256(input: String): String { val digest = MessageDigest.getInstance("SHA-256"); return digest.digest(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) } }
+
+    private fun parseDefinition(obj: JSONObject): AcquiredCapabilityDefinition? = try {
+        val paramObj = obj.optJSONObject("parameterSchema") ?: JSONObject()
+        val paramMap = mutableMapOf<String, String>()
+        paramObj.keys().forEach { k -> paramMap[k] = paramObj.getString(k) }
+        val testsArray = obj.optJSONArray("testSpecifications") ?: JSONArray()
+        val testsList = mutableListOf<CapabilityTestSpecification>()
+        for (i in 0 until testsArray.length()) {
+            val tObj = testsArray.getJSONObject(i)
+            val inObj = tObj.optJSONObject("inputParameters") ?: JSONObject()
+            val inMap = mutableMapOf<String, String>()
+            inObj.keys().forEach { ik -> inMap[ik] = inObj.getString(ik) }
+            testsList.add(
+                CapabilityTestSpecification(
+                    testName = tObj.getString("testName"),
+                    inputParameters = inMap,
+                    expectedOutputPattern = tObj.getString("expectedOutputPattern")
+                )
+            )
+        }
+        AcquiredCapabilityDefinition(
+            capabilityId = obj.getString("capabilityId"),
+            displayName = obj.getString("displayName"),
+            description = obj.getString("description"),
+            version = obj.optString("version", "1.0.0"),
+            category = obj.optString("category", "INVENTED"),
+            parameterSchema = paramMap,
+            executionLogicType = obj.getString("executionLogicType"),
+            transformScript = obj.getString("transformScript"),
+            testSpecifications = testsList,
+            acquiredTimestamp = obj.optLong("acquiredTimestamp", System.currentTimeMillis()),
+            provenanceHash = obj.optString("provenanceHash", ""),
+            verificationEvidenceId = obj.optString("verificationEvidenceId", "")
+        )
+    } catch (e: Exception) {
+        Log.e(TAG, "Failed to parse capability definition: ${e.message}", e)
+        null
+    }
+
+    private fun computeSha256(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    }
 }

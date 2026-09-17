@@ -939,18 +939,38 @@ jobs:
         done
 
         echo "Assets to publish: ${ASSETS[*]}"
-        gh release create "$TAG_NAME" "${ASSETS[@]}" \
-          --title "$TITLE" \
-          --notes "### 📱 Wasti AI Production & Debug Release
-        - **Tag:** \`$TAG_NAME\`
-        - **Commit:** \`${{ github.sha }}\`
-        - **Available Artifacts:**
-          - \`app-release.apk\` (Signed Production APK)
-          - \`app-debug.apk\` (Debug APK for immediate testing)
-          - \`app-release.aab\` (Signed Production Android App Bundle)
-          - \`release_verification_evidence.json\` (Runtime & DEX Verification)
-        - Cryptographically signed with release keystore and verified by \`apksigner\`." \
-          --latest || \
-        gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+        if [ -f "build-release-artifacts/app-release.apk" ]; then
+          NOTES="### 📱 Wasti AI Production & Debug Release
+- **Tag:** \`$TAG_NAME\`
+- **Commit:** \`${{ github.sha }}\`
+- **Available Artifacts:**
+  - \`app-release.apk\` (Signed Production APK)
+  - \`app-debug.apk\` (Debug APK for immediate testing)
+  - \`app-release.aab\` (Signed Production Android App Bundle)
+  - \`release_verification_evidence.json\` (Runtime & DEX Verification)
+- Cryptographically signed with release keystore and verified by \`apksigner\`."
+
+          gh release create "$TAG_NAME" "${ASSETS[@]}" \
+            --title "$TITLE" \
+            --notes "$NOTES" \
+            --latest || \
+          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+        else
+          NOTES="### 🧪 Wasti AI Pre-release (Debug / CI Build)
+- **Tag:** \`$TAG_NAME\`
+- **Commit:** \`${{ github.sha }}\`
+- **Notice:** Production release keystore was not configured in this environment. Production release packaging is marked BLOCKED_EXTERNAL_DEPENDENCY per Zero-Fabrication Law.
+- **Available Artifacts:**
+  - \`app-debug.apk\` (Debug APK for testing and verification)
+  - \`debug_verification_evidence.json\` (Runtime & DEX Verification Evidence)
+- Debug APK signed with debug keystore."
+
+          gh release create "$TAG_NAME" "${ASSETS[@]}" \
+            --title "$TITLE (Pre-release / Debug)" \
+            --notes "$NOTES" \
+            --prerelease || \
+          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+        fi
         echo "SUCCESS: Wasti AI Release $TAG_NAME published to GitHub Releases!"
+
 
