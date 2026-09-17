@@ -58,7 +58,8 @@ class CapabilityRealityAndDeviceTest {
             )
             val result = fabric.execute(req, context)
             assertNotNull(result)
-            assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+            // Robolectric has no independent device probe, so execution is completed but not verified.
+            assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
             assertTrue(result.status == UnifiedExecutionStatus.VERIFIED || result.status == UnifiedExecutionStatus.COMPLETED)
             assertTrue(result.output.contains("WASM") || result.output.contains("Fuel"))
         }

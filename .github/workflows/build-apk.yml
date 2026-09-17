@@ -77,9 +77,293 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
+      contents: read
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v5
+
+    - name: Validate Gradle Wrapper
+      uses: gradle/actions/wrapper-validation@v5
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v5
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: Accept Android SDK Licenses
+      run: |
+        mkdir -p "$ANDROID_HOME/licenses"
+        printf '%s\n%s\n%s\n' \
+          "8933bad161af4178b1185d1a37fbf41ea5269c55" \
+          "d56f5187479451eabf01fb78af6dfcb131a6481e" \
+          "24333f8a63b1e9751435240a53ac13cdd4e75608" > "$ANDROID_HOME/licenses/android-sdk-license"
+        printf '%s\n' "84831b9409646a918e30573bab4c9c91346d8abd" > "$ANDROID_HOME/licenses/android-sdk-preview-license"
+        printf '%s\n%s\n' \
+          "601085b94c79f3b24e146dd3920d091007e92b34" \
+          "0dce45676d31a37a373783b352b085870b207574" > "$ANDROID_HOME/licenses/android-googletv-license"
+        printf '%s\n' "33b6a2b64920268e304a4ddb1216b3a777e9b41e" > "$ANDROID_HOME/licenses/google-gdk-license"
+        printf '%s\n' "e9acab5b5fbb560a72cfa4f23690f4086beab3ac" > "$ANDROID_HOME/licenses/mips-android-sysimage-license"
+        printf '%s\n' "859f317696f67ef3d7f30a50a5560e7834b43903" > "$ANDROID_HOME/licenses/android-sdk-arm-dbt-license"
+        test -s "$ANDROID_HOME/licenses/android-sdk-license" || { echo "ERROR: Failed to write android-sdk-license"; exit 1; }
+        echo "Android SDK licenses accepted deterministically."
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v5
+      with:
+        cache-read-only: false
+
+    - name: Make Gradle Wrapper Executable
+      run: chmod +x gradlew
+
+    - name: Decode Debug Keystore
+      run: |
+        if [ -f "debug.keystore.base64" ]; then
+          base64 -d debug.keystore.base64 > debug.keystore
+          echo "Restored debug.keystore from base64"
+        fi
+
+    - name: Verify google-services.json is Not Tracked by Git
+      run: |
+        if git ls-files --error-unmatch app/google-services.json 2>/dev/null; then
+          echo "ERROR: app/google-services.json must NOT be tracked by Git in the public repository!"
+          exit 1
+        fi
+        echo "SUCCESS: app/google-services.json is not tracked by Git."
+
+    - name: Run Code Quality & Anti-Pattern Audit
+      run: |
+        python3 scripts/audit_code_quality.py
+
+    - name: Run Backend Syntax & Security Validation Tests
+      run: |
+        node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
+        node --test backend/test_backend.js
+        echo "SUCCESS: Backend syntax and security tests verified."
+
+    - name: Run Unit Tests
+      timeout-minutes: 20
+      run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
+
+    - name: Run Android Lint (Debug)
+      timeout-minutes: 10
+      run: ./gradlew lintDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
+
+    - name: Build Debug APK
+      timeout-minutes: 15
+      run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
+
+    - name: Verify WastiApplication in Manifest and DEX
+      run: |
+        APK="app/build/outputs/apk/debug/app-debug.apk"
+        echo "Validating APK: $APK"
+        unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in APK"; exit 1; }
+        
+        FOUND=0
+        for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
+          if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then
+            echo "SUCCESS: WastiApplication class descriptor verified in $DEX"
+            FOUND=1
+          elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
+            echo "INFO: WastiApplication reference found in $DEX"
+            FOUND=1
+          fi
+        done
+
+        if [ "$FOUND" -eq 0 ]; then
+          echo "ERROR: WastiApplication NOT FOUND in APK DEX files"
+          exit 1
+        fi
+        echo "SUCCESS: WastiApplication bytecode integrity verified."
+
+    - name: Security & Secret Boundary Verification Scan
+      shell: bash
+      run: |
+        echo "Running Comprehensive Secret & Boundary Scan across Source, Backend, Workflows, and APKs..."
+
+        # 1. Scan source code and backend for forbidden raw secret patterns
+        echo "Phase 1: Scanning repository source and backend for raw secret patterns..."
+        FATAL_PATTERNS=(
+          "MY_GOOGLE_ACCOUNT_PASSWORD"
+          "GOOGLE_ACCOUNT_PASSWORD"
+          "gho_"
+          "xoxb-"
+          "sk-ant-"
+          "AKIA[0-9A-Z]{16}"
+          "rk_live_"
+          "sk_live_"
+        )
+        for PATTERN in "${FATAL_PATTERNS[@]}"; do
+          if grep -rEn --exclude-dir=".git" --exclude-dir="build" "$PATTERN" app/src/main/ backend/ 2>/dev/null; then
+            echo "ERROR: Forbidden secret pattern '$PATTERN' found in source code or backend!"
+            exit 1
+          fi
+        done
+
+        # 2. Scan workflows for live token regexes
+        if grep -rEn --exclude-dir=".git" "ghp_[A-Za-z0-9]{36}|gho_[A-Za-z0-9]{30,}|xoxb-[0-9]{10,}|sk-ant-[A-Za-z0-9]{20,}|sk_live_[A-Za-z0-9]{24,}|rk_live_[A-Za-z0-9]{24,}" .github/workflows/ 2>/dev/null; then
+          echo "ERROR: Actual live API token found in workflows!"
+          exit 1
+        fi
+
+        # 3. APK Secret Boundary Scan (Scans all generated APKs: debug and release)
+        TARGET_APKS=()
+        if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+          TARGET_APKS+=("app/build/outputs/apk/debug/app-debug.apk")
+        fi
+        if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+          TARGET_APKS+=("app/build/outputs/apk/release/app-release.apk")
+        fi
+
+        for TARGET_APK in "${TARGET_APKS[@]}"; do
+          echo "Phase 2: Scanning APK bytecode, manifest, and bundled resources for $TARGET_APK..."
+          mkdir -p /tmp/apk_inspect
+          unzip -q "$TARGET_APK" -d /tmp/apk_inspect
+
+          # 3a. Verify canonical package ID in APK manifest
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$AAPT" ] && [ -x "$AAPT" ] && "$AAPT" dump badging "$TARGET_APK" 2>/dev/null | grep -q "com.aistudio.wastios.k9v2pz"; then
+            echo "SUCCESS: Canonical package ID verified via aapt in $TARGET_APK"
+          else
+            python3 -c "import zipfile, sys; apk = sys.argv[1]; b = zipfile.ZipFile(apk).read('AndroidManifest.xml'); sys.exit(0 if (b'com.aistudio.wastios.k9v2pz' in b or 'com.aistudio.wastios.k9v2pz'.encode('utf-16le') in b) else 1)" "$TARGET_APK" || {
+              echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' not found in $TARGET_APK AndroidManifest.xml!"
+              exit 1
+            }
+            echo "SUCCESS: Canonical package ID verified via binary AXML in $TARGET_APK"
+          fi
+
+          # 3b. Verify WastiApplication bytecode integrity
+          FOUND_APP=0
+          for DEX in $(unzip -Z1 "$TARGET_APK" | grep -E '^classes[0-9]*\.dex$'); do
+            if unzip -p "$TARGET_APK" "$DEX" | grep -a -q "WastiApplication"; then
+              FOUND_APP=1
+              break
+            fi
+          done
+          if [ "$FOUND_APP" -eq 0 ]; then
+            echo "ERROR: WastiApplication class missing in $TARGET_APK DEX files!"
+            exit 1
+          fi
+
+          # 3c. Verify signing certificate on release APK
+          if [[ "$TARGET_APK" == *"release"* ]]; then
+            APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner 2>/dev/null | sort -V | tail -n 1)
+            if [ -x "$APKSIGNER" ]; then
+              echo "Verifying cryptographic certificate for $TARGET_APK..."
+              "$APKSIGNER" verify --verbose --print-certs "$TARGET_APK" || {
+                echo "ERROR: apksigner certificate verification failed on $TARGET_APK!"
+                exit 1
+              }
+            fi
+          fi
+
+          # 3d. Scan APK for fatal raw secret patterns
+          for PATTERN in "${FATAL_PATTERNS[@]}"; do
+            if grep -rEn "$PATTERN" /tmp/apk_inspect/; then
+              echo "ERROR: Forbidden secret pattern '$PATTERN' found inside $TARGET_APK!"
+              exit 1
+            fi
+          done
+
+          if grep -rEn "ghp_[A-Za-z0-9]{36}" /tmp/apk_inspect/; then
+            echo "ERROR: Actual GitHub Personal Access Token found inside $TARGET_APK!"
+            exit 1
+          fi
+
+          if grep -rEn "BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY" /tmp/apk_inspect/assets/ /tmp/apk_inspect/res/ 2>/dev/null; then
+            echo "ERROR: Private key certificate/file bundled in $TARGET_APK assets or resources!"
+            exit 1
+          fi
+          rm -rf /tmp/apk_inspect
+          echo "SUCCESS: $TARGET_APK passed package ID, certificate, bytecode, and secret boundary verification."
+        done
+
+        # 4. Release AAB (Android App Bundle) Secret & Artifact Boundary Scan
+        if [ -f "app/build/outputs/bundle/release/app-release.aab" ]; then
+          AAB="app/build/outputs/bundle/release/app-release.aab"
+          echo "Phase 3: Scanning Release AAB bytecode and bundled resources for $AAB..."
+          mkdir -p /tmp/aab_inspect
+          unzip -q "$AAB" -d /tmp/aab_inspect
+
+          # Verify base manifest and DEX files exist in AAB
+          test -f /tmp/aab_inspect/base/manifest/AndroidManifest.xml || { echo "ERROR: base/manifest/AndroidManifest.xml missing in AAB"; exit 1; }
+          test -f /tmp/aab_inspect/base/dex/classes.dex || { echo "ERROR: base/dex/classes.dex missing in AAB"; exit 1; }
+
+          # Verify package ID in AAB manifest (protobuf or UTF-8/UTF-16 binary XML)
+          python3 -c "import sys; b = open('/tmp/aab_inspect/base/manifest/AndroidManifest.xml', 'rb').read(); sys.exit(0 if (b'com.aistudio.wastios.k9v2pz' in b or 'com.aistudio.wastios.k9v2pz'.encode('utf-16le') in b) else 1)" || {
+            echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' missing in AAB manifest!"
+            exit 1
+          }
+
+          # Scan AAB for secret patterns
+          for PATTERN in "${FATAL_PATTERNS[@]}"; do
+            if grep -rEn "$PATTERN" /tmp/aab_inspect/; then
+              echo "ERROR: Forbidden secret pattern '$PATTERN' found inside $AAB!"
+              exit 1
+            fi
+          done
+
+          if grep -rEn "ghp_[A-Za-z0-9]{36}" /tmp/aab_inspect/; then
+            echo "ERROR: Actual GitHub Personal Access Token found inside $AAB!"
+            exit 1
+          fi
+
+          if grep -rEn "BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY" /tmp/aab_inspect/base/assets/ /tmp/aab_inspect/base/res/ 2>/dev/null; then
+            echo "ERROR: Private key certificate/file bundled in $AAB assets or resources!"
+            exit 1
+          fi
+
+          rm -rf /tmp/aab_inspect
+          echo "SUCCESS: Release AAB passed package ID, bytecode, and secret boundary verification."
+        fi
+
+        # 5. Strictly forbid private key files/certificates in source assets or resources
+        if grep -rEn --exclude-dir=".git" "BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY" app/src/main/assets/ app/src/main/res/ 2>/dev/null; then
+          echo "ERROR: Private key certificate/file bundled in source assets or resources!"
+          exit 1
+        fi
+
+        # 5. In compiled bytecode (DEX) and source, scan for actual embedded private keys with base64 payload blocks
+        python3 scripts/scan_private_keys.py
+
+        echo "SUCCESS: Comprehensive source, backend, workflow, and APK secret boundary scan passed cleanly."
+
+    - name: Execute Debug Runtime & Evidence Verification
+      if: env.HAVE_RELEASE_KEYSTORE != 'true'
+      run: |
+        chmod +x scripts/verify_release_runtime.sh
+        ./scripts/verify_release_runtime.sh app/build/outputs/apk/debug/app-debug.apk debug_verification_evidence.json
+
+    - name: Cleanup Sensitive Build Files
+      if: always()
+      run: |
+        rm -f app/google-services.json
+        rm -f /tmp/release.keystore
+        rm -f debug.keystore
+        rm -f .env
+        rm -f app/src/main/assets/wasti_seed_vault.*
+        echo "Cleaned up temporary sensitive build files."
+
+    - name: Upload Debug Artifact
+      uses: actions/upload-artifact@v6
+      continue-on-error: true
+      with:
+        name: WastiAI-Debug-APK
+        if-no-files-found: warn
+        path: |
+          app/build/outputs/apk/debug/app-debug.apk
+          debug_verification_evidence.json
+
+
+  release:
+    name: Build, Sign & Publish Release
+    needs: [lint_detekt, validate]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
       contents: write
-    outputs:
-      have_release_keystore: ${{ steps.signing_config.outputs.have_release_keystore }}
 
     steps:
     - name: Checkout Repository
@@ -344,50 +628,9 @@ jobs:
       run: |
         python3 scripts/generate_secrets_report.py .env
 
-    - name: Run Code Quality & Anti-Pattern Audit
-      run: |
-        python3 scripts/audit_code_quality.py
-
-    - name: Run Backend Syntax & Security Validation Tests
-      run: |
-        node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
-        node --test backend/test_backend.js
-        echo "SUCCESS: Backend syntax and security tests verified."
-
-    - name: Run Unit Tests
-      timeout-minutes: 20
-      run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
-
-    - name: Run Android Lint (Debug)
-      timeout-minutes: 10
-      run: ./gradlew lintDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
-
     - name: Build Debug APK
       timeout-minutes: 15
       run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
-
-    - name: Verify WastiApplication in Manifest and DEX
-      run: |
-        APK="app/build/outputs/apk/debug/app-debug.apk"
-        echo "Validating APK: $APK"
-        unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in APK"; exit 1; }
-        
-        FOUND=0
-        for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
-          if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then
-            echo "SUCCESS: WastiApplication class descriptor verified in $DEX"
-            FOUND=1
-          elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
-            echo "INFO: WastiApplication reference found in $DEX"
-            FOUND=1
-          fi
-        done
-
-        if [ "$FOUND" -eq 0 ]; then
-          echo "ERROR: WastiApplication NOT FOUND in APK DEX files"
-          exit 1
-        fi
-        echo "SUCCESS: WastiApplication bytecode integrity verified."
 
     - name: Configure Production Release Signing
       id: signing_config
@@ -620,7 +863,6 @@ jobs:
         ./scripts/verify_release_runtime.sh app/build/outputs/apk/release/app-release.apk release_verification_evidence.json
 
     - name: Execute Debug Runtime & Evidence Verification
-      if: env.HAVE_RELEASE_KEYSTORE != 'true'
       run: |
         chmod +x scripts/verify_release_runtime.sh
         ./scripts/verify_release_runtime.sh app/build/outputs/apk/debug/app-debug.apk debug_verification_evidence.json
@@ -634,16 +876,6 @@ jobs:
         rm -f .env
         rm -f app/src/main/assets/wasti_seed_vault.*
         echo "Cleaned up temporary sensitive build files."
-
-    - name: Upload Debug Artifact
-      uses: actions/upload-artifact@v6
-      continue-on-error: true
-      with:
-        name: WastiAI-Debug-APK
-        if-no-files-found: warn
-        path: |
-          app/build/outputs/apk/debug/app-debug.apk
-          debug_verification_evidence.json
 
     - name: Stage Release Artifacts
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -721,3 +953,4 @@ jobs:
           --latest || \
         gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
         echo "SUCCESS: Wasti AI Release $TAG_NAME published to GitHub Releases!"
+
