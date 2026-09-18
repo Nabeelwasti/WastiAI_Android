@@ -393,4 +393,35 @@ class WastiSovereignConnectivityProvider private constructor(
             • Strategy: Zero-Drop Autonomous Execution
         """.trimIndent()
     }
+
+    /**
+     * Prepares a Wi-Fi Direct P2P connection configuration for a target peer.
+     */
+    fun createP2pConfig(deviceAddress: String): WifiP2pConfig {
+        val config = WifiP2pConfig()
+        config.deviceAddress = deviceAddress
+        return config
+    }
+
+    /**
+     * Inspects group owner status from a Wi-Fi P2P connection info update.
+     */
+    fun isGroupOwner(info: WifiP2pInfo): Boolean {
+        return info.groupFormed && info.isGroupOwner
+    }
+
+    /**
+     * Pings an external gateway URL via HTTP connection to test WAN connectivity.
+     */
+    suspend fun checkGatewayReachability(gatewayUrl: String): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(gatewayUrl)
+            val conn = url.openConnection() as HttpURLConnection
+            conn.connectTimeout = 5000
+            conn.readTimeout = 5000
+            conn.responseCode in 200..399
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

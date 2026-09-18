@@ -85,6 +85,7 @@ object WastiOmniBrain {
         includeCloudProviders: Boolean = true
     ): OmniBrainSynthesis = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        Log.d(TAG, "reasonAndSynthesize started for appId: $appId, prompt: ${prompt.take(60)}")
         _activeThoughtStream.value = "OmniBrain Active: Ingesting memories and formulating cross-model perspectives across all 12 sovereign nodes..."
 
         // 1. Gather Long-Term Memory and Preserved Learnings

@@ -225,3 +225,18 @@ fun ReverseAppStoreIntentCard(
         }
     }
 }
+
+/**
+ * Wraps content in an [AnimatedVisibility] envelope so app-intent cards fade in/out smoothly.
+ * Wires the AnimatedVisibility import for conditional UI animations.
+ */
+@Composable
+fun AnimatedIntentCardReveal(visible: Boolean, content: @Composable () -> Unit) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandVertically(),
+        exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically()
+    ) {
+        content()
+    }
+}

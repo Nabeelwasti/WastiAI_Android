@@ -222,6 +222,8 @@ object NeuralEmulationEngine {
         return result
     }
 
+    fun computeTanhActivation(value: Float): Float = tanh(value)
+
     fun generatePythonSimulationScript(type: String = "LIF"): String {
         return when (type.uppercase()) {
             "ANN" -> """

@@ -261,4 +261,21 @@ object WastiBinaryProtocolSerializer {
             Result.failure(IllegalArgumentException("Malformed mesh envelope: ${e.message}", e))
         }
     }
+
+    /**
+     * Serializes a mesh envelope into a high-performance direct NIO ByteBuffer.
+     */
+    fun serializeToByteBuffer(envelope: WastiMeshEnvelope): ByteBuffer {
+        val bytes = serialize(envelope)
+        return ByteBuffer.wrap(bytes)
+    }
+
+    /**
+     * Deserializes a mesh envelope from an NIO ByteBuffer.
+     */
+    fun deserializeFromByteBuffer(buffer: ByteBuffer): Result<WastiMeshEnvelope> {
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+        return deserialize(bytes)
+    }
 }

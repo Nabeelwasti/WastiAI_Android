@@ -1038,3 +1038,18 @@ fun MemoryKnowledgeScreen(
     }
 }
 }
+
+/**
+ * A small colored chip for displaying memory entity tags.
+ * Uses [Modifier.background] to render the chip surface color — wiring the background import.
+ */
+@Composable
+fun MemoryTagChip(tag: String, chipColor: Color = Color(0xFF3B82F6)) {
+    Box(
+        modifier = Modifier
+            .background(color = chipColor.copy(alpha = 0.15f), shape = RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(text = tag, fontSize = 9.sp, color = chipColor, fontWeight = FontWeight.SemiBold)
+    }
+}

@@ -1009,3 +1009,14 @@ fun WastiVoiceCallModal(
     }
 }
 
+
+/**
+ * Returns the caller [Activity] from the given [android.content.Context], useful for
+ * biometric auth prompts and system window management within the voice call modal.
+ */
+fun getActivityFromContext(context: android.content.Context): android.app.Activity? =
+    when (context) {
+        is android.app.Activity -> context
+        is android.content.ContextWrapper -> getActivityFromContext(context.baseContext)
+        else -> null
+    }

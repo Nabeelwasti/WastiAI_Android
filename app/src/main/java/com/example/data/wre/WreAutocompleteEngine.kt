@@ -163,7 +163,7 @@ class WreAutocompleteEngine(
         return children
             .filter { it.name.startsWith(filePrefix, ignoreCase = true) }
             .sortedWith(compareBy({ !it.isDirectory }, { it.name }))
-            .map { file ->
+            .map { file: File ->
                 val suggestionText = if (dirPart.isNotEmpty()) "$dirPart${file.name}" else file.name
                 val fullWithSlash = if (file.isDirectory) "$suggestionText/" else suggestionText
                 AutocompleteSuggestion(
@@ -172,5 +172,12 @@ class WreAutocompleteEngine(
                     isDirectory = file.isDirectory
                 )
             }
+    }
+
+    /**
+     * Resolves and returns the underlying filesystem directory File for autocompletion inspection.
+     */
+    fun getWorkingDirFile(virtualPath: String): File? {
+        return workspaceManager.resolve(virtualPath).getOrNull()
     }
 }

@@ -36,7 +36,9 @@ data class BuildRequest(
     val environment: Map<String, String> = emptyMap(),
     val cleanFirst: Boolean = false,
     val timeoutMs: Long = 30000L
-)
+) {
+    fun getProjectDirectory(): File = File(projectPath)
+}
 
 data class BuildResult(
     val buildId: String,
@@ -52,7 +54,9 @@ data class BuildResult(
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val verificationState: String
-)
+) {
+    fun getArtifactFiles(): List<File> = artifacts.map { File(it) }
+}
 
 enum class TestExecutionStatus {
     PASSED,

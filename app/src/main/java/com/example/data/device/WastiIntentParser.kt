@@ -13,6 +13,7 @@ object WastiIntentParser {
 
     fun parseAndExecute(context: Context, text: String): IntentParseResult {
         if (text.isBlank()) return IntentParseResult(false, null)
+        Log.d("WastiIntentParser", "Parsing potential device intent from text: ${text.take(60)}")
 
         val trimmed = text.trim()
         val lower = trimmed.lowercase()

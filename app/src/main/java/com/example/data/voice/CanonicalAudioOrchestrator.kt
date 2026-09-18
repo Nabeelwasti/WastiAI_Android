@@ -37,6 +37,13 @@ class CanonicalAudioOrchestrator(
 
     private val captureProviders = ConcurrentHashMap<String, AudioCaptureProvider>()
     private val outputProviders = ConcurrentHashMap<String, AudioOutputProvider>()
+    private val speechToTextProviders = ConcurrentHashMap<String, SpeechToTextProvider>()
+
+    fun registerSpeechProvider(provider: SpeechToTextProvider) {
+        speechToTextProviders[provider.id] = provider
+    }
+
+    fun getSpeechProvider(id: String): SpeechToTextProvider? = speechToTextProviders[id]
 
     private val _inputRealityState = MutableStateFlow(AudioRealityState.AVAILABLE)
     val inputRealityState: StateFlow<AudioRealityState> = _inputRealityState.asStateFlow()

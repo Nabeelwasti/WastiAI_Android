@@ -318,4 +318,17 @@ object AutonomousHardwareOffloader {
             verificationEvidence = "Bluetooth peer execution completed: ${targetNode.addressOrIp} fingerprint: ${targetNode.capabilityFingerprint} (duration: ${duration}ms); independent local verification required"
         )
     }
+
+    /**
+     * Checks if physical Bluetooth hardware is present and enabled for offloading.
+     */
+    @SuppressLint("MissingPermission")
+    fun isBluetoothOffloadAvailable(context: Context): Boolean {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val adapter: BluetoothAdapter? = bluetoothManager?.adapter ?: run {
+            @Suppress("DEPRECATION")
+            BluetoothAdapter.getDefaultAdapter()
+        }
+        return adapter?.isEnabled == true
+    }
 }

@@ -69,6 +69,11 @@ class WastiPolyglotTerminalEngine(
     private val sshTmuxCompilerEngine = WastiSshTmuxCompilerEngine(context, workspaceManager)
     private val binaryRegistry = WastiSovereignBinaryRegistry(context, workspaceManager)
     private val meshBridge by lazy { com.example.data.mesh.WastiUniversalMeshBridge.getInstance(context) }
+    val sessionId: String = UUID.randomUUID().toString()
+
+    fun logDiagnostic(message: String) {
+        Log.d("WastiPolyglotTerminalEngine", "[$sessionId] $message")
+    }
 
     override val supportedCommands: Set<String> = setOf(
         "python", "python3", "pip", "pip3",

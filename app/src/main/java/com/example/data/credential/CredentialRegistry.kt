@@ -674,6 +674,19 @@ object CredentialRegistry {
         return com.example.data.security.WastiSecureStorage.getEncryptedPreferences(context, "wasti_secure_prefs")
     }
 
+    fun createDirectEncryptedPreferences(context: Context, fileName: String = "wasti_direct_secure_prefs"): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            context,
+            fileName,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
     private fun getBuildConfigString(key: String): String? {
         return try {
             val field = com.example.BuildConfig::class.java.getField(key)

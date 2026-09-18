@@ -591,3 +591,40 @@ private fun OpenSourceModelItemRow(model: com.example.data.ai.model.OpenSourceMo
     }
 }
 
+/**
+ * Displays a banner summarizing [AICouncilEngine] deliberation status and the count of capabilities
+ * per [CapabilityLifecycleState]. Uses [Modifier.border] for the highlighted border outline.
+ */
+@Composable
+fun CouncilStatusBanner(
+    capabilities: List<com.example.data.architecture.civilization.CivilizationCapability> = emptyList(),
+    onClick: () -> Unit = {}
+) {
+    val stableCount = capabilities.count { it.lifecycleState == CapabilityLifecycleState.STABLE }
+    val evolvingCount = capabilities.count { it.lifecycleState == CapabilityLifecycleState.EVOLVING }
+    val degradedCount = capabilities.count { it.lifecycleState == CapabilityLifecycleState.DEGRADED }
+
+    val councilActive = AICouncilEngine.councilMembers.isNotEmpty()
+    val borderColor = if (councilActive) Color(0xFF10B981) else Color(0xFFF59E0B)
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(width = 1.dp, color = borderColor, shape = RoundedCornerShape(8.dp))
+            .clickable { onClick() }
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text("AI Council: ${if (councilActive) "Active" else "Standby"}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = borderColor)
+            Text("Stable: $stableCount · Evolving: $evolvingCount · Degraded: $degradedCount", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(
+            imageVector = Icons.Default.Groups,
+            contentDescription = "AI Council",
+            tint = borderColor,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}

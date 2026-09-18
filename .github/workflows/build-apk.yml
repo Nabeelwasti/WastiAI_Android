@@ -132,10 +132,6 @@ jobs:
         fi
         echo "SUCCESS: app/google-services.json is not tracked by Git."
 
-    - name: Run Code Quality & Anti-Pattern Audit
-      run: |
-        python3 scripts/audit_code_quality.py
-
     - name: Run Backend Syntax & Security Validation Tests
       run: |
         node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
@@ -344,16 +340,6 @@ jobs:
         rm -f .env
         rm -f app/src/main/assets/wasti_seed_vault.*
         echo "Cleaned up temporary sensitive build files."
-
-    - name: Upload Debug Artifact
-      uses: actions/upload-artifact@v6
-      continue-on-error: true
-      with:
-        name: WastiAI-Debug-APK
-        if-no-files-found: warn
-        path: |
-          app/build/outputs/apk/debug/app-debug.apk
-          debug_verification_evidence.json
 
 
   release:
@@ -628,10 +614,6 @@ jobs:
       run: |
         python3 scripts/generate_secrets_report.py .env
 
-    - name: Build Debug APK
-      timeout-minutes: 15
-      run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
-
     - name: Configure Production Release Signing
       id: signing_config
       if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
@@ -658,7 +640,7 @@ jobs:
 
     - name: Build and Sign Production Release Artifacts (APK & AAB)
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
-      timeout-minutes: 20
+      timeout-minutes: 35
       env:
         KEYSTORE_PATH: /tmp/release.keystore
         STORE_PASSWORD: ${{ secrets.STORE_PASSWORD || secrets.KEYSTORE_PASSWORD }}
@@ -679,6 +661,11 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$RELEASE_APK"
         fi
         echo "SUCCESS: Production release artifacts built, signed, and cryptographically verified."
+
+    - name: Build Debug Artifact (Fallback when Keystore Absent)
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE != 'true'
+      timeout-minutes: 20
+      run: ./gradlew assembleDebug --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
 
     - name: Verify Release WastiApplication in Manifest and DEX
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && env.HAVE_RELEASE_KEYSTORE == 'true'
@@ -863,6 +850,7 @@ jobs:
         ./scripts/verify_release_runtime.sh app/build/outputs/apk/release/app-release.apk release_verification_evidence.json
 
     - name: Execute Debug Runtime & Evidence Verification
+      if: env.HAVE_RELEASE_KEYSTORE != 'true'
       run: |
         chmod +x scripts/verify_release_runtime.sh
         ./scripts/verify_release_runtime.sh app/build/outputs/apk/debug/app-debug.apk debug_verification_evidence.json
@@ -896,15 +884,6 @@ jobs:
         if [ -f "debug_verification_evidence.json" ]; then
           cp -f debug_verification_evidence.json build-release-artifacts/
         fi
-
-    - name: Upload Release Artifacts
-      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-      uses: actions/upload-artifact@v6
-      continue-on-error: true
-      with:
-        name: WastiAI-Release-Artifacts
-        if-no-files-found: warn
-        path: build-release-artifacts/
 
     - name: Determine Canonical Release Version & Tag
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'

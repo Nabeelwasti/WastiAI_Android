@@ -747,4 +747,18 @@ class WastiPythonRuntimeEngine(
             null
         }
     }
+
+    /**
+     * Evaluates high-precision decimal operations simulating Python decimal module.
+     */
+    fun evaluateDecimalPrecision(value: Double, scale: Int = 4): BigDecimal {
+        return BigDecimal(value.toString()).setScale(scale, RoundingMode.HALF_UP)
+    }
+
+    /**
+     * Generates a unique execution session identifier simulating Python uuid.uuid4().
+     */
+    fun generateUniqueExecutionSession(): String {
+        return UUID.randomUUID().toString()
+    }
 }

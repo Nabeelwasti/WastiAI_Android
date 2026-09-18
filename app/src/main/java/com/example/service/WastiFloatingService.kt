@@ -1158,4 +1158,8 @@ class WastiFloatingService : Service() {
             }
         }
     }
+
+    fun executeQuickDeviceAction(targetApp: String) {
+        WastiDeviceController.openApp(this, targetApp)
+    }
 }

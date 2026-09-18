@@ -378,22 +378,65 @@ class WastiSshTmuxCompilerEngine(
             "zip", "tar" -> {
                 val archiveName = tokens.getOrNull(0) ?: "archive.$cmdName"
                 val files = tokens.drop(1).map { File(workingDir, it) }.filter { it.exists() }
-                return@withContext PolyglotExecutionOutcome(
-                    isSuccess = true,
-                    language = PolyglotLanguage.SHELL,
-                    stdout = "Archived ${files.size} files into $archiveName",
-                    exitCode = 0
-                )
+                val targetArchive = File(workingDir, archiveName)
+                try {
+                    java.io.FileOutputStream(targetArchive).use { fos ->
+                        ZipOutputStream(fos).use { zos ->
+                            for (file in files) {
+                                if (file.isFile) {
+                                    val entry = ZipEntry(file.name)
+                                    zos.putNextEntry(entry)
+                                    file.inputStream().use { it.copyTo(zos) }
+                                    zos.closeEntry()
+                                }
+                            }
+                        }
+                    }
+                    return@withContext PolyglotExecutionOutcome(
+                        isSuccess = true,
+                        language = PolyglotLanguage.SHELL,
+                        stdout = "Archived ${files.size} files into $archiveName",
+                        exitCode = 0
+                    )
+                } catch (e: Exception) {
+                    return@withContext PolyglotExecutionOutcome(false, PolyglotLanguage.SHELL, "", "zip error: ${e.message}", 1)
+                }
             }
 
             "unzip" -> {
                 val archiveName = tokens.getOrNull(0) ?: "archive.zip"
-                return@withContext PolyglotExecutionOutcome(
-                    isSuccess = true,
-                    language = PolyglotLanguage.SHELL,
-                    stdout = "Archive:  $archiveName\n extracting: done",
-                    exitCode = 0
-                )
+                val archiveFile = File(workingDir, archiveName)
+                if (!archiveFile.exists()) {
+                    return@withContext PolyglotExecutionOutcome(false, PolyglotLanguage.SHELL, "", "unzip: cannot find $archiveName", 1)
+                }
+                var extractedCount = 0
+                try {
+                    archiveFile.inputStream().use { fis ->
+                        ZipInputStream(fis).use { zis ->
+                            var entry: ZipEntry? = zis.nextEntry
+                            while (entry != null) {
+                                val outFile = File(workingDir, entry.name)
+                                if (entry.isDirectory) {
+                                    outFile.mkdirs()
+                                } else {
+                                    outFile.parentFile?.mkdirs()
+                                    java.io.FileOutputStream(outFile).use { fos -> zis.copyTo(fos) }
+                                    extractedCount++
+                                }
+                                zis.closeEntry()
+                                entry = zis.nextEntry
+                            }
+                        }
+                    }
+                    return@withContext PolyglotExecutionOutcome(
+                        isSuccess = true,
+                        language = PolyglotLanguage.SHELL,
+                        stdout = "Archive:  $archiveName\n extracting: $extractedCount files extracted successfully",
+                        exitCode = 0
+                    )
+                } catch (e: Exception) {
+                    return@withContext PolyglotExecutionOutcome(false, PolyglotLanguage.SHELL, "", "unzip error: ${e.message}", 1)
+                }
             }
 
             else -> {

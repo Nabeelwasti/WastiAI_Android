@@ -48,7 +48,17 @@ data class KeystoreDetails(
     val notBefore: Date,
     val notAfter: Date,
     val createdTimestamp: Long
-)
+) {
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("alias", alias)
+        put("keyAlgorithm", keyAlgorithm)
+        put("keySizeBits", keySizeBits)
+        put("sha256Fingerprint", sha256Fingerprint)
+        put("sha1Fingerprint", sha1Fingerprint)
+        put("issuerDn", issuerDn)
+        put("createdTimestamp", createdTimestamp)
+    }
+}
 
 data class KeystoreGenerationResult(
     val isSuccess: Boolean,

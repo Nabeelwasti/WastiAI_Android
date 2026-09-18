@@ -327,4 +327,23 @@ class WastiSqliteEngine(
         sb.append("(${rows.size} rows)")
         return sb.toString()
     }
+
+    /**
+     * Exports a database Cursor result into a structured JSONArray of JSONObjects.
+     */
+    fun exportCursorToJson(cursor: Cursor): JSONArray {
+        val jsonArray = JSONArray()
+        val columnNames = cursor.columnNames
+        while (cursor.moveToNext()) {
+            val rowObj = JSONObject()
+            for (colName in columnNames) {
+                val colIndex = cursor.getColumnIndex(colName)
+                if (colIndex >= 0) {
+                    rowObj.put(colName, cursor.getString(colIndex) ?: "")
+                }
+            }
+            jsonArray.put(rowObj)
+        }
+        return jsonArray
+    }
 }

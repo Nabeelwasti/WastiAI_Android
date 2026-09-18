@@ -21,8 +21,12 @@ import kotlinx.coroutines.sync.withLock
 
 class WastiViewModel(application: Application) : AndroidViewModel(application) {
 
-    val repository = com.example.data.di.WastiServiceLocator.repository
-    val wreManager = com.example.data.di.WastiServiceLocator.wreManager
+    val repository: WastiRepository = com.example.data.di.WastiServiceLocator.repository
+    val wreManager: WreManager = com.example.data.di.WastiServiceLocator.wreManager
+
+    suspend fun executeWreRequest(request: ExecutionRequest): ExecutionResult {
+        return wreManager.execute(request)
+    }
     val agentRuntime: com.example.data.agent.runtime.WastiAgentRuntimeImpl = com.example.data.di.WastiServiceLocator.agentRuntime
     val agentEventBus: com.example.data.agent.runtime.AgentEventBus = com.example.data.di.WastiServiceLocator.agentEventBus
     val wastiOSRuntime: com.example.data.core.WastiOSRuntime = com.example.data.di.WastiServiceLocator.wastiOSRuntime

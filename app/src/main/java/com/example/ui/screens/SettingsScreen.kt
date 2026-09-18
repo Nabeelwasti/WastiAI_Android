@@ -1721,3 +1721,54 @@ fun ExperienceModeSettingsCard(
     }
 }
 
+/**
+ * Copies [text] to the system clipboard using [ClipboardManager] and [ClipData].
+ * Called from Settings to let users copy API keys / tokens without manual selection.
+ */
+fun copyToClipboard(context: android.content.Context, label: String, text: String) {
+    val clipboardManager = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clip = ClipData.newPlainText(label, text)
+    clipboardManager.setPrimaryClip(clip)
+}
+
+/**
+ * Interactive settings item tile supporting both single click and long click gestures via [combinedClickable].
+ * Features smooth [AnimatedVisibility] transitions for collapsible descriptions.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SettingsItemRow(
+    title: String,
+    subtitle: String,
+    category: CredentialCategory = CredentialCategory.MODEL_PROVIDERS,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {
+                    expanded = !expanded
+                    onClick()
+                },
+                onLongClick = onLongClick
+            )
+            .padding(vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                Text("Category: ${category.title}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        AnimatedVisibility(visible = expanded) {
+            Text(subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+        }
+    }
+}

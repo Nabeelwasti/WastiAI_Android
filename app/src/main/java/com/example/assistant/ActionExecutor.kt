@@ -60,5 +60,24 @@ class ActionExecutor(private val context: Context) {
         }
     }
 
-    // More actions can be added: launchApp, changeSettings, interactViaAccessibility, etc.
+    fun sendDirectSms(phoneNumber: String, message: String): Boolean {
+        return try {
+            val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.SEND_SMS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (hasPermission) {
+                @Suppress("DEPRECATION")
+                val smsManager = SmsManager.getDefault()
+                smsManager.sendTextMessage(phoneNumber, null, message, null, null)
+                true
+            } else {
+                sendSmsViaIntent(phoneNumber, message)
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("ActionExecutor", "sendDirectSms failed", e)
+            false
+        }
+    }
 }

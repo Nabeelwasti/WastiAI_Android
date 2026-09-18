@@ -90,4 +90,21 @@ object DeviceVerificationEvidenceTracker {
     fun clearDeviceProofForTesting() {
         executionRecords.clear()
     }
+
+    fun createCurrentDeviceRecord(
+        tier: TestTier = TestTier.DEVICE,
+        verifiedCapabilities: Set<String> = emptySet(),
+        signature: String = "RUN_${System.currentTimeMillis()}"
+    ): DeviceExecutionRecord {
+        return DeviceExecutionRecord(
+            deviceId = Build.ID ?: "unknown_device",
+            deviceModel = Build.MODEL ?: "unknown_model",
+            manufacturer = Build.MANUFACTURER ?: "unknown_mfg",
+            androidApiLevel = Build.VERSION.SDK_INT,
+            isEmulator = Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk"),
+            tier = tier,
+            verifiedCapabilities = verifiedCapabilities,
+            testRunSignature = signature
+        )
+    }
 }

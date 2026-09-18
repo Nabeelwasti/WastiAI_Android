@@ -176,4 +176,9 @@ object WastiSystemResilienceGovernor {
             defaultFallback
         }
     }
+
+    fun isDeviceInPowerSaveMode(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        return pm?.isPowerSaveMode == true
+    }
 }

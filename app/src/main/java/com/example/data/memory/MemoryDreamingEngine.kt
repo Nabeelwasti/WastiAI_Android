@@ -50,6 +50,10 @@ object MemoryDreamingEngine {
 
     fun getLastDreamingResult(): MemoryDreamingResult? = lastDreamingResult
 
+    fun consolidateEpisodicMemories(memories: List<MemoryEntity>): List<MemoryEntity> {
+        return memories.distinctBy { it.key.trim().lowercase() }
+    }
+
     /**
      * Executes the four-phase cognitive dreaming consolidation cycle.
      */
@@ -58,7 +62,7 @@ object MemoryDreamingEngine {
         Log.i(TAG, "Initiating autonomous Memory Dreaming consolidation cycle...")
 
         val db = WastiDatabase.getDatabase(context)
-        val memories = db.memoryDao().getAllMemoriesSync()
+        val memories: List<MemoryEntity> = db.memoryDao().getAllMemoriesSync()
 
         var consolidatedCount = 0
         var contradictionsCount = 0

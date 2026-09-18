@@ -158,6 +158,25 @@ class WastiNativeBridgeManager(
         )
     }
 
+    suspend fun executeAsUnifiedAction(request: UnifiedExecutionRequest): UnifiedExecutionResult {
+        Log.d("WastiNativeBridgeManager", "Executing native bridge request for capability: ${request.capabilityId}")
+        val script = request.parameters["script"]?.toString() ?: ""
+        val args = (request.parameters["arguments"] as? List<*>)?.mapNotNull { it?.toString() } ?: emptyList()
+        val bridgeRes = executePythonScript(script, args, request.timeoutMs)
+        return UnifiedExecutionResult(
+            taskId = request.taskId,
+            actionId = request.actionId,
+            capabilityId = request.capabilityId,
+            status = if (bridgeRes.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
+            output = bridgeRes.stdout,
+            error = bridgeRes.stderr.ifBlank { null },
+            executor = bridgeRes.bridgeType,
+            verificationStatus = if (bridgeRes.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationEvidence = bridgeRes.verificationEvidence,
+            exitCode = bridgeRes.exitCode
+        )
+    }
+
     companion object {
         @Volatile
         private var instance: WastiNativeBridgeManager? = null

@@ -35,7 +35,11 @@ class WastiWebSocketServer private constructor(
     private val serverScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val connectedSessions = CopyOnWriteArrayList<WebSocketSession>()
+    private val sessionMetadata = ConcurrentHashMap<String, String>()
     private var eventSubscriptionJob: Job? = null
+
+    fun getExecutionFabric(): UnifiedExecutionFabric = UnifiedExecutionFabric.instance
+    fun getRuntime(): WastiOSRuntime = com.example.data.di.WastiServiceLocator.wastiOSRuntime
 
     data class WebSocketSession(
         val socket: Socket,
@@ -536,6 +540,17 @@ class WastiWebSocketServer private constructor(
                     put("taskId", taskId)
                     put("nodeId", nodeId)
                     put("isSuccess", isReleased)
+                }.toString())
+            }
+
+            "EMERGENCY_STOP" -> {
+                val reason = json.optString("reason", "WebSocket remote emergency stop signal")
+                WastiEmergencyStopController.triggerEmergencyStop(reason)
+                broadcastEmergencyStopToAll(reason)
+                sendTextFrame(session, JSONObject().apply {
+                    put("type", "EMERGENCY_STOP_ACK")
+                    put("status", "TRIGGERED")
+                    put("reason", reason)
                 }.toString())
             }
 

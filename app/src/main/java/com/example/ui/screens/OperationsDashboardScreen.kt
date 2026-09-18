@@ -2363,3 +2363,65 @@ fun RiskAndAccuracySettingsCard(
     }
 }
 
+/**
+ * A horizontal progress bar rendered with a [Brush] linear gradient for rich visual feedback.
+ * Used by quality/score cards in the Operations Dashboard to highlight performance levels.
+ */
+@Composable
+fun GradientProgressBar(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    startColor: Color = Color(0xFF3B82F6),
+    endColor: Color = Color(0xFF10B981)
+) {
+    val clampedProgress = progress.coerceIn(0f, 1f)
+    val gradient = Brush.horizontalGradient(listOf(startColor, endColor))
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(6.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color.LightGray.copy(alpha = 0.3f))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(clampedProgress)
+                .background(gradient)
+        )
+    }
+}
+
+/**
+ * Collapsible section header supporting smooth toggle with [AnimatedVisibility]
+ * and user touch interaction via [clickable].
+ */
+@Composable
+fun CollapsibleDashboardSection(
+    title: String,
+    initiallyExpanded: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    var expanded by remember { mutableStateOf(initiallyExpanded) }
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Icon(
+                imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        AnimatedVisibility(visible = expanded) {
+            content()
+        }
+    }
+}
+

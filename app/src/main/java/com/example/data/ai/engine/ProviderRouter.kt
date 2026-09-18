@@ -209,4 +209,8 @@ class ProviderRouter(
             attemptedProviders = attemptedProviders.toList()
         )
     }
+
+    fun getProvidersSupporting(capability: ProviderCapability): List<AIProvider> {
+        return capabilityRegistry.findProvidersWithCapabilities(setOf(capability))
+    }
 }

@@ -673,4 +673,9 @@ class UniversalConversationFabric(
             else -> CommandOrigin.CHAT
         }
     }
+
+    suspend fun syncConversation(conversation: ConversationEntity) = withContext(Dispatchers.IO) {
+        val db = WastiDatabase.getDatabase(context)
+        db.conversationDao().insertConversation(conversation)
+    }
 }

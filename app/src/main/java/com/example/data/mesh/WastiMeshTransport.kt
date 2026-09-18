@@ -61,6 +61,20 @@ class WebSocketMeshTransport(
     private var _isRunning = false
     override val isRunning: Boolean get() = _isRunning
 
+    private val _transportState = MutableStateFlow("INITIALIZED")
+    val transportState: StateFlow<String> = _transportState.asStateFlow()
+    private val activeConnectedNodeIds = CopyOnWriteArrayList<String>()
+
+    fun getActiveConnectedNodes(): List<String> = activeConnectedNodeIds.toList()
+
+    fun forwardCommandEnvelope(envelope: WastiMeshEnvelope): CommandSubmissionResult {
+        broadcastEnvelope(envelope)
+        return CommandSubmissionResult.Accepted(
+            commandId = envelope.messageId.toString(),
+            status = "FORWARDED_TO_MESH"
+        )
+    }
+
     private val handlers = ConcurrentHashMap<WastiMeshMessageType, MeshEnvelopeHandler>()
     private val pendingTaskResults = ConcurrentHashMap<String, CompletableDeferred<UnifiedExecutionResult>>()
     private val nodeReconnectAttempts = ConcurrentHashMap<String, Int>()
@@ -73,6 +87,7 @@ class WebSocketMeshTransport(
 
     override fun start(): Result<Boolean> {
         _isRunning = true
+        _transportState.value = "RUNNING"
         startHeartbeatLoop()
         Log.i(TAG, "WebSocketMeshTransport started with 15s heartbeat & auto-reconnect")
         return Result.success(true)
@@ -80,6 +95,8 @@ class WebSocketMeshTransport(
 
     override fun stop() {
         _isRunning = false
+        _transportState.value = "STOPPED"
+        activeConnectedNodeIds.clear()
         heartbeatJob?.cancel()
         heartbeatJob = null
         nodeReconnectAttempts.clear()

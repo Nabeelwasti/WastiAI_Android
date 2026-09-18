@@ -168,9 +168,17 @@ class MeshReplayAndIdempotencyGuard(
     private val seenMessageIds = ConcurrentHashMap<String, Long>()
     private val nodeSequences = ConcurrentHashMap<String, Long>()
     private val idempotencyResults = ConcurrentHashMap<String, CommandSubmissionResult>()
+    private val activeNodeIdentifiers = ConcurrentSkipListSet<String>()
+
+    fun recordActiveNode(nodeId: String) {
+        if (activeNodeIdentifiers.add(nodeId)) {
+            Log.d("MeshReplayGuard", "Registered active mesh node sequence: $nodeId")
+        }
+    }
 
     fun validateAndRecordMessage(envelope: WastiMeshEnvelope): Result<Boolean> {
         val now = System.currentTimeMillis()
+        recordActiveNode(envelope.senderNodeId)
 
         // 1. Time Drift Check (Reject stale or absurdly futuristic messages)
         val drift = Math.abs(now - envelope.timestamp)

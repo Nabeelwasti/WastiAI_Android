@@ -96,6 +96,13 @@ object LeadRadarRepository {
     private val _lastSearchQuery = MutableStateFlow("Video Editing & Graphic Design")
     val lastSearchQuery: StateFlow<String> = _lastSearchQuery.asStateFlow()
 
+    fun createTrackedField(
+        value: String,
+        source: FieldProvenanceSource = FieldProvenanceSource.USER_ENTERED
+    ): ProvenanceTrackedField<String> {
+        return ProvenanceTrackedField(value = value, source = source)
+    }
+
     private var isDbInitialized = false
 
     fun initDatabase(context: Context) {

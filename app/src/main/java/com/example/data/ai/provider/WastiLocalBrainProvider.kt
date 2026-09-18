@@ -69,6 +69,9 @@ class WastiLocalBrainProvider(
      */
     fun isHeuristicFallbackAvailable(): Boolean = true
 
+    fun detectHardwareSpecs(context: android.content.Context? = null) =
+        HardwareCapabilityDetector.detectHardwareEnvironment(context ?: com.example.WastiApplication.instance)
+
     fun getRuntimeState(): LocalBrainRuntimeState {
         val appCtx = com.example.WastiApplication.instance ?: return LocalBrainRuntimeState.HEURISTIC_NON_NEURAL_FALLBACK
         val hasWeights = ModelArtifactManager.isWeightsPresent(appCtx, id)

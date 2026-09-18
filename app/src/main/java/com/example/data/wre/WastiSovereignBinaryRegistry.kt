@@ -201,4 +201,30 @@ class WastiSovereignBinaryRegistry(
             )
         }
     }
+
+    /**
+     * Downloads a standalone sovereign binary artifact from a trusted repository.
+     */
+    suspend fun downloadRemoteBinary(urlStr: String, destination: File): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL(urlStr)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.connectTimeout = 15000
+            connection.readTimeout = 30000
+            connection.requestMethod = "GET"
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                connection.inputStream.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                destination.setExecutable(true)
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
 }

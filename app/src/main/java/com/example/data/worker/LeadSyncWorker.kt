@@ -33,7 +33,7 @@ class LeadSyncWorker(
         const val WORK_NAME = "wasti_lead_and_invoice_sync_worker"
 
         fun schedulePeriodicSync(context: Context): Boolean {
-            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+            val wm: WorkManager? = WastiWorkManagerHelper.getWorkManager(context) ?: run {
                 Log.w(TAG, "LeadSyncWorker scheduling deferred: WorkManager unavailable in environment.")
                 return false
             }

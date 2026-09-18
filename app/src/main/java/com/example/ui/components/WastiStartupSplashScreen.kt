@@ -195,3 +195,28 @@ fun WastiStartupSplashScreen(
         }
     }
 }
+
+/**
+ * Interactive diagnostics pill that uses [Modifier.clickable] to toggle detailed
+ * startup diagnostics retrieved from [AppStartupManager].
+ */
+@Composable
+fun StartupDiagnosticPill(
+    onToggleDetails: () -> Unit = {}
+) {
+    val diagnostic = AppStartupManager.getDiagnosticSummary()
+    Surface(
+        modifier = Modifier
+            .clickable { onToggleDetails() }
+            .padding(8.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    ) {
+        Text(
+            text = "Trace: ${diagnostic.totalStartupTimeMs}ms (${diagnostic.stageTimings.size} stages)",
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}

@@ -35,7 +35,7 @@ class SelfEnhancementWorker(
         const val WORK_NAME = "wasti_self_enhancement_24h_worker"
 
         fun schedulePeriodicSelfEnhancement(context: Context): Boolean {
-            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+            val wm: WorkManager? = WastiWorkManagerHelper.getWorkManager(context) ?: run {
                 Log.w(TAG, "SelfEnhancementWorker scheduling deferred: WorkManager unavailable in environment.")
                 return false
             }

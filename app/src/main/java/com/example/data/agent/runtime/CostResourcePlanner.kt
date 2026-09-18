@@ -20,6 +20,7 @@ enum class ExecutionDestination {
 }
 
 data class ResourceAssessment(
+    val assessmentId: String = UUID.randomUUID().toString(),
     val batteryPct: Float,
     val isCharging: Boolean,
     val isLowPowerMode: Boolean,

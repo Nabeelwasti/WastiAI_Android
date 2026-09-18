@@ -502,6 +502,14 @@ class WastiLocalModelRuntime(
     ): String {
         return executeInferenceDetailed(modelId, prompt, systemInstruction, maxTokens, temperature).output
     }
+
+    fun getModelRuntimeStatus(modelId: String): ModelRuntimeStatus {
+        val file = ModelArtifactManager.getModelFile(context, modelId)
+        return when {
+            file.exists() && file.length() > 0 -> ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT
+            else -> ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD
+        }
+    }
 }
 
 enum class LocalInferenceStatus {

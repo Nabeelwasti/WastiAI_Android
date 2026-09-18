@@ -27,13 +27,15 @@ class MemorySearchTool : WastiTool {
     override suspend fun execute(parameters: Map<String, Any>): String {
         val query = parameters["query"]?.toString() ?: ""
         if (query.isBlank()) return "Error: Query parameters empty."
+        val memQuery = MemorySearchQuery(query = query)
+        val memories = MemoryManager.searchMemories(memQuery)
         val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
             capabilityId = "memory_search",
             parameters = parameters
         )
         val res = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.execute(req)
         return if (res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.COMPLETED || res.status == com.example.data.agent.runtime.UnifiedExecutionStatus.VERIFIED) {
-            res.output
+            "${res.output} (Found ${memories.size} relevant memory records)"
         } else {
             "Memory Search Execution Error [${res.status}]: ${res.error ?: res.output}"
         }

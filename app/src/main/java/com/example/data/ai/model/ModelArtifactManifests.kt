@@ -33,7 +33,9 @@ data class ModelArtifactManifest(
     val requiredHardwareBackend: LocalExecutionBackend,
     val isChecksumVerifiedPublished: Boolean = false,
     val mirrorDownloadUrl: String? = null
-)
+) {
+    fun getLocalFile(baseDir: File): File = File(baseDir, canonicalFileName)
+}
 
 enum class AcceleratorExecutionStatus {
     NOT_DETECTED,                     // No hardware acceleration driver or device node present

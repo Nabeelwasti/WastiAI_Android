@@ -190,6 +190,8 @@ fun OnboardingModelWizardDialog(
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(22.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("SmolLM2 Edge Weights Verified & Active", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF2E7D32))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(Icons.Default.Security, contentDescription = "Cryptographically Verified", tint = Color(0xFF2E7D32), modifier = Modifier.size(18.dp))
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

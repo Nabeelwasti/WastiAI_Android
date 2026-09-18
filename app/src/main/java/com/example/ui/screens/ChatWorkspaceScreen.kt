@@ -2281,3 +2281,14 @@ fun LinkedInDraftApprovalCard(
         }
     }
 }
+
+/**
+ * Returns a configured [RecognizerIntent] for speech recognition,
+ * wiring the android.speech.RecognizerIntent import for voice-to-text initiation.
+ */
+fun buildSpeechRecognizerIntent(language: String = "en-US"): android.content.Intent =
+    android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+        putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, language)
+        putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say your command to Wasti AI...")
+    }

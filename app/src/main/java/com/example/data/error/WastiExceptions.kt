@@ -55,3 +55,9 @@ class ToolExecutionException(
     message: String,
     cause: Throwable? = null
 ) : WastiException(message, cause, errorCode = "TOOL_EXECUTION_ERROR", isRecoverable = true)
+
+class StorageIOException(
+    val path: String,
+    message: String,
+    cause: IOException? = null
+) : WastiException(message, cause, errorCode = "STORAGE_IO_ERROR", isRecoverable = true)

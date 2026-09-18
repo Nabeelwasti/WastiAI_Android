@@ -9,4 +9,10 @@ class StreamingEngine {
     suspend fun streamFromProvider(provider: AIProvider, request: ProviderRequest): Flow<String> {
         return provider.stream(request)
     }
+
+    fun streamTextChunks(chunks: List<String>): Flow<String> = flow {
+        for (chunk in chunks) {
+            emit(chunk)
+        }
+    }
 }

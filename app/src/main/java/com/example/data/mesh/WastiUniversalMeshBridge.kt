@@ -187,4 +187,28 @@ class WastiUniversalMeshBridge private constructor(
             )
         }
     }
+
+    /**
+     * Broadcasts a UDP discovery beacon for local mesh node pairing.
+     */
+    suspend fun broadcastDiscoveryBeacon(port: Int = 8991): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val socket = DatagramSocket()
+            socket.broadcast = true
+            val message = "WASTI_MESH_BEACON:${context.packageName}".toByteArray()
+            val packet = DatagramPacket(message, message.size, InetAddress.getByName("255.255.255.255"), port)
+            socket.send(packet)
+            socket.close()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Evaluates a nearby hardware node for offload readiness.
+     */
+    fun evaluateNearbyNode(node: NearbyHardwareNode): Boolean {
+        return AutonomousHardwareOffloader.isBluetoothOffloadAvailable(context) || node.isOnline
+    }
 }

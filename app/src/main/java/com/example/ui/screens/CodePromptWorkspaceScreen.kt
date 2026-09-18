@@ -282,7 +282,13 @@ fun CodePromptWorkspaceScreen(
                                 Text(text = tmpl.title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.clickable {
+                                        val stripped = tmpl.sampleCode.removePrefix("```sh\n").removePrefix("```kotlin\n").removePrefix("```json\n").removeSuffix("\n```")
+                                        codeInput = stripped
+                                        onCodeContextChange(stripped)
+                                        selectedTab = 0
+                                    }
                                 ) {
                                     Text(
                                         text = tmpl.category,

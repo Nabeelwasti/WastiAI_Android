@@ -54,6 +54,7 @@ interface AudioCaptureProvider {
     val displayName: String
     val realityState: AudioRealityState
     val isCapturing: Boolean
+    val stateFlow: StateFlow<AudioRealityState>? get() = null
 
     suspend fun checkAvailability(): AudioRealityState
     fun startCapture(onChunk: (AudioChunk) -> Unit): Result<Unit>

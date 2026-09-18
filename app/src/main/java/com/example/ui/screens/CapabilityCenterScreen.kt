@@ -719,3 +719,24 @@ private fun CapabilityDetailCard(
         }
     }
 }
+
+/**
+ * Animated capability status badge. Uses [AnimatedVisibility] for smooth entrance,
+ * [Modifier.clip] with [CircleShape] for rounded display, and [ImageVector] type annotation.
+ */
+@Composable
+fun CapabilityStatusBadge(label: String, active: Boolean, icon: ImageVector) {
+    AnimatedVisibility(visible = active) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(12.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(text = label, fontSize = 10.sp)
+        }
+    }
+}

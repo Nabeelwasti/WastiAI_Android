@@ -71,6 +71,7 @@ object WastiDeviceSensoryEngine {
      * Inspects full hardware sensory and peripheral reality.
      */
     suspend fun inspectSensoryEnvironment(context: Context): DeviceSensoryProfile = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Inspecting sensory profile: audio, peripherals, camera")
         val periph = inspectPeripherals(context)
         val cams = inspectCameras(context)
         val audio = inspectAudio(context)

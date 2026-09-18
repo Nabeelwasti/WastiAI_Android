@@ -384,4 +384,12 @@ object PermissionManager {
             try { launcher.launch(permission) } catch (_: Throwable) {}
         }
     }
+
+    fun loadDefaultPolicyFromAssets(assets: AssetManager): String? {
+        return try {
+            assets.open("security/permission_policy.json").bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

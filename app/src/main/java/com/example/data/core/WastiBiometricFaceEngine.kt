@@ -219,4 +219,10 @@ object WastiBiometricFaceEngine {
         val digest = md.digest(bytes)
         return digest.joinToString("") { "%02x".format(it) }
     }
+
+    fun compressBitmapToJpeg(bitmap: Bitmap, quality: Int = 85): ByteArray {
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        return stream.toByteArray()
+    }
 }

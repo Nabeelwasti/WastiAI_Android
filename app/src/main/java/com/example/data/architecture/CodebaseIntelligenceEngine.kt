@@ -96,4 +96,11 @@ object CodebaseIntelligenceEngine {
                 nodes.firstOrNull { it.id == "omni_brain" }
         }
     }
+
+    /**
+     * Retrieves all registered capabilities from the central capability registry.
+     */
+    fun getRegisteredCapabilities(): List<String> {
+        return WastiCapabilityRegistry.getSupportedCapabilities()
+    }
 }

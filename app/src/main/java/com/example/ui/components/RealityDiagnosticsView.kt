@@ -322,3 +322,25 @@ private fun DiagnosticItemRow(
         )
     }
 }
+
+/**
+ * Shows a diagnostics indicator dot for a single capability using [CapabilityRealityRegistry].
+ * Uses [Modifier.clip] with [CircleShape] for the indicator dot shape.
+ */
+@Composable
+fun RealityCapabilityDot(capabilityId: String) {
+    val registry = remember { CapabilityRealityRegistry() }
+    val reality = remember(capabilityId) { registry.get(capabilityId) }
+    val dotColor = when (reality?.liveConnectionStatus) {
+        LiveConnectionStatus.VERIFIED -> Color(0xFF10B981)
+        LiveConnectionStatus.AUTHENTICATION_REQUIRED, LiveConnectionStatus.NOT_VERIFIED -> Color(0xFFF59E0B)
+        LiveConnectionStatus.FAILED, LiveConnectionStatus.DISCONNECTED -> Color(0xFFEF4444)
+        else -> Color.Gray
+    }
+    Box(
+        modifier = Modifier
+            .size(10.dp)
+            .clip(CircleShape)
+            .background(dotColor)
+    )
+}

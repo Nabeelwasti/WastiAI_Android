@@ -270,3 +270,31 @@ fun DevAssistantScreen(
         }
     }
 }
+
+/**
+ * A terminal-styled surface with a dark [Modifier.background] color used for
+ * displaying raw agent output or patch previews inside DevAssistant.
+ */
+@Composable
+fun DevAssistantTerminalSurface(content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = androidx.compose.ui.graphics.Color(0xFF0D1117),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(12.dp)
+    ) {
+        content()
+    }
+}
+
+/**
+ * Verifies if at least one code synthesis provider credential is configured in [CredentialRegistry].
+ */
+fun isDevSynthesisConfigured(context: Context): Boolean {
+    val deepseek = CredentialRegistry.getRawValue("DEEPSEEK_API_KEY", context)
+    val groq = CredentialRegistry.getRawValue("GROQ_API_KEY", context)
+    val gemini = CredentialRegistry.getRawValue("GEMINI_API_KEY", context)
+    return !deepseek.isNullOrBlank() || !groq.isNullOrBlank() || !gemini.isNullOrBlank()
+}

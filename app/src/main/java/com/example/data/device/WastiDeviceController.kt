@@ -577,6 +577,14 @@ object WastiDeviceController {
                 message = "Setting updated via Chat/UI: $settingKey = $settingValue"
             )
         )
+        db.knowledgeDao().insertKnowledge(
+            KnowledgeEntity(
+                id = "setting_kb_${UUID.randomUUID()}",
+                title = "Device Setting: $settingKey",
+                content = "Setting $settingKey configured to $settingValue",
+                category = "DEVICE_CONFIGURATION"
+            )
+        )
         DeviceCommandResult(true, "Updated setting '$settingKey' to '$settingValue', Sir.", "UPDATE_SETTING")
     }
 }

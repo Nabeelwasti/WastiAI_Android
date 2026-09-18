@@ -208,4 +208,10 @@ except KeyboardInterrupt:
     board.release_session()
         """.trimIndent()
     }
+
+    fun calculateRmsAmplitude(samples: FloatArray): Float {
+        if (samples.isEmpty()) return 0f
+        val sumSquares = samples.fold(0.0) { acc, s -> acc + (s * s) }
+        return sqrt((sumSquares / samples.size).toFloat())
+    }
 }

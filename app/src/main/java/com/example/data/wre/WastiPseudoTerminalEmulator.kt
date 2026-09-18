@@ -154,4 +154,25 @@ class WastiPseudoTerminalEmulator(
     }
 
     fun getCursorPosition(): Pair<Int, Int> = cursorX to cursorY
+
+    private val activeTerminalStreams = ConcurrentHashMap<String, OutputStream>()
+
+    /**
+     * Reads output from an active process stream and feeds it into the virtual PTY buffer.
+     */
+    suspend fun attachStream(sessionId: String, input: InputStream, output: OutputStream? = null) = withContext(Dispatchers.IO) {
+        if (output != null) {
+            activeTerminalStreams[sessionId] = output
+        }
+        val buffer = ByteArray(1024)
+        var bytesRead: Int
+        try {
+            while (input.read(buffer).also { bytesRead = it } != -1) {
+                val chunk = String(buffer, 0, bytesRead)
+                feed(chunk)
+            }
+        } catch (_: Exception) {} finally {
+            activeTerminalStreams.remove(sessionId)
+        }
+    }
 }

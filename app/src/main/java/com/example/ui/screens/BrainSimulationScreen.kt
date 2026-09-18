@@ -394,11 +394,20 @@ fun BrainSimulationScreen() {
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "Source: ${bciSource.name} • Protocol: 250Hz Microvolt Stream (Fp1-Fp2 Frontal)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Speed,
+                                        contentDescription = "Sampling Speed",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Source: ${if (bciSource == BciSourceType.INTERNAL_EMULATOR) "Emulated" else bciSource.name} • Protocol: 250Hz Microvolt Stream (Fp1-Fp2 Frontal)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                }
                                 Spacer(modifier = Modifier.height(12.dp))
 
                                 Row(

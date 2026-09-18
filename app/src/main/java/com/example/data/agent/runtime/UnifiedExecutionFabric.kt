@@ -128,6 +128,10 @@ class UnifiedExecutionFabric(
         }
     }
 
+    suspend fun <T> executeWithSafeTimeout(timeoutMs: Long, block: suspend () -> T): T? {
+        return withTimeoutOrNull(timeoutMs) { block() }
+    }
+
     suspend fun execute(
         request: UnifiedExecutionRequest,
         context: Context? = null

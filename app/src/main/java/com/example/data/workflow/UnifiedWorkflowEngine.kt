@@ -429,4 +429,11 @@ class UnifiedWorkflowEngine(
             error = error
         )
     }
+
+    /**
+     * Inspects registered tools in the ToolRegistry for autonomous task planning.
+     */
+    fun getRegisteredToolCapabilities(): List<String> {
+        return ToolRegistry.getAllTools().map { it.name }
+    }
 }

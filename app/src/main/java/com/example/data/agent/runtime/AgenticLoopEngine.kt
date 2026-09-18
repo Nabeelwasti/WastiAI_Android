@@ -136,6 +136,7 @@ class AgenticLoopEngine(
                     }
 
                     correctionsCount++
+                    delay(50L)
                     taskManager.updateTaskState(task.taskId, AgenticState.Debugging("Analyzing error in ${step.toolName}"))
 
                     val diagnostic = errorAnalyzer.analyzeFailure(observation)

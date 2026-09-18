@@ -21,6 +21,19 @@ object DraftPersistenceManager {
         return WastiSecureStorage.getEncryptedPreferences(context, PREFS_FILE)
     }
 
+    fun createEncryptedStorageInstance(context: Context): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return EncryptedSharedPreferences.create(
+            context,
+            PREFS_FILE,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
     /**
      * Real-time auto-save for unsubmitted prompt input.
      */

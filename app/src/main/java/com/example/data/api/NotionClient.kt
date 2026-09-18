@@ -40,4 +40,29 @@ object NotionClient {
             "Error: ${e.message}"
         }
     }
+
+    suspend fun queryDatabase(databaseId: String, jsonFilter: String = "{}"): String = withContext(Dispatchers.IO) {
+        val notionToken = CredentialRegistry.getRawValue("NOTION_CONNECTION_ID")
+        if (notionToken.isNullOrBlank() || CredentialRegistry.isPlaceholder(notionToken)) return@withContext "Not Configured"
+
+        val body = jsonFilter.toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$BASE_URL/databases/$databaseId/query")
+            .addHeader("Authorization", "Bearer $notionToken")
+            .addHeader("Notion-Version", "2022-06-28")
+            .post(body)
+            .build()
+
+        try {
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                response.body?.string() ?: "Query successful"
+            } else {
+                "Notion Query Status: HTTP ${response.code}"
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            "Error: ${e.message}"
+        }
+    }
 }

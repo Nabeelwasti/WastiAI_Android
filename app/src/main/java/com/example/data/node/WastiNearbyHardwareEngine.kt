@@ -332,4 +332,12 @@ object WastiNearbyHardwareEngine {
         val hashBytes = digest.digest(sorted.toByteArray(Charsets.UTF_8))
         return hashBytes.joinToString("") { "%02x".format(it) }
     }
+
+    /**
+     * Checks whether the current Android host OS supports Bluetooth LE discovery and performs discovery on IO dispatcher.
+     */
+    suspend fun performHardwareDiscoveryCheck(): Boolean = withContext(Dispatchers.IO) {
+        val isSupportedSdk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+        isSupportedSdk && isRunning
+    }
 }

@@ -45,7 +45,7 @@ data class WorkflowAction(
 )
 
 data class WorkflowRule(
-    val id: String,
+    val id: String = UUID.randomUUID().toString(),
     val name: String,
     val description: String,
     val trigger: WorkflowTrigger,

@@ -31,6 +31,8 @@ class LocalAndroidProvider(
             "PYTHONSTARTUP", "NODE_OPTIONS", "NODE_PATH", "RUBYLIB", "PERL5LIB", "BASH_ENV", "ENV", "LD_PRELOAD", "LD_LIBRARY_PATH",
             "LD_AUDIT", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH"
         )
+
+        fun getAndroidApiLevel(): Int = Build.VERSION.SDK_INT
     }
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {

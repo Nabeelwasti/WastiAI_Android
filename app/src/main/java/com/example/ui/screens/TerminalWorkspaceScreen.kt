@@ -2144,4 +2144,51 @@ fun WorkspaceFilesPanel(
     }
 }
 
+/**
+ * Horizontal quick actions bar for terminal commands rendered as a [LazyRow].
+ */
+@Composable
+fun TerminalCommandPaletteRow(
+    commands: List<String>,
+    onSelectCommand: (String) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(commands) { cmd ->
+            Surface(
+                modifier = Modifier.clickable { onSelectCommand(cmd) },
+                shape = RoundedCornerShape(4.dp),
+                color = Color(0xFF1E293B)
+            ) {
+                Text(
+                    text = cmd,
+                    color = Color(0xFF38BDF8),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Scrollable console buffer container with [verticalScroll].
+ */
+@Composable
+fun TerminalScrollableBufferContainer(
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+    ) {
+        content()
+    }
+}
+
 

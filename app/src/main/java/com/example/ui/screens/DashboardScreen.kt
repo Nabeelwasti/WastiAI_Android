@@ -1017,3 +1017,25 @@ fun ExecutionTruthSentinelPill(
         }
     }
 }
+
+/**
+ * Horizontal gallery strip showing app-module icons as a scrollable [LazyRow].
+ * Wires [painterResource] and [Image] for drawable-backed icon rendering.
+ */
+@Composable
+fun DashboardModuleGalleryRow(moduleIcons: List<Int> = listOf(R.drawable.img_wasti_app_icon_1785523199134)) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        items(moduleIcons) { iconRes ->
+            Image(
+                painter = painterResource(id = iconRes),
+                contentDescription = "Module icon",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+        }
+    }
+}

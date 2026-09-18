@@ -523,4 +523,27 @@ class WastiPackageAptPipNpmEngine(
             try { execFile.setExecutable(true) } catch (_: Exception) {}
         }
     }
+
+    /**
+     * Records structured package installation or removal transaction.
+     */
+    fun recordPackageTransaction(pkgName: String, action: String): JSONObject {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val record = JSONObject()
+        record.put("package", pkgName)
+        record.put("action", action)
+        record.put("timestamp", timestamp)
+        return record
+    }
+
+    /**
+     * Exports package list as a structured JSON Array.
+     */
+    fun exportInstalledPackagesJson(packages: List<String>): JSONArray {
+        val arr = JSONArray()
+        for (pkg in packages) {
+            arr.put(pkg)
+        }
+        return arr
+    }
 }

@@ -424,3 +424,10 @@ fun WakeWordSettingsScreen(
         }
     }
 }
+
+/**
+ * Returns the Vosk model directory as a [File] reference for inspection/cleanup.
+ * Wires the java.io.File import used in model path resolution.
+ */
+fun getVoskModelDirectory(context: android.content.Context): File =
+    File(context.filesDir, "vosk-model")

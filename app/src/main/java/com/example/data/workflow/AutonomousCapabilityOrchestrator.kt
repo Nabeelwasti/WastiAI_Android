@@ -118,6 +118,10 @@ class AutonomousCapabilityOrchestrator(
         memoryContract ?: InMemoryAgentMemoryStore()
     }
 
+    val capabilityRegistry: WastiCapabilityRegistry by lazy { WastiCapabilityRegistry() }
+
+    fun getRegisteredCapabilities(): List<String> = capabilityRegistry.getSupportedCapabilities()
+
     companion object {
         @Volatile
         private var instance: AutonomousCapabilityOrchestrator? = null
@@ -306,6 +310,7 @@ class AutonomousCapabilityOrchestrator(
         }
 
         ToolRegistry.registerTool(dynamicTool)
+        capabilityRegistry.setCapabilityEnabled(toolId, true)
 
         UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
             CapabilityReality(

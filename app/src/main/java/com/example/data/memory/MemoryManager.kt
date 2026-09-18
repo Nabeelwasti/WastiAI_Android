@@ -223,6 +223,14 @@ object MemoryManager {
         results
     }
 
+    suspend fun searchByType(queryText: String, searchType: SearchType, topK: Int = 5): List<MemorySearchResult> {
+        return hybridSearch(MemorySearchQuery(queryText = queryText, searchType = searchType, topK = topK))
+    }
+
+    fun embedQuery(queryText: String): EmbeddingVector {
+        return embeddingService.embed(queryText)
+    }
+
     suspend fun hybridSearchWithExplanations(query: MemorySearchQuery): Pair<List<MemorySearchResult>, List<com.example.data.memory.retrieval.RetrievalExplanation>> = withContext(Dispatchers.IO) {
         retrievalEngine.retrieve(query, activeMemoriesMap)
     }

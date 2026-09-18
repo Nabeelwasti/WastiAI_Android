@@ -266,4 +266,15 @@ object SovereignAlternativeRegistry {
     fun resolveProviderOrAlternative(domain: CapabilityDomain, context: Context): SovereignAlternativePlan {
         return getAlternativePlan(domain)
     }
+
+    fun isCloudConfigured(domain: CapabilityDomain, context: Context): Boolean {
+        val registry = CredentialRegistry.getInstance(context)
+        val key = when (domain) {
+            CapabilityDomain.NEURAL_LLM_INFERENCE -> "openai_api_key"
+            CapabilityDomain.WEB_SEARCH_KNOWLEDGE -> "tavily_api_key"
+            CapabilityDomain.VOICE_TEXT_TO_SPEECH -> "elevenlabs_api_key"
+            else -> null
+        }
+        return key != null && registry.getCredential(key) != null
+    }
 }

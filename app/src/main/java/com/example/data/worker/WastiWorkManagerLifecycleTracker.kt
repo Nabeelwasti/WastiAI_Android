@@ -143,7 +143,7 @@ object WastiWorkManagerLifecycleTracker {
      * Query WorkManager directly for durable state if available.
      */
     fun queryActualWorkInfo(context: Context, workName: String): DurableWorkSnapshot? {
-        val wm = WastiWorkManagerHelper.getWorkManager(context) ?: return snapshots[workName]
+        val wm: WorkManager = WastiWorkManagerHelper.getWorkManager(context) ?: return snapshots[workName]
         return try {
             val workInfos = wm.getWorkInfosForUniqueWork(workName).get()
             if (workInfos.isNullOrEmpty()) {

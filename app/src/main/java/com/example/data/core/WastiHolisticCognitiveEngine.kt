@@ -342,4 +342,8 @@ object WastiHolisticCognitiveEngine {
         db.memoryDao().insertMemory(entity)
         Log.i(TAG, "Biometric signature hash securely recorded locally in Room memory.")
     }
+
+    fun resolveWorkspaceDirectory(context: Context): File {
+        return context.filesDir ?: File("/data/local/tmp")
+    }
 }

@@ -458,4 +458,8 @@ class CapabilityPlanner(
         val tokens = goal.split(" ")
         return tokens.drop(1).joinToString(" ").take(40).ifBlank { goal }
     }
+
+    fun isCapabilityAvailable(capabilityName: String): Boolean {
+        return WastiServiceLocator.capabilityRegistry.isCapabilityEnabled(capabilityName)
+    }
 }

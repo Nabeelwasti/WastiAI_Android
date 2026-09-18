@@ -368,4 +368,30 @@ class WastiNodeJsRuntimeEngine(
             null
         }
     }
+
+    /**
+     * Records structured telemetry for Node.js execution cycles.
+     */
+    fun recordExecutionEvent(scriptName: String, success: Boolean, output: String): JSONObject {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
+        val event = JSONObject()
+        event.put("script", scriptName)
+        event.put("timestamp", timestamp)
+        event.put("success", success)
+        event.put("outputSummary", output.take(100))
+        return event
+    }
+
+    /**
+     * Inspects installed node_modules packages and serializes names into a JSONArray.
+     */
+    fun getInstalledPackageNames(nodeModulesDir: File): JSONArray {
+        val array = JSONArray()
+        if (nodeModulesDir.exists() && nodeModulesDir.isDirectory) {
+            nodeModulesDir.listFiles()?.filter { it.isDirectory && !it.name.startsWith(".") }?.forEach {
+                array.put(it.name)
+            }
+        }
+        return array
+    }
 }
