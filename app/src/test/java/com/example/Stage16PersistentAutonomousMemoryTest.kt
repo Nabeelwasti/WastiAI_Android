@@ -342,13 +342,7 @@ class Stage16PersistentAutonomousMemoryTest {
     fun test12_ArchitectureAndModelContracts() {
         val taskId = TaskId("stage16_task_${UUID.randomUUID()}")
         val priority = AgentTaskPriority.HIGH
-        val engineState = ProactiveEngineState(
-            isRunning = true,
-            totalScheduledTasks = 1,
-            activeExecutingTasks = 0,
-            completedTasks = 0,
-            failedTasks = 0
-        )
+        val engineState = ProactiveEngineState.RUNNING
         val proactiveTask = ProactiveAutonomousTask(
             taskId = taskId.value,
             title = "Architectural Validation Task",

@@ -70,7 +70,9 @@ enum class ProactiveEngineState {
     IDLE,
     RUNNING,
     PAUSED,
-    EMERGENCY_STOPPED
+    EMERGENCY_STOPPED;
+
+    val isRunning: Boolean get() = this == RUNNING
 }
 
 data class ProactiveAutonomousTask(
