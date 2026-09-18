@@ -566,7 +566,7 @@ class WastiWebSocketServer private constructor(
             "EMERGENCY_STOP" -> {
                 val reason = json.optString("reason", "WebSocket remote emergency stop signal")
                 WastiEmergencyStopController.triggerEmergencyStop(reason)
-                broadcastEmergencyStopToAll(reason)
+                broadcastEmergencyStop(reason)
                 sendTextFrame(session, JSONObject().apply {
                     put("type", "EMERGENCY_STOP_ACK")
                     put("status", "TRIGGERED")
@@ -1057,6 +1057,8 @@ class WastiWebSocketServer private constructor(
         }
         broadcastText(msg.toString())
     }
+
+    fun broadcastEmergencyStopToAll(reason: String) = broadcastEmergencyStop(reason)
 
     private fun startEventBroadcasting() {
         eventSubscriptionJob = serverScope.launch {
