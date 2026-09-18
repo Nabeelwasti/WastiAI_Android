@@ -486,13 +486,13 @@ object DriveSyncEngine {
                         db.taskDao().insertTask(
                             TaskEntity(
                                 id = obj.getString("id"),
-                                projectId = obj.optString("projectId", "default"),
+                                projectId = obj.optString("projectId", "general"),
                                 title = obj.getString("title"),
                                 description = obj.optString("description", ""),
                                 isCompleted = obj.optBoolean("isCompleted", false),
-                                priority = obj.optInt("priority", 1),
-                                assignedAgentId = obj.optString("assignedAgentId", ""),
-                                dueDate = if (obj.has("dueDate") && !obj.isNull("dueDate")) obj.optLong("dueDate") else null
+                                priority = obj.optString("priority", "Medium"),
+                                assignedAgentId = obj.optString("assignedAgentId", "ceo_agent"),
+                                dueDate = obj.optString("dueDate", "2026-08-15")
                             )
                         )
                     }
