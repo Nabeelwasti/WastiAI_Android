@@ -51,7 +51,8 @@ enum class CommandOrigin(val displayName: String, val isLocal: Boolean) {
     OPERATIONS("Operations Dashboard", true),
     NOTIFICATION("Android System Notification", true),
     EXTERNAL_NODE("Distributed Device Node", false),
-    ACCESSIBILITY("Accessibility Automation", true)
+    ACCESSIBILITY("Accessibility Automation", true),
+    MESH_REMOTE("Cross-Platform Mesh Remote", false)
 }
 
 /**

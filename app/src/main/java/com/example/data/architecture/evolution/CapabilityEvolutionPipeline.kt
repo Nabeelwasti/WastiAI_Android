@@ -26,7 +26,8 @@ enum class EvolutionStage {
     TEST,
     VERIFY,
     REGISTER,
-    MONITOR
+    MONITOR,
+    CIVILIZED
 }
 
 data class EvolutionItem(

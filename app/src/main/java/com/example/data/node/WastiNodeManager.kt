@@ -111,6 +111,7 @@ enum class NodeCapability {
 
 enum class NodeHealthState {
     ONLINE,
+    HEALTHY,
     DEGRADED,
     OFFLINE,
     SUSPENDED,

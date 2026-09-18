@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 enum class UnifiedExecutionStatus {
     PLANNED,
     AUTHORIZED,
+    PENDING,
     RUNNING,
     WAITING,
     COMPLETED,

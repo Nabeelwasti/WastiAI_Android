@@ -19,7 +19,7 @@ enum class CapabilityRealityState {
 
 enum class ImplementationStatus { READY, IMPLEMENTED, IN_PROGRESS, CONTRACT_ONLY, NOT_IMPLEMENTED }
 enum class LiveConnectionStatus { VERIFIED, CONNECTED, NOT_VERIFIED, AUTHENTICATION_REQUIRED, FAILED, DISCONNECTED }
-enum class CapabilityExecutionStatus { OPERATIONAL, DEGRADED, BLOCKED_BY_POLICY, UNAVAILABLE }
+enum class CapabilityExecutionStatus { READY, OPERATIONAL, DEGRADED, BLOCKED_BY_POLICY, UNAVAILABLE }
 enum class CapabilityAuthStatus { AUTHENTICATED, REQUIRED_NOT_PROVIDED, EXPIRED, NOT_REQUIRED }
 
 data class CapabilityReality(
