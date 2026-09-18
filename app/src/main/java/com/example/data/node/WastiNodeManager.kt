@@ -11,6 +11,10 @@ import com.example.data.agent.runtime.CapabilityRealityState
 import com.example.data.agent.runtime.ImplementationStatus
 import com.example.data.agent.runtime.LiveConnectionStatus
 import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
+import com.example.data.agent.runtime.UnifiedExecutionResult
+import com.example.data.agent.runtime.UnifiedExecutionStatus
+import com.example.data.agent.runtime.UnifiedVerificationStatus
 import com.example.data.di.WastiServiceLocator
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
