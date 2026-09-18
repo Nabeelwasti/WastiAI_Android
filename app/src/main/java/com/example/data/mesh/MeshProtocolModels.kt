@@ -94,11 +94,11 @@ data class CapabilityDelta(
             val capId = obj.optString("capabilityId", "")
             if (capId.isBlank()) return null
             val version = obj.optString("version", "1.0.0")
-            val stateStr = obj.optString("realityState", "LIVE_CONNECTED")
+            val stateStr = obj.optString("realityState", "IMPLEMENTED_NOT_LIVE_VERIFIED")
             val realityState = try {
                 CapabilityRealityState.valueOf(stateStr)
             } catch (_: Exception) {
-                CapabilityRealityState.LIVE_CONNECTED
+                CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             }
             val provider = obj.optString("provider", "RemoteNode")
             val reqs = obj.optString("resourceRequirements", "LOW")

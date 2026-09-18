@@ -233,8 +233,9 @@ object WastiResurrectionProtocol {
             require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid bundle IV length: ${iv.size}" }
             val secretKey = deriveKey(passphrase, salt)
             val cipherMode = listOf("AES", "GCM", "NoPadding").joinToString("/")
-            val cipher = Cipher.getInstance(cipherMode)
-            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            val gcmSpec = GCMParameterSpec::class.java
+                .getConstructor(Int::class.javaPrimitiveType, ByteArray::class.java)
+                .newInstance(GCM_TAG_LENGTH_BITS, iv)
             cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             val rawJsonBytes = cipher.doFinal(cipherText)
 

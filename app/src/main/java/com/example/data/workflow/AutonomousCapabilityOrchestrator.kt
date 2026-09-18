@@ -317,13 +317,13 @@ class AutonomousCapabilityOrchestrator(
                 capabilityId = toolId,
                 category = "DYNAMIC_WRE",
                 implementationStatus = ImplementationStatus.READY,
-                liveConnectionStatus = LiveConnectionStatus.VERIFIED,
+                liveConnectionStatus = LiveConnectionStatus.NOT_VERIFIED,
                 executionStatus = CapabilityExecutionStatus.OPERATIONAL,
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WreDynamicToolProvider",
                 supportedOperations = listOf("execute"),
                 limitations = emptyList(),
-                realityState = CapabilityRealityState.NATIVE
+                realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
 
@@ -349,14 +349,13 @@ class AutonomousCapabilityOrchestrator(
     private fun applyCorrectionPatch(originalScript: String, error: String, scriptName: String): String {
         return buildString {
             appendLine("#!/bin/sh")
-            appendLine("# Auto-corrected WRE script for $scriptName")
-            appendLine("if [ \$1 = --test-run ]")
-            appendLine("then")
-            appendLine("echo status=ok,capability=$scriptName,version=1.0")
-            appendLine("exit 0")
+            appendLine("# Sovereign WRE corrective diagnostic wrapper for $scriptName")
+            appendLine("# Diagnostic error: ${error.replace("\n", " ").take(100)}")
+            appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
+            appendLine("  echo \"status=diagnosing,capability=$scriptName,error=${error.take(50)}\"")
+            appendLine("  exit 1")
             appendLine("fi")
-            appendLine("echo capability=$scriptName,executed=true")
-            appendLine("exit 0")
+            appendLine(originalScript)
         }
     }
 

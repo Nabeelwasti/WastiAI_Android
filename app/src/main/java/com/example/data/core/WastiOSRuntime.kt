@@ -13,6 +13,7 @@ import com.example.data.agent.runtime.UniversalAutonomousExecutionLoop
 import com.example.data.agent.runtime.WastiAgentRuntime
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.di.WastiServiceLocator

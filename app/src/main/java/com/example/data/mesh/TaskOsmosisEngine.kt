@@ -38,9 +38,7 @@ object TaskOsmosisEngine {
 
     private val _registeredMeshNodes = MutableStateFlow(
         listOf(
-            MeshNodeDescriptor(nodeId = "phone_01", name = "Wasti Primary Phone (Host)", bodyType = MeshNodeBodyType.ANDROID_MOBILE, ipAddress = "127.0.0.1", availableComputeTflops = 2.5f, isNearby = true),
-            MeshNodeDescriptor(nodeId = "desktop_02", name = "Workstation Linux Node", bodyType = MeshNodeBodyType.LINUX_DESKTOP, ipAddress = "192.168.1.120", availableComputeTflops = 35.0f, isNearby = true),
-            MeshNodeDescriptor(nodeId = "cloud_03", name = "Headless Cloud Compute Core", bodyType = MeshNodeBodyType.CLOUD_VM, ipAddress = "34.120.45.10", availableComputeTflops = 120.0f, isNearby = false)
+            MeshNodeDescriptor(nodeId = "phone_01", name = "Wasti Primary Phone (Host)", bodyType = MeshNodeBodyType.ANDROID_MOBILE, ipAddress = "127.0.0.1", availableComputeTflops = 2.5f, isNearby = true)
         )
     )
     val registeredMeshNodes: StateFlow<List<MeshNodeDescriptor>> = _registeredMeshNodes.asStateFlow()
@@ -48,16 +46,29 @@ object TaskOsmosisEngine {
     private val _migrationHistory = MutableStateFlow<List<TaskOsmosisMigrationSnapshot>>(emptyList())
     val migrationHistory: StateFlow<List<TaskOsmosisMigrationSnapshot>> = _migrationHistory.asStateFlow()
 
+    fun registerDiscoveredNode(node: MeshNodeDescriptor) {
+        val current = _registeredMeshNodes.value.toMutableList()
+        val index = current.indexOfFirst { it.nodeId == node.nodeId }
+        if (index >= 0) {
+            current[index] = node
+        } else {
+            current.add(node)
+        }
+        _registeredMeshNodes.value = current
+    }
+
     fun migrateTaskToOptimalNode(taskDescription: String, memorySnapshotBytes: Long): TaskOsmosisMigrationSnapshot {
         val nodes = _registeredMeshNodes.value
-        val target = nodes.firstOrNull { it.nodeId != "phone_01" && it.isOnline } ?: nodes.first()
+        val remoteTarget = nodes.firstOrNull { it.nodeId != "phone_01" && it.isOnline }
+        val target = remoteTarget ?: nodes.first()
+        val isSuccess = remoteTarget != null && remoteTarget.isOnline
 
         val snapshot = TaskOsmosisMigrationSnapshot(
             sourceNode = "Wasti Primary Phone",
             targetNode = target.name,
             taskDescription = taskDescription,
-            transferredMemoryBytes = memorySnapshotBytes,
-            isSeamlessTransferSuccessful = true
+            transferredMemoryBytes = if (isSuccess) memorySnapshotBytes else 0L,
+            isSeamlessTransferSuccessful = isSuccess
         )
 
         val list = _migrationHistory.value.toMutableList()

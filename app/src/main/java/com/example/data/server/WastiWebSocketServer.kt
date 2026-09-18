@@ -648,8 +648,8 @@ class WastiWebSocketServer private constructor(
                     val capId = cObj.optString("capabilityId", "")
                     if (capId.isBlank()) continue
                     val ver = cObj.optString("version", "1.0.0")
-                    val stateStr = cObj.optString("realityState", "LIVE_CONNECTED")
-                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val stateStr = cObj.optString("realityState", "IMPLEMENTED_NOT_LIVE_VERIFIED")
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED }
                     val provider = cObj.optString("provider", "Node[$nodeId]")
                     val reqs = cObj.optString("resourceRequirements", "LOW")
 
@@ -715,8 +715,8 @@ class WastiWebSocketServer private constructor(
                 if (capObj != null) {
                     val capId = capObj.optString("capabilityId", "")
                     val ver = capObj.optString("version", "1.0.0")
-                    val stateStr = capObj.optString("realityState", "LIVE_CONNECTED")
-                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val stateStr = capObj.optString("realityState", "IMPLEMENTED_NOT_LIVE_VERIFIED")
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED }
                     val provider = capObj.optString("provider", "Node[$nodeId]")
                     val reqs = capObj.optString("resourceRequirements", "LOW")
 
