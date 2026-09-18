@@ -239,6 +239,7 @@ class UnifiedBrainAndSelfTrainingTest {
     fun testCapabilityRealityAndExecutionStatusEnums() {
         val reality = CapabilityReality(
             capabilityId = "test_cap",
+            category = "GENERAL",
             realityState = CapabilityRealityState.LIVE_CONNECTED,
             executionStatus = CapabilityExecutionStatus.READY,
             implementationStatus = ImplementationStatus.IMPLEMENTED,
