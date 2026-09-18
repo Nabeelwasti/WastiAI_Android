@@ -11,6 +11,9 @@ interface EmbeddingService {
         text: String,
         preferredProviderId: String? = null
     ): EmbeddingVector
+
+    /** Canonical compatibility bridge */
+    suspend fun embed(text: String): EmbeddingVector = generateEmbedding(text)
 }
 
 class DefaultEmbeddingService : EmbeddingService {
