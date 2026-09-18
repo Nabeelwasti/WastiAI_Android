@@ -642,7 +642,7 @@ class WastiOSRuntime(
      * Resolves the canonical [UniversalAutonomousExecutionLoop] for multi-step background autonomy.
      */
     fun getUniversalAutonomousExecutionLoop(): UniversalAutonomousExecutionLoop =
-        WastiServiceLocator.universalExecutionLoop
+        WastiServiceLocator.universalAutonomousExecutionLoop
 
     /**
      * Streams live global execution context updates to UI and remote observers.
