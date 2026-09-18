@@ -347,7 +347,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
         assertEquals(AgentTaskPriority.HIGH, priority)
         assertEquals(NodeHealthState.HEALTHY, health)
         assertEquals(NodeConnectionState.CONNECTED, connection)
-        val flowList = kotlinx.coroutines.flow.flowOf(taskId.value).kotlinx.coroutines.flow.toList()
+        val flowList = kotlinx.coroutines.flow.flowOf(taskId.value).toList()
         assertEquals(listOf("stage15_contract_test"), flowList)
     }
 }
