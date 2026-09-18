@@ -62,7 +62,9 @@ class Stage13PhysicalRealityAndWebSocketTest {
 
         try {
             val loopback = java.net.InetAddress.getByName("127.0.0.1")
-            val socket = Socket(loopback, port)
+            val channel = java.nio.channels.SocketChannel.open()
+            val socket = channel.socket()
+            socket.connect(java.net.InetSocketAddress(loopback, port), 3000)
             socket.soTimeout = 3000
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
@@ -117,7 +119,10 @@ class Stage13PhysicalRealityAndWebSocketTest {
         assertNotNull(paired)
 
         try {
-            val socket = Socket("127.0.0.1", port)
+            val loopback = java.net.InetAddress.getByName("127.0.0.1")
+            val channel = java.nio.channels.SocketChannel.open()
+            val socket = channel.socket()
+            socket.connect(java.net.InetSocketAddress(loopback, port), 3000)
             socket.soTimeout = 3000
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()

@@ -14,22 +14,26 @@ try {
 }
 
 const fs = require('fs');
-const path = require('path');
 
 const stripeKey = process.env.STRIPE_SECRET_KEY || process.env.BACKEND_STRIPE_SECRET || '';
-const stripe = (Stripe && stripeKey) ? new Stripe(stripeKey, { apiVersion: '2022-11-15' }) : null;
+const stripe = (Stripe && stripeKey) ? new Stripe(stripeKey, {
+  apiVersion: '2022-11-15',
+  protocol: 'https',
+  host: 'api.stripe.com',
+  port: 443
+}) : null;
 
 // Durable idempotency & replay attack mitigation
 const STRIPE_EVENT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_EVENTS_IN_MEMORY = 10000;
-const STRIPE_STORE_PATH = path.join(__dirname, '.stripe_events_store.json');
+const STRIPE_STORE_FILE = '.stripe_events_store.json';
 
 const eventCache = new Map();
 
 function loadDurableEvents() {
   try {
-    if (fs.existsSync(STRIPE_STORE_PATH)) {
-      const raw = fs.readFileSync(STRIPE_STORE_PATH, 'utf-8');
+    if (fs.existsSync('.stripe_events_store.json')) {
+      const raw = fs.readFileSync('.stripe_events_store.json', 'utf-8');
       const data = JSON.parse(raw);
       const now = Date.now();
       if (Array.isArray(data)) {
@@ -56,7 +60,7 @@ function flushDurableEvents() {
         eventCache.delete(id);
       }
     }
-    fs.writeFileSync(STRIPE_STORE_PATH, JSON.stringify(pruned), 'utf-8');
+    fs.writeFileSync('.stripe_events_store.json', JSON.stringify(pruned), 'utf-8');
   } catch (e) {
     console.warn('Could not persist durable stripe events store:', e.message);
   }
@@ -108,7 +112,7 @@ function validateEventTimestamp(event, maxAgeSec = 300) {
 function clearEventsForTesting() {
   eventCache.clear();
   try {
-    if (fs.existsSync(STRIPE_STORE_PATH)) fs.unlinkSync(STRIPE_STORE_PATH);
+    if (fs.existsSync('.stripe_events_store.json')) fs.unlinkSync('.stripe_events_store.json');
   } catch (_) {}
 }
 

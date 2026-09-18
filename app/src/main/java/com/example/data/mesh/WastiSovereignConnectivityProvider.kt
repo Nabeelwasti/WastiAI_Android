@@ -217,7 +217,7 @@ class WastiSovereignConnectivityProvider private constructor(
         for (candidate in testCandidates) {
             try {
                 val inetAddr = java.net.InetAddress.getByName(candidate)
-                Socket().use { socket ->
+                java.nio.channels.SocketChannel.open().socket().use { socket ->
                     socket.soTimeout = 150
                     socket.connect(InetSocketAddress(inetAddr, RELAY_PORT), 150)
                 }
@@ -236,7 +236,10 @@ class WastiSovereignConnectivityProvider private constructor(
         if (isProxyServerRunning.getAndSet(true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                val server = ServerSocket(PROXY_PORT, 50, InetAddress.getByName("127.0.0.1"))
+                val channel = java.nio.channels.ServerSocketChannel.open()
+                channel.socket().reuseAddress = true
+                channel.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PROXY_PORT), 50)
+                val server = channel.socket()
                 Log.i(TAG, "Sovereign Intranet Gateway Proxy listening on 127.0.0.1:$PROXY_PORT")
 
                 while (true) {

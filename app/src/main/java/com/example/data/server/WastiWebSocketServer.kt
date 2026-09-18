@@ -73,7 +73,10 @@ class WastiWebSocketServer private constructor(
         }
 
         return try {
-            val ss = ServerSocket(port)
+            val channel = java.nio.channels.ServerSocketChannel.open()
+            channel.socket().reuseAddress = true
+            channel.bind(java.net.InetSocketAddress(port))
+            val ss = channel.socket()
             serverSocket = ss
             isRunning.set(true)
 

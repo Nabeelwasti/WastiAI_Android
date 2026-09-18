@@ -708,7 +708,7 @@ class Stage6ObservationVerificationTest {
             observationSource = EvidenceSource.FILESYSTEM,
             timestamp = System.currentTimeMillis(),
             artifactOrStateReference = "/data/data/com.aistudio.wastios.k9v2pz/files/doc.txt",
-            checksumOrHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            checksumOrHash = "EVIDENCE_HASH_SHA256_TEST_FILE_EXISTS",
             expectedState = "FILE_EXISTS",
             observedState = "FILE_EXISTS (bytes=1024)",
             verifierIdentity = "WastiVerificationEngine",

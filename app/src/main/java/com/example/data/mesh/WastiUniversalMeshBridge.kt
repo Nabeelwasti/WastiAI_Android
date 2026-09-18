@@ -105,7 +105,7 @@ class WastiUniversalMeshBridge private constructor(
                 try {
                     val inetAddr = java.net.InetAddress.getByName(ip)
                     if (inetAddr.isLoopbackAddress || inetAddr.isSiteLocalAddress || ip == "10.0.2.2") {
-                        Socket().use { socket ->
+                        java.nio.channels.SocketChannel.open().socket().use { socket ->
                             socket.soTimeout = 150
                             socket.connect(InetSocketAddress(inetAddr, COMPANION_HTTP_PORT), 150)
                         }

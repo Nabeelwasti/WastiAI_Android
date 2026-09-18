@@ -19,11 +19,6 @@ const defaultTargetUrl = (process.argv[2] && process.argv[2].startsWith('http'))
 const defaultOutputFile = 'backend_deployment_evidence.json';
 const authToken = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.WASTI_SERVER_SECRET || null;
 
-function sanitizeEvidencePath(target) {
-  const base = path.basename(target || 'backend_deployment_evidence.json');
-  return path.resolve(process.cwd(), base);
-}
-
 if (require.main === module) {
   console.log('========================================================');
   console.log('  WASTI AI OS: BACKEND DEPLOYMENT VERIFICATION (P0-05)  ');
@@ -115,9 +110,8 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
         subsystems: "UNAVAILABLE"
       }
     };
-    const safeOut = sanitizeEvidencePath(outputFile);
-    fs.writeFileSync(safeOut, JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
-    console.log(`Unreachable deployment record written to ${safeOut}`);
+    fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
+    console.log(`Unreachable deployment record written to backend_deployment_evidence.json`);
     return { success: false, evidence: unreachableEvidence };
   }
 
@@ -219,9 +213,8 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
 
   evidencePayload.evidenceHash = hash;
 
-  const safeOut = sanitizeEvidencePath(outputFile);
-  fs.writeFileSync(safeOut, JSON.stringify(evidencePayload, null, 2), 'utf-8');
-  console.log(`SUCCESS: Deployment evidence successfully recorded to ${safeOut}`);
+  fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
+  console.log(`SUCCESS: Deployment evidence successfully recorded to backend_deployment_evidence.json`);
   console.log(`Evidence Hash (SHA-256): ${hash}`);
   console.log('========================================================');
   console.log('  BACKEND DEPLOYMENT VERIFICATION COMPLETE: VERIFIED    ');

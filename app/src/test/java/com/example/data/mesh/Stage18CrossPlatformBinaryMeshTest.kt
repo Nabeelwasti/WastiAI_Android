@@ -336,14 +336,28 @@ class Stage18CrossPlatformBinaryMeshTest {
 
     @Test
     fun testArchitecture_EventBusAndTaskIdContracts() {
-        val bus = WastiServiceLocator.agentEventBus
+        // Explicitly typed as AgentEventBus — tests type contract, singleton, and replay buffer API
+        val bus: AgentEventBus = WastiServiceLocator.agentEventBus
+        assertNotNull("AgentEventBus singleton must be non-null", bus)
+
         val taskId = TaskId("mesh_task_${UUID.randomUUID()}")
+        assertNotNull("TaskId value must be non-null", taskId.value)
+        assertTrue("TaskId must contain the prefix", taskId.value.startsWith("mesh_task_"))
+
+        // Wire AgentEventBus.tryEmit — verifies event is accepted into the shared replay buffer
         val event = AgentEvent.EmergencyStopEngaged(
             origin = CommandOrigin.MESH_REMOTE,
             timestamp = System.currentTimeMillis()
         )
-        assertNotNull(bus)
+        val emitted = bus.tryEmit(event)
+        assertTrue("AgentEventBus must accept cross-platform mesh emergency-stop event via tryEmit", emitted)
         assertEquals(CommandOrigin.MESH_REMOTE, event.origin)
-        assertNotNull(taskId.value)
+
+        // Verify replay: a new collector on the SharedFlow should receive the replayed event
+        val replayedEvents = bus.events.replayCache
+        assertTrue(
+            "AgentEventBus replay cache must contain the emitted MESH_REMOTE emergency-stop event",
+            replayedEvents.any { it is AgentEvent.EmergencyStopEngaged && it.origin == CommandOrigin.MESH_REMOTE }
+        )
     }
 }

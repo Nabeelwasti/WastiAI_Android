@@ -185,7 +185,10 @@ object WastiMeshTransportEngine {
         executionServerJob = scope.launch {
             var server: ServerSocket? = null
             try {
-                server = ServerSocket(MESH_EXECUTION_PORT)
+                val channel = java.nio.channels.ServerSocketChannel.open()
+                channel.socket().reuseAddress = true
+                channel.bind(InetSocketAddress(MESH_EXECUTION_PORT))
+                server = channel.socket()
                 executionServerSocket = server
                 while (isActive && isMeshActive) {
                     try {
@@ -316,7 +319,7 @@ object WastiMeshTransportEngine {
         }
 
         try {
-            Socket().use { socket ->
+            java.nio.channels.SocketChannel.open().socket().use { socket ->
                 socket.connect(InetSocketAddress(targetIp, MESH_EXECUTION_PORT), 3000)
                 socket.soTimeout = 10_000
                 val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))

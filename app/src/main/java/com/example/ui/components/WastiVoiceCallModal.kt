@@ -322,6 +322,7 @@ fun WastiVoiceCallModal(
                     tts.setLanguage(Locale.US)
                 }
             } catch (e: Exception) {
+                android.util.Log.w("WastiVoiceCall", "TTS language selection failed: ${e.message}", e)
                 tts.setLanguage(Locale.ENGLISH)
             }
 

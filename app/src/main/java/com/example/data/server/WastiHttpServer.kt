@@ -76,7 +76,8 @@ class HttpServer private constructor(
     private var acceptThread: Thread? = null
 
     init {
-        val socket = ServerSocket()
+        val channel = java.nio.channels.ServerSocketChannel.open()
+        val socket = channel.socket()
         socket.reuseAddress = true
         // Secure binding: binds explicitly to the caller-configured InetSocketAddress (loopback by default in Wasti OS)
         socket.bind(bindAddress, backlog)
@@ -105,7 +106,8 @@ class HttpServer private constructor(
 
         var socket = serverSocket
         if (socket == null || socket.isClosed) {
-            socket = ServerSocket()
+            val channel = java.nio.channels.ServerSocketChannel.open()
+            socket = channel.socket()
             socket.reuseAddress = true
             socket.bind(bindAddress, backlog)
             serverSocket = socket

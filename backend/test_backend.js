@@ -486,9 +486,9 @@ test('dev/patch security: enforces protected paths and payload bounds for self-m
 // 18. Container & Deployment Specification Audit (P0-05)
 test('deployment proof: validates backend Dockerfile and container security hardening', () => {
   const fs = require('fs');
-  const path = require('path');
-  const dockerfilePath = path.join(__dirname, 'Dockerfile');
-  const dockerignorePath = path.join(__dirname, '.dockerignore');
+
+  const dockerfilePath = fs.existsSync('Dockerfile') ? 'Dockerfile' : 'backend/Dockerfile';
+  const dockerignorePath = fs.existsSync('.dockerignore') ? '.dockerignore' : 'backend/.dockerignore';
 
   assert.ok(fs.existsSync(dockerfilePath), 'backend/Dockerfile must exist');
   assert.ok(fs.existsSync(dockerignorePath), 'backend/.dockerignore must exist');
@@ -591,7 +591,7 @@ test('deployment proof: verifyDeployment generates verifiable cryptographic evid
 
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
-  const testEvidenceFile = path.join(__dirname, 'test_deployment_evidence.json');
+  const testEvidenceFile = 'test_deployment_evidence.json';
 
   try {
     const { verifyDeployment } = require('./verify_backend_deployment');
@@ -608,14 +608,14 @@ test('deployment proof: verifyDeployment generates verifiable cryptographic evid
     assert.strictEqual(result.evidence.subsystems.authEnforced, true);
     assert.ok(result.evidence.evidenceHash.length === 64);
 
-    assert.ok(fs.existsSync(testEvidenceFile));
-    const saved = JSON.parse(fs.readFileSync(testEvidenceFile, 'utf-8'));
+    assert.ok(fs.existsSync('test_deployment_evidence.json'));
+    const saved = JSON.parse(fs.readFileSync('test_deployment_evidence.json', 'utf-8'));
     assert.strictEqual(saved.evidenceHash, result.evidence.evidenceHash);
 
     process.argv = origArgv;
   } finally {
-    if (fs.existsSync(testEvidenceFile)) {
-      fs.unlinkSync(testEvidenceFile);
+    if (fs.existsSync('test_deployment_evidence.json')) {
+      fs.unlinkSync('test_deployment_evidence.json');
     }
     await new Promise((resolve) => server.close(resolve));
   }

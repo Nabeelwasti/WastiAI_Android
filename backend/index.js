@@ -315,7 +315,8 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
     await octokit.git.updateRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: newCommit.data.sha });
 
     const pr = await octokit.pulls.create({ owner, repo, title, head: branchName, base, body });
-    return res.json({ prUrl: encodeURI(String(pr.data.html_url || '')), branch: branchName });
+    const prUrl = pr && pr.data && pr.data.html_url ? pr.data.html_url : '';
+    return res.json({ prUrl, pullRequestUrl: prUrl, branch: branchName });
   } catch (err) {
     console.error('dev/patch failed', err?.response?.data || err.message || err);
     res.status(500).json({ error: 'dev/patch failed', detail: err?.response?.data?.message || err.message });
@@ -480,14 +481,16 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
           orchestrator.callProviders({ prompt }, [p])
         );
         const settled = await Promise.allSettled(promises);
-        const outputs = configuredProviders.map((providerName, idx) => {
-          const s = settled[idx];
-          return {
-            provider: String(providerName),
-            status: s ? s.status : 'rejected',
-            output: (s && s.status === 'fulfilled') ? s.value : { error: s?.reason?.message || String(s?.reason || 'Failed') }
-          };
-        });
+        const outputs = [];
+        for (let i = 0; i < configuredProviders.length; i++) {
+          const providerName = String(configuredProviders[i] || 'unknown');
+          const outcome = settled[i];
+          outputs.push({
+            provider: providerName,
+            status: outcome ? outcome.status : 'rejected',
+            output: (outcome && outcome.status === 'fulfilled') ? outcome.value : { error: outcome?.reason?.message || 'Failed' }
+          });
+        }
         resultData = {
           participatingProviders: configuredProviders,
           streamResults: outputs,
@@ -535,10 +538,9 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
           return res.status(400).json({ error: 'payload.code must be a valid string <= 500KB' });
         }
         if (language === 'javascript' || language === 'js') {
-          const vm = require('vm');
           try {
-            // Static syntax check only: new vm.Script does not execute code
-            new vm.Script(code, { displayErrors: false });
+            // Static syntax check only: new Function parses syntax without executing
+            new Function(code);
             resultData = {
               language,
               codeLengthBytes: Buffer.byteLength(code, 'utf-8'),

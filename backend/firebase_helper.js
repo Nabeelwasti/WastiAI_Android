@@ -17,25 +17,56 @@ let initialized = false;
 function init() {
   if (!admin) return false;
   if (initialized) return true;
-  // Expect a service account JSON in FIREBASE_SA (base64) or path in FIREBASE_SA_PATH
-  const saB64 = process.env.FIREBASE_SA_BASE64 || null;
-  if (saB64) {
-    const saJson = Buffer.from(saB64, 'base64').toString('utf-8');
-    const sa = JSON.parse(saJson);
-    admin.initializeApp({ credential: admin.credential.cert(sa) });
-    initialized = true;
-    return true;
-  }
-  const saPath = process.env.FIREBASE_SA_PATH || null;
-  if (saPath && typeof saPath === 'string' && !saPath.includes('\0')) {
-    const resolvedPath = path.resolve(saPath);
-    if (fs.existsSync(resolvedPath)) {
-      const sa = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
+
+  // 1. Direct JSON string in environment
+  if (process.env.FIREBASE_SA_JSON) {
+    try {
+      const sa = JSON.parse(process.env.FIREBASE_SA_JSON);
       admin.initializeApp({ credential: admin.credential.cert(sa) });
       initialized = true;
       return true;
+    } catch (e) {
+      console.warn('Failed to parse FIREBASE_SA_JSON:', e.message);
     }
   }
+
+  // 2. Base64-encoded service account JSON
+  const saB64 = process.env.FIREBASE_SA_BASE64 || null;
+  if (saB64) {
+    try {
+      const saJson = Buffer.from(saB64, 'base64').toString('utf-8');
+      const sa = JSON.parse(saJson);
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      initialized = true;
+      return true;
+    } catch (e) {
+      console.warn('Failed to parse FIREBASE_SA_BASE64:', e.message);
+    }
+  }
+
+  // 3. Standard literal service account configuration file
+  if (fs.existsSync('./firebase-service-account.json')) {
+    try {
+      const sa = JSON.parse(fs.readFileSync('./firebase-service-account.json', 'utf-8'));
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      initialized = true;
+      return true;
+    } catch (e) {
+      console.warn('Failed to load ./firebase-service-account.json:', e.message);
+    }
+  }
+
+  // 4. Standard GCP Application Default Credentials
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try {
+      admin.initializeApp({ credential: admin.credential.applicationDefault() });
+      initialized = true;
+      return true;
+    } catch (e) {
+      console.warn('Failed to initialize with applicationDefault credentials:', e.message);
+    }
+  }
+
   return false;
 }
 
