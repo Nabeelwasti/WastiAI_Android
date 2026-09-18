@@ -8,9 +8,22 @@ import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.WastiOSRuntime
-import com.example.data.node.*
+import com.example.data.node.AdvertisedCapability
+import com.example.data.node.CapabilityCostModel
+import com.example.data.node.CapabilityParameter
+import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodeHealthState
+import com.example.data.node.NodePlatform
+import com.example.data.node.NodeTrustState
+import com.example.data.node.WastiNode
+import com.example.data.node.WastiNodeManager
 import com.example.data.transport.WastiCommandTransport
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.InputStream
 import java.io.OutputStream
@@ -34,8 +47,8 @@ class WastiWebSocketServer private constructor(
     private val isRunning = AtomicBoolean(false)
     private val serverScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    private val connectedSessions = CopyOnWriteArrayList<WebSocketSession>()
-    private val sessionMetadata = ConcurrentHashMap<String, String>()
+    val connectedSessions = CopyOnWriteArrayList<WebSocketSession>()
+    val sessionMetadata = ConcurrentHashMap<String, String>()
     private var eventSubscriptionJob: Job? = null
 
     fun getExecutionFabric(): UnifiedExecutionFabric = UnifiedExecutionFabric.instance
@@ -153,6 +166,7 @@ class WastiWebSocketServer private constructor(
                 }
 
                 val requestLine = lines[0]
+                Log.d(TAG, "WebSocket upgrade requested: $requestLine")
                 val headers = mutableMapOf<String, String>()
                 for (i in 1 until lines.size) {
                     val line = lines[i]
@@ -244,6 +258,9 @@ class WastiWebSocketServer private constructor(
 
                 val fin = (b1 and 0x80) != 0
                 val opcode = b1 and 0x0F
+                if (!fin) {
+                    Log.v(TAG, "Received fragmented WebSocket frame with opcode $opcode")
+                }
 
                 val b2 = input.read()
                 if (b2 == -1) break
@@ -321,7 +338,7 @@ class WastiWebSocketServer private constructor(
     }
 
     private fun handleIncomingTextMessage(session: WebSocketSession, text: String) {
-        val json = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+        val json = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
         val type = json.optString("type", "UNKNOWN").uppercase()
 
         when (type) {
@@ -337,7 +354,7 @@ class WastiWebSocketServer private constructor(
                 val deviceId = json.optString("deviceId", session.deviceId ?: "")
                 val platformStr = json.optString("platform", "WEB")
 
-                val platform = try { NodePlatform.valueOf(platformStr.uppercase()) } catch (e: Exception) { NodePlatform.WEB }
+                val platform = try { NodePlatform.valueOf(platformStr.uppercase()) } catch (_: Exception) { NodePlatform.WEB }
                 session.deviceId = deviceId
                 session.platform = platform
 
@@ -374,7 +391,7 @@ class WastiWebSocketServer private constructor(
 
                 val command = json.optString("command", "")
                 val originStr = json.optString("origin", "WEB_COMPANION")
-                val rawOrigin = try { CommandOrigin.valueOf(originStr) } catch (e: Exception) { CommandOrigin.WEB_COMPANION }
+                val rawOrigin = try { CommandOrigin.valueOf(originStr) } catch (_: Exception) { CommandOrigin.WEB_COMPANION }
                 val origin = if (rawOrigin.isLocal) CommandOrigin.WEB_COMPANION else rawOrigin
                 val requestId = json.optString("requestId", "ws_req_${System.currentTimeMillis()}")
                 val correlationId = json.optString("correlationId", "ws_corr_${System.currentTimeMillis()}")
@@ -567,7 +584,7 @@ class WastiWebSocketServer private constructor(
                 val fingerprint = json.optString("capabilityFingerprint", "")
                 val clientHost = session.socket.inetAddress?.hostAddress ?: "127.0.0.1"
 
-                val platform = try { NodePlatform.valueOf(platformStr.uppercase()) } catch (e: Exception) { NodePlatform.DESKTOP }
+                val platform = try { NodePlatform.valueOf(platformStr.uppercase()) } catch (_: Exception) { NodePlatform.DESKTOP }
                 session.deviceId = nodeId
                 session.platform = platform
 
@@ -629,7 +646,7 @@ class WastiWebSocketServer private constructor(
                     if (capId.isBlank()) continue
                     val ver = cObj.optString("version", "1.0.0")
                     val stateStr = cObj.optString("realityState", "LIVE_CONNECTED")
-                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (e: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
                     val provider = cObj.optString("provider", "Node[$nodeId]")
                     val reqs = cObj.optString("resourceRequirements", "LOW")
 
@@ -913,7 +930,7 @@ class WastiWebSocketServer private constructor(
                 val desc = json.optString("description", "")
                 val phase = try {
                     com.example.data.conversation.TaskTimelinePhase.valueOf(phaseStr)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     com.example.data.conversation.TaskTimelinePhase.EXECUTING
                 }
 
@@ -1124,6 +1141,8 @@ class WastiWebSocketServer private constructor(
         } catch (ignored: Exception) {}
     }
 
+    // RFC 6455 Section 4.2.2 mandates SHA-1 for WebSocket Opening Handshake Sec-WebSocket-Accept computation.
+    @Suppress("InsecureHash", "InsecureCryptoUsage")
     private fun computeWebSocketAccept(key: String): String {
         val magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         val md = MessageDigest.getInstance("SHA-1")

@@ -219,7 +219,7 @@ object LinkedInOAuthService {
             response.use { resp ->
                 val responseBody = resp.body?.string() ?: ""
                 if (resp.isSuccessful || resp.code == 201 || resp.code == 200) {
-                    val jsonResp = try { JSONObject(responseBody) } catch (e: Exception) { null }
+                    val jsonResp = try { JSONObject(responseBody) } catch (_: Exception) { null }
                     val postId = jsonResp?.optString("id")
                         ?: resp.header("x-restli-id")
                         ?: "urn:li:ugcPost:${System.currentTimeMillis()}"
@@ -258,7 +258,7 @@ object LinkedInOAuthService {
                     if (sub.isNotBlank()) "urn:li:person:$sub" else null
                 } else null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }

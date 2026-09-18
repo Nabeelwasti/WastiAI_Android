@@ -50,7 +50,7 @@ object WastiSystemResilienceGovernor {
         val isThermalThrottled: Boolean = false
     )
 
-    private val governorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val governorScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     // Bounded concurrency: maximum 4 concurrent heavy model inferences to protect mobile SoC
     private val inferenceSemaphore = Semaphore(permits = 4)

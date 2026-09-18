@@ -692,7 +692,7 @@ object CredentialRegistry {
             val field = com.example.BuildConfig::class.java.getField(key)
             val value = field.get(null) as? String
             if (!value.isNullOrBlank() && !isPlaceholder(value)) value else null
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             null
         }
     }

@@ -243,6 +243,7 @@ object DefaultRemoteSandboxHttpClient : RemoteSandboxCodeExecutionProvider.Remot
                 }
             }
         } catch (e: java.net.SocketTimeoutException) {
+            android.util.Log.w("RemoteSandbox", "Socket timeout connecting to remote sandbox: " + e.message, e)
             RemoteSandboxCodeExecutionProvider.RemoteSandboxResponse(
                 statusCode = 408,
                 isTimedOut = true,

@@ -468,7 +468,7 @@ object WebSearchEngine {
                 .map { it.trim() }
                 .filter { it.isNotBlank() }
                 .joinToString("\n")
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             html.take(4000)
         }
     }

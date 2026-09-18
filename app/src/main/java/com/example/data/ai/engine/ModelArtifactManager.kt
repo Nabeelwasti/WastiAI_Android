@@ -104,6 +104,7 @@ object HardwareCapabilityDetector {
         val totalMemoryMb = rt.totalMemory() / (1024 * 1024)
         val freeMemoryMb = rt.freeMemory() / (1024 * 1024)
         val maxMemoryMb = rt.maxMemory() / (1024 * 1024)
+        Log.d(TAG, "Hardware profiler JVM memory: total=${totalMemoryMb}MB, free=${freeMemoryMb}MB, max=${maxMemoryMb}MB")
 
         var availableStorageMb = 2048L
         try {

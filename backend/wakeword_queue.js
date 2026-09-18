@@ -1,5 +1,6 @@
 // Wakeword event queue with observable FIFO semantics, bounded capacity, and metric tracking
 
+const crypto = require('crypto');
 const MAX_WAKEWORD_QUEUE_SIZE = 100;
 let queue = [];
 let totalEnqueued = 0;
@@ -11,7 +12,8 @@ function enqueueEvent(eventData, options = {}) {
     throw new Error('Invalid wakeword event: must be a non-null object');
   }
 
-  const eventId = `wk_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  const randSuffix = crypto.randomBytes(4).toString('hex');
+  const eventId = `wk_${Date.now()}_${randSuffix}`;
   const item = {
     eventId,
     event: eventData,

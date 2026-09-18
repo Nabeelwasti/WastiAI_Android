@@ -71,7 +71,7 @@ class WrePackageManager(
                 registerIntoToolRegistry(pkg)
             }
         } catch (e: Exception) {
-            // Non-fatal parse fallback
+            android.util.Log.w("WrePackageManager", "Failed to parse installed packages: " + e.message, e)
         }
     }
 
@@ -92,7 +92,7 @@ class WrePackageManager(
             }
             packagesMetaFile.writeText(jsonObj.toString(2))
         } catch (e: Exception) {
-            // Non-fatal write fallback
+            android.util.Log.w("WrePackageManager", "Failed to save packages: " + e.message, e)
         }
     }
 

@@ -15,7 +15,9 @@ import com.example.data.node.WastiNodeManager
 import com.example.data.server.WastiLocalServerManager
 import com.example.data.transport.WastiCommandTransport
 import org.json.JSONObject
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

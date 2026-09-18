@@ -21,7 +21,7 @@ import sys
 import json
 import time
 import hashlib
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, Tuple
 
 PLACEHOLDER_SUBSTRINGS = {
     "MY_KEY", "YOUR_KEY", "PLACEHOLDER", "ENTER_KEY_HERE", "NULL",
@@ -72,7 +72,7 @@ def parse_env_file(filepath: str) -> Dict[str, str]:
                     continue
                 k, v = line.split("=", 1)
                 secrets[k.strip()] = v.strip().strip("\"'")
-    except Exception:
+    except OSError:
         pass
     return secrets
 
@@ -103,7 +103,7 @@ def get_secret(key_name: str, default: Optional[str] = None) -> Optional[str]:
                     val = f.read().strip()
                 if val and not is_placeholder(val):
                     return val
-            except Exception:
+            except OSError:
                 pass
 
     # 3. Vault JSON store
@@ -117,7 +117,7 @@ def get_secret(key_name: str, default: Optional[str] = None) -> Optional[str]:
                 val = data.get(upper_key) or data.get(lower_key) or data.get(key_name)
                 if val and not is_placeholder(str(val)):
                     return str(val).strip()
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
 
     # 4. Workspace .env
@@ -168,7 +168,7 @@ def rotate_secret(key_name: str, new_value: str, reason: str = "Manual Rotation"
             with open(audit_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
             os.chmod(audit_file, 0o600)
-        except Exception:
+        except OSError:
             pass
     return success
 
@@ -186,7 +186,7 @@ def get_firebase_config() -> Optional[Dict]:
             try:
                 with open(c, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
     return None
 

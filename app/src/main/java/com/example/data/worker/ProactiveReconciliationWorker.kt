@@ -32,7 +32,7 @@ class ProactiveReconciliationWorker(
         const val WORK_NAME = "wasti_proactive_reconciliation_worker"
 
         fun schedulePeriodicReconciliation(context: Context): Boolean {
-            val wm = WastiWorkManagerHelper.getWorkManager(context) ?: run {
+            val wm: WorkManager = WastiWorkManagerHelper.getWorkManager(context) ?: run {
                 Log.w(TAG, "ProactiveReconciliationWorker scheduling deferred: WorkManager unavailable in environment.")
                 return false
             }

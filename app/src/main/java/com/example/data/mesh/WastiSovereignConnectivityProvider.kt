@@ -73,7 +73,7 @@ class WastiSovereignConnectivityProvider private constructor(
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
 
     // Wi-Fi P2P Manager
     private var p2pManager: WifiP2pManager? = null
@@ -254,6 +254,7 @@ class WastiSovereignConnectivityProvider private constructor(
             client.use { s ->
                 val reader = BufferedReader(InputStreamReader(s.getInputStream()))
                 val line = reader.readLine() ?: return
+                Log.d(TAG, "Proxy incoming request: $line")
                 val writer = OutputStreamWriter(s.getOutputStream())
 
                 // Sovereign mesh gateway live JSON status response

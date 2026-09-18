@@ -23,7 +23,7 @@ def main():
                     if key_block_regex.search(content):
                         print(f"ERROR: Actual embedded private key with payload found in {filepath}!")
                         found_leak = True
-                except Exception:
+                except OSError:
                     pass
 
     if found_leak:

@@ -327,10 +327,10 @@ object WastiModelDownloader {
             ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.LOCAL_WEIGHTS_PRESENT)
             true
         } catch (e: CancellationException) {
-            Log.i(TAG, "Download cancelled for $modelId")
+            Log.i(TAG, "Download cancelled for $modelId: ${e.message}")
             if (tempFile.exists()) tempFile.delete()
             ModelArtifactManager.updateStatus(modelId, ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD)
-            false
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Download error for $modelId", e)
             if (tempFile.exists()) tempFile.delete()

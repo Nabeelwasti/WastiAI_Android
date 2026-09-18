@@ -2,7 +2,16 @@ package com.example.data.proactive
 
 import android.content.Context
 import android.util.Log
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.AgentTaskPriority
+import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
+import com.example.data.agent.runtime.UnifiedExecutionStatus
+import com.example.data.agent.runtime.UnifiedVerificationStatus
+import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.agent.runtime.WastiSecurityPolicyEngine
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
@@ -16,7 +25,14 @@ import com.example.data.node.WastiNodeManager
 import com.example.data.server.WastiWebSocketServer
 import com.example.data.workflow.AutonomousCapabilityOrchestrator
 import com.example.data.workflow.CapabilityResolutionResult
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -307,7 +323,7 @@ class WastiProactiveAutonomousEngine(
                     evaluateAndRunDueTasks()
 
                     delay(POLL_INTERVAL_MS)
-                } catch (e: CancellationException) {
+                } catch (_: CancellationException) {
                     break
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in proactive engine loop cycle: ${e.message}", e)
@@ -625,7 +641,7 @@ class WastiProactiveAutonomousEngine(
                         )
                     )
 
-                    val orchestrator = WastiServiceLocator.autonomousCapabilityOrchestrator
+                    val orchestrator: AutonomousCapabilityOrchestrator = WastiServiceLocator.autonomousCapabilityOrchestrator
                     eventBus.emit(AgentEvent.CapabilityProvisioningStarted(capabilityId = capId))
 
                     val result = orchestrator.resolveCapability(

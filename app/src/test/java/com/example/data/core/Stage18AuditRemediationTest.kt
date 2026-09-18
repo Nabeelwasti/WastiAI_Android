@@ -6,7 +6,9 @@ import com.example.data.linkedin.LinkedInOAuthService
 import com.example.data.memory.MemoryManager
 import com.example.data.memory.model.MemoryItem
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class Stage18AuditRemediationTest {

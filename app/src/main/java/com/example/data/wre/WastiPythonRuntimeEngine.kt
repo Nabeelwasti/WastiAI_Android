@@ -14,7 +14,11 @@ import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
-import kotlin.math.*
+import kotlin.math.ceil
+import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * [The Eternal Manifesto: The Infinite Capability Law & Code Alchemy Principle]
@@ -155,6 +159,7 @@ class WastiPythonRuntimeEngine(
                             verificationEvidence = "JSON formatted via python -m json.tool"
                         )
                     } catch (e: Exception) {
+                        android.util.Log.d("PythonEngine", "Not JSONObject: " + e.message)
                         try {
                             val arr = JSONArray(input).toString(4)
                             PolyglotExecutionOutcome(
@@ -164,6 +169,7 @@ class WastiPythonRuntimeEngine(
                                 verificationEvidence = "JSON formatted via python -m json.tool"
                             )
                         } catch (e2: Exception) {
+                            android.util.Log.d("PythonEngine", "Not JSONArray: " + e2.message)
                             PolyglotExecutionOutcome(
                                 isSuccess = false,
                                 language = PolyglotLanguage.PYTHON,

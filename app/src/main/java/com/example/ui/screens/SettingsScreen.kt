@@ -693,7 +693,7 @@ fun PrimaryApiKeyField(
             }
 
             // Status Badge
-            val (badgeColor, badgeText) = when (status) {
+            val (badgeColor: Color, badgeText: String) = when (status) {
                 is CredentialStatus.Connected -> MaterialTheme.colorScheme.primary to "✅ Verified Connected"
                 is CredentialStatus.Error -> MaterialTheme.colorScheme.error to "❌ Connection Error"
                 is CredentialStatus.Testing -> MaterialTheme.colorScheme.tertiary to "Testing..."

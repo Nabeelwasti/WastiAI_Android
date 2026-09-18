@@ -3,7 +3,11 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentTask
+import com.example.data.agent.runtime.AgenticLoopResult
+import com.example.data.agent.runtime.ExecutionMode
+import com.example.data.agent.runtime.TaskId
 import com.example.data.db.AgentEntity
 import com.example.data.di.WastiServiceLocator
 import kotlinx.coroutines.flow.*

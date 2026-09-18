@@ -7,7 +7,8 @@ import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
 import com.example.data.di.WastiServiceLocator
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

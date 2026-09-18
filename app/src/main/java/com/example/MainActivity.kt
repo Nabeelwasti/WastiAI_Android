@@ -37,7 +37,23 @@ import com.example.data.core.AppStartupState
 import com.example.ui.components.CommandPaletteDialog
 import com.example.ui.components.ExecutiveBrainHeader
 import com.example.ui.components.WastiStartupSplashScreen
-import com.example.ui.screens.*
+import com.example.ui.screens.AccountHubScreen
+import com.example.ui.screens.AgentManagerScreen
+import com.example.ui.screens.BrainSimulationScreen
+import com.example.ui.screens.CapabilityCenterScreen
+import com.example.ui.screens.ChatWorkspaceScreen
+import com.example.ui.screens.CodeStudioScreen
+import com.example.ui.screens.ConnectionsAndVaultScreen
+import com.example.ui.screens.DashboardScreen
+import com.example.ui.screens.DevAssistantScreen
+import com.example.ui.screens.IntegrationsLogsScreen
+import com.example.ui.screens.MemoryKnowledgeScreen
+import com.example.ui.screens.OperationsDashboardScreen
+import com.example.ui.screens.ProjectsTasksScreen
+import com.example.ui.screens.SettingsScreen
+import com.example.ui.screens.TerminalWorkspaceScreen
+import com.example.ui.screens.WakeWordSettingsScreen
+import com.example.ui.screens.WelcomeAuthScreen
 import com.example.data.wre.WreManager
 import com.example.ui.theme.WastiTheme
 import com.example.ui.viewmodel.WastiViewModel
@@ -54,6 +70,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         fun asComponentActivity(activity: android.app.Activity): ComponentActivity? =
             activity as? ComponentActivity
     }
+
+    fun getWreManager(): WreManager = WreManager(this)
 
     private val viewModel: WastiViewModel by viewModels()
 

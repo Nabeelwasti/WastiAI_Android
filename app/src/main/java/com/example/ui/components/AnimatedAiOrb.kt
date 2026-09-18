@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -46,7 +47,7 @@ fun AnimatedAiOrb(
         modifier = modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize().rotate(rotationAngle)) {
             if (this.size.width <= 0f || this.size.height <= 0f) return@Canvas
 
             val maxRadius = (size.toPx() / 2f).coerceAtLeast(1f)

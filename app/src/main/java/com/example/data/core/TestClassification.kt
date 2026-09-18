@@ -49,10 +49,10 @@ object TestClassificationRegistry {
             val simpleOrFullName = if (className.contains(".")) className else "com.example.data.core.$className"
             val clazz = try {
                 Class.forName(simpleOrFullName)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 try {
                     Class.forName(className)
-                } catch (e2: Exception) {
+                } catch (_: Exception) {
                     null
                 }
             }

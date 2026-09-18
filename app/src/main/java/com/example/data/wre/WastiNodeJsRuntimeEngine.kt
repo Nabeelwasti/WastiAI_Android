@@ -9,7 +9,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.*
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.sqrt
 
 /**
  * [The Eternal Manifesto: The Infinite Capability Law & Code Alchemy Principle]
@@ -20,7 +22,7 @@ import kotlin.math.*
  * and node_modules installed via `npm install`.
  */
 class WastiNodeJsRuntimeEngine(
-    private val context: Context,
+    val context: Context,
     private val workspaceManager: WreWorkspaceManager
 ) {
 

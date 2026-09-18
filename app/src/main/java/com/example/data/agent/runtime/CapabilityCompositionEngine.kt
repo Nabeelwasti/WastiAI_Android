@@ -58,7 +58,7 @@ class CapabilityCompositionEngine(
     private val toolRegistry: AgentToolRegistry = WastiServiceLocator.toolRegistry,
     private val realityRegistry: CapabilityRealityRegistry = UnifiedExecutionFabric.instance.realityRegistry,
     private val capabilityPlanner: CapabilityPlanner = CapabilityPlanner(realityRegistry),
-    private val eventBus: AgentEventBus = AgentEventBus.getInstance()
+    val eventBus: AgentEventBus = AgentEventBus.getInstance()
 ) {
     private val TAG = "CapCompositionEngine"
     private val activeWorkflows = ConcurrentHashMap<String, ComposedCapabilityWorkflow>()

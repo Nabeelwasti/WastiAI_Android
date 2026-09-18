@@ -37,7 +37,7 @@ data class CapabilityHealthRecord(
 
 class CapabilityRegressionMonitor(
     private val realityRegistry: CapabilityRealityRegistry = UnifiedExecutionFabric.instance.realityRegistry,
-    private val eventBus: AgentEventBus = AgentEventBus.getInstance()
+    val eventBus: AgentEventBus = AgentEventBus.getInstance()
 ) {
     private val TAG = "CapRegressionMonitor"
     private val healthRecords = ConcurrentHashMap<String, CapabilityHealthRecord>()

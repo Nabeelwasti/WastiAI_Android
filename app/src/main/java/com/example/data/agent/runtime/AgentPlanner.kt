@@ -32,7 +32,7 @@ class AgentPlanner(
         for (step in response.steps) {
             val tool = toolRegistry.get(step.toolName)
             if (tool == null) {
-                errors.add("Step ${step.stepId} requested unavailable tool '${step.toolName}'")
+                errors.add("Step ${step.stepId} requested unavailable tool '${step.toolName}'. Available tools: $availableTools")
                 continue
             }
 

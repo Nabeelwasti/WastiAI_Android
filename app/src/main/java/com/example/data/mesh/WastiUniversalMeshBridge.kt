@@ -40,7 +40,7 @@ class WastiUniversalMeshBridge private constructor(
 
     companion object {
         private const val TAG = "UniversalMeshBridge"
-        private const val DISCOVERY_PORT = 9988
+        const val DISCOVERY_PORT = 9988
         private const val COMPANION_HTTP_PORT = 9090
 
         @Volatile

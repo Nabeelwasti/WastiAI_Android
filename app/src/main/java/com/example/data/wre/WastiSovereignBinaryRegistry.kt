@@ -35,7 +35,7 @@ class WastiSovereignBinaryRegistry(
         File(context.filesDir, "usr/lib").apply { mkdirs() }
     }
 
-    private val etcDir: File by lazy {
+    val etcDir: File by lazy {
         File(context.filesDir, "usr/etc").apply { mkdirs() }
     }
 

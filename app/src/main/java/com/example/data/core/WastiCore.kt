@@ -424,6 +424,7 @@ object WastiCore {
                     )
                     Pair(omni.masterResponse, "Wasti OmniBrain")
                 } catch (oe: Exception) {
+                    DeveloperLogger.logError("omnibrain_fallback", oe.message ?: "OmniBrain exception", "FAILED_ALL_NODES")
                     Pair("Wasti AI encountered a processing delay. Please retry in a moment.", "Wasti AI")
                 }
             }

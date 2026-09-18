@@ -192,7 +192,7 @@ fun BrainSimulationScreen() {
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Membrane Time Constant τ = 20ms • Threshold = -55mV • Reset = -75mV",
+                                    text = "Membrane Time Constant τ = 20ms • Threshold = -55mV • Reset = -75mV | Bio: ${bioState.heartRateBpm} BPM | Env: ${envState.ambientTempCelsius}°C",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                                 )

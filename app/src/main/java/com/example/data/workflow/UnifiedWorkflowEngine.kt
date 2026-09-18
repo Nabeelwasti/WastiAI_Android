@@ -32,11 +32,11 @@ import java.util.concurrent.ConcurrentHashMap
  * -> STORE/RETURN RESULT
  */
 class UnifiedWorkflowEngine(
-    private val context: Context? = null,
-    private val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
-    private val emergencyStopController: WastiEmergencyStopController? = null,
-    private val capabilityOrchestrator: AutonomousCapabilityOrchestrator = AutonomousCapabilityOrchestrator(context),
-    private val capabilityPlanner: com.example.data.agent.runtime.CapabilityPlanner? = null
+    val context: Context? = null,
+    val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
+    val emergencyStopController: WastiEmergencyStopController? = null,
+    val capabilityOrchestrator: AutonomousCapabilityOrchestrator = AutonomousCapabilityOrchestrator(context),
+    val capabilityPlanner: com.example.data.agent.runtime.CapabilityPlanner? = null
 ) {
     private val activeTasks = ConcurrentHashMap<String, WorkflowTask>()
     private val _taskStateFlow = MutableStateFlow<Map<String, AutonomousWorkflowState>>(emptyMap())

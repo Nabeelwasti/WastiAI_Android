@@ -19,7 +19,7 @@ object WastiWorkManagerHelper {
         if (WastiSecureStorage.isRobolectricHost) {
             return try {
                 WorkManager.getInstance(appContext)
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 // In Robolectric host tests, unconfigured WorkManager is safely skipped
                 Log.d(TAG, "Host test environment detected: WorkManager skipped in JVM host harness")
                 null
@@ -28,7 +28,7 @@ object WastiWorkManagerHelper {
 
         return try {
             WorkManager.getInstance(appContext)
-        } catch (e: IllegalStateException) {
+        } catch (_: IllegalStateException) {
             try {
                 if (appContext is Configuration.Provider) {
                     // Current WorkManager/Kotlin contract exposes the provider configuration

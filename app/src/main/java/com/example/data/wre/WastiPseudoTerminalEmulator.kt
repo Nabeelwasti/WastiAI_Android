@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 3. Provides clean raw screen lines or plain text for Jetpack Compose UI rendering.
  */
 class WastiPseudoTerminalEmulator(
-    private val context: Context,
+    val context: Context,
     private val columns: Int = 80,
     private val rows: Int = 24
 ) {
@@ -34,7 +34,7 @@ class WastiPseudoTerminalEmulator(
     private val screenBuffer = Array(rows) { CharArray(columns) { ' ' } }
     private var cursorX = 0
     private var cursorY = 0
-    private val isRunning = AtomicBoolean(false)
+    val isRunning = AtomicBoolean(false)
 
     fun resetBuffer() {
         for (r in 0 until rows) {

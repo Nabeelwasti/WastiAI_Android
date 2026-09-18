@@ -24,10 +24,10 @@ object WastiSecureStorage {
             System.getProperty("robolectric.logging.enabled") != null ||
             try {
                 Class.forName("org.robolectric.Robolectric") != null
-            } catch (e: Throwable) {
+            } catch (_: Throwable) {
                 false
             }
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             false
         }
     }

@@ -99,6 +99,7 @@ fun RealityDiagnosticsView(
                                     isRefreshing = true
                                     realityCapabilities = realityRegistry.getSystemRealityReport()
                                     isRefreshing = false
+                                    android.widget.Toast.makeText(context, "Diagnostics refreshed", android.widget.Toast.LENGTH_SHORT).show()
                                 }
                             }
                         ) {

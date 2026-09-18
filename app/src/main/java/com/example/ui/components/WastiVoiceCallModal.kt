@@ -141,14 +141,14 @@ fun WastiVoiceCallModal(
                 mp.release()
             }
         } catch (e: Exception) {
-            // ignore
+            android.util.Log.w("VoiceCall", "Error stopping mediaPlayer: " + e.message, e)
         }
         mediaPlayer = null
 
         try {
             ttsEngine?.stop()
         } catch (e: Exception) {
-            // ignore
+            android.util.Log.w("VoiceCall", "Error stopping ttsEngine: " + e.message, e)
         }
 
         isSpeaking = false

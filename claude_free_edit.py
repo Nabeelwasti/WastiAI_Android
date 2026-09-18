@@ -196,14 +196,17 @@ def ask_claude_to_edit(target_file, prompt_instruction):
                     f.write(original_code)
                 return
 
+        import subprocess
         print("Validating pre-push quality gates...")
-        gate_res = os.system("bash scripts/pre-push.sh")
+        gate_res = subprocess.run(["bash", "scripts/pre-push.sh"]).returncode
         if gate_res != 0:
             print("\n[Quality Gate Alert] Pre-push validation failed. Code retained locally for inspection without pushing.")
             return
 
         print("Executing automated Git push sync via PAT Token configuration...")
-        os.system("git add . && git commit -m 'Automated code tracking adjustment via free AI engine workflow' && git push origin main")
+        subprocess.run(["git", "add", "."])
+        subprocess.run(["git", "commit", "-m", "Automated code tracking adjustment via free AI engine workflow"])
+        subprocess.run(["git", "push", "origin", "main"])
         print("[Git Deployment Complete]")
 
     except Exception as e:

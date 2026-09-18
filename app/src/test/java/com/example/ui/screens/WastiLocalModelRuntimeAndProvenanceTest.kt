@@ -13,7 +13,12 @@ import com.example.data.cloud.ComputeTaskRequest
 import com.example.data.cloud.ComputeTaskType
 import com.example.data.cloud.FirebaseComputeOffloader
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

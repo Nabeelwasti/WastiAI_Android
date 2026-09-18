@@ -4,7 +4,11 @@ import android.content.Context
 import android.util.Log
 import com.example.data.action.WastiAppAction
 import com.example.data.action.WastiAppActionBus
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.CapabilityAuthStatus
+import com.example.data.agent.runtime.CapabilityExecutionStatus
+import com.example.data.agent.runtime.CapabilityReality
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiCore
@@ -487,7 +491,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val prompt = json.optString("prompt", "")
 
             if (prompt.isBlank()) {
@@ -545,7 +549,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val capabilityId = json.optString("capabilityId", "")
             val paramsObj = json.optJSONObject("parameters") ?: JSONObject()
             val paramsMap = mutableMapOf<String, Any>()
@@ -597,7 +601,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val command = json.optString("command", "")
             val originName = json.optString("origin", "LOCAL_SERVER")
             val targetAgent = json.optString("agentId", "ceo_agent")
@@ -674,7 +678,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val deviceId = json.optString("deviceId", java.util.UUID.randomUUID().toString())
             val deviceName = json.optString("deviceName", "Remote Companion")
             val platformStr = json.optString("platform", "WEB")
@@ -712,7 +716,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val code = json.optString("code", "").trim()
             val deviceId = json.optString("deviceId", "").trim()
             val endpointUrl = json.optString("endpointUrl").takeIf { it.isNotBlank() }
@@ -774,7 +778,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val deviceId = json.optString("deviceId", "")
 
             val revoked = WastiCommandTransport.getInstance(context).revokeDevice(deviceId)
@@ -890,7 +894,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val confirmationId = json.optString("confirmationId", "")
             val approved = json.optBoolean("approved", false)
             val resolvedByRoom = json.optString("room", "WEB_COMPANION")
@@ -929,7 +933,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val prompt = json.optString("prompt", "")
             val originRoom = json.optString("room", "WEB_COMPANION")
             val conversationId = json.optString("conversationId").takeIf { it.isNotBlank() }
@@ -1237,7 +1241,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val cmd = json.optString("command", "").trim()
             val workDir = json.optString("workingDirectory", "home/wasti")
 
@@ -1304,7 +1308,7 @@ class WastiLocalServerManager(
             }
 
             val body = InputStreamReader(exchange.requestBody).readText()
-            val json = try { JSONObject(body) } catch (e: Exception) { JSONObject() }
+            val json = try { JSONObject(body) } catch (_: Exception) { JSONObject() }
             val actionType = json.optString("action", "")
 
             scope.launch {

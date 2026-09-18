@@ -19,8 +19,8 @@ import java.util.Locale
  * branches, logs, diffs, remotes, and configuration on disk.
  */
 class WastiGitEngine(
-    private val context: Context,
-    private val workspaceManager: WreWorkspaceManager
+    val context: Context,
+    val workspaceManager: WreWorkspaceManager
 ) {
 
     /**
@@ -442,8 +442,8 @@ class WastiGitEngine(
     }
 
     private fun sha1Hex(s: String): String {
-        val md = MessageDigest.getInstance("SHA-1")
-        return md.digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+        val md = MessageDigest.getInstance("SHA-256")
+        return md.digest(s.toByteArray()).take(20).toByteArray().joinToString("") { "%02x".format(it) }
     }
 
     private fun notAGitRepoOutcome() = PolyglotExecutionOutcome(

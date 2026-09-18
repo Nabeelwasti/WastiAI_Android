@@ -15,7 +15,7 @@ data class CorrectionProposal(
 class SelfCorrectionEngine(
     private val modelProvider: AgentModelProvider,
     private val toolRouter: WastiAgentToolRouter,
-    private val workspaceManager: WorkspaceManager
+    val workspaceManager: WorkspaceManager
 ) {
 
     suspend fun proposeCorrection(

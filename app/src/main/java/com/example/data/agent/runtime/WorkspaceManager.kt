@@ -435,6 +435,7 @@ class WorkspaceManager(context: Context) {
                 fileList = files
             )
         } catch (e: Exception) {
+            android.util.Log.w("WorkspaceManager", "Failed to parse snapshot metadata: " + e.message, e)
             null
         }
     }

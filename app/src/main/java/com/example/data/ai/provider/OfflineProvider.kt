@@ -33,7 +33,7 @@ class OfflineProvider : AIProvider {
         // Execute multi-node cooperative reasoning across Wasti Local Open Source Brain nodes
         val consensus = try {
             UnifiedBrain.executeCooperativeReasoning(request.prompt)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
 

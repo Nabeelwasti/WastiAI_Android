@@ -33,7 +33,7 @@ object StripeWorkerService {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    private val moshi = Moshi.Builder()
+    val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())
         .build()
 

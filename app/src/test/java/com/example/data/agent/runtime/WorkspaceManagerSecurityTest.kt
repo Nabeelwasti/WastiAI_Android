@@ -2,7 +2,8 @@ package com.example.data.agent.runtime
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import org.junit.Assert.*
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

@@ -114,7 +114,9 @@ static void computeAttention(
     int d
 ) {
     if (kHistory.empty() || vHistory.empty()) {
-        std::memcpy(output, query, d * sizeof(float));
+        if (output && query && d > 0) {
+            std::memcpy(output, query, d * sizeof(float));
+        }
         return;
     }
 

@@ -5,7 +5,10 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.agent.runtime.*
 import com.example.data.db.ExecutionAuditEntity
 import com.example.data.device.WastiDeviceController
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

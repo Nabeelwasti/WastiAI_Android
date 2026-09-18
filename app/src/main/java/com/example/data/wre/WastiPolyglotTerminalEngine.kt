@@ -67,7 +67,7 @@ class WastiPolyglotTerminalEngine(
     private val gitEngine = WastiGitEngine(context, workspaceManager)
     private val packageEngine = WastiPackageAptPipNpmEngine(context, workspaceManager)
     private val sshTmuxCompilerEngine = WastiSshTmuxCompilerEngine(context, workspaceManager)
-    private val binaryRegistry = WastiSovereignBinaryRegistry(context, workspaceManager)
+    val binaryRegistry = WastiSovereignBinaryRegistry(context, workspaceManager)
     private val meshBridge by lazy { com.example.data.mesh.WastiUniversalMeshBridge.getInstance(context) }
     val sessionId: String = UUID.randomUUID().toString()
 

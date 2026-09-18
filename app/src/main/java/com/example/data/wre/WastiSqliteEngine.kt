@@ -19,8 +19,8 @@ import java.io.File
  * DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`), and querying Wasti OS system tables.
  */
 class WastiSqliteEngine(
-    private val context: Context,
-    private val workspaceManager: WreWorkspaceManager
+    val context: Context,
+    val workspaceManager: WreWorkspaceManager
 ) {
 
     /**

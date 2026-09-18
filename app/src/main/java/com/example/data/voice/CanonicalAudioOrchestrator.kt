@@ -11,7 +11,10 @@ import com.example.data.core.CommandSubmissionResult
 import com.example.data.di.WastiServiceLocator
 import com.example.data.voice.model.SpeechLanguage
 import com.example.data.voice.provider.SpeechToTextProvider
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,7 +63,7 @@ class CanonicalAudioOrchestrator(
     private val _activeTranscript = MutableStateFlow("")
     val activeTranscript: StateFlow<String> = _activeTranscript.asStateFlow()
 
-    private val vad: VoiceActivityDetector = SimpleEnergyVad()
+    val vad: VoiceActivityDetector = SimpleEnergyVad()
 
     init {
         // Register default Android output provider via VoiceManager

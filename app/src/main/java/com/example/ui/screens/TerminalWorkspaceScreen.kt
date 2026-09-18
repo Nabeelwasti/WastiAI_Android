@@ -36,7 +36,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.data.wre.*
+import com.example.data.wre.ExecutionRequest
+import com.example.data.wre.WreCommandParser
+import com.example.data.wre.WreManager
 import com.example.ui.viewmodel.WastiViewModel
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
@@ -265,7 +267,7 @@ fun TerminalWorkspaceScreen(
         if (trimmed.startsWith("nano ") || trimmed.startsWith("wedit ") || trimmed.startsWith("edit ")) {
             val fname = trimmed.split(Regex("\\s+")).getOrNull(1) ?: "file.txt"
             editorFileName = fname
-            val targetFile = wreManager.workspaceManager.resolve("${activeTab.workingDir}/$fname").getOrNull()
+            val targetFile: File? = wreManager.workspaceManager.resolve("${activeTab.workingDir}/$fname").getOrNull()
             editorContent = if (targetFile != null && targetFile.exists() && targetFile.isFile) {
                 targetFile.readText()
             } else {

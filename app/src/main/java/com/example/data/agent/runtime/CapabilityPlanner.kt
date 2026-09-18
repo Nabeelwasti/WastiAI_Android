@@ -109,7 +109,7 @@ data class PlannedCapabilityGraph(
 class CapabilityPlanner(
     private val realityRegistry: CapabilityRealityRegistry? = null
 ) {
-    private val registry: CapabilityRealityRegistry
+    val registry: CapabilityRealityRegistry
         get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry
 
     /**

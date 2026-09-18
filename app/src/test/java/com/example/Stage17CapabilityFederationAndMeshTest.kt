@@ -11,7 +11,12 @@ import com.example.data.node.*
 import com.example.data.proactive.ProactiveAutonomousTask
 import com.example.data.proactive.ProactiveTaskState
 import com.example.data.proactive.WastiProactiveAutonomousEngine
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith

@@ -387,11 +387,27 @@ class WastiBuildAndTestManager(
 
             if (isWebOrMarkup) {
                 // Static web markup & asset validation
-                val content = try { file.readText() } catch (e: Exception) { "" }
+                val content = try {
+                    file.readText()
+                } catch (e: Exception) {
+                    android.util.Log.w("BuildAndTest", "Could not read test file ${file.name}: ${e.message}", e)
+                    ""
+                }
                 val isValid = when (file.extension.lowercase()) {
                     "html" -> content.contains("<html", ignoreCase = true) || content.contains("<!doctype", ignoreCase = true) || content.contains("<div", ignoreCase = true) || content.isNotBlank()
                     "css" -> content.contains("{") || content.contains(":") || content.isBlank() || content.isNotBlank()
-                    "json" -> try { org.json.JSONObject(content); true } catch (e: Exception) { try { org.json.JSONArray(content); true } catch (e2: Exception) { false } }
+                    "json" -> try {
+                        org.json.JSONObject(content)
+                        true
+                    } catch (e: Exception) {
+                        try {
+                            org.json.JSONArray(content)
+                            true
+                        } catch (e2: Exception) {
+                            android.util.Log.d("BuildAndTest", "JSON validation failed: ${e2.message}")
+                            false
+                        }
+                    }
                     else -> content.isNotBlank()
                 }
                 casePassed = isValid

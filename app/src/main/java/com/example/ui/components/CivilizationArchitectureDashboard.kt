@@ -21,7 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.ai.council.AICouncilEngine
-import com.example.data.architecture.*
+import com.example.data.architecture.ArchitectureEvolutionEngine
+import com.example.data.architecture.ArchitectureKnowledgeGraph
+import com.example.data.architecture.ArchitectureLayer
+import com.example.data.architecture.ArchitectureNode
+import com.example.data.architecture.RuntimeTopologyMap
 import com.example.data.architecture.civilization.CapabilityCivilizationRegistry
 import com.example.data.architecture.civilization.CapabilityLifecycleState
 import com.example.data.architecture.observatory.CostIntelligenceEngine
@@ -102,7 +106,7 @@ fun CivilizationArchitectureDashboard(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "9-Layer Universal Hierarchy & Architecture Knowledge Graph",
+                                text = "9-Layer Universal Hierarchy & Architecture Knowledge Graph (${allCapabilities.size} Capabilities)",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

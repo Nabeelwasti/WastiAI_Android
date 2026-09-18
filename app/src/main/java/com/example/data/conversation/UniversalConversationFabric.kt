@@ -15,8 +15,22 @@ import com.example.data.db.WastiDatabase
 import com.example.data.di.WastiServiceLocator
 import com.example.data.node.WastiNodeManager
 import com.example.data.transport.WastiCommandTransport
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -32,7 +46,7 @@ import java.util.concurrent.ConcurrentHashMap
 class UniversalConversationFabric(
     private val context: Context,
     private val commandTransport: WastiCommandTransport = WastiServiceLocator.commandTransport,
-    private val runtime: WastiOSRuntime = WastiServiceLocator.wastiOSRuntime,
+    val runtime: WastiOSRuntime = WastiServiceLocator.wastiOSRuntime,
     private val eventBus: AgentEventBus = WastiServiceLocator.agentEventBus,
     private val emergencyStopController: WastiEmergencyStopController = WastiServiceLocator.emergencyStopController,
     private val nodeManager: WastiNodeManager = WastiServiceLocator.nodeManager
@@ -312,7 +326,7 @@ class UniversalConversationFabric(
                 deferred.await()
             }
         } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "Confirmation $confirmationId timed out after ${timeoutMs}ms")
+            Log.w(TAG, "Confirmation $confirmationId timed out after ${timeoutMs}ms: ${e.message}")
             resolveConfirmation(confirmationId, approved = false, resolvedByRoom = "SYSTEM_TIMEOUT", reason = "Confirmation timed out")
             false
         }

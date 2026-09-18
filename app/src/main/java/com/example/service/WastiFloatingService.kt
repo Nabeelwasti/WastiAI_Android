@@ -1076,7 +1076,8 @@ class WastiFloatingService : Service() {
                 )
                 handleExecutionCompleted(omni.masterResponse)
             } catch (inner: Exception) {
-                logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message}")
+                Log.e(TAG, "Fallback OmniBrain execution failed", inner)
+                logSystemEvent("ERROR", "Floating Command Execution Failure: ${e.message} (Fallback: ${inner.message})")
                 withContext(Dispatchers.Main) {
                     val errorMsg = e.message ?: "Unknown error"
                     responseTextLabel?.text = "❌ Execution Error: $errorMsg"

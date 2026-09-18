@@ -58,7 +58,7 @@ data class ActionIntent(
  * until an independent verifier explicitly upgrades the action to VERIFIED.
  */
 class ActionIntentEngine(
-    private val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
+    val securityPolicyEngine: WastiSecurityPolicyEngine? = null,
     private val timeline: UniversalTaskTimeline = UniversalTaskTimeline.getInstance()
 ) {
     private val adapters = java.util.concurrent.ConcurrentHashMap<String, ExternalIntegrationAdapter>()

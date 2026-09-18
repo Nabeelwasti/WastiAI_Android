@@ -9,10 +9,19 @@ import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
 import com.example.data.di.WastiServiceLocator
-import com.example.data.node.*
+import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodePlatform
+import com.example.data.node.NodeTrustState
+import com.example.data.node.WastiNode
+import com.example.data.node.WastiNodeManager
 import com.example.data.server.WastiWebSocketServer
 import com.example.data.transport.WastiCommandTransport
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +66,7 @@ class WebSocketMeshTransport(
     private val emergencyStop: WastiEmergencyStopController = WastiServiceLocator.emergencyStopController
 ) : WastiMeshTransport {
 
+    val osRuntime: WastiOSRuntime by lazy { WastiServiceLocator.wastiOSRuntime }
     override val transportType: String = "WEBSOCKET_BINARY_RFC6455"
     private var _isRunning = false
     override val isRunning: Boolean get() = _isRunning

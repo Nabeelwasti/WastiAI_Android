@@ -32,7 +32,7 @@ data class CapabilityPackage(
 class CapabilityLibraryManager(
     private val realityRegistry: CapabilityRealityRegistry? = null
 ) {
-    private val registry: CapabilityRealityRegistry
+    val registry: CapabilityRealityRegistry
         get() = realityRegistry ?: UnifiedExecutionFabric.instance.realityRegistry
 
     private val packages = ConcurrentHashMap<String, CapabilityPackage>()

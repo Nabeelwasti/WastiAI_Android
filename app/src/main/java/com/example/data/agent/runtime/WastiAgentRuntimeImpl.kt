@@ -14,7 +14,7 @@ class WastiAgentRuntimeImpl(
     private val eventBus: AgentEventBus,
     private val loopEngine: AgenticLoopEngine,
     private val emergencyStopController: WastiEmergencyStopController,
-    private val toolRouter: WastiAgentToolRouter
+    val toolRouter: WastiAgentToolRouter
 ) : WastiAgentRuntime {
 
     override val events: Flow<AgentEvent> = eventBus.events

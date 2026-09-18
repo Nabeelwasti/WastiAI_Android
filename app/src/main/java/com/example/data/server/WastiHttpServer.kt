@@ -78,6 +78,7 @@ class HttpServer private constructor(
     init {
         val socket = ServerSocket()
         socket.reuseAddress = true
+        // Secure binding: binds explicitly to the caller-configured InetSocketAddress (loopback by default in Wasti OS)
         socket.bind(bindAddress, backlog)
         serverSocket = socket
     }

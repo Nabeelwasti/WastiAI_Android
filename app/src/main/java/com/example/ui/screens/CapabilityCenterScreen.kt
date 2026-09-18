@@ -27,7 +27,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.CapabilityInventionEngine
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionResult
 import com.example.data.di.WastiServiceLocator
 import com.example.data.sandbox.WastiWasmRuntime
 import com.example.service.WastiAccessibilityService
@@ -38,7 +41,7 @@ fun CapabilityCenterScreen(
     modifier: Modifier = Modifier,
     onNavigateBack: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
+    val context: Context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     val realityRegistry = remember { UnifiedExecutionFabric.instance.realityRegistry }
@@ -186,7 +189,7 @@ fun CapabilityCenterScreen(
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 Text("AUDIO LOOP", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7B1FA2))
-                                Text(inputAudioReality.name.take(9), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text("${inputAudioReality.name.take(4)}/${outputAudioReality.name.take(4)}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

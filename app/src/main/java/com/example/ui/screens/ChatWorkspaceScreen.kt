@@ -2123,7 +2123,7 @@ fun EmailDraftApprovalCard(
 
                 Button(
                     onClick = {
-                        val activity = cardContext.findFragmentActivity()
+                        val activity: Activity? = cardContext.findFragmentActivity()
                         if (activity != null) {
                             BiometricSecurityManager.authenticate(
                                 activity = activity,
@@ -2252,7 +2252,7 @@ fun LinkedInDraftApprovalCard(
 
                 Button(
                     onClick = {
-                        val activity = cardContext.findFragmentActivity()
+                        val activity: Activity? = cardContext.findFragmentActivity()
                         if (activity != null) {
                             BiometricSecurityManager.authenticate(
                                 activity = activity,

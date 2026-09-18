@@ -2,14 +2,14 @@
 
 try {
   require('dotenv').config();
-} catch (e) {
+} catch (_) {
   // dotenv optional in production environments where process.env is injected
 }
 
 let Stripe = null;
 try {
   Stripe = require('stripe');
-} catch (e) {
+} catch (_) {
   // stripe package not installed
 }
 
@@ -80,6 +80,10 @@ function recordProcessedEvent(eventId, metadata = {}) {
   if (!eventId || typeof eventId !== 'string') return;
   const now = Date.now();
   eventCache.set(eventId, now);
+  if (metadata && typeof metadata === 'object' && Object.keys(metadata).length > 0) {
+    // Retain audit metadata context with event timestamp
+    eventCache.set(`${eventId}:meta`, JSON.stringify(metadata));
+  }
   if (eventCache.size > MAX_EVENTS_IN_MEMORY) {
     const oldestKey = eventCache.keys().next().value;
     eventCache.delete(oldestKey);

@@ -4,7 +4,7 @@ require('dotenv').config();
 let admin = null;
 try {
   admin = require('firebase-admin');
-} catch (e) {
+} catch (_) {
   // firebase-admin not installed in all environments — handle gracefully
   console.warn('firebase-admin not available in runtime');
 }

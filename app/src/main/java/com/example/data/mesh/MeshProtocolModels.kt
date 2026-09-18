@@ -97,7 +97,7 @@ data class CapabilityDelta(
             val stateStr = obj.optString("realityState", "LIVE_CONNECTED")
             val realityState = try {
                 CapabilityRealityState.valueOf(stateStr)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 CapabilityRealityState.LIVE_CONNECTED
             }
             val provider = obj.optString("provider", "RemoteNode")

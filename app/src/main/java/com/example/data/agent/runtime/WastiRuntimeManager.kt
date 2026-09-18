@@ -72,8 +72,8 @@ data class PackageResolutionResult(
 )
 
 class WastiRuntimeManager(
-    private val context: Context,
-    private val workspaceManager: WorkspaceManager = WorkspaceManager(context)
+    val context: Context,
+    val workspaceManager: WorkspaceManager = WorkspaceManager(context)
 ) {
 
     private val runtimes = ConcurrentHashMap<String, ManagedRuntimeDescriptor>()

@@ -260,9 +260,10 @@ fun ProjectsTasksScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { selectedProjectId = proj.id },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
-                ),
+                colors = run {
+                    val containerBg: Color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
+                    CardDefaults.cardColors(containerColor = containerBg)
+                },
                 shape = RoundedCornerShape(16.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {

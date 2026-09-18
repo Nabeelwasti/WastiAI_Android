@@ -36,10 +36,10 @@ object OperationsManager {
 
     fun getDashboardStatsSnapshot(): OperationsDashboardStats {
         return try {
-            val providers = try { AIManager.capabilityRegistry.getAllProviders() } catch (e: Throwable) { emptyList() }
-            val healthMonitor = try { AIManager.healthMonitor } catch (e: Throwable) { null }
-            val costTracker = try { AIManager.costTracker } catch (e: Throwable) { null }
-            val tokenTracker = try { AIManager.tokenUsageTracker } catch (e: Throwable) { null }
+            val providers = try { AIManager.capabilityRegistry.getAllProviders() } catch (_: Throwable) { emptyList() }
+            val healthMonitor = try { AIManager.healthMonitor } catch (_: Throwable) { null }
+            val costTracker = try { AIManager.costTracker } catch (_: Throwable) { null }
+            val tokenTracker = try { AIManager.tokenUsageTracker } catch (_: Throwable) { null }
 
             val summaries = providers.map { provider ->
                 val health = healthMonitor?.getHealth(provider.id)
@@ -56,14 +56,14 @@ object OperationsManager {
                 )
             }
 
-            val usageTotal = try { tokenTracker?.getTotalUsage()?.totalTokens ?: 0L } catch (e: Throwable) { 0L }
-            val todayCost = try { costTracker?.getTodayCostUsd() ?: 0.0 } catch (e: Throwable) { 0.0 }
-            val memStats = try { MemoryManager.getObservabilityStats() } catch (e: Throwable) { MemoryObservabilityStats() }
-            val voiceProvider = try { com.example.data.voice.VoiceManager.activeProviderId.value } catch (e: Throwable) { "LOCAL_OFFLINE" }
-            val jobsCount = try { com.example.data.worker.BackgroundTaskManager.jobsStateFlow.value.size } catch (e: Throwable) { 0 }
-            val toolsCount = try { com.example.data.tool.ToolRegistry.getAllTools().size } catch (e: Throwable) { 0 }
-            val rulesCount = try { com.example.data.workflow.WorkflowEngine.rulesStateFlow.value.size } catch (e: Throwable) { 0 }
-            val scoresCount = try { com.example.data.evaluation.AIEvaluationEngine.qualityScoresFlow.value.size } catch (e: Throwable) { 0 }
+            val usageTotal = try { tokenTracker?.getTotalUsage()?.totalTokens ?: 0L } catch (_: Throwable) { 0L }
+            val todayCost = try { costTracker?.getTodayCostUsd() ?: 0.0 } catch (_: Throwable) { 0.0 }
+            val memStats = try { MemoryManager.getObservabilityStats() } catch (_: Throwable) { MemoryObservabilityStats() }
+            val voiceProvider = try { com.example.data.voice.VoiceManager.activeProviderId.value } catch (_: Throwable) { "LOCAL_OFFLINE" }
+            val jobsCount = try { com.example.data.worker.BackgroundTaskManager.jobsStateFlow.value.size } catch (_: Throwable) { 0 }
+            val toolsCount = try { com.example.data.tool.ToolRegistry.getAllTools().size } catch (_: Throwable) { 0 }
+            val rulesCount = try { com.example.data.workflow.WorkflowEngine.rulesStateFlow.value.size } catch (_: Throwable) { 0 }
+            val scoresCount = try { com.example.data.evaluation.AIEvaluationEngine.qualityScoresFlow.value.size } catch (_: Throwable) { 0 }
 
             OperationsDashboardStats(
                 providerSummaries = summaries,
@@ -77,6 +77,7 @@ object OperationsManager {
                 evaluationQualityScoresCount = scoresCount
             )
         } catch (e: Throwable) {
+            android.util.Log.w("OperationsManager", "Failed to compute dashboard stats: " + e.message, e)
             OperationsDashboardStats(
                 providerSummaries = emptyList(),
                 totalTokensConsumed = 0L,

@@ -70,7 +70,7 @@ class UniversalAutonomousExecutionLoop(
     private val capabilityPlanner: CapabilityPlanner = CapabilityPlanner(realityRegistry),
     private val verificationPlanner: VerificationPlanner = VerificationPlanner(),
     private val costResourcePlanner: CostResourcePlanner = CostResourcePlanner(context),
-    private val actionIntentEngine: ActionIntentEngine = ActionIntentEngine.instance,
+    val actionIntentEngine: ActionIntentEngine = ActionIntentEngine.instance,
     private val recoveryPlanner: RecoveryPlanner = RecoveryPlanner(realityRegistry),
     private val timeline: UniversalTaskTimeline = UniversalTaskTimeline.getInstance(),
     private val skillEvolutionEngine: AutonomousSkillEvolutionEngine = AutonomousSkillEvolutionEngine(context),

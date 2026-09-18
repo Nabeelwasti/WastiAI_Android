@@ -11,7 +11,9 @@ import com.example.data.ai.runtime.WastiModelDownloader
 import com.example.data.core.TestCategory
 import com.example.data.core.TestTier
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

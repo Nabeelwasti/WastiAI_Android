@@ -133,7 +133,7 @@ function getAuthorizedScopes(providedToken) {
   if (process.env.WASTI_SCOPED_TOKENS) {
     try {
       const parsed = JSON.parse(process.env.WASTI_SCOPED_TOKENS);
-      if (parsed[providedToken]) {
+      if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, providedToken)) {
         const tokenScopes = Array.isArray(parsed[providedToken]) ? parsed[providedToken] : [parsed[providedToken]];
         scopes.push(...tokenScopes);
       }
@@ -228,7 +228,7 @@ const PROTECTED_PATCH_PATTERNS = [
   /settings\.gradle(\.kts)?$/i,
   /androidmanifest\.xml$/i,
   /proguard-rules\.pro$/i,
-  /\.env(\..+)?$/i,
+  /\.env(\.[^.]+)?$/i,
   /keystore/i,
   /\.jks$/i,
   /\.pem$/i,

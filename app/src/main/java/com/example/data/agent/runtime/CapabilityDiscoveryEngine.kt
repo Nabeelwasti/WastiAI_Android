@@ -20,8 +20,8 @@ data class CapabilityPlan(
 )
 
 class CapabilityDiscoveryEngine(
-    private val realityRegistry: CapabilityRealityRegistry,
-    private val modelRegistry: ModelProviderRegistry
+    val realityRegistry: CapabilityRealityRegistry,
+    val modelRegistry: ModelProviderRegistry
 ) {
 
     fun inspectCapabilitiesForRequest(userRequest: String): CapabilityPlan {

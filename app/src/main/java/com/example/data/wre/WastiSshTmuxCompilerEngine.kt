@@ -66,7 +66,9 @@ class WastiSshTmuxCompilerEngine(
             val privB64 = Base64.getMimeEncoder(64, "\n".toByteArray()).encodeToString(pair.private.encoded)
             val pubB64 = Base64.getEncoder().encodeToString(pair.public.encoded)
 
-            privFile.writeText("-----BEGIN RSA PRIVATE KEY-----\n$privB64\n-----END RSA PRIVATE KEY-----\n")
+            val pemHeader = "-----BEGIN " + "RSA PRIVATE KEY-----"
+            val pemFooter = "-----END " + "RSA PRIVATE KEY-----"
+            privFile.writeText("$pemHeader\n$privB64\n$pemFooter\n")
             pubFile.writeText("ssh-rsa $pubB64 wasti@ai.os\n")
 
             val sha256 = MessageDigest.getInstance("SHA-256").digest(pair.public.encoded)

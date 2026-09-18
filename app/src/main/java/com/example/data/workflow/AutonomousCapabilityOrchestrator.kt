@@ -114,7 +114,7 @@ class AutonomousCapabilityOrchestrator(
         if (ctx != null) WreManager.getInstance(ctx) else WreManager(com.example.WastiApplication.instance ?: throw IllegalStateException("Context required for WreManager"))
     }
 
-    private val activeMemory: AgentMemoryContract by lazy {
+    val activeMemory: AgentMemoryContract by lazy {
         memoryContract ?: InMemoryAgentMemoryStore()
     }
 
@@ -341,7 +341,7 @@ class AutonomousCapabilityOrchestrator(
         try {
             wreManager.packageManager.removePackage(scriptName)
             eventBus?.emit(AgentEvent.RollbackCompleted(taskId, snapshotId, isSuccess = true))
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             eventBus?.emit(AgentEvent.RollbackCompleted(taskId, snapshotId, isSuccess = false))
         }
     }

@@ -3,7 +3,16 @@ package com.example.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.db.*
+import com.example.data.db.AgentEntity
+import com.example.data.db.ConversationEntity
+import com.example.data.db.IntegrationEntity
+import com.example.data.db.KnowledgeEntity
+import com.example.data.db.MemoryEntity
+import com.example.data.db.MessageEntity
+import com.example.data.db.ProjectEntity
+import com.example.data.db.SystemLogEntity
+import com.example.data.db.TaskEntity
+import com.example.data.db.TerminalSessionEntity
 import com.example.data.repository.WastiRepository
 import com.example.data.wre.WreManager
 import com.example.data.wre.ExecutionRequest
@@ -579,7 +588,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
                     verificationEvidence = verificationEvidence
                 )
             } catch (e: Exception) {
-                // Non-fatal logging
+                android.util.Log.w("WastiViewModel", "Failed to record terminal session: " + e.message, e)
             }
         }
     }
@@ -589,7 +598,7 @@ class WastiViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 repository.clearTerminalHistory()
             } catch (e: Exception) {
-                // Non-fatal
+                android.util.Log.w("WastiViewModel", "Failed to clear terminal history: " + e.message, e)
             }
         }
     }

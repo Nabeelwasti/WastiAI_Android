@@ -72,7 +72,7 @@ class WastiWasmRuntime {
         private fun logW(tag: String, msg: String) {
             try {
                 Log.w(tag, msg)
-            } catch (t: Throwable) {
+            } catch (_: Throwable) {
                 System.err.println("[$tag] $msg")
             }
         }
@@ -80,7 +80,7 @@ class WastiWasmRuntime {
         private fun logE(tag: String, msg: String, tr: Throwable? = null) {
             try {
                 Log.e(tag, msg, tr)
-            } catch (t: Throwable) {
+            } catch (_: Throwable) {
                 System.err.println("[$tag] $msg")
             }
         }
@@ -145,6 +145,10 @@ class WastiWasmRuntime {
                             val (count, countBytes) = readVarUint32(bytecode, offset)
                             if (count > 0 && offset + countBytes < sectionEnd) {
                                 val flags = bytecode[offset + countBytes].toInt()
+                                val hasMaxPages = (flags and 0x01) != 0
+                                if (hasMaxPages) {
+                                    logW(TAG, "WASM module specifies explicit maximum memory bounds")
+                                }
                                 val (initialPages, _) = readVarUint32(bytecode, offset + countBytes + 1)
                                 memoryPages = initialPages.coerceIn(1, MAX_ALLOWED_PAGES)
                             }
@@ -185,7 +189,7 @@ class WastiWasmRuntime {
                                 val bodyStart = codeOffset + bsBytes
                                 val (localCount, lcBytes) = readVarUint32(bytecode, bodyStart)
                                 var localsOffset = bodyStart + lcBytes
-                                for (l in 0 until localCount.coerceAtMost(50)) {
+                                repeat(localCount.coerceAtMost(50)) {
                                     val (_, lCountBytes) = readVarUint32(bytecode, localsOffset)
                                     localsOffset += lCountBytes + 1
                                 }
@@ -255,6 +259,7 @@ class WastiWasmRuntime {
         val startTime = System.currentTimeMillis()
         var fuel = 0L
         val memory = ByteBuffer.allocate(module.memoryPages * PAGE_SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
+        val allocatedMemoryBytes = memory.capacity()
         val stack = java.util.ArrayDeque<Long>()
 
         // Push arguments
@@ -351,7 +356,7 @@ class WastiWasmRuntime {
                 stringOutput = "Execution succeeded. Result: $retVal (stack size: ${stack.size})",
                 executionTimeMs = elapsed,
                 fuelConsumed = fuel,
-                memoryBytesUsed = module.memoryPages * PAGE_SIZE_BYTES,
+                memoryBytesUsed = allocatedMemoryBytes,
                 diagnosticMessage = "WASM Sandboxed execution completed successfully"
             )
         } catch (e: Exception) {

@@ -14,7 +14,10 @@ import com.example.data.core.TestCategory
 import com.example.data.core.TestTier
 import com.example.data.core.WastiExperienceMode
 import kotlinx.coroutines.runBlocking
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
