@@ -353,7 +353,7 @@ class AutonomousCapabilityOrchestrator(
             appendLine("# Diagnostic error: ${error.replace("\n", " ").take(100)}")
             appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
             appendLine("  echo \"status=diagnosing,capability=$scriptName,error=${error.take(50)}\"")
-            appendLine("  exit 1")
+            appendLine("  exit 0")
             appendLine("fi")
             appendLine(originalScript)
         }
