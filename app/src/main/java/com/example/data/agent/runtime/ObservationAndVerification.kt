@@ -98,6 +98,7 @@ data class TargetSelectionResult(val status: TargetSelectionStatus, val matchedR
 
 enum class EvidenceSource { FILESYSTEM, FILESYSTEM_AUDIT, DATABASE_QUERY, HTTP_CONTRACT, PROCESS_TELEMETRY, SYSTEM_SERVICE, UI_TREE, SENSOR_EVENT, LOCAL_MODEL_INFERENCE, RUNTIME_DIAGNOSTIC }
 typealias ObservationSource = EvidenceSource
+typealias VerificationEvidence = VerifiedExecutionEvidence
 enum class CapabilityVerificationDomain { GENERAL_COMPUTATION, FILESYSTEM, NETWORK, SYSTEM_DIAGNOSTIC }
 
 /**
