@@ -1,5 +1,6 @@
 package com.example.data.agent.runtime
 
+import com.example.data.core.CommandOrigin
 import java.util.UUID
 
 /**
@@ -301,12 +302,14 @@ sealed class AgentEvent(
     data class NodeTaskAccepted(override val taskId: TaskId = TaskId("mesh_task"), val proactiveTaskId: String, val nodeId: String, val leaseExpiresAt: Long) : AgentEvent(taskId = taskId)
     data class NodeTaskRejected(override val taskId: TaskId = TaskId("mesh_task"), val proactiveTaskId: String, val nodeId: String, val reason: String) : AgentEvent(taskId = taskId)
     data class NodeTaskDelegated(override val taskId: TaskId = TaskId("mesh_task"), val proactiveTaskId: String, val targetNodeId: String) : AgentEvent(taskId = taskId)
+    data class TaskDelegated(override val taskId: TaskId = TaskId("mesh_task"), val targetNodeId: String, val capabilityId: String, val priority: AgentTaskPriority = AgentTaskPriority.MEDIUM) : AgentEvent(taskId = taskId)
     data class NodeTaskProgress(override val taskId: TaskId = TaskId("mesh_task"), val proactiveTaskId: String, val nodeId: String, val progressSummary: String) : AgentEvent(taskId = taskId)
     data class NodeLeaseRenewed(override val taskId: TaskId = TaskId("mesh_lease"), val proactiveTaskId: String, val nodeId: String, val newExpiresAt: Long) : AgentEvent(taskId = taskId)
     data class NodeMeshDisconnected(override val taskId: TaskId = TaskId("mesh_lifecycle"), val nodeId: String, val reason: String) : AgentEvent(taskId = taskId)
     data class NodeMeshReconnected(override val taskId: TaskId = TaskId("mesh_lifecycle"), val nodeId: String) : AgentEvent(taskId = taskId)
 
     // Stage 18: Cross-Platform Mesh, Binary Framing, Telemetry & Diagnostics
+    data class EmergencyStopEngaged(override val taskId: TaskId = TaskId("mesh_emergency"), val origin: CommandOrigin = CommandOrigin.MESH_REMOTE, override val timestamp: Long = System.currentTimeMillis()) : AgentEvent(taskId = taskId, timestamp = timestamp)
     data class MeshTransportConnected(override val taskId: TaskId = TaskId("mesh_transport"), val transportType: String, val endpoint: String) : AgentEvent(taskId = taskId)
     data class MeshTransportDisconnected(override val taskId: TaskId = TaskId("mesh_transport"), val transportType: String, val reason: String) : AgentEvent(taskId = taskId)
     data class MeshCapabilitySyncStarted(override val taskId: TaskId = TaskId("mesh_sync"), val nodeId: String, val syncType: String) : AgentEvent(taskId = taskId)
