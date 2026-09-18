@@ -31,6 +31,7 @@ import java.net.Socket
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import com.example.data.mesh.WastiSovereignAddressResolver
 
 data class MeshDiscoveredNode(
     val nodeId: String,
@@ -187,7 +188,8 @@ object WastiMeshTransportEngine {
             try {
                 val channel = java.nio.channels.ServerSocketChannel.open()
                 channel.socket().reuseAddress = true
-                channel.bind(com.example.data.mesh.WastiSovereignAddressResolver.createLoopbackEndpoint(MESH_EXECUTION_PORT))
+                val loopbackEndpoint: InetSocketAddress = WastiSovereignAddressResolver.createLoopbackEndpoint(MESH_EXECUTION_PORT)
+                channel.bind(loopbackEndpoint)
                 server = channel.socket()
                 executionServerSocket = server
                 while (isActive && isMeshActive) {
@@ -318,7 +320,7 @@ object WastiMeshTransportEngine {
         }
 
         try {
-            val endpoint = com.example.data.mesh.WastiSovereignAddressResolver.createValidatedEndpoint(inet, MESH_EXECUTION_PORT)
+            val endpoint: InetSocketAddress = WastiSovereignAddressResolver.createValidatedEndpoint(inet, MESH_EXECUTION_PORT)
             java.nio.channels.SocketChannel.open().socket().use { socket ->
                 socket.connect(endpoint, 3000)
                 socket.soTimeout = 10_000

@@ -198,6 +198,14 @@ class AutonomousSkillEvolutionEngine(
     }
 
     /**
+     * Records skill execution outcome directly and updates its promotion tier and regression score.
+     */
+    suspend fun recordSkillOutcome(skillId: String, wasSuccessful: Boolean) {
+        val skill = learnedSkillDao.getSkillById(skillId) ?: return
+        applyExecutionOutcome(skill, wasSuccessful)
+    }
+
+    /**
      * Asynchronously records skill execution outcome using [scope.launch].
      */
     fun recordSkillOutcomeAsync(skillId: String, wasSuccessful: Boolean) {

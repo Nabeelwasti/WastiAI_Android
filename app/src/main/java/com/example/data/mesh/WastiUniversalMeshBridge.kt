@@ -135,7 +135,7 @@ class WastiUniversalMeshBridge private constructor(
     private fun probeCompanionSocket(socket: Socket, target: InetAddress, port: Int, timeoutMs: Int): Boolean {
         return try {
             socket.soTimeout = timeoutMs
-            val endpoint = WastiSovereignAddressResolver.createValidatedEndpoint(target, port)
+            val endpoint: InetSocketAddress = WastiSovereignAddressResolver.createValidatedEndpoint(target, port)
             socket.connect(endpoint, timeoutMs)
             socket.isConnected
         } catch (_: Exception) {

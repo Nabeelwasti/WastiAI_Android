@@ -170,6 +170,10 @@ def ask_claude_to_edit(target_file, prompt_instruction):
 
         cleaned_code = strip_markdown_code_fences(new_code)
 
+        backup_file = f"{target_file}.claude_bak"
+        if os.path.exists(target_file):
+            shutil.copy2(target_file, backup_file)
+
         with open(target_file, "w", encoding="utf-8") as f:
             f.write(cleaned_code)
         print(f"\n[Success] File '{target_file}' updated locally by Claude pipeline.")
@@ -181,9 +185,10 @@ def ask_claude_to_edit(target_file, prompt_instruction):
                 syntax_err = check_file_syntax(target_file)
                 if syntax_err:
                     print(f"\n[SYNTAX GUARD REVERT] Generated code has invalid Kotlin syntax: {syntax_err}")
-                    print("Reverting file to original content...")
-                    with open(target_file, "w", encoding="utf-8") as f:
-                        f.write(original_code)
+                    print("Reverting file from backup snapshot...")
+                    if os.path.exists(backup_file):
+                        shutil.copy2(backup_file, target_file)
+                        os.remove(backup_file)
                     return
             except Exception as e:
                 print(f"[Notice] Kotlin syntax check skipped: {e}")
@@ -193,24 +198,18 @@ def ask_claude_to_edit(target_file, prompt_instruction):
                 py_compile.compile(target_file, doraise=True)
             except Exception as pe:
                 print(f"\n[SYNTAX GUARD REVERT] Generated code has invalid Python syntax: {pe}")
-                with open(target_file, "w", encoding="utf-8") as f:
-                    f.write(original_code)
+                if os.path.exists(backup_file):
+                    shutil.copy2(backup_file, target_file)
+                    os.remove(backup_file)
                 return
 
-        git_bin = shutil.which("git") or "git"
-        bash_bin = shutil.which("bash") or "bash"
+        # Cleanup temporary recovery backup upon verified validation
+        if os.path.exists(backup_file):
+            os.remove(backup_file)
 
-        print("Validating pre-push quality gates...")
-        gate_res = os.spawnvp(os.P_WAIT, bash_bin, [bash_bin, "scripts/pre-push.sh"])
-        if gate_res != 0:
-            print("\n[Quality Gate Alert] Pre-push validation failed. Code retained locally for inspection without pushing.")
-            return
-
-        print("Executing automated Git push sync via PAT Token configuration...")
-        os.spawnvp(os.P_WAIT, git_bin, [git_bin, "add", "."])
-        os.spawnvp(os.P_WAIT, git_bin, [git_bin, "commit", "-m", "Automated code tracking adjustment via free AI engine workflow"])
-        os.spawnvp(os.P_WAIT, git_bin, [git_bin, "push", "origin", "main"])
-        print("[Git Deployment Complete]")
+        print("\n[Quality Guard] File validation completed successfully.")
+        print("To deploy changes to remote repository with full quality gates, run:")
+        print("  bash scripts/sync_git.sh")
 
     except Exception as e:
         print(f"\nRuntime Processing Exception: {e}")
