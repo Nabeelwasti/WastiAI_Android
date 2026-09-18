@@ -1,6 +1,7 @@
 package com.example.data.agent.runtime
 
 import android.content.Context
+import android.util.Log
 import java.io.File
 import java.util.UUID
 import org.json.JSONArray
@@ -154,6 +155,7 @@ class WastiProjectManager(
                     relativePath = projectRelativeDir
                 )
             } catch (e: Exception) {
+                Log.w("WastiProjectManager", "Failed to parse project metadata for $safeName: ${e.message}", e)
                 fallbackMetadata(safeName, projectRelativeDir, files)
             }
         } else {

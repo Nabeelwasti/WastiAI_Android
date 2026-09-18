@@ -234,4 +234,17 @@ class UnifiedBrainAndSelfTrainingTest {
         assertTrue(registry.isCapabilityEnabled("AUTOMATION"))
         assertTrue(registry.isCapabilityEnabled("ANDROID_CONTROL"))
     }
+
+    @Test
+    fun testCapabilityRealityAndExecutionStatusEnums() {
+        val reality = CapabilityReality(
+            capabilityId = "test_cap",
+            realityState = CapabilityRealityState.LIVE_CONNECTED,
+            executionStatus = CapabilityExecutionStatus.READY,
+            implementationStatus = ImplementationStatus.IMPLEMENTED,
+            liveConnectionStatus = LiveConnectionStatus.CONNECTED
+        )
+        assertEquals("test_cap", reality.capabilityId)
+        assertEquals(CapabilityRealityState.LIVE_CONNECTED, reality.realityState)
+    }
 }

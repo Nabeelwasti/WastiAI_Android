@@ -2,7 +2,11 @@ package com.example.data.conversation
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.AgenticState
+import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
@@ -114,6 +118,7 @@ class Stage18UniversalConversationFabricTest {
         assertTrue(firstSub !is CommandSubmissionResult.Rejected)
         val initialTaskId = fabric.activeContext.value.taskId
         val initialConvId = fabric.activeContext.value.conversationId
+        assertNotNull(initialTaskId)
 
         // Step 2: Continue in DEV_ASSISTANT room
         val continuationPrompt = "Add Kotlin source files to the workspace"
@@ -286,5 +291,21 @@ class Stage18UniversalConversationFabricTest {
         val updatedCtx = fabric.activeContext.value
         assertEquals(ConversationExecutionState.COMPLETED, updatedCtx.activeExecutionState)
         assertTrue(updatedCtx.conversationHistory.any { it.role == "assistant" && it.content.contains("Wifi activated") })
+    }
+
+    @Test
+    fun testNodeManagerAndOriginFlowIntegration() = runTest {
+        val nodeManager = WastiNodeManager.getInstance()
+        assertNotNull(nodeManager)
+        val defaultOrigin = CommandOrigin.CHAT
+        assertTrue(defaultOrigin.isLocal)
+
+        val statesList = mutableListOf<UniversalConversationContext>()
+        val job = launch {
+            fabric.activeContext.take(1).toList(statesList)
+        }
+        job.join()
+        assertEquals(1, statesList.size)
+        assertNotNull(statesList.first())
     }
 }

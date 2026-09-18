@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.data.agent.runtime.AgentEvent
 import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.agent.runtime.AgentTaskPriority
+import com.example.data.agent.runtime.ExecutionMode
 import com.example.data.agent.runtime.TaskId
 import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.UnifiedExecutionRequest
@@ -96,8 +97,13 @@ data class ProactiveAutonomousTask(
     var lastError: String? = null,
     val isIdempotent: Boolean = true,
     val executionMode: ExecutionMode = ExecutionMode.AUTONOMOUS,
+    val executionRequest: UnifiedExecutionRequest? = null,
+    var verificationStatus: UnifiedVerificationStatus = UnifiedVerificationStatus.PENDING,
+    var lastExecutionStatus: UnifiedExecutionStatus = UnifiedExecutionStatus.IDLE,
     var completedAt: Long? = null
-)
+) {
+    fun getCanonicalTaskId(): TaskId = TaskId(taskId)
+}
 
 fun ProactiveAutonomousTask.toEntity(): ProactiveTaskEntity {
     return ProactiveTaskEntity(

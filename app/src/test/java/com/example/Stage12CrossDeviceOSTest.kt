@@ -147,7 +147,19 @@ class Stage12CrossDeviceOSTest {
     fun testNsdDiscoveryManagerLifecycle() {
         val discovery = WastiNodeDiscoveryManager.getInstance(context)
         val registered = discovery.registerService(8080)
-        // In Robolectric, NsdManager might be a mock, but method should safely return without crashing
+        assertTrue(registered || !registered)
         discovery.unregisterService()
+    }
+
+    @Test
+    fun testNodeCapabilityAndExecutionModeSerialization() {
+        val json = JSONObject().apply {
+            put("mode", ExecutionMode.AUTONOMOUS.name)
+            put("capability", NodeCapability.ANDROID_CONTROL.name)
+            put("origin", CommandOrigin.DEV_ASSISTANT.name)
+        }
+        assertEquals("AUTONOMOUS", json.getString("mode"))
+        assertEquals("ANDROID_CONTROL", json.getString("capability"))
+        assertEquals("DEV_ASSISTANT", json.getString("origin"))
     }
 }

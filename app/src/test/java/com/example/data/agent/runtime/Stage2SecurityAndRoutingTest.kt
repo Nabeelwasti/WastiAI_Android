@@ -178,7 +178,7 @@ class Stage2SecurityAndRoutingTest {
             assertFalse("Symlink escape must be denied", result.isSuccess)
             assertTrue(result.isSecurityBlocked)
         } catch (e: Exception) {
-            // Environment handles or restricts symlink
+            android.util.Log.d("SecurityTest", "Symlink creation restricted by host environment: ${e.message}")
         } finally {
             if (symlinkFile.exists()) symlinkFile.delete()
             if (externalTarget.exists()) externalTarget.delete()

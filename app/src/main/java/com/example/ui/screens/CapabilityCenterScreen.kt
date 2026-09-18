@@ -659,14 +659,14 @@ private fun CapabilityDetailCard(
                 }
 
                 Surface(
-                    color = if (isVerified) Color(0xFF1B5E20).copy(alpha = 0.15f) else Color(0xFFB71C1C).copy(alpha = 0.15f),
+                    color = if (cap.realityState == CapabilityRealityState.LIVE_CONNECTED || isVerified) Color(0xFF1B5E20).copy(alpha = 0.15f) else Color(0xFFB71C1C).copy(alpha = 0.15f),
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = cap.liveConnectionStatus.name,
+                        text = "${cap.realityState.name} • ${cap.liveConnectionStatus.name}",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isVerified) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        color = if (cap.realityState == CapabilityRealityState.LIVE_CONNECTED || isVerified) Color(0xFF2E7D32) else Color(0xFFC62828),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         fontFamily = FontFamily.Monospace
                     )

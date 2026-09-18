@@ -2,12 +2,17 @@ package com.example.ui.screens
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.CapabilityRealityState
 import com.example.data.ai.engine.HardwareCapabilityDetector
 import com.example.data.ai.engine.ModelArtifactManager
-import com.example.data.ai.model.*
+import com.example.data.ai.model.ModelExecutionRuntime
+import com.example.data.ai.model.ModelSpec
+import com.example.data.ai.model.ModelTier
+import com.example.data.ai.model.WastiModelCatalog
 import com.example.data.ai.provider.WastiLocalBrainProvider
-import com.example.data.ai.runtime.*
+import com.example.data.ai.runtime.GgufContainerValidator
+import com.example.data.ai.runtime.NativeLlamaBridge
+import com.example.data.ai.runtime.WastiLocalTokenizer
 import com.example.data.cloud.ComputeExecutionTier
 import com.example.data.cloud.ComputeTaskRequest
 import com.example.data.cloud.ComputeTaskType
@@ -395,6 +400,14 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         } else {
             assertEquals("UNAVAILABLE", version)
         }
+    }
+
+    @Test
+    fun testWastiLocalBrainProviderConfiguration() {
+        val provider = WastiLocalBrainProvider.getInstance(context)
+        assertNotNull(provider)
+        val realityState = CapabilityRealityState.LIVE_CONNECTED
+        assertNotNull(realityState)
     }
 }
 

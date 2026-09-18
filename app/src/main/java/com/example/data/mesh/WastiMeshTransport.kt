@@ -52,6 +52,11 @@ interface WastiMeshTransport {
     fun broadcastEnvelope(envelope: WastiMeshEnvelope)
     fun registerHandler(messageType: WastiMeshMessageType, handler: MeshEnvelopeHandler)
     fun unregisterHandler(messageType: WastiMeshMessageType)
+
+    suspend fun executeWithTimeout(timeoutMs: Long, block: suspend () -> WastiMeshEnvelope?): WastiMeshEnvelope? =
+        withTimeoutOrNull(timeoutMs) {
+            block()
+        }
 }
 
 /**

@@ -52,6 +52,8 @@ class Stage8MultiAgentFoundationTest {
 
     @Test
     fun defaultCatalog_hasOneProfileForEachCoreRole() {
+        assertNotNull(coordinator)
+        assertNotNull(fabric)
         val agents = coordinator.getSubAgents()
 
         assertTrue(agents.isNotEmpty())

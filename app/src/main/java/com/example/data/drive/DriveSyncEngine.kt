@@ -441,7 +441,62 @@ object DriveSyncEngine {
                     }
                 }
 
-                Pair(true, "Successfully restored backup from Google Drive file '${fileInfo.name}'.")
+                // Restore settings (excluding sensitive keys)
+                root.optJSONArray("settings")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val key = obj.getString("key")
+                        if (!isSensitiveKey(key)) {
+                            db.settingDao().insertSetting(
+                                SettingEntity(
+                                    key = key,
+                                    value = obj.getString("value")
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Restore agents
+                root.optJSONArray("agents")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        db.agentDao().insertAgent(
+                            AgentEntity(
+                                id = obj.getString("id"),
+                                name = obj.getString("name"),
+                                roleTitle = obj.optString("roleTitle", "Autonomous Agent"),
+                                iconName = obj.optString("iconName", "robot"),
+                                systemInstruction = obj.optString("systemInstruction", ""),
+                                temperature = obj.optDouble("temperature", 0.7).toFloat(),
+                                capabilitiesCsv = obj.optString("capabilitiesCsv", ""),
+                                status = obj.optString("status", "ACTIVE"),
+                                agentType = obj.optString("agentType", "GENERAL")
+                            )
+                        )
+                    }
+                }
+
+                // Restore tasks
+                root.optJSONArray("tasks")?.let { arr ->
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        db.taskDao().insertTask(
+                            TaskEntity(
+                                id = obj.getString("id"),
+                                projectId = obj.optString("projectId", "default"),
+                                title = obj.getString("title"),
+                                description = obj.optString("description", ""),
+                                isCompleted = obj.optBoolean("isCompleted", false),
+                                priority = obj.optInt("priority", 1),
+                                assignedAgentId = obj.optString("assignedAgentId", ""),
+                                dueDate = if (obj.has("dueDate") && !obj.isNull("dueDate")) obj.optLong("dueDate") else null
+                            )
+                        )
+                    }
+                }
+
+                Pair(true, "Successfully restored backup (conversations, messages, memories, settings, agents, tasks) from Google Drive file '${fileInfo.name}'.")
             }
         } catch (e: Exception) {
             Pair(false, "Restore Error: ${e.localizedMessage ?: e.message}")

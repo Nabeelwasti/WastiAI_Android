@@ -430,7 +430,7 @@ class WastiBuildAndTestManager(
                     casePassed = true
                     caseMsg = execRes.stdout
                 } else if (execRes.exitCode == 127 || execRes.stderr.contains("not found", ignoreCase = true) || execRes.stderr.contains("Cannot run program", ignoreCase = true)) {
-                    val content = try { file.readText() } catch (e: Exception) { "" }
+                    val content = try { file.readText() } catch (e: Exception) { android.util.Log.d("BuildAndTest", "Fallback file read error: ${e.message}"); "" }
                     val hasValidStructure = when (normLang) {
                         "PYTHON" -> content.contains("unittest") || content.contains("pytest") || content.contains("def test_") || content.contains("assert")
                         "JAVASCRIPT", "NODE", "TYPESCRIPT" -> content.contains("test(") || content.contains("it(") || content.contains("describe(") || content.contains("assert")

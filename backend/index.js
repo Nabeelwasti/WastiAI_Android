@@ -228,7 +228,7 @@ const PROTECTED_PATCH_PATTERNS = [
   /settings\.gradle(\.kts)?$/i,
   /androidmanifest\.xml$/i,
   /proguard-rules\.pro$/i,
-  /\.env(\.[^.]+)?$/i,
+  /\.env(\.[a-zA-Z0-9_-]+)?$/i,
   /keystore/i,
   /\.jks$/i,
   /\.pem$/i,

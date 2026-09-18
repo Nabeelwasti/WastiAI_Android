@@ -31,7 +31,7 @@ data class RetrievalExplanation(
 class MemoryRetrievalEngine(
     private val embeddingService: EmbeddingService,
     private val vectorIndex: VectorIndex,
-    private val knowledgeGraphEngine: KnowledgeGraphEngine,
+    val knowledgeGraphEngine: KnowledgeGraphEngine,
     var policy: RetrievalPolicy = RetrievalPolicy()
 ) {
 
@@ -54,10 +54,14 @@ class MemoryRetrievalEngine(
                     val recencyScore = calculateRecencyScore(now, memory.lastAccessedTimestamp)
                     val importanceScore = memory.importanceScore
 
+                    val connectedNodes = knowledgeGraphEngine.getConnectedNodes(memory.id)
+                    val graphScore = if (connectedNodes.isNotEmpty()) (connectedNodes.size.toFloat() / 10.0f).coerceAtMost(1.0f) else 0.0f
+
                     val weightedScore = (simScore * policy.vectorWeight) +
                             (keywordScore * policy.keywordWeight) +
                             (recencyScore * policy.recencyWeight) +
-                            (importanceScore * policy.importanceWeight)
+                            (importanceScore * policy.importanceWeight) +
+                            (graphScore * 0.05f)
 
                     if (weightedScore >= query.minImportance) {
                         val searchResult = MemorySearchResult(
@@ -77,7 +81,7 @@ class MemoryRetrievalEngine(
                             recencyScore = recencyScore,
                             importanceScore = importanceScore,
                             finalWeightedScore = weightedScore,
-                            provenanceReason = "Matched via 4D Hybrid Retrieval (Sim: ${"%.2f".format(simScore)}, Keyword: ${"%.2f".format(keywordScore)}, Recency: ${"%.2f".format(recencyScore)})"
+                            provenanceReason = "Matched via 5D Hybrid Retrieval with KnowledgeGraph (Sim: ${"%.2f".format(simScore)}, Keyword: ${"%.2f".format(keywordScore)}, GraphRelations: ${connectedNodes.size}, Recency: ${"%.2f".format(recencyScore)})"
                         )
                         explanations.add(explanation)
                     }

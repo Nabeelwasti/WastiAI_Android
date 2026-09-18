@@ -62,6 +62,7 @@ class WastiCoreIntentAndRoutingTest {
     fun testToolProgressState() {
         WastiCore.updateProgress(ProgressStage.SCRAPING, "Scraping web results...")
         val state = WastiCore.toolProgressState.value
+        assertNotNull(state)
         assertEquals(ProgressStage.SCRAPING, state.stage)
         assertEquals("Scraping web results...", state.statusMessage)
         assertEquals(true, state.isActive)

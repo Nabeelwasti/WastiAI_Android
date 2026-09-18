@@ -2,14 +2,14 @@ package com.example.data.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.CapabilityRealityState
 import com.example.data.credential.CredentialRegistry
 import com.example.data.db.MemoryEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.drive.DriveSyncEngine
 import com.example.data.sync.CloudSyncManager
 import com.example.data.sync.SyncResult
-import kotlinx.coroutines.*
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -2530,6 +2530,13 @@ class EternalManifestoAndTruthAuditTest {
         val deviceCheck = assessment.subsystemChecks.find { it.subsystemName == "RealDeviceExecutionVerification" }
         assertNotNull("RealDeviceExecutionVerification check must exist", deviceCheck)
         assertFalse("Device check must not claim verified execution without physical proof", deviceCheck!!.isLiveVerified)
+    }
+
+    @Test
+    fun testCapabilityRealityStateIntegrity() = runBlocking {
+        val state = CapabilityRealityState.LIVE_CONNECTED
+        assertNotNull(state)
+        assertEquals("LIVE_CONNECTED", state.name)
     }
 }
 

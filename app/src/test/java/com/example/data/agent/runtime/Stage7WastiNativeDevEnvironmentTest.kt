@@ -295,5 +295,12 @@ class Stage7WastiNativeDevEnvironmentTest {
         val pkgResult = fabric.execute(pkgReq)
         assertEquals("Package execution failed: output=${pkgResult.output}, error=${pkgResult.error}, status=${pkgResult.status}, verStatus=${pkgResult.verificationStatus}, evidence=${pkgResult.verificationEvidence}", UnifiedExecutionStatus.VERIFIED, pkgResult.status)
     }
+
+    @Test
+    fun testAsyncDevEnvironmentDispatcherExecution() = runTest(UnconfinedTestDispatcher()) {
+        val rootPath = workspaceManager.getWorkspaceRootPath()
+        assertNotNull(rootPath)
+        assertTrue(rootPath.isNotBlank())
+    }
 }
 

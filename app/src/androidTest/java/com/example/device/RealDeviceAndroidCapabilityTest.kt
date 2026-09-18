@@ -15,7 +15,9 @@ import com.example.data.core.TestTier
 import com.example.data.notification.WastiNotificationManager
 import com.example.service.WastiAccessibilityService
 import com.example.service.WastiForegroundExecutionService
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,7 +41,7 @@ class RealDeviceAndroidCapabilityTest {
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
+        context = InstrumentationRegistry.getInstrumentation().targetContext ?: ApplicationProvider.getApplicationContext()
     }
 
     @Test

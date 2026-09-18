@@ -5,10 +5,14 @@ import android.util.Log
 import com.example.data.action.WastiAppAction
 import com.example.data.action.WastiAppActionBus
 import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.agent.runtime.AgenticState
 import com.example.data.agent.runtime.ExecutionMode
 import com.example.data.agent.runtime.TaskId
 import com.example.data.agent.runtime.UniversalAutonomousExecutionLoop
+import com.example.data.agent.runtime.WastiAgentRuntime
+import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.db.SystemLogEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.di.WastiServiceLocator
@@ -18,9 +22,12 @@ import com.example.data.workflow.UnifiedWorkflowEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 
@@ -628,6 +635,29 @@ class WastiOSRuntime(
      */
     fun getUnifiedWorkflowEngine(context: Context? = null): UnifiedWorkflowEngine =
         UnifiedWorkflowEngine.getInstance(context)
+
+    /**
+     * Resolves the canonical [UniversalAutonomousExecutionLoop] for multi-step background autonomy.
+     */
+    fun getUniversalAutonomousExecutionLoop(): UniversalAutonomousExecutionLoop =
+        WastiServiceLocator.universalExecutionLoop
+
+    /**
+     * Streams live global execution context updates to UI and remote observers.
+     */
+    fun observeRuntimeState(): Flow<GlobalExecutionContext> = _activeContext.asStateFlow()
+
+    /**
+     * Streams live command execution history records.
+     */
+    fun observeExecutionHistory(): Flow<List<CommandExecutionRecord>> = _executionHistory.asStateFlow()
+
+    /**
+     * Asynchronously records an execution outcome with IO-safe persistence.
+     */
+    suspend fun recordExecutionRecordAsync(record: CommandExecutionRecord) = withContext(Dispatchers.IO) {
+        recordExecutionRecord(record)
+    }
 }
 
 

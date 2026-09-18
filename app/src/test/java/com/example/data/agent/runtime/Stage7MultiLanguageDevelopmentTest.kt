@@ -46,6 +46,7 @@ class Stage7MultiLanguageDevelopmentTest {
     fun testMultiLanguageMatrixPopulated() {
         val profiles = languagePlatform.getAllProfiles()
         assertTrue(profiles.isNotEmpty())
+        assertFalse(profiles.isEmpty())
 
         val py = languagePlatform.getProfile("PYTHON")
         assertNotNull(py)

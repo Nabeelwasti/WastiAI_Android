@@ -4,14 +4,22 @@ import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import com.example.assistant.BootReceiver
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.AgentTaskPriority
+import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.db.ProactiveTaskDao
 import com.example.data.db.ProactiveTaskEntity
 import com.example.data.db.WastiDatabase
 import com.example.data.di.WastiServiceLocator
 import com.example.data.node.WastiNodeManager
-import com.example.data.proactive.*
+import com.example.data.proactive.ProactiveAutonomousTask
+import com.example.data.proactive.ProactiveEngineState
+import com.example.data.proactive.ProactiveTaskState
+import com.example.data.proactive.ProactiveTriggerType
+import com.example.data.proactive.WastiProactiveAutonomousEngine
 import com.example.data.worker.ProactiveReconciliationWorker
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -317,5 +325,13 @@ class Stage16PersistentAutonomousMemoryTest {
 
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskRecovered && (it as AgentEvent.ProactiveTaskRecovered).proactiveTaskId == taskId })
         assertTrue(recordedEvents.any { it is AgentEvent.RebootRecoveryCompleted })
+    }
+
+    @Test
+    fun test11_CommandOriginAndNodeManagerDeduplication() = runBlocking {
+        val nodeManager = WastiNodeManager.getInstance()
+        assertNotNull(nodeManager)
+        val origin = CommandOrigin.BACKGROUND_WORKER
+        assertEquals("BACKGROUND_WORKER", origin.name)
     }
 }

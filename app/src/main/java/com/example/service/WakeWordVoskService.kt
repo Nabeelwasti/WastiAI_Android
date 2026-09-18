@@ -67,6 +67,7 @@ class WakeWordVoskService : Service() {
     private var audioRecord: AudioRecord? = null
     private var isListening = false
     private var wakeLock: PowerManager.WakeLock? = null
+    private var listeningJob: Job? = null
 
     companion object {
         private const val TAG = "WakeWordVoskService"
@@ -179,7 +180,7 @@ class WakeWordVoskService : Service() {
     }
 
     private fun initializeVoskAndStartListening() {
-        serviceScope.launch {
+        listeningJob = serviceScope.launch {
             try {
                 Log.i(TAG, "Initializing Vosk model for 'Hey Wasti' keyword spotting...")
                 WakeWordVoskState.updateStatus("Loading Vosk Model...")
@@ -339,6 +340,8 @@ class WakeWordVoskService : Service() {
         Log.i(TAG, "Destroying WakeWordVoskService and releasing Vosk Recognizer, Model and WakeLock...")
         isListening = false
         isServiceRunning = false
+        listeningJob?.cancel()
+        listeningJob = null
         WakeWordVoskState.setListening(false)
         WakeWordVoskState.updateStatus("Stopped")
 

@@ -307,4 +307,16 @@ class Stage9EWorkflowOrchestrationTest {
         assertEquals("WastiNativeExecutionProvider", step.executionResult?.executor)
         assertEquals(UnifiedExecutionStatus.VERIFIED, step.executionResult?.status)
     }
+
+    @Test
+    fun testK_WreExecutionStatusAndRequestInteroperability() {
+        val req = ExecutionRequest(
+            command = "echo 'WRE Test'",
+            workingDirectory = "/workspace"
+        )
+        assertNotNull(req)
+        assertEquals("echo 'WRE Test'", req.command)
+        val status = ExecutionStatus.SUCCESS
+        assertEquals("SUCCESS", status.name)
+    }
 }

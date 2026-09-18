@@ -10,7 +10,13 @@ import com.example.data.agent.runtime.LiveConnectionStatus
 import com.example.data.agent.runtime.TaskId
 import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.core.CommandOrigin
-import com.example.data.node.*
+import com.example.data.node.AdvertisedCapabilityInfo
+import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodeHealthState
+import com.example.data.node.NodePlatform
+import com.example.data.node.NodeTrustState
+import com.example.data.node.WastiNode
+import com.example.data.node.WastiNodeManager
 import com.example.data.server.WastiLocalServerManager
 import com.example.data.server.WastiWebSocketServer
 import com.example.data.transport.WastiCommandTransport
@@ -281,5 +287,21 @@ class Stage13PhysicalRealityAndWebSocketTest {
             if (json.optString("type") == expectedType) return json
         }
         return null
+    }
+
+    @Test
+    fun testPhysicalRealityCapabilityAndExecutionStatus() {
+        val randomVal = Random.nextInt(100, 999)
+        val taskId = TaskId("task_test_$randomVal")
+        val capStatus = CapabilityExecutionStatus.READY
+        val impStatus = ImplementationStatus.IMPLEMENTED
+        val liveStatus = LiveConnectionStatus.CONNECTED
+        val origin = CommandOrigin.REMOTE_DEVICE
+
+        assertEquals("READY", capStatus.name)
+        assertEquals("IMPLEMENTED", impStatus.name)
+        assertEquals("CONNECTED", liveStatus.name)
+        assertEquals(false, origin.isLocal)
+        assertNotNull(taskId.value)
     }
 }

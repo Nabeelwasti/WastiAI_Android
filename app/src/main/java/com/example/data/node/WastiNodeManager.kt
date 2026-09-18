@@ -52,6 +52,8 @@ data class AdvertisedCapabilityInfo(
     val limitations: List<String> = emptyList(),
     val isLocallyExecutable: Boolean = true,
     val resourceRequirements: String = "LOW", // "LOW", "MEDIUM", "HIGH", "GPU"
+    val parameters: List<CapabilityParameter> = emptyList(),
+    val costModel: CapabilityCostModel? = null,
     val lastVerifiedTimestamp: Long = System.currentTimeMillis()
 ) {
     companion object {
@@ -64,6 +66,21 @@ data class AdvertisedCapabilityInfo(
         }
     }
 }
+
+typealias AdvertisedCapability = AdvertisedCapabilityInfo
+
+data class CapabilityParameter(
+    val name: String,
+    val type: String = "string",
+    val isRequired: Boolean = true,
+    val description: String = ""
+)
+
+data class CapabilityCostModel(
+    val computeTokensPerCall: Long = 0L,
+    val batteryImpact: String = "LOW",
+    val estimatedLatencyMs: Long = 50L
+)
 
 enum class NodeCapability {
     ANDROID_CONTROL,

@@ -713,16 +713,41 @@ class WastiWebSocketServer private constructor(
                     val capId = capObj.optString("capabilityId", "")
                     val ver = capObj.optString("version", "1.0.0")
                     val stateStr = capObj.optString("realityState", "LIVE_CONNECTED")
-                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (e: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
+                    val state = try { com.example.data.agent.runtime.CapabilityRealityState.valueOf(stateStr) } catch (_: Exception) { com.example.data.agent.runtime.CapabilityRealityState.LIVE_CONNECTED }
                     val provider = capObj.optString("provider", "Node[$nodeId]")
                     val reqs = capObj.optString("resourceRequirements", "LOW")
 
-                    val cap = com.example.data.node.AdvertisedCapabilityInfo(
+                    val paramsList = mutableListOf<CapabilityParameter>()
+                    capObj.optJSONArray("parameters")?.let { pArr ->
+                        for (i in 0 until pArr.length()) {
+                            val pObj = pArr.getJSONObject(i)
+                            paramsList.add(
+                                CapabilityParameter(
+                                    name = pObj.getString("name"),
+                                    type = pObj.optString("type", "string"),
+                                    isRequired = pObj.optBoolean("isRequired", true),
+                                    description = pObj.optString("description", "")
+                                )
+                            )
+                        }
+                    }
+                    val costObj = capObj.optJSONObject("costModel")
+                    val costModel = costObj?.let {
+                        CapabilityCostModel(
+                            computeTokensPerCall = it.optLong("computeTokensPerCall", 0L),
+                            batteryImpact = it.optString("batteryImpact", "LOW"),
+                            estimatedLatencyMs = it.optLong("estimatedLatencyMs", 50L)
+                        )
+                    }
+
+                    val cap = AdvertisedCapability(
                         capabilityId = capId,
                         version = ver,
                         realityState = state,
                         provider = provider,
-                        resourceRequirements = reqs
+                        resourceRequirements = reqs,
+                        parameters = paramsList,
+                        costModel = costModel
                     )
                     val isUpdated = WastiNodeManager.getInstance().updateAdvertisedCapability(nodeId, cap)
 

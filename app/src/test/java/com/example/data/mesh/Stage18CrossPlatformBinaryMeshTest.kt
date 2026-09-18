@@ -2,12 +2,24 @@ package com.example.data.mesh
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.CapabilityRealityRegistry
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
 import com.example.data.di.WastiServiceLocator
-import com.example.data.node.*
+import com.example.data.node.AdvertisedCapabilityInfo
+import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodeHealthState
+import com.example.data.node.NodePlatform
+import com.example.data.node.NodeTrustState
+import com.example.data.node.WastiNode
+import com.example.data.node.WastiNodeDiagnosticEngine
+import com.example.data.node.WastiNodeManager
 import com.example.data.server.WastiWebSocketServer
 import com.example.data.transport.WastiCommandTransport
 import kotlinx.coroutines.runBlocking
@@ -305,5 +317,20 @@ class Stage18CrossPlatformBinaryMeshTest {
         assertEquals(WastiMeshMessageType.HEARTBEAT_ACK, pingResult.getOrThrow()?.messageType)
 
         meshTransport.stop()
+    }
+
+    @Test
+    fun testMeshCommandSubmissionAndRuntimeIntegration() {
+        val runtime = WastiOSRuntime.getInstance(context)
+        assertNotNull(runtime)
+        val origin = CommandOrigin.EXTERNAL_NODE
+        assertFalse(origin.isLocal)
+        val accepted = CommandSubmissionResult.Accepted(
+            commandId = "cmd_123",
+            taskId = "task_123",
+            origin = origin,
+            message = "Mesh task accepted"
+        )
+        assertEquals("cmd_123", accepted.commandId)
     }
 }

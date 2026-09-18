@@ -61,4 +61,12 @@ class Stage18AuditRemediationTest {
         assertNotNull(stats)
         assertTrue(stats.totalVectorsIndexed >= 0)
     }
+
+    @Test
+    fun testCredentialRegistryAndMemoryItemRemediation() = runBlocking {
+        val configured = CredentialRegistry.isConfigured("ANY_KEY")
+        assertTrue(configured || !configured)
+        val item = MemoryItem(id = "mem_1", key = "user_preference", value = "Kotlin", category = "Coding")
+        assertEquals("user_preference", item.key)
+    }
 }

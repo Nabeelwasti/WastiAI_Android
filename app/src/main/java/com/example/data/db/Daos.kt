@@ -26,8 +26,16 @@ interface ConversationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertConversation(conversation: ConversationEntity)
 
+    @Delete
+    suspend fun deleteConversation(conversation: ConversationEntity)
+
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun deleteConversationById(id: String)
+
+    @Transaction
+    suspend fun replaceConversations(conversations: List<ConversationEntity>) {
+        conversations.forEach { insertConversation(it) }
+    }
 }
 
 @Dao
@@ -49,6 +57,9 @@ interface MessageDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
+
+    @Delete
+    suspend fun deleteMessage(message: MessageEntity)
 
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getMessageById(id: String): MessageEntity?
@@ -79,6 +90,9 @@ interface MemoryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMemory(memory: MemoryEntity)
+
+    @Delete
+    suspend fun deleteMemory(memory: MemoryEntity)
 
     @Query("SELECT * FROM memories WHERE `key` = :key LIMIT 1")
     suspend fun getMemoryByKey(key: String): MemoryEntity?

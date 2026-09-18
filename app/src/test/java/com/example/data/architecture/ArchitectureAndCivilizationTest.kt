@@ -292,4 +292,11 @@ class ArchitectureAndCivilizationTest {
         val heavyEstimate = CostIntelligenceEngine.estimatePreExecutionCost("a".repeat(3000) + " architecture redesign")
         assertEquals(CostIntelligenceEngine.CostOptimalRoute.CLOUD_DEEP_CORTEX, heavyEstimate.recommendedRoute)
     }
+
+    @Test
+    fun testEvolutionStageProgression() {
+        val stage = EvolutionStage.CIVILIZED
+        assertNotNull(stage)
+        assertEquals("CIVILIZED", stage.name)
+    }
 }

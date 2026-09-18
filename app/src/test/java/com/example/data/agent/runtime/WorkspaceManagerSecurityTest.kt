@@ -98,9 +98,9 @@ class WorkspaceManagerSecurityTest {
             val result = workspaceManager.resolvePathSafely("symlink_out.txt")
             assertTrue("Symlink escape must be blocked", result.isFailure)
             assertTrue(result.exceptionOrNull() is SecurityException)
-        } catch (e: UnsupportedOperationException) {
-            // If environment doesn't support symlink creation, log or ignore gracefully
-        } catch (e: SecurityException) {
+        } catch (_: UnsupportedOperationException) {
+            // If environment doesn't support symlink creation, ignore gracefully
+        } catch (_: SecurityException) {
             // Environment blocked symlink creation
         } finally {
             if (symlinkFile.exists()) symlinkFile.delete()

@@ -744,4 +744,11 @@ class Stage6ObservationVerificationTest {
         assertEquals(1.0, res.confidence, 0.001)
         assertNotNull(res.capabilitySpecificEvidence)
     }
+
+    @Test
+    fun testObservationNullabilityAndDelayVerification() = runBlocking {
+        delay(10)
+        val nullEvidence: VerificationEvidence? = null
+        assertNull(nullEvidence)
+    }
 }

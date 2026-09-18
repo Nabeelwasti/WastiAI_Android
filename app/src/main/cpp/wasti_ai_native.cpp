@@ -218,9 +218,10 @@ static void executeNeuralForwardPass(
 }
 
 static inline float halfToFloat(uint16_t h) {
-    uint32_t sign = (h >> 15) & 0x0001;
-    uint32_t exp  = (h >> 10) & 0x001f;
-    uint32_t mant = h & 0x03ff;
+    static_assert(sizeof(float) == sizeof(uint32_t), "float and uint32_t size mismatch");
+    uint32_t sign = (static_cast<uint32_t>(h) >> 15) & 0x0001U;
+    uint32_t exp  = (static_cast<uint32_t>(h) >> 10) & 0x001fU;
+    uint32_t mant = static_cast<uint32_t>(h) & 0x03ffU;
     if (exp == 0) {
         if (mant == 0) {
             uint32_t res = sign << 31;
@@ -228,12 +229,12 @@ static inline float halfToFloat(uint16_t h) {
             std::memcpy(&f, &res, sizeof(float));
             return f;
         } else {
-            while (!(mant & 0x0400)) { mant <<= 1; exp--; }
+            while (!(mant & 0x0400U)) { mant <<= 1; exp--; }
             exp++;
-            mant &= ~0x0400;
+            mant &= ~0x0400U;
         }
     } else if (exp == 31) {
-        uint32_t res = (sign << 31) | 0x7f800000 | (mant << 13);
+        uint32_t res = (sign << 31) | 0x7f800000U | (mant << 13);
         float f = 0.0f;
         std::memcpy(&f, &res, sizeof(float));
         return f;
@@ -557,7 +558,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
     }
 
     auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
-    if (!ctx || !ctx->isValid) {
+    if (!ctx->isValid) {
         return env->NewStringUTF("[NATIVE_ERROR]: Corrupted native model context");
     }
 
@@ -687,7 +688,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_hasLoadedTensors(
 ) {
     if (modelHandle == 0L) return JNI_FALSE;
     auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
-    if (!ctx || !ctx->isValid) return JNI_FALSE;
+    if (!ctx->isValid) return JNI_FALSE;
     return (ctx->tensorsLoaded && ctx->isRealNeural) ? JNI_TRUE : JNI_FALSE;
 }
 
@@ -702,7 +703,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     (void)prompt;
     if (modelHandle == 0L) return JNI_FALSE;
     auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
-    if (!ctx || !ctx->isValid || !ctx->tensorsLoaded || !ctx->isRealNeural) return JNI_FALSE;
+    if (!ctx->isValid || !ctx->tensorsLoaded || !ctx->isRealNeural) return JNI_FALSE;
 
     // Run real tensor forward pass probe
     std::vector<float> hidden;

@@ -247,4 +247,10 @@ class Stage23SwarmHardwareOffloadTest {
         assertTrue(result.output.contains("Bluetooth") || result.output.contains("ThinkPad"))
         assertTrue(result.verificationEvidence!!.contains("fp_bt_thinkpad"))
     }
+
+    @Test
+    fun testWastiServiceLocatorOffloadIntegration() {
+        WastiServiceLocator.init(context)
+        assertNotNull(WastiServiceLocator.nodeManager)
+    }
 }

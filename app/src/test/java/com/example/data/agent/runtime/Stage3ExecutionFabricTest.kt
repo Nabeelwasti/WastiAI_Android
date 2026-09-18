@@ -458,4 +458,12 @@ class Stage3ExecutionFabricTest {
         assertNotNull("ExecuteCodeTool must be registered and routed through ToolRouter", routerTools)
         assertEquals("execute_code", routerTools!!.name)
     }
+
+    @Test
+    fun test20_WorkspaceFileRootValidation() {
+        val rootPath = workspaceManager.getWorkspaceRootPath()
+        val rootDir = File(rootPath)
+        assertNotNull(rootDir)
+        assertTrue(rootDir.isDirectory || rootDir.mkdirs())
+    }
 }

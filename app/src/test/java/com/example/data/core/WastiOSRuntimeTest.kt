@@ -2,7 +2,8 @@ package com.example.data.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.di.WastiServiceLocator
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -80,5 +81,12 @@ class WastiOSRuntimeTest {
         assertTrue(CommandOrigin.VOICE.isLocal)
         assertFalse(CommandOrigin.WEB_COMPANION.isLocal)
         assertFalse(CommandOrigin.EXTERNAL_NODE.isLocal)
+    }
+
+    @Test
+    fun testObserveRuntimeStateFlow() = runBlocking {
+        val initialContext = runtime.observeRuntimeState().first()
+        assertNotNull(initialContext)
+        assertFalse(initialContext.isBusy)
     }
 }

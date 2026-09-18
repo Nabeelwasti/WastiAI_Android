@@ -1,6 +1,9 @@
 // Firebase admin helper for FCM push notifications (wakeword forwarding)
 
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+
 let admin = null;
 try {
   admin = require('firebase-admin');
@@ -25,7 +28,9 @@ function init() {
   }
   const saPath = process.env.FIREBASE_SA_PATH || null;
   if (saPath) {
-    admin.initializeApp({ credential: admin.credential.cert(require(saPath)) });
+    const resolvedPath = path.resolve(saPath);
+    const sa = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
+    admin.initializeApp({ credential: admin.credential.cert(sa) });
     initialized = true;
     return true;
   }

@@ -129,6 +129,56 @@ def get_secret(key_name: str, default: Optional[str] = None) -> Optional[str]:
 
     return default
 
+def get_secret_with_provenance(key_name: str, default: Optional[str] = None) -> Tuple[Optional[str], str]:
+    """
+    Securely retrieves credential and returns a Tuple of (secret_value, provenance_source).
+    Provenance sources: 'ENV', 'VAULT_TOKEN_DIR', 'VAULT_JSON', 'WORKSPACE_ENV', 'NONE'.
+    """
+    upper_key = key_name.strip().upper()
+    lower_key = key_name.strip().lower()
+
+    # 1. Process environment
+    for k in (upper_key, lower_key, key_name):
+        val = os.environ.get(k)
+        if val and not is_placeholder(val):
+            return val.strip(), "ENV"
+
+    # 2. Vault tokens directory
+    tokens_dir = get_tokens_dir()
+    for candidate in (upper_key, lower_key, f"{lower_key}.token"):
+        cand_path = os.path.join(tokens_dir, candidate)
+        if os.path.isfile(cand_path):
+            try:
+                with open(cand_path, "r", encoding="utf-8") as f:
+                    val = f.read().strip()
+                if val and not is_placeholder(val):
+                    return val, "VAULT_TOKEN_DIR"
+            except OSError:
+                pass
+
+    # 3. Vault JSON store
+    vault_dir = get_vault_dir()
+    for fname in ("vault.json", "credentials.json"):
+        vpath = os.path.join(vault_dir, fname)
+        if os.path.isfile(vpath):
+            try:
+                with open(vpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                val = data.get(upper_key) or data.get(lower_key) or data.get(key_name)
+                if val and not is_placeholder(str(val)):
+                    return str(val).strip(), "VAULT_JSON"
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    # 4. Workspace .env
+    for env_path in (".env", os.path.join(os.path.expanduser("~"), ".env")):
+        env_dict = parse_env_file(env_path)
+        val = env_dict.get(upper_key) or env_dict.get(lower_key) or env_dict.get(key_name)
+        if val and not is_placeholder(val):
+            return val, "WORKSPACE_ENV"
+
+    return default, "NONE"
+
 def save_secret(key_name: str, secret_value: str) -> bool:
     """
     Saves a secret into the local token vault with restrictive 0600 permissions.

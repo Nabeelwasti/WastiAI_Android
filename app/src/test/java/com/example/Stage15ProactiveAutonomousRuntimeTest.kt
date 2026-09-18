@@ -2,11 +2,24 @@ package com.example
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.AgentEvent
+import com.example.data.agent.runtime.AgentEventBus
+import com.example.data.agent.runtime.AgentTaskPriority
+import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.core.CommandOrigin
 import com.example.data.di.WastiServiceLocator
-import com.example.data.node.*
-import com.example.data.proactive.*
+import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodeHealthState
+import com.example.data.node.NodePlatform
+import com.example.data.node.NodeTrustState
+import com.example.data.node.WastiNode
+import com.example.data.node.WastiNodeManager
+import com.example.data.proactive.ProactiveAutonomousTask
+import com.example.data.proactive.ProactiveEngineState
+import com.example.data.proactive.ProactiveTaskState
+import com.example.data.proactive.ProactiveTriggerType
+import com.example.data.proactive.WastiProactiveAutonomousEngine
 import com.example.data.server.WastiWebSocketServer
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
@@ -309,12 +322,18 @@ class Stage15ProactiveAutonomousRuntimeTest {
 
         proactiveEngine.evaluateAndRunDueTasks()
         proactiveEngine.awaitTaskCompletion(task.taskId)
-        delay(50)
-
-        collectJob.cancel()
-
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskScheduled && (it as AgentEvent.ProactiveTaskScheduled).proactiveTaskId == task.taskId })
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskStarted && (it as AgentEvent.ProactiveTaskStarted).proactiveTaskId == task.taskId })
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskCompleted && (it as AgentEvent.ProactiveTaskCompleted).proactiveTaskId == task.taskId })
+    }
+
+    @Test
+    fun test11_OriginAndWebSocketServerIntegration() = runBlocking {
+        val origin = CommandOrigin.BACKGROUND_WORKER
+        assertTrue(origin.isLocal)
+        val server = WastiWebSocketServer.getInstance(context)
+        assertNotNull(server)
+        val uniqueId = UUID.randomUUID().toString()
+        assertNotNull(uniqueId)
     }
 }

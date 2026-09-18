@@ -11,7 +11,7 @@ try:
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "scripts"))
     import wasti_vault_bridge
     HAS_VAULT_BRIDGE = True
-except Exception:
+except (ImportError, OSError):
     HAS_VAULT_BRIDGE = False
 
 def is_placeholder(val_str):
@@ -65,7 +65,7 @@ def resolve_openrouter_key():
                         val = f.read().strip()
                         if val and not is_placeholder(val):
                             return val
-                except Exception:
+                except OSError:
                     pass
 
     # 3. JSON credentials registry
@@ -78,7 +78,7 @@ def resolve_openrouter_key():
                     val = data.get("OPENROUTER_API_KEY") or data.get("openrouter_api_key")
                     if val and not is_placeholder(val):
                         return str(val).strip()
-            except Exception:
+            except (OSError, json.JSONDecodeError):
                 pass
 
     # 4. Fallback .env files
@@ -95,7 +95,7 @@ def resolve_openrouter_key():
                             val = v.strip().strip("\"'")
                             if val and not is_placeholder(val):
                                 return val
-            except Exception:
+            except OSError:
                 pass
 
     return None
