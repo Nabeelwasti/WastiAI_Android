@@ -140,7 +140,7 @@ class WastiObservationEngine(
     ): ObservationResult {
         val rawPath = request.parameters["path"]?.toString()
             ?: request.parameters["file"]?.toString()
-            ?: executorResult.details["path"]?.toString()
+            ?: executorResult.details["path"]
 
         if (rawPath.isNullOrBlank()) {
             return result(
@@ -362,9 +362,9 @@ class WastiObservationEngine(
             confidence = 0.0
         )
 
-        val action = executorResult.details["action"]?.toString()
+        val action = executorResult.details["action"]
             ?: request.parameters["action"]?.toString().orEmpty()
-        val target = executorResult.details["target"]?.toString()
+        val target = executorResult.details["target"]
             ?: request.parameters["target"]?.toString()
             ?: request.parameters["package"]?.toString().orEmpty()
 

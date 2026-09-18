@@ -179,7 +179,7 @@ class Stage2SecurityAndRoutingTest {
             assertTrue(result.isSecurityBlocked)
         } catch (e: Exception) {
             android.util.Log.d("SecurityTest", "Symlink creation restricted by host environment: ${e.message}")
-            Unit
+            assertTrue("Symlink exception must indicate restriction or unsupported operation", e is java.io.IOException || e is SecurityException || e is UnsupportedOperationException)
         } finally {
             if (symlinkFile.exists()) symlinkFile.delete()
             if (externalTarget.exists()) externalTarget.delete()

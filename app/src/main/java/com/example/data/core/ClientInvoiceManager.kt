@@ -158,7 +158,7 @@ object ClientInvoiceManager {
             clientName = clientName,
             projectMilestone = projectMilestone,
             amountUsd = amountUsd,
-            currency = currency ?: "USD",
+            currency = currency.ifBlank { "USD" },
             status = try { InvoiceStatus.valueOf(status) } catch (_: Exception) { InvoiceStatus.DRAFT },
             issueDate = issueDate,
             dueDate = dueDate,

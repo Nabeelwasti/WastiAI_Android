@@ -308,7 +308,19 @@ object WastiIdentityManager {
             if (privateKey == null) false else {
                 val keyFactory = java.security.KeyFactory.getInstance(privateKey.algorithm, "AndroidKeyStore")
                 val keyInfo = keyFactory.getKeySpec(privateKey, KeyInfo::class.java)
-                keyInfo.isInsideSecureHardware
+                try {
+                    val getSecurityLevel = keyInfo.javaClass.getMethod("getSecurityLevel")
+                    val level = getSecurityLevel.invoke(keyInfo) as? Int
+                    level == KeyProperties.SECURITY_LEVEL_TRUSTED_ENVIRONMENT ||
+                        level == KeyProperties.SECURITY_LEVEL_STRONGBOX
+                } catch (_: Throwable) {
+                    try {
+                        val isInside = keyInfo.javaClass.getMethod("isInsideSecureHardware")
+                        isInside.invoke(keyInfo) as? Boolean ?: false
+                    } catch (_: Throwable) {
+                        false
+                    }
+                }
             }
         } catch (_: Throwable) { false }
         return DeviceAttestationResult(
@@ -461,7 +473,7 @@ object WastiIdentityManager {
         val role = if (isOwnerVerified) WastiUserRole.OWNER else WastiUserRole.MEMBER
         val entitlement = if (isOwnerVerified) entitlementCandidate else null
         if (isOwnerVerified) {
-            entitlementCandidate?.nonce?.let { consumeNonce(context, it) }
+            consumeNonce(context, entitlementCandidate.nonce)
         }
 
         prefs.edit().apply {
