@@ -2,6 +2,11 @@ package com.example.data.core
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.agent.runtime.CapabilityInventionEngine
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.CapabilityTestSpecification
+import com.example.data.agent.runtime.IntentToRealityCompiler
+import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.data.agent.runtime.UnifiedExecutionStatus
 import com.example.data.agent.runtime.UnifiedVerificationStatus

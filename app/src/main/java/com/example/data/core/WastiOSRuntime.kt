@@ -9,6 +9,7 @@ import com.example.data.agent.runtime.AgentEventBus
 import com.example.data.agent.runtime.AgenticState
 import com.example.data.agent.runtime.ExecutionMode
 import com.example.data.agent.runtime.TaskId
+import com.example.data.agent.runtime.TerminalTruthState
 import com.example.data.agent.runtime.UniversalAutonomousExecutionLoop
 import com.example.data.agent.runtime.WastiAgentRuntime
 import com.example.data.agent.runtime.WastiEmergencyStopController
