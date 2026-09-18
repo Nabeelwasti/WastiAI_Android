@@ -86,7 +86,9 @@ class WebSocketMeshTransport(
         broadcastEnvelope(envelope)
         return CommandSubmissionResult.Accepted(
             commandId = envelope.messageId.toString(),
-            status = "FORWARDED_TO_MESH"
+            taskId = null,
+            origin = CommandOrigin.EXTERNAL_NODE,
+            message = "FORWARDED_TO_MESH"
         )
     }
 
