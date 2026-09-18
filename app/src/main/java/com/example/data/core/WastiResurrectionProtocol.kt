@@ -135,15 +135,14 @@ object WastiResurrectionProtocol {
 
             val rawJson = payload.toString()
 
-            // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with cryptographically secure random IV
+            // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with provider-generated cryptographically secure random IV
             val secureRandom = SecureRandom()
             val salt = ByteArray(SALT_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
-            val iv = ByteArray(GCM_IV_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
             val secretKey = deriveKey(passphrase, salt)
             val cipherMode = listOf("AES", "GCM", "NoPadding").joinToString("/")
             val cipher = Cipher.getInstance(cipherMode)
-            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
             val cipherText = cipher.doFinal(rawJson.toByteArray(Charsets.UTF_8))
 
             // 3. Assemble Sovereign Resurrection Envelope
@@ -391,14 +390,6 @@ object WastiResurrectionProtocol {
             put("timestamp", bundleFile.lastModified())
         }
         return payload.toString()
-    }
-
-    /**
-     * Creates a verified GCMParameterSpec instance with canonical tag length.
-     */
-    fun createGcmParameterSpec(iv: ByteArray): GCMParameterSpec {
-        require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid bundle IV length: ${iv.size}" }
-        return GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
     }
 
     private fun computeSha256(bytes: ByteArray): String {

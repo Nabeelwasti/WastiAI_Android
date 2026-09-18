@@ -31,7 +31,11 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         enabledCapabilities[WastiCapability.CLOUD.capabilityName] = true
     }
 
-    override fun getSupportedCapabilities(): List<String> = WastiCapability.entries.map { it.capabilityName }
+    companion object {
+        fun getSupportedCapabilities(): List<String> = WastiCapability.entries.map { it.capabilityName }
+    }
+
+    override fun getSupportedCapabilities(): List<String> = Companion.getSupportedCapabilities()
 
     override fun isCapabilityEnabled(capabilityName: String): Boolean {
         if (enabledCapabilities[capabilityName] == false) return false

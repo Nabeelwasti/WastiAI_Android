@@ -132,6 +132,27 @@ jobs:
         fi
         echo "SUCCESS: app/google-services.json is not tracked by Git."
 
+    - name: Securely Inject and Validate Firebase Configuration
+      env:
+        FIREBASE_CONFIG_SECRET: ${{ secrets.FIREBASE_GOOGLE_SERVICES_JSON || secrets.GOOGLE_SERVICES_JSON || secrets.FIREBASE_SERVICES_JSON || secrets.GOOGLE_SERVICES || secrets.FIREBASE_JSON || secrets.GOOGLE_SERVICES_BASE64 || secrets.FIREBASE_GOOGLE_SERVICES_JSON_BASE64 || secrets.FIREBASE_CONFIG || secrets.FIREBASE_CONFIG_JSON || secrets.FIREBASE_SA_BASE64 || secrets.GOOGLE_SERVICES_JSON_RAW }}
+      run: |
+        if [ -n "$FIREBASE_CONFIG_SECRET" ]; then
+          # Safely write authentic Google Services configuration to app/google-services.json (handle raw JSON or Base64)
+          if echo "$FIREBASE_CONFIG_SECRET" | grep -q '^\s*{' ; then
+            printf '%s\n' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+          else
+            echo "$FIREBASE_CONFIG_SECRET" | base64 -d > app/google-services.json 2>/dev/null || printf '%s\n' "$FIREBASE_CONFIG_SECRET" > app/google-services.json
+          fi
+
+          # Validate JSON format, project info, and package name without printing secrets
+          python3 scripts/validate_google_services_json.py app/google-services.json || {
+            echo "WARNING: google-services.json validation failed; falling back to fail-closed standalone runtime."
+            rm -f app/google-services.json
+          }
+        else
+          echo "NOTICE: FIREBASE_GOOGLE_SERVICES_JSON secret not configured. Standalone and fail-closed cloud runtime preserved."
+        fi
+
     - name: Run Backend Syntax & Security Validation Tests
       run: |
         node -c backend/index.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
