@@ -10,6 +10,7 @@ import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiOSRuntime
 import com.example.data.di.WastiServiceLocator
 import com.example.data.node.NodeConnectionState
+import com.example.data.node.NodeHealthState
 import com.example.data.node.NodePlatform
 import com.example.data.node.NodeTrustState
 import com.example.data.node.WastiNode
