@@ -75,6 +75,9 @@ object CapabilityInventionEngine {
             }
         }
         UnifiedExecutionFabric.instance.registerExecutor(dynamicExecutor)
+        try {
+            WastiServiceLocator.capabilityRegistry.setCapabilityEnabled(def.capabilityId, true)
+        } catch (_: Exception) {}
         if (persist) saveAllToDisk(context)
     }
     private fun saveAllToDisk(context: Context) {

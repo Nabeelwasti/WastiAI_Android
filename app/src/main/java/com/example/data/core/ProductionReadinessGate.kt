@@ -435,5 +435,17 @@ object ProductionReadinessGate {
             else -> CapabilityLifecycleState.AVAILABLE
         }
     }
+
+    /**
+     * Maps low-level [CapabilityRealityState] to high-level [CapabilityLifecycleState].
+     */
+    fun mapRealityStateToLifecycle(realityState: CapabilityRealityState): CapabilityLifecycleState {
+        return when (realityState) {
+            CapabilityRealityState.NATIVE, CapabilityRealityState.LIVE_CONNECTED -> CapabilityLifecycleState.VERIFIED
+            CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED -> CapabilityLifecycleState.AVAILABLE
+            else -> CapabilityLifecycleState.DECLARED
+        }
+    }
 }
+
 

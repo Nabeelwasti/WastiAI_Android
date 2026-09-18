@@ -175,4 +175,13 @@ class WastiPseudoTerminalEmulator(
             activeTerminalStreams.remove(sessionId)
         }
     }
+
+    /**
+     * Dumps the current terminal screen buffer to a local [File] for session replay / audit logging.
+     */
+    fun dumpScreenToFile(file: File) {
+        val lines = getRenderedScreenLines()
+        file.writeText(lines.joinToString("\n"))
+    }
 }
+

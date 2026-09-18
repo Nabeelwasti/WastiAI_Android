@@ -50,6 +50,11 @@ data class WastiNavDestination(
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
 
+    companion object {
+        fun asComponentActivity(activity: android.app.Activity): ComponentActivity? =
+            activity as? ComponentActivity
+    }
+
     private val viewModel: WastiViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -152,7 +157,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                 }
             }
 
-            val startupState by AppStartupManager.startupState.collectAsStateWithLifecycle()
+            val startupState: AppStartupState by AppStartupManager.startupState.collectAsStateWithLifecycle()
             val darkTheme by viewModel.darkThemeEnabled.collectAsStateWithLifecycle()
             val activeTab by viewModel.activeTab.collectAsStateWithLifecycle()
             val activeConversationId by viewModel.activeConversationId.collectAsStateWithLifecycle()
@@ -434,7 +439,10 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                         ) {
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Surface(
-                                                    modifier = Modifier.size(40.dp),
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape)
+                                                        .clickable { viewModel.toggleCommandPalette() },
                                                     shape = CircleShape,
                                                     color = MaterialTheme.colorScheme.primaryContainer
                                                 ) {

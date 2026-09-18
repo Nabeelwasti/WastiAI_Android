@@ -62,6 +62,7 @@ object WastiEmbeddingRuntime {
         if (tokens.isEmpty()) {
             return vector
         }
+        Log.d(TAG, "Encoding semantic vector for ${tokens.size} tokens")
 
         // 1. Semantic Domain Harmonic Projection
         for (token in tokens) {

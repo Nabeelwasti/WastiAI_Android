@@ -510,6 +510,10 @@ class WastiLocalModelRuntime(
             else -> ModelRuntimeStatus.AVAILABLE_PENDING_DOWNLOAD
         }
     }
+
+    fun getModelRuntimeStatus(manifest: ModelArtifactManifest): ModelRuntimeStatus {
+        return getModelRuntimeStatus(manifest.modelId)
+    }
 }
 
 enum class LocalInferenceStatus {

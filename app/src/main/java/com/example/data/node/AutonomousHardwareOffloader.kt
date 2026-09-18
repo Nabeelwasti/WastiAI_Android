@@ -36,6 +36,7 @@ import java.util.UUID
  */
 
 data class OffloadDecision(
+    val decisionId: String = UUID.randomUUID().toString(),
     val shouldOffload: Boolean,
     val targetNode: NearbyHardwareNode?,
     val reason: String,

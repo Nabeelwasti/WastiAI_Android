@@ -88,7 +88,12 @@ class LeadSyncWorker(
             WastiRootController.logTrainingMetrics(context, matchScores, feedbackList)
 
             // 4. Reconcile Stripe Webhook & Payment Intents
-            val StripeSyncedInvoices = ClientInvoiceManager.syncPaymentsWithStripe(context)
+            val stripeConfigured = !CredentialRegistry.getRawValue("STRIPE_SECRET_KEY", context).isNullOrBlank()
+            val StripeSyncedInvoices = if (stripeConfigured) {
+                ClientInvoiceManager.syncPaymentsWithStripe(context)
+            } else {
+                0
+            }
             Log.d(TAG, "Stripe payment sync completed. Updated $StripeSyncedInvoices invoices.")
 
             WastiWorkManagerLifecycleTracker.recordWorkFinished(

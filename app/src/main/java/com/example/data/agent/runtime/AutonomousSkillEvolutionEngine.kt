@@ -196,4 +196,13 @@ class AutonomousSkillEvolutionEngine(
         val words = clean.split(" ").filter { it.isNotEmpty() }.take(5)
         return words.joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
     }
+
+    /**
+     * Asynchronously records skill execution outcome using [scope.launch].
+     */
+    fun recordSkillOutcomeAsync(skillId: String, wasSuccessful: Boolean) {
+        scope.launch {
+            recordSkillOutcome(skillId, wasSuccessful)
+        }
+    }
 }

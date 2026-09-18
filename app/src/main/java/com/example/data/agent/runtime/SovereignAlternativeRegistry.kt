@@ -277,4 +277,35 @@ object SovereignAlternativeRegistry {
         }
         return key != null && registry.getCredential(key) != null
     }
+
+    /**
+     * Reads an HTTP connection stream using [InputStreamReader] and [BufferedReader].
+     */
+    fun readStream(connection: HttpURLConnection): String {
+        return BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
+    }
+
+    /**
+     * Builds a native web-search fallback intent using [Uri].
+     */
+    fun createFallbackSearchIntent(query: String): Intent =
+        Intent(Intent.ACTION_VIEW, Uri.parse("https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(query, "UTF-8")))
+
+    /**
+     * Inspects local sovereign database status using [WastiDatabase].
+     */
+    fun getLocalDatabaseInstance(context: Context): WastiDatabase =
+        WastiDatabase.getDatabase(context)
+
+    /**
+     * Resolves whether nearby hardware compute is available via [AutonomousHardwareOffloader].
+     */
+    fun isHardwareOffloadAvailable(context: Context): Boolean =
+        AutonomousHardwareOffloader.isBluetoothOffloadAvailable(context)
+
+    /**
+     * Evaluates whether a credential has a connected [CredentialStatus].
+     */
+    fun isCredentialStatusConnected(status: CredentialStatus): Boolean =
+        status is CredentialStatus.Connected
 }

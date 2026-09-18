@@ -614,7 +614,14 @@ class WastiOSRuntime(
             lastError = null
         )
     }
+
+    /**
+     * Resolves the canonical [UnifiedWorkflowEngine] for global execution workflows.
+     */
+    fun getUnifiedWorkflowEngine(context: Context? = null): UnifiedWorkflowEngine =
+        UnifiedWorkflowEngine.getInstance(context)
 }
+
 
 private data class TaskExecutionSnapshot(
     val isSuccess: Boolean,

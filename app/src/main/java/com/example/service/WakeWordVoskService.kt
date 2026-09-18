@@ -178,7 +178,7 @@ class WakeWordVoskService : Service() {
                 Log.i(TAG, "Initializing Vosk model for 'Hey Wasti' keyword spotting...")
                 WakeWordVoskState.updateStatus("Loading Vosk Model...")
 
-                val modelDir = VoskModelDownloader.getModelDir(this@WakeWordVoskService)
+                val modelDir: File = VoskModelDownloader.getModelDir(this@WakeWordVoskService)
                 if (!VoskModelDownloader.isModelInstalled(this@WakeWordVoskService)) {
                     Log.i(TAG, "Vosk model not yet downloaded; initiating background download via VoskModelDownloader...")
                     WakeWordVoskState.updateStatus("Bootstrapping Vosk Model in Background...")

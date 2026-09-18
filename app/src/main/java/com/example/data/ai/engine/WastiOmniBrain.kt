@@ -334,4 +334,16 @@ object WastiOmniBrain {
         }
         return extractUniquePoints(texts)
     }
+
+    /**
+     * Inspects the operational runtime status of an on-device local neural engine.
+     */
+    fun evaluateModelRuntimeStatus(modelId: String): ModelRuntimeStatus {
+        val provider = UnifiedBrain.getLocalProvider(modelId)
+        return if (provider != null) {
+            ModelRuntimeStatus.ACTIVE_LOADED
+        } else {
+            ModelRuntimeStatus.DECLARED
+        }
+    }
 }

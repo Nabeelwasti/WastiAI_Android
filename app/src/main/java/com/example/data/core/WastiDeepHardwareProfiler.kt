@@ -119,6 +119,7 @@ object WastiDeepHardwareProfiler {
      * Inspects the host device and synthesizes the complete DeepSystemProfile.
      */
     fun profileSystem(context: Context?): DeepSystemProfile {
+        Log.d(TAG, "Profiling system hardware architecture and resource envelopes...")
         val identity = DeviceIdentity(
             model = Build.MODEL ?: "Unknown Model",
             manufacturer = Build.MANUFACTURER ?: "Unknown",

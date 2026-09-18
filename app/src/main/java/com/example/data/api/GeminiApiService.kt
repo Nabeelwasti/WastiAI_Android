@@ -551,4 +551,9 @@ object GeminiClient {
             }
         }
     }
+
+    val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    fun getAppIdentifier(): String = BuildConfig.APPLICATION_ID
 }
+

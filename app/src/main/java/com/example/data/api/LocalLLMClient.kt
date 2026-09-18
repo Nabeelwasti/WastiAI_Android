@@ -74,8 +74,10 @@ object LocalLLMClient {
         modelName: String = "llama3.2"
     ): String = withContext(Dispatchers.IO) {
         for (baseUrl in getCandidateEndpoints()) {
+            Log.d(TAG, "Attempting local inference on endpoint: $baseUrl")
             val result = tryEndpoint(baseUrl, prompt, systemInstruction, modelName)
             if (!result.isNullOrBlank()) {
+                Log.i(TAG, "Local inference succeeded via $baseUrl")
                 return@withContext result
             }
         }
