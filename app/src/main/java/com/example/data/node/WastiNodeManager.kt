@@ -50,6 +50,13 @@ enum class NodeDataLocality {
     PUBLIC_REMOTE
 }
 
+enum class DataLocalityPolicy {
+    STRICT_LOCAL,
+    LAN_ONLY,
+    FEDERATED_REMOTE,
+    HYBRID_ALLOWED
+}
+
 data class AdvertisedCapabilityInfo(
     val capabilityId: String,
     val version: String = "1.0.0",

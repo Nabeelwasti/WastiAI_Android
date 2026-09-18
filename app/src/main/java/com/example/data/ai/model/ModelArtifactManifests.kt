@@ -69,3 +69,58 @@ data class HardwareEnvironmentSpecs(
     val inferenceViabilityScore: String = ""
 )
 
+enum class ModelTier {
+    EDGE_FAST,
+    BALANCED,
+    CLOUD_CORTEX
+}
+
+enum class ModelExecutionRuntime {
+    NATIVE_LLAMA_CPP,
+    ONNX_TENSOR,
+    DETERMINISTIC_FALLBACK
+}
+
+data class ModelSpec(
+    val id: String = "wasti-smollm",
+    val name: String = "SmolLM2 1.7B",
+    val tier: ModelTier = ModelTier.EDGE_FAST,
+    val runtime: ModelExecutionRuntime = ModelExecutionRuntime.NATIVE_LLAMA_CPP,
+    val description: String = "Ultra-fast on-device neural execution model"
+)
+
+object WastiModelCatalog {
+    val MODELS: List<ModelSpec> = listOf(
+        ModelSpec(
+            id = "wasti-smollm",
+            name = "SmolLM2 1.7B",
+            tier = ModelTier.EDGE_FAST,
+            runtime = ModelExecutionRuntime.NATIVE_LLAMA_CPP,
+            description = "Ultra-fast on-device edge model"
+        ),
+        ModelSpec(
+            id = "wasti-llama",
+            name = "Llama 3.2 1B",
+            tier = ModelTier.EDGE_FAST,
+            runtime = ModelExecutionRuntime.NATIVE_LLAMA_CPP,
+            description = "General reasoning edge model"
+        ),
+        ModelSpec(
+            id = "wasti-qwen",
+            name = "Qwen 2.5 Coder 1.5B",
+            tier = ModelTier.BALANCED,
+            runtime = ModelExecutionRuntime.NATIVE_LLAMA_CPP,
+            description = "Code and automation edge model"
+        ),
+        ModelSpec(
+            id = "wasti-cortex",
+            name = "Wasti Cortex Hybrid",
+            tier = ModelTier.CLOUD_CORTEX,
+            runtime = ModelExecutionRuntime.DETERMINISTIC_FALLBACK,
+            description = "Federated cloud cortex model"
+        )
+    )
+
+    fun getDefaultLocalModel(): ModelSpec = MODELS.first()
+}
+

@@ -50,6 +50,8 @@ data class CivilizedCapability(
     val isSovereignOffline: Boolean = true
 )
 
+typealias CivilizationCapability = CivilizedCapability
+
 object CapabilityCivilizationRegistry {
 
     private val capabilities = ConcurrentHashMap<String, CivilizedCapability>()

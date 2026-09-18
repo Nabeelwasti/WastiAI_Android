@@ -26,6 +26,28 @@ data class GgufHeader(
     val isValidGguf: Boolean
 )
 
+object GgufContainerValidator {
+    private const val GGUF_MAGIC = 0x46554747 // "GGUF" in little-endian
+
+    fun hasValidGgufHeader(file: File): Boolean {
+        if (!file.exists() || file.length() < 8) {
+            return false
+        }
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                val buffer = ByteArray(8)
+                raf.readFully(buffer)
+                val byteBuf = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN)
+                val magicInt = byteBuf.int
+                val version = byteBuf.int.toUInt()
+                magicInt == GGUF_MAGIC && version in 1u..3u
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+}
+
 data class GgufTensorInfo(
     val name: String,
     val nDimensions: UInt,

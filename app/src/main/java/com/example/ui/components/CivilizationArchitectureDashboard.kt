@@ -28,6 +28,7 @@ import com.example.data.architecture.ArchitectureNode
 import com.example.data.architecture.RuntimeTopologyMap
 import com.example.data.architecture.civilization.CapabilityCivilizationRegistry
 import com.example.data.architecture.civilization.CapabilityLifecycleState
+import com.example.data.architecture.civilization.CivilizedCapability
 import com.example.data.architecture.observatory.CostIntelligenceEngine
 import com.example.data.architecture.observatory.ObservatoryEngine
 import com.example.data.architecture.observatory.ReliabilityEngine
@@ -601,7 +602,7 @@ private fun OpenSourceModelItemRow(model: com.example.data.ai.model.OpenSourceMo
  */
 @Composable
 fun CouncilStatusBanner(
-    capabilities: List<com.example.data.architecture.civilization.CivilizationCapability> = emptyList(),
+    capabilities: List<CivilizedCapability> = emptyList(),
     onClick: () -> Unit = {}
 ) {
     val stableCount = capabilities.count { it.lifecycleState == CapabilityLifecycleState.STABLE }
