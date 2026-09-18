@@ -227,8 +227,8 @@ object MemoryManager {
         return hybridSearch(MemorySearchQuery(queryText = queryText, searchType = searchType, topK = topK))
     }
 
-    fun embedQuery(queryText: String): EmbeddingVector {
-        return embeddingService.embed(queryText)
+    suspend fun embedQuery(queryText: String): EmbeddingVector {
+        return embeddingService.generateEmbedding(queryText)
     }
 
     suspend fun hybridSearchWithExplanations(query: MemorySearchQuery): Pair<List<MemorySearchResult>, List<com.example.data.memory.retrieval.RetrievalExplanation>> = withContext(Dispatchers.IO) {
