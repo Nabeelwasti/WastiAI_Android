@@ -66,7 +66,9 @@ data class NearbyHardwareNode(
     val isAvailableForHeavyCompute: Boolean = true,
     val estimatedComputeMultiplier: Float = 1.0f, // e.g. 4.0x for Desktop PC, 2.5x for Laptop
     val lastSeenTimestamp: Long = System.currentTimeMillis()
-)
+) {
+    val isOnline: Boolean get() = (System.currentTimeMillis() - lastSeenTimestamp) < 60_000L
+}
 
 data class NearbySwarmState(
     val isWifiScanningActive: Boolean = false,
