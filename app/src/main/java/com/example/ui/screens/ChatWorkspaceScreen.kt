@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.app.Activity
 import android.content.Intent
 import android.speech.RecognizerIntent
 import android.speech.tts.TextToSpeech
@@ -2123,7 +2122,7 @@ fun EmailDraftApprovalCard(
 
                 Button(
                     onClick = {
-                        val activity: Activity? = cardContext.findFragmentActivity()
+                        val activity = cardContext.findFragmentActivity()
                         if (activity != null) {
                             BiometricSecurityManager.authenticate(
                                 activity = activity,
@@ -2252,7 +2251,7 @@ fun LinkedInDraftApprovalCard(
 
                 Button(
                     onClick = {
-                        val activity: Activity? = cardContext.findFragmentActivity()
+                        val activity = cardContext.findFragmentActivity()
                         if (activity != null) {
                             BiometricSecurityManager.authenticate(
                                 activity = activity,
