@@ -98,8 +98,8 @@ data class ProactiveAutonomousTask(
     val isIdempotent: Boolean = true,
     val executionMode: ExecutionMode = ExecutionMode.AUTONOMOUS,
     val executionRequest: UnifiedExecutionRequest? = null,
-    var verificationStatus: UnifiedVerificationStatus = UnifiedVerificationStatus.PENDING,
-    var lastExecutionStatus: UnifiedExecutionStatus = UnifiedExecutionStatus.IDLE,
+    var verificationStatus: UnifiedVerificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+    var lastExecutionStatus: UnifiedExecutionStatus = UnifiedExecutionStatus.PLANNED,
     var completedAt: Long? = null
 ) {
     fun getCanonicalTaskId(): TaskId = TaskId(taskId)
