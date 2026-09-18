@@ -27,8 +27,8 @@ class MemorySearchTool : WastiTool {
     override suspend fun execute(parameters: Map<String, Any>): String {
         val query = parameters["query"]?.toString() ?: ""
         if (query.isBlank()) return "Error: Query parameters empty."
-        val memQuery = MemorySearchQuery(query = query)
-        val memories = MemoryManager.searchMemories(memQuery)
+        val memQuery = MemorySearchQuery(queryText = query)
+        val memories = MemoryManager.hybridSearch(memQuery)
         val req = com.example.data.agent.runtime.UnifiedExecutionRequest(
             capabilityId = "memory_search",
             parameters = parameters

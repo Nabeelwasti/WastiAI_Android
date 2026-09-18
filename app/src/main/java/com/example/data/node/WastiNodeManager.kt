@@ -61,7 +61,9 @@ data class AdvertisedCapabilityInfo(
     val resourceRequirements: String = "LOW", // "LOW", "MEDIUM", "HIGH", "GPU"
     val parameters: List<CapabilityParameter> = emptyList(),
     val costModel: CapabilityCostModel? = null,
-    val lastVerifiedTimestamp: Long = System.currentTimeMillis()
+    val lastVerifiedTimestamp: Long = System.currentTimeMillis(),
+    val name: String = capabilityId,
+    val description: String = ""
 ) {
     companion object {
         fun computeFingerprint(capabilities: Collection<AdvertisedCapabilityInfo>): String {

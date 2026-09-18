@@ -80,7 +80,23 @@ data class MemorySearchQuery(
     val topK: Int = 10,
     val minImportance: Float = 0.5f,
     val searchType: SearchType = SearchType.HYBRID
-)
+) {
+    val query: String get() = queryText
+
+    constructor(
+        query: String,
+        category: String? = null,
+        topK: Int = 10,
+        minImportance: Float = 0.5f,
+        searchType: SearchType = SearchType.HYBRID
+    ) : this(
+        queryText = query,
+        category = category,
+        topK = topK,
+        minImportance = minImportance,
+        searchType = searchType
+    )
+}
 
 data class MemorySearchResult(
     val memory: MemoryItem,

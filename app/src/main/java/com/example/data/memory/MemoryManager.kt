@@ -223,6 +223,8 @@ object MemoryManager {
         results
     }
 
+    suspend fun searchMemories(query: MemorySearchQuery): List<MemorySearchResult> = hybridSearch(query)
+
     suspend fun searchByType(queryText: String, searchType: SearchType, topK: Int = 5): List<MemorySearchResult> {
         return hybridSearch(MemorySearchQuery(queryText = queryText, searchType = searchType, topK = topK))
     }
