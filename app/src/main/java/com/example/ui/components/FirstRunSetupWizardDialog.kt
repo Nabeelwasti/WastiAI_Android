@@ -30,6 +30,11 @@ import com.example.data.core.UserPrimaryRole
 import com.example.data.core.WastiBiometricFaceEngine
 import com.example.data.core.WastiDeepHardwareProfiler
 import com.example.data.core.WastiProductionSigningEngine
+import com.example.data.core.hasClang
+import com.example.data.core.hasGit
+import com.example.data.core.hasNode
+import com.example.data.core.hasPython
+import com.example.data.core.hasSqlite
 import kotlinx.coroutines.launch
 
 /**

@@ -70,7 +70,10 @@ data class VerificationResult(
     val timestamp: Long = System.currentTimeMillis(),
     val structuredEvidence: VerifiedExecutionEvidence? = null,
     val capabilitySpecificEvidence: CapabilitySpecificEvidence? = null
-)
+) {
+    val isVerified: Boolean get() = status == ActionVerificationStatus.VERIFIED
+    val explanation: String get() = failureReason ?: evidence
+}
 
 data class StructuredUiObservation(
     val packageName: String? = null,
@@ -96,9 +99,6 @@ data class TargetSelectionResult(val status: TargetSelectionStatus, val matchedR
 enum class EvidenceSource { FILESYSTEM, FILESYSTEM_AUDIT, DATABASE_QUERY, HTTP_CONTRACT, PROCESS_TELEMETRY, SYSTEM_SERVICE, UI_TREE, SENSOR_EVENT, LOCAL_MODEL_INFERENCE, RUNTIME_DIAGNOSTIC }
 typealias ObservationSource = EvidenceSource
 enum class CapabilityVerificationDomain { GENERAL_COMPUTATION, FILESYSTEM, NETWORK, SYSTEM_DIAGNOSTIC }
-
-val VerificationResult.isVerified: Boolean get() = status == ActionVerificationStatus.VERIFIED
-val VerificationResult.explanation: String get() = failureReason ?: evidence
 
 /**
  * Evidence container. A missing checksum is intentionally NOT converted into a hash of the
