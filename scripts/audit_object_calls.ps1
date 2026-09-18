@@ -40,10 +40,15 @@ foreach ($file in $files) {
             if (-not $objectMembers.ContainsKey($obj)) {
                 $objectMembers[$obj] = [System.Collections.Generic.HashSet[string]]::new()
             }
-            # Collect fun, val, var names
-            $memberMatches = [regex]::Matches($content, '(?:fun|val|var)\s+([A-Za-z0-9_]+)\b')
+            # Collect fun, val, var names (including generic type parameters like <T>)
+            $memberMatches = [regex]::Matches($content, '(?:fun|val|var)\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+)\b')
             foreach ($mm in $memberMatches) {
                 [void]$objectMembers[$obj].Add($mm.Groups[1].Value)
+            }
+            # Also collect nested classes, enums, interfaces, objects
+            $nestedMatches = [regex]::Matches($content, '(?:class|enum\s+class|data\s+class|interface|object)\s+([A-Za-z0-9_]+)\b')
+            foreach ($nm in $nestedMatches) {
+                [void]$objectMembers[$obj].Add($nm.Groups[1].Value)
             }
         }
     }
@@ -62,11 +67,13 @@ foreach ($file in $files) {
         if ($trimmed.StartsWith("//") -or $trimmed.StartsWith("/*") -or $trimmed.StartsWith("*") -or $trimmed.StartsWith("import ") -or $trimmed.StartsWith("package ")) {
             continue
         }
+        # Strip string literals to avoid false positives on filenames like "File.kt"
+        $codeOnly = [regex]::Replace($line, '"(?:[^"\\]|\\.)*"', '""')
         
         foreach ($obj in $objects) {
             if ($objectMembers.ContainsKey($obj)) {
                 $regex = [regex]("\b" + $obj + "(?:\.Companion|\.instance)?\.([A-Za-z0-9_]+)\b")
-                $foundMatches = $regex.Matches($line)
+                $foundMatches = $regex.Matches($codeOnly)
                 foreach ($m in $foundMatches) {
                     $call = $m.Groups[1].Value
                     # Skip common standard Kotlin/Java methods and class reference

@@ -1,8 +1,10 @@
 package com.example.data.ai.provider
 
+import android.content.Context
 import com.example.data.ai.engine.HardwareCapabilityDetector
 import com.example.data.ai.engine.ModelArtifactManager
 import com.example.data.ai.model.ModelRuntimeStatus
+import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.ai.model.OpenSourceModelDescriptor
 import com.example.data.ai.model.ProviderCapability
 import com.example.data.ai.model.ProviderRequest
@@ -317,5 +319,19 @@ class WastiLocalBrainProvider(
 
     override suspend fun embeddings(text: String): FloatArray {
         return WastiEmbeddingRuntime.encode(text)
+    }
+
+    companion object {
+        @Volatile
+        private var instance: WastiLocalBrainProvider? = null
+
+        fun getInstance(context: Context? = null): WastiLocalBrainProvider {
+            return instance ?: synchronized(this) {
+                instance ?: run {
+                    val defaultDescriptor = OpenSourceModelCatalog.ALL_MODELS.first()
+                    WastiLocalBrainProvider(defaultDescriptor).also { instance = it }
+                }
+            }
+        }
     }
 }
