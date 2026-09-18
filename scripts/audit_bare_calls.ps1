@@ -25,8 +25,8 @@ foreach ($file in $files) {
     
     # Top level: fun <Name> before any class
     $topPart = ($clean -split '\b(?:class|object|interface)\b')[0]
-    $matches = [regex]::Matches($topPart, '\bfun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+)\s*\(')
-    foreach ($m in $matches) {
+    $foundMatches = [regex]::Matches($topPart, '\bfun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+)\s*\(')
+    foreach ($m in $foundMatches) {
         [void]$topLevelFunctions.Add($m.Groups[1].Value)
     }
 }

@@ -13,8 +13,8 @@ foreach ($file in $files) {
     $pkgMatch = [regex]::Match($clean, 'package\s+([a-zA-Z0-9_.]+)')
     $pkg = if ($pkgMatch.Success) { $pkgMatch.Groups[1].Value } else { "" }
     
-    $matches = [regex]::Matches($clean, '\b(?:class|interface|object|typealias|fun|val)\s+([A-Za-z0-9_]+)\b')
-    foreach ($m in $matches) {
+    $foundMatches = [regex]::Matches($clean, '\b(?:class|interface|object|typealias|fun|val)\s+([A-Za-z0-9_]+)\b')
+    foreach ($m in $foundMatches) {
         $className = $m.Groups[1].Value
         if ($pkg -ne "") {
             [void]$declaredClasses.Add("$pkg.$className")

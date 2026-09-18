@@ -9,8 +9,8 @@ foreach ($file in $files) {
     $clean = [regex]::Replace($clean, '//[^\r\n]*', '')
     
     # Matches: (class|interface|object|enum class|typealias) Name
-    $matches = [regex]::Matches($clean, '\b(?:class|interface|object|typealias)\s+([A-Za-z0-9_]+)\b')
-    foreach ($m in $matches) {
+    $foundMatches = [regex]::Matches($clean, '\b(?:class|interface|object|typealias)\s+([A-Za-z0-9_]+)\b')
+    foreach ($m in $foundMatches) {
         [void]$projectTypes.Add($m.Groups[1].Value)
     }
 }

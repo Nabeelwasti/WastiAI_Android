@@ -9,8 +9,8 @@ foreach ($file in $files) {
     
     # Collect all functions declared in the file
     $declaredFunctions = [System.Collections.Generic.HashSet[string]]::new()
-    $matches = [regex]::Matches($clean, '\bfun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+)\s*\(')
-    foreach ($m in $matches) {
+    $foundMatches = [regex]::Matches($clean, '\bfun\s+(?:<[^>]+>\s+)?([A-Za-z0-9_]+)\s*\(')
+    foreach ($m in $foundMatches) {
         [void]$declaredFunctions.Add($m.Groups[1].Value)
     }
     

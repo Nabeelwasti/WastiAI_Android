@@ -8,6 +8,61 @@ import java.util.UUID
  */
 
 sealed class AgenticState(open val message: String) {
+    val name: String
+        get() = when (this) {
+            is Idle -> "IDLE"
+            is Analyzing -> "ANALYZING"
+            is Planning -> "PLANNING"
+            is Inspecting -> "INSPECTING"
+            is WaitingForPermission -> "WAITING_FOR_PERMISSION"
+            is Editing -> "EDITING"
+            is Executing -> "EXECUTING"
+            is Observing -> "OBSERVING"
+            is Debugging -> "DEBUGGING"
+            is Testing -> "TESTING"
+            is Verification -> "VERIFICATION"
+            is Completed -> "COMPLETED"
+            is Failed -> "FAILED"
+            is SecurityBlocked -> "SECURITY_BLOCKED"
+            is Cancelled -> "CANCELLED"
+            is RolledBack -> "ROLLED_BACK"
+        }
+
+    companion object {
+        @JvmField
+        val IDLE: AgenticState = Idle()
+        @JvmField
+        val ANALYZING: AgenticState = Analyzing()
+        @JvmField
+        val PLANNING: AgenticState = Planning()
+        @JvmField
+        val INSPECTING: AgenticState = Inspecting()
+        @JvmField
+        val WAITING_FOR_PERMISSION: AgenticState = WaitingForPermission()
+        @JvmField
+        val EDITING: AgenticState = Editing()
+        @JvmField
+        val EXECUTING: AgenticState = Executing()
+        @JvmField
+        val OBSERVING: AgenticState = Observing()
+        @JvmField
+        val DEBUGGING: AgenticState = Debugging()
+        @JvmField
+        val TESTING: AgenticState = Testing()
+        @JvmField
+        val VERIFICATION: AgenticState = Verification()
+        @JvmField
+        val COMPLETED: AgenticState = Completed()
+        @JvmField
+        val FAILED: AgenticState = Failed()
+        @JvmField
+        val SECURITY_BLOCKED: AgenticState = SecurityBlocked()
+        @JvmField
+        val CANCELLED: AgenticState = Cancelled()
+        @JvmField
+        val ROLLED_BACK: AgenticState = RolledBack()
+    }
+
     data class Idle(override val message: String = "Agent is idle") : AgenticState(message)
     data class Analyzing(override val message: String = "Analyzing prompt and context") : AgenticState(message)
     data class Planning(override val message: String = "Generating execution plan") : AgenticState(message)

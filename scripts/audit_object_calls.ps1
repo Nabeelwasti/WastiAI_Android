@@ -66,8 +66,8 @@ foreach ($file in $files) {
         foreach ($obj in $objects) {
             if ($objectMembers.ContainsKey($obj)) {
                 $regex = [regex]("\b" + $obj + "(?:\.Companion|\.instance)?\.([A-Za-z0-9_]+)\b")
-                $matches = $regex.Matches($line)
-                foreach ($m in $matches) {
+                $foundMatches = $regex.Matches($line)
+                foreach ($m in $foundMatches) {
                     $call = $m.Groups[1].Value
                     # Skip common standard Kotlin/Java methods and class reference
                     if ($call -in @("class", "java", "toString", "hashCode", "equals", "Companion", "instance", "getInstance")) {

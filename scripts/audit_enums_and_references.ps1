@@ -13,8 +13,8 @@ foreach ($file in $files) {
 
     # Match: enum class <Name> ... { <entries> }
     $regex = [regex]'enum\s+class\s+([A-Za-z0-9_]+)\s*(?:\([^)]*\))?\s*(?::\s*[^{]+)?\{([^}]*)\}'
-    $matches = $regex.Matches($contentClean)
-    foreach ($m in $matches) {
+    $foundMatches = $regex.Matches($contentClean)
+    foreach ($m in $foundMatches) {
         $enumName = $m.Groups[1].Value
         $body = $m.Groups[2].Value
         # Split by semicolon or end of entries

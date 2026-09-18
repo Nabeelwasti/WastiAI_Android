@@ -12,8 +12,8 @@ foreach ($file in $mainFiles) {
     $clean = [regex]::Replace($clean, '//[^\r\n]*', '')
     
     # Match: (data\s+)?class\s+([A-Za-z0-9_]+)\s*(?:<[^>]+>)?\s*\((.*?)\)
-    $matches = [regex]::Matches($clean, '(?:data\s+)?class\s+([A-Za-z0-9_]+)\s*(?:<[^>]+>)?\s*\((.*?)\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-    foreach ($m in $matches) {
+    $foundMatches = [regex]::Matches($clean, '(?:data\s+)?class\s+([A-Za-z0-9_]+)\s*(?:<[^>]+>)?\s*\((.*?)\)', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    foreach ($m in $foundMatches) {
         $className = $m.Groups[1].Value
         $paramsText = $m.Groups[2].Value
         
