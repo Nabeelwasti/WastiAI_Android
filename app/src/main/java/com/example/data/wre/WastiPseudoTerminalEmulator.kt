@@ -47,6 +47,13 @@ class WastiPseudoTerminalEmulator(
     }
 
     /**
+     * Feeds incoming characters or chunks into the ANSI parser.
+     */
+    fun feed(rawChunk: String) {
+        processAnsiStream(rawChunk)
+    }
+
+    /**
      * Parses incoming ANSI/VT100 byte stream and projects onto the virtual screen matrix.
      */
     fun processAnsiStream(rawChunk: String) {
