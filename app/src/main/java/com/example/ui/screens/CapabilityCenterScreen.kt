@@ -28,9 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.agent.runtime.CapabilityInventionEngine
+import com.example.data.agent.runtime.CapabilityReality
 import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.LiveConnectionStatus
 import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.data.agent.runtime.UnifiedExecutionResult
+import com.example.data.agent.runtime.UnifiedVerificationStatus
 import com.example.data.di.WastiServiceLocator
 import com.example.data.sandbox.WastiWasmRuntime
 import com.example.service.WastiAccessibilityService

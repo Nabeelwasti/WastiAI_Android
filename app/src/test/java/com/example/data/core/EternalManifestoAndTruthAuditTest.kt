@@ -10,6 +10,8 @@ import com.example.data.agent.runtime.ExecutionStrategy
 import com.example.data.agent.runtime.ExecutionStrategyResolver
 import com.example.data.agent.runtime.ObservationRequest
 import com.example.data.agent.runtime.ObservationStatus
+import com.example.data.agent.runtime.TestCaseResult
+import com.example.data.agent.runtime.TestExecutionStatus
 import com.example.data.agent.runtime.TerminalTruthState
 import com.example.data.agent.runtime.UnifiedExecutionFabric
 import com.example.data.agent.runtime.UnifiedExecutionRequest

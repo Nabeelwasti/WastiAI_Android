@@ -2,10 +2,17 @@ package com.example.data.core.polyglot
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.core.BiometricRecognitionStatus
 import com.example.data.core.PersonalizedOnboardingEngine
+import com.example.data.core.PersonalizedSetupPlan
+import com.example.data.core.SwarmComputePreference
 import com.example.data.core.TestCategory
 import com.example.data.core.TestTier
+import com.example.data.core.UserPrimaryRole
+import com.example.data.core.WastiBiometricFaceEngine
 import com.example.data.core.WastiDeepHardwareProfiler
+import com.example.data.core.WastiDeviceSensoryEngine
+import com.example.data.core.WastiHolisticCognitiveEngine
 import com.example.data.core.WastiProductionSigningEngine
 import com.example.data.node.WastiSovereignTunnelEngine
 import com.example.data.wre.ExecutionRequest

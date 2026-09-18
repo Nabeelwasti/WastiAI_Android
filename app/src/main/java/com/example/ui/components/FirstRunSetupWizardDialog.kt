@@ -23,6 +23,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.data.core.PersonalizedOnboardingEngine
+import com.example.data.core.PersonalizedSetupPlan
+import com.example.data.core.SwarmComputePreference
+import com.example.data.core.UserPrimaryRole
 import com.example.data.core.WastiBiometricFaceEngine
 import com.example.data.core.WastiDeepHardwareProfiler
 import com.example.data.core.WastiProductionSigningEngine

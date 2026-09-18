@@ -4,6 +4,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 enum class CapabilityRealityState {
+    READY,
     NATIVE,
     LIVE_CONNECTED,
     IMPLEMENTED_NOT_LIVE_VERIFIED,
@@ -16,8 +17,8 @@ enum class CapabilityRealityState {
     QUOTA_EXHAUSTED
 }
 
-enum class ImplementationStatus { READY, IN_PROGRESS, CONTRACT_ONLY, NOT_IMPLEMENTED }
-enum class LiveConnectionStatus { VERIFIED, NOT_VERIFIED, AUTHENTICATION_REQUIRED, FAILED, DISCONNECTED }
+enum class ImplementationStatus { READY, IMPLEMENTED, IN_PROGRESS, CONTRACT_ONLY, NOT_IMPLEMENTED }
+enum class LiveConnectionStatus { VERIFIED, CONNECTED, NOT_VERIFIED, AUTHENTICATION_REQUIRED, FAILED, DISCONNECTED }
 enum class CapabilityExecutionStatus { OPERATIONAL, DEGRADED, BLOCKED_BY_POLICY, UNAVAILABLE }
 enum class CapabilityAuthStatus { AUTHENTICATED, REQUIRED_NOT_PROVIDED, EXPIRED, NOT_REQUIRED }
 

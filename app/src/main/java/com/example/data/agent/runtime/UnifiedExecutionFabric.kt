@@ -20,6 +20,7 @@ enum class UnifiedExecutionStatus {
     RUNNING,
     WAITING,
     COMPLETED,
+    SUCCEEDED,
     VERIFIED,
     FAILED,
     CANCELLED,

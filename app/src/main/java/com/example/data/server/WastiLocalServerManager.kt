@@ -8,9 +8,11 @@ import com.example.data.agent.runtime.CapabilityAuthStatus
 import com.example.data.agent.runtime.CapabilityExecutionStatus
 import com.example.data.agent.runtime.CapabilityReality
 import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.ExecutionMode
 import com.example.data.agent.runtime.ImplementationStatus
 import com.example.data.agent.runtime.LiveConnectionStatus
 import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
 import com.example.data.core.CommandOrigin
 import com.example.data.core.CommandSubmissionResult
 import com.example.data.core.WastiCore
