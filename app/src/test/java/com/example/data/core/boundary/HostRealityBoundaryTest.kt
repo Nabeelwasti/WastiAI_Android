@@ -1,10 +1,16 @@
-package com.example.data.core
+package com.example.data.core.boundary
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.agent.runtime.CapabilityRealityRegistry
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
+import com.example.data.core.DeviceVerificationEvidenceTracker
+import com.example.data.core.ProductionReadinessGate
 import com.example.data.core.ProductionReadinessState
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
+import com.example.data.core.WastiDeepHardwareProfiler
+import com.example.data.core.WastiDeviceSensoryEngine
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals

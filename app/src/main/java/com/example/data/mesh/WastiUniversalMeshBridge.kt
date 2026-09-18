@@ -105,22 +105,24 @@ class WastiUniversalMeshBridge private constructor(
                 try {
                     val inetAddr = java.net.InetAddress.getByName(ip)
                     if (inetAddr.isLoopbackAddress || inetAddr.isSiteLocalAddress || ip == "10.0.2.2") {
-                        java.nio.channels.SocketChannel.open().socket().use { socket ->
-                            socket.soTimeout = 150
-                            socket.connect(InetSocketAddress(inetAddr, COMPANION_HTTP_PORT), 150)
+                        val socket: Socket = java.nio.channels.SocketChannel.open().socket()
+                        val isReachable = socket.use { s ->
+                            probeCompanionSocket(s, inetAddr, COMPANION_HTTP_PORT, 150)
                         }
 
-                        val peer = DiscoveredPeer(
-                            ipAddress = ip,
-                            hostname = "WastiCompanion-$ip",
-                            hardwareType = "Desktop Workstation / Server",
-                            availableCores = 16,
-                            ramGigabytes = 32.0,
-                            osName = "Linux / Windows / macOS",
-                            transport = if (hasWifiTransport) "Wi-Fi LAN" else "LAN"
-                        )
-                        discoveredPeers[ip] = peer
-                        peers.add(peer)
+                        if (isReachable) {
+                            val peer = DiscoveredPeer(
+                                ipAddress = ip,
+                                hostname = "WastiCompanion-$ip",
+                                hardwareType = "Desktop Workstation / Server",
+                                availableCores = 16,
+                                ramGigabytes = 32.0,
+                                osName = "Linux / Windows / macOS",
+                                transport = if (hasWifiTransport) "Wi-Fi LAN" else "LAN"
+                            )
+                            discoveredPeers[ip] = peer
+                            peers.add(peer)
+                        }
                     }
                 } catch (_: Exception) {}
             }
@@ -128,6 +130,17 @@ class WastiUniversalMeshBridge private constructor(
             Log.w(TAG, "Subnet discovery error: ${e.message}")
         }
         peers
+    }
+
+    private fun probeCompanionSocket(socket: Socket, target: InetAddress, port: Int, timeoutMs: Int): Boolean {
+        return try {
+            socket.soTimeout = timeoutMs
+            val endpoint = InetSocketAddress(target, port)
+            socket.connect(endpoint, timeoutMs)
+            socket.isConnected
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /**

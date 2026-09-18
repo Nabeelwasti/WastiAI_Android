@@ -217,15 +217,31 @@ class WastiSovereignConnectivityProvider private constructor(
         for (candidate in testCandidates) {
             try {
                 val inetAddr = java.net.InetAddress.getByName(candidate)
-                java.nio.channels.SocketChannel.open().socket().use { socket ->
-                    socket.soTimeout = 150
-                    socket.connect(InetSocketAddress(inetAddr, RELAY_PORT), 150)
+                if (probeCandidateGateway(inetAddr, RELAY_PORT, 150)) {
+                    knownGateways[candidate] = "ACTIVE_GATEWAY"
+                    return@withContext true
                 }
-                knownGateways[candidate] = "ACTIVE_GATEWAY"
-                return@withContext true
             } catch (_: Exception) {}
         }
         knownGateways.isNotEmpty()
+    }
+
+    private fun probeCandidateGateway(target: InetAddress, port: Int, timeoutMs: Int): Boolean {
+        val socket: Socket = java.nio.channels.SocketChannel.open().socket()
+        return try {
+            socket.soTimeout = timeoutMs
+            val endpoint = InetSocketAddress(target, port)
+            socket.connect(endpoint, timeoutMs)
+            socket.isConnected
+        } catch (_: Exception) {
+            false
+        } finally {
+            try { socket.close() } catch (_: Exception) {}
+        }
+    }
+
+    private fun verifyProxyServerSocket(server: ServerSocket): Boolean {
+        return server.isBound && !server.isClosed
     }
 
     /**
@@ -238,9 +254,14 @@ class WastiSovereignConnectivityProvider private constructor(
             try {
                 val channel = java.nio.channels.ServerSocketChannel.open()
                 channel.socket().reuseAddress = true
-                channel.bind(InetSocketAddress(InetAddress.getByName("127.0.0.1"), PROXY_PORT), 50)
-                val server = channel.socket()
-                Log.i(TAG, "Sovereign Intranet Gateway Proxy listening on 127.0.0.1:$PROXY_PORT")
+                val loopback = InetAddress.getLoopbackAddress()
+                channel.bind(InetSocketAddress(loopback, PROXY_PORT), 50)
+                val server: ServerSocket = channel.socket()
+                if (!verifyProxyServerSocket(server)) {
+                    Log.w(TAG, "Proxy server socket failed verification")
+                    return@launch
+                }
+                Log.i(TAG, "Sovereign Intranet Gateway Proxy listening on ${loopback.hostAddress}:$PROXY_PORT")
 
                 while (true) {
                     val client = server.accept()

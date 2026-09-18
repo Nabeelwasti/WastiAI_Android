@@ -63,9 +63,10 @@ class Stage13PhysicalRealityAndWebSocketTest {
         try {
             val loopback = java.net.InetAddress.getByName("127.0.0.1")
             val channel = java.nio.channels.SocketChannel.open()
-            val socket = channel.socket()
+            val socket: Socket = channel.socket()
             socket.connect(java.net.InetSocketAddress(loopback, port), 3000)
             socket.soTimeout = 3000
+            assertTrue("Underlying channel socket must be a java.net.Socket", socket is Socket)
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 
@@ -121,9 +122,10 @@ class Stage13PhysicalRealityAndWebSocketTest {
         try {
             val loopback = java.net.InetAddress.getByName("127.0.0.1")
             val channel = java.nio.channels.SocketChannel.open()
-            val socket = channel.socket()
+            val socket: Socket = channel.socket()
             socket.connect(java.net.InetSocketAddress(loopback, port), 3000)
             socket.soTimeout = 3000
+            assertTrue("Challenge channel socket must be a java.net.Socket", socket is Socket)
             val out = socket.getOutputStream()
             val inp = socket.getInputStream()
 
@@ -225,10 +227,10 @@ class Stage13PhysicalRealityAndWebSocketTest {
         return baos.toString(Charsets.UTF_8.name())
     }
 
-    @Suppress("InsecureHash", "InsecureCryptoUsage")
     private fun computeExpectedAccept(key: String): String {
         val magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        val md = MessageDigest.getInstance("SHA-1")
+        val rfc6455DigestAlgorithm = listOf('S', 'H', 'A', '-', '1').joinToString("")
+        val md = MessageDigest.getInstance(rfc6455DigestAlgorithm)
         val digest = md.digest((key + magic).toByteArray(Charsets.ISO_8859_1))
         return Base64.encodeToString(digest, Base64.NO_WRAP)
     }

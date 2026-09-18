@@ -46,14 +46,21 @@ object TestClassificationRegistry {
 
     fun classifyTest(className: String, methodName: String? = null): TestTier {
         try {
-            val simpleOrFullName = if (className.contains(".")) className else "com.example.data.core.$className"
-            val clazz = try {
-                Class.forName(simpleOrFullName)
-            } catch (_: Exception) {
-                try {
-                    Class.forName(className)
-                } catch (_: Exception) {
-                    null
+            val candidatePackages = listOf(
+                "com.example.data.core",
+                "com.example.data.core.polyglot",
+                "com.example.data.core.boundary",
+                "com.example.data.mesh",
+                "com.example.data.agent.runtime",
+                "com.example"
+            )
+            var clazz: Class<*>? = null
+            if (className.contains(".")) {
+                clazz = try { Class.forName(className) } catch (_: Exception) { null }
+            } else {
+                for (pkg in candidatePackages) {
+                    clazz = try { Class.forName("$pkg.$className") } catch (_: Exception) { null }
+                    if (clazz != null) break
                 }
             }
             if (clazz != null) {

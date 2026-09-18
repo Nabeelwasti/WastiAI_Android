@@ -315,7 +315,8 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
     await octokit.git.updateRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: newCommit.data.sha });
 
     const pr = await octokit.pulls.create({ owner, repo, title, head: branchName, base, body });
-    const prUrl = pr && pr.data && pr.data.html_url ? pr.data.html_url : '';
+    const rawPrUrl = pr && pr.data && pr.data.html_url ? String(pr.data.html_url) : '';
+    const prUrl = rawPrUrl.startsWith('https://github.com/') ? encodeURI(rawPrUrl) : '';
     return res.json({ prUrl, pullRequestUrl: prUrl, branch: branchName });
   } catch (err) {
     console.error('dev/patch failed', err?.response?.data || err.message || err);
@@ -481,16 +482,14 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
           orchestrator.callProviders({ prompt }, [p])
         );
         const settled = await Promise.allSettled(promises);
-        const outputs = [];
-        for (let i = 0; i < configuredProviders.length; i++) {
-          const providerName = String(configuredProviders[i] || 'unknown');
-          const outcome = settled[i];
-          outputs.push({
+        const outputs = settled.map((outcome, idx) => {
+          const providerName = typeof configuredProviders[idx] === 'string' ? configuredProviders[idx] : 'unknown';
+          return {
             provider: providerName,
-            status: outcome ? outcome.status : 'rejected',
-            output: (outcome && outcome.status === 'fulfilled') ? outcome.value : { error: outcome?.reason?.message || 'Failed' }
-          });
-        }
+            status: outcome.status,
+            output: outcome.status === 'fulfilled' ? outcome.value : { error: outcome?.reason?.message || 'Failed' }
+          };
+        });
         resultData = {
           participatingProviders: configuredProviders,
           streamResults: outputs,

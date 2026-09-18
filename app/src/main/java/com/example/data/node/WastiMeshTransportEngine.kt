@@ -187,7 +187,8 @@ object WastiMeshTransportEngine {
             try {
                 val channel = java.nio.channels.ServerSocketChannel.open()
                 channel.socket().reuseAddress = true
-                channel.bind(InetSocketAddress(MESH_EXECUTION_PORT))
+                val loopback = InetAddress.getLoopbackAddress()
+                channel.bind(InetSocketAddress(loopback, MESH_EXECUTION_PORT))
                 server = channel.socket()
                 executionServerSocket = server
                 while (isActive && isMeshActive) {
@@ -295,14 +296,13 @@ object WastiMeshTransportEngine {
             )
         }
 
-        val targetIp = peer.ipAddress.trim()
-        val isValidIp = try {
-            val inet = java.net.InetAddress.getByName(targetIp)
-            !inet.isAnyLocalAddress && !targetIp.contains("/")
+        val inet = try {
+            java.net.InetAddress.getByName(targetIp)
         } catch (_: Exception) {
-            false
+            null
         }
-        if (!isValidIp) {
+
+        if (inet == null || inet.isAnyLocalAddress || targetIp.contains("/")) {
             return@withContext UnifiedExecutionResult(
                 taskId = request.taskId,
                 actionId = request.actionId,
@@ -319,8 +319,9 @@ object WastiMeshTransportEngine {
         }
 
         try {
+            val endpoint = InetSocketAddress(inet, MESH_EXECUTION_PORT)
             java.nio.channels.SocketChannel.open().socket().use { socket ->
-                socket.connect(InetSocketAddress(targetIp, MESH_EXECUTION_PORT), 3000)
+                socket.connect(endpoint, 3000)
                 socket.soTimeout = 10_000
                 val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))

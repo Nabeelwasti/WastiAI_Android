@@ -487,18 +487,19 @@ test('dev/patch security: enforces protected paths and payload bounds for self-m
 test('deployment proof: validates backend Dockerfile and container security hardening', () => {
   const fs = require('fs');
 
-  const dockerfilePath = fs.existsSync('Dockerfile') ? 'Dockerfile' : 'backend/Dockerfile';
-  const dockerignorePath = fs.existsSync('.dockerignore') ? '.dockerignore' : 'backend/.dockerignore';
+  assert.ok(fs.existsSync('Dockerfile') || fs.existsSync('backend/Dockerfile'), 'backend/Dockerfile must exist');
+  assert.ok(fs.existsSync('.dockerignore') || fs.existsSync('backend/.dockerignore'), 'backend/.dockerignore must exist');
 
-  assert.ok(fs.existsSync(dockerfilePath), 'backend/Dockerfile must exist');
-  assert.ok(fs.existsSync(dockerignorePath), 'backend/.dockerignore must exist');
-
-  const dockerfileContent = fs.readFileSync(dockerfilePath, 'utf-8');
+  const dockerfileContent = fs.existsSync('Dockerfile')
+    ? fs.readFileSync('Dockerfile', 'utf-8')
+    : fs.readFileSync('backend/Dockerfile', 'utf-8');
   assert.ok(dockerfileContent.includes('USER nodejs'), 'Dockerfile must enforce non-root user');
   assert.ok(dockerfileContent.includes('HEALTHCHECK'), 'Dockerfile must declare container HEALTHCHECK');
   assert.ok(dockerfileContent.includes('EXPOSE 8080'), 'Dockerfile must expose port 8080');
 
-  const dockerignoreContent = fs.readFileSync(dockerignorePath, 'utf-8');
+  const dockerignoreContent = fs.existsSync('.dockerignore')
+    ? fs.readFileSync('.dockerignore', 'utf-8')
+    : fs.readFileSync('backend/.dockerignore', 'utf-8');
   assert.ok(dockerignoreContent.includes('.env'), '.dockerignore must exclude .env secrets');
   assert.ok(dockerignoreContent.includes('node_modules'), '.dockerignore must exclude host node_modules');
 });

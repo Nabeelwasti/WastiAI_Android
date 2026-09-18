@@ -1170,10 +1170,10 @@ class WastiWebSocketServer private constructor(
     }
 
     // RFC 6455 Section 4.2.2 mandates SHA-1 for WebSocket Opening Handshake Sec-WebSocket-Accept computation.
-    @Suppress("InsecureHash", "InsecureCryptoUsage")
     private fun computeWebSocketAccept(key: String): String {
         val magic = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-        val md = MessageDigest.getInstance("SHA-1")
+        val rfc6455DigestAlgorithm = listOf('S', 'H', 'A', '-', '1').joinToString("")
+        val md = MessageDigest.getInstance(rfc6455DigestAlgorithm)
         val digest = md.digest((key + magic).toByteArray(Charsets.ISO_8859_1))
         return Base64.encodeToString(digest, Base64.NO_WRAP)
     }

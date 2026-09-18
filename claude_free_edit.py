@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import os
 import sys
+import shutil
+import subprocess
 import requests
 import json
 
@@ -196,18 +198,19 @@ def ask_claude_to_edit(target_file, prompt_instruction):
                     f.write(original_code)
                 return
 
-        import os
+        git_bin = shutil.which("git") or "/usr/bin/git"
+        bash_bin = shutil.which("bash") or "/bin/bash"
 
         print("Validating pre-push quality gates...")
-        gate_res = os.system("bash scripts/pre-push.sh")
+        gate_res = subprocess.run([bash_bin, "scripts/pre-push.sh"], check=False).returncode
         if gate_res != 0:
             print("\n[Quality Gate Alert] Pre-push validation failed. Code retained locally for inspection without pushing.")
             return
 
         print("Executing automated Git push sync via PAT Token configuration...")
-        os.system("git add .")
-        os.system("git commit -m \"Automated code tracking adjustment via free AI engine workflow\"")
-        os.system("git push origin main")
+        subprocess.run([git_bin, "add", "."], check=False)
+        subprocess.run([git_bin, "commit", "-m", "Automated code tracking adjustment via free AI engine workflow"], check=False)
+        subprocess.run([git_bin, "push", "origin", "main"], check=False)
         print("[Git Deployment Complete]")
 
     except Exception as e:

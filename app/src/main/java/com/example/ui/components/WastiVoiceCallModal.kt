@@ -356,7 +356,7 @@ fun WastiVoiceCallModal(
                     }
                 }
             } catch (e: Exception) {
-                // Pitch/Rate fallback
+                android.util.Log.w("WastiVoiceCall", "TTS voice configuration fallback: ${e.message}", e)
             }
 
             tts.setPitch(persona.pitch)

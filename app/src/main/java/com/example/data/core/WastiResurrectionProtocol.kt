@@ -135,16 +135,13 @@ object WastiResurrectionProtocol {
 
             val rawJson = payload.toString()
 
-            // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with unique, cryptographically strong random IV
+            // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with provider-generated cryptographically secure random IV
             val secureRandom = SecureRandom()
             val salt = ByteArray(SALT_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
-            val iv = ByteArray(GCM_IV_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
-            require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid GCM IV length" }
-
             val secretKey = deriveKey(passphrase, salt)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+            val iv = cipher.iv
             val cipherText = cipher.doFinal(rawJson.toByteArray(Charsets.UTF_8))
 
             // 3. Assemble Sovereign Resurrection Envelope
