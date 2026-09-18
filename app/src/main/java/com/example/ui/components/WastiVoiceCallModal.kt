@@ -545,7 +545,7 @@ fun WastiVoiceCallModal(
                 }
             }
         } catch (e: Exception) {
-            // Graceful fallback
+            android.util.Log.w("WastiVoiceCall", "Device control simulation failed: ${e.message}", e)
         }
         return false
     }

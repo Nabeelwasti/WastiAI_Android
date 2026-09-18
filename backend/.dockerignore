@@ -1,8 +1,9 @@
 node_modules
 .env
-*.env
-.git
-.gitignore
-.stripe_events_store.json
+.env.*
 *.log
+.git
+.DS_Store
 backend_deployment_evidence.json
+test_deployment_evidence.json
+.stripe_events_store.json

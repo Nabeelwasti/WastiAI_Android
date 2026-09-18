@@ -315,8 +315,8 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
     await octokit.git.updateRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: newCommit.data.sha });
 
     const pr = await octokit.pulls.create({ owner, repo, title, head: branchName, base, body });
-    const rawPrUrl = pr && pr.data && pr.data.html_url ? String(pr.data.html_url) : '';
-    const prUrl = rawPrUrl.startsWith('https://github.com/') ? encodeURI(rawPrUrl) : '';
+    const prNumber = pr && pr.data && Number.isInteger(pr.data.number) ? pr.data.number : null;
+    const prUrl = prNumber ? `https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pull/${prNumber}` : '';
     return res.json({ prUrl, pullRequestUrl: prUrl, branch: branchName });
   } catch (err) {
     console.error('dev/patch failed', err?.response?.data || err.message || err);
@@ -482,14 +482,15 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
           orchestrator.callProviders({ prompt }, [p])
         );
         const settled = await Promise.allSettled(promises);
-        const outputs = settled.map((outcome, idx) => {
-          const providerName = typeof configuredProviders[idx] === 'string' ? configuredProviders[idx] : 'unknown';
-          return {
-            provider: providerName,
-            status: outcome.status,
-            output: outcome.status === 'fulfilled' ? outcome.value : { error: outcome?.reason?.message || 'Failed' }
-          };
-        });
+        const outputs = [];
+        for (const provider of configuredProviders) {
+          const outcome = settled.shift();
+          outputs.push({
+            provider: String(provider || 'unknown'),
+            status: outcome ? outcome.status : 'rejected',
+            output: (outcome && outcome.status === 'fulfilled') ? outcome.value : { error: outcome?.reason?.message || 'Failed' }
+          });
+        }
         resultData = {
           participatingProviders: configuredProviders,
           streamResults: outputs,

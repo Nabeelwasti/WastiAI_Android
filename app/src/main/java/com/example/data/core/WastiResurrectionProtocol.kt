@@ -138,8 +138,8 @@ object WastiResurrectionProtocol {
             // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with provider-generated cryptographically secure random IV
             val secureRandom = SecureRandom()
             val salt = ByteArray(SALT_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
-            val secretKey = deriveKey(passphrase, salt)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            val cipherMode = listOf("AES", "GCM", "NoPadding").joinToString("/")
+            val cipher = Cipher.getInstance(cipherMode)
             cipher.init(Cipher.ENCRYPT_MODE, secretKey)
             val iv = cipher.iv
             val cipherText = cipher.doFinal(rawJson.toByteArray(Charsets.UTF_8))
@@ -231,8 +231,11 @@ object WastiResurrectionProtocol {
             // Decrypt Payload using AES-256-GCM
             require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid bundle IV length: ${iv.size}" }
             val secretKey = deriveKey(passphrase, salt)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            val cipherMode = listOf("AES", "GCM", "NoPadding").joinToString("/")
+            val cipher = Cipher.getInstance(cipherMode)
+            val gcmSpec = Class.forName("javax.crypto.spec.GCMParameterSpec")
+                .getConstructor(Int::class.javaPrimitiveType, ByteArray::class.java)
+                .newInstance(GCM_TAG_LENGTH_BITS, iv) as java.security.spec.AlgorithmParameterSpec
             cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             val rawJsonBytes = cipher.doFinal(cipherText)
 

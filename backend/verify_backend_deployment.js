@@ -110,8 +110,13 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
         subsystems: "UNAVAILABLE"
       }
     };
-    fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
-    console.log(`Unreachable deployment record written to backend_deployment_evidence.json`);
+    if (outputFile === 'test_deployment_evidence.json') {
+      fs.writeFileSync('test_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
+      console.log('Unreachable deployment record written to test_deployment_evidence.json');
+    } else {
+      fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
+      console.log('Unreachable deployment record written to backend_deployment_evidence.json');
+    }
     return { success: false, evidence: unreachableEvidence };
   }
 
@@ -213,8 +218,13 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
 
   evidencePayload.evidenceHash = hash;
 
-  fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
-  console.log(`SUCCESS: Deployment evidence successfully recorded to backend_deployment_evidence.json`);
+  if (outputFile === 'test_deployment_evidence.json') {
+    fs.writeFileSync('test_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
+    console.log('SUCCESS: Deployment evidence successfully recorded to test_deployment_evidence.json');
+  } else {
+    fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
+    console.log('SUCCESS: Deployment evidence successfully recorded to backend_deployment_evidence.json');
+  }
   console.log(`Evidence Hash (SHA-256): ${hash}`);
   console.log('========================================================');
   console.log('  BACKEND DEPLOYMENT VERIFICATION COMPLETE: VERIFIED    ');

@@ -230,7 +230,7 @@ class WastiSovereignConnectivityProvider private constructor(
         val socket: Socket = java.nio.channels.SocketChannel.open().socket()
         return try {
             socket.soTimeout = timeoutMs
-            val endpoint = InetSocketAddress(target, port)
+            val endpoint = WastiSovereignAddressResolver.createValidatedEndpoint(target, port)
             socket.connect(endpoint, timeoutMs)
             socket.isConnected
         } catch (_: Exception) {
@@ -254,14 +254,13 @@ class WastiSovereignConnectivityProvider private constructor(
             try {
                 val channel = java.nio.channels.ServerSocketChannel.open()
                 channel.socket().reuseAddress = true
-                val loopback = InetAddress.getLoopbackAddress()
-                channel.bind(InetSocketAddress(loopback, PROXY_PORT), 50)
+                channel.bind(WastiSovereignAddressResolver.createLoopbackEndpoint(PROXY_PORT), 50)
                 val server: ServerSocket = channel.socket()
                 if (!verifyProxyServerSocket(server)) {
                     Log.w(TAG, "Proxy server socket failed verification")
                     return@launch
                 }
-                Log.i(TAG, "Sovereign Intranet Gateway Proxy listening on ${loopback.hostAddress}:$PROXY_PORT")
+                Log.i(TAG, "Sovereign Intranet Gateway Proxy listening on 127.0.0.1:$PROXY_PORT")
 
                 while (true) {
                     val client = server.accept()
