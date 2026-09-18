@@ -297,6 +297,7 @@ object WastiMeshTransportEngine {
             )
         }
 
+        val targetIp = peer.ipAddress
         val inet = try {
             java.net.InetAddress.getByName(targetIp)
         } catch (_: Exception) {
