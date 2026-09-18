@@ -51,6 +51,7 @@ class HostRealityBoundaryTest {
             ProductionReadinessState.PRODUCTION_READY,
             assessment.overallState
         )
+        assertTrue(ProductionReadinessState.values().contains(ProductionReadinessState.PRODUCTION_READY))
 
         val deviceCheck = assessment.subsystemChecks.find { it.subsystemName == "RealDeviceExecutionVerification" }
         assertNotNull("RealDeviceExecutionVerification check must be present", deviceCheck)

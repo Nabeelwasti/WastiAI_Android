@@ -216,9 +216,11 @@ class WastiSovereignConnectivityProvider private constructor(
         val testCandidates = listOf("10.0.2.2", "192.168.1.1", "192.168.43.1", "127.0.0.1")
         for (candidate in testCandidates) {
             try {
-                val socket = Socket()
-                socket.connect(InetSocketAddress(candidate, RELAY_PORT), 150)
-                socket.close()
+                val inetAddr = java.net.InetAddress.getByName(candidate)
+                Socket().use { socket ->
+                    socket.soTimeout = 150
+                    socket.connect(InetSocketAddress(inetAddr, RELAY_PORT), 150)
+                }
                 knownGateways[candidate] = "ACTIVE_GATEWAY"
                 return@withContext true
             } catch (_: Exception) {}

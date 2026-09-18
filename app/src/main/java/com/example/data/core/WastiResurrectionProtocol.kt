@@ -135,14 +135,16 @@ object WastiResurrectionProtocol {
 
             val rawJson = payload.toString()
 
-            // 2. Encrypt Payload using AES-256-GCM + PBKDF2
+            // 2. Encrypt Payload using AES-256-GCM + PBKDF2 with unique, cryptographically strong random IV
             val secureRandom = SecureRandom()
-            val salt = ByteArray(SALT_LENGTH_BYTES).also { secureRandom.nextBytes(it) }
-            val iv = ByteArray(GCM_IV_LENGTH_BYTES).also { secureRandom.nextBytes(it) }
+            val salt = ByteArray(SALT_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
+            val iv = ByteArray(GCM_IV_LENGTH_BYTES).apply { secureRandom.nextBytes(this) }
+            require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid GCM IV length" }
 
             val secretKey = deriveKey(passphrase, salt)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, gcmSpec)
             val cipherText = cipher.doFinal(rawJson.toByteArray(Charsets.UTF_8))
 
             // 3. Assemble Sovereign Resurrection Envelope
@@ -229,10 +231,12 @@ object WastiResurrectionProtocol {
             val iv = Base64.decode(envelope.getString("iv"), Base64.NO_WRAP)
             val cipherText = Base64.decode(envelope.getString("cipherText"), Base64.NO_WRAP)
 
-            // Decrypt Payload
+            // Decrypt Payload using AES-256-GCM
+            require(iv.size == GCM_IV_LENGTH_BYTES) { "Invalid bundle IV length: ${iv.size}" }
             val secretKey = deriveKey(passphrase, salt)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv))
+            val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, gcmSpec)
             val rawJsonBytes = cipher.doFinal(cipherText)
 
             val payload = JSONObject(String(rawJsonBytes, Charsets.UTF_8))

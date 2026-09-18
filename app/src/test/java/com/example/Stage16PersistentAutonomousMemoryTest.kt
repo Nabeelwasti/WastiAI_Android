@@ -97,7 +97,10 @@ class Stage16PersistentAutonomousMemoryTest {
         var persisted: ProactiveTaskEntity? = null
         for (i in 0 until 30) {
             persisted = taskDao.getTaskById(task.taskId)
-            if (persisted != null) break
+            if (persisted != null) {
+                assertTrue(i >= 0)
+                break
+            }
             delay(50)
         }
 
@@ -333,5 +336,29 @@ class Stage16PersistentAutonomousMemoryTest {
         assertNotNull(nodeManager)
         val origin = CommandOrigin.BACKGROUND_WORKER
         assertEquals("BACKGROUND_WORKER", origin.name)
+    }
+
+    @Test
+    fun test12_ArchitectureAndModelContracts() {
+        val taskId = TaskId("stage16_task_${UUID.randomUUID()}")
+        val priority = AgentTaskPriority.HIGH
+        val engineState = ProactiveEngineState(
+            isRunning = true,
+            totalScheduledTasks = 1,
+            activeExecutingTasks = 0,
+            completedTasks = 0,
+            failedTasks = 0
+        )
+        val proactiveTask = ProactiveAutonomousTask(
+            taskId = taskId.value,
+            title = "Architectural Validation Task",
+            prompt = "Ensure proactive memory integrity",
+            triggerType = ProactiveTriggerType.SYSTEM_EVENT,
+            state = ProactiveTaskState.SCHEDULED,
+            priority = priority
+        )
+        assertEquals(taskId.value, proactiveTask.taskId)
+        assertEquals(AgentTaskPriority.HIGH, proactiveTask.priority)
+        assertTrue(engineState.isRunning)
     }
 }

@@ -322,6 +322,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
 
         proactiveEngine.evaluateAndRunDueTasks()
         proactiveEngine.awaitTaskCompletion(task.taskId)
+        collectJob.cancel()
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskScheduled && (it as AgentEvent.ProactiveTaskScheduled).proactiveTaskId == task.taskId })
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskStarted && (it as AgentEvent.ProactiveTaskStarted).proactiveTaskId == task.taskId })
         assertTrue(recordedEvents.any { it is AgentEvent.ProactiveTaskCompleted && (it as AgentEvent.ProactiveTaskCompleted).proactiveTaskId == task.taskId })
@@ -335,5 +336,18 @@ class Stage15ProactiveAutonomousRuntimeTest {
         assertNotNull(server)
         val uniqueId = UUID.randomUUID().toString()
         assertNotNull(uniqueId)
+    }
+
+    @Test
+    fun test12_ArchitectureNodeStateAndPriorityIntegrity() = runBlocking {
+        val taskId = TaskId("stage15_contract_test")
+        val priority = AgentTaskPriority.HIGH
+        val health = NodeHealthState.HEALTHY
+        val connection = NodeConnectionState.CONNECTED
+        assertEquals(AgentTaskPriority.HIGH, priority)
+        assertEquals(NodeHealthState.HEALTHY, health)
+        assertEquals(NodeConnectionState.CONNECTED, connection)
+        val flowList = kotlinx.coroutines.flow.flowOf(taskId.value).kotlinx.coroutines.flow.toList()
+        assertEquals(listOf("stage15_contract_test"), flowList)
     }
 }

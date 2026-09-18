@@ -409,5 +409,25 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         val realityState = CapabilityRealityState.LIVE_CONNECTED
         assertNotNull(realityState)
     }
+
+    @Test
+    fun testArchitecture_ModelCatalogAndValidatorContracts() {
+        val tier = ModelTier.EDGE_FAST
+        val runtime = ModelExecutionRuntime.NATIVE_LLAMA_CPP
+        val catalogModels = WastiModelCatalog.MODELS
+        assertNotNull(catalogModels)
+        assertTrue(catalogModels.isNotEmpty())
+        val defaultModel: ModelSpec = WastiModelCatalog.getDefaultLocalModel()
+        assertNotNull(defaultModel)
+        assertEquals(ModelTier.EDGE_FAST, tier)
+        assertEquals(ModelExecutionRuntime.NATIVE_LLAMA_CPP, runtime)
+        
+        val tempGguf = File(context.cacheDir, "test_validator_magic.gguf").apply {
+            writeBytes(byteArrayOf(0x47, 0x47, 0x55, 0x46, 0x03, 0x00, 0x00, 0x00))
+        }
+        val isHeaderValid = GgufContainerValidator.hasValidGgufHeader(tempGguf)
+        assertTrue(isHeaderValid)
+        tempGguf.delete()
+    }
 }
 

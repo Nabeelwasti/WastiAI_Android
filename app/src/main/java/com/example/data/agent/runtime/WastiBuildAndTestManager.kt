@@ -399,12 +399,12 @@ class WastiBuildAndTestManager(
                     "json" -> try {
                         org.json.JSONObject(content)
                         true
-                    } catch (e: Exception) {
+                    } catch (e: org.json.JSONException) {
                         try {
                             org.json.JSONArray(content)
                             true
-                        } catch (e2: Exception) {
-                            android.util.Log.d("BuildAndTest", "JSON validation failed: ${e2.message}")
+                        } catch (e2: org.json.JSONException) {
+                            android.util.Log.d("BuildAndTest", "JSON validation failed for ${file.name}: ${e.message} / ${e2.message}")
                             false
                         }
                     }

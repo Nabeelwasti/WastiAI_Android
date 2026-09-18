@@ -103,21 +103,25 @@ class WastiUniversalMeshBridge private constructor(
 
             for (ip in candidateIps) {
                 try {
-                    val socket = Socket()
-                    socket.connect(InetSocketAddress(ip, COMPANION_HTTP_PORT), 150)
-                    socket.close()
+                    val inetAddr = java.net.InetAddress.getByName(ip)
+                    if (inetAddr.isLoopbackAddress || inetAddr.isSiteLocalAddress || ip == "10.0.2.2") {
+                        Socket().use { socket ->
+                            socket.soTimeout = 150
+                            socket.connect(InetSocketAddress(inetAddr, COMPANION_HTTP_PORT), 150)
+                        }
 
-                    val peer = DiscoveredPeer(
-                        ipAddress = ip,
-                        hostname = "WastiCompanion-$ip",
-                        hardwareType = "Desktop Workstation / Server",
-                        availableCores = 16,
-                        ramGigabytes = 32.0,
-                        osName = "Linux / Windows / macOS",
-                        transport = if (hasWifiTransport) "Wi-Fi LAN" else "LAN"
-                    )
-                    discoveredPeers[ip] = peer
-                    peers.add(peer)
+                        val peer = DiscoveredPeer(
+                            ipAddress = ip,
+                            hostname = "WastiCompanion-$ip",
+                            hardwareType = "Desktop Workstation / Server",
+                            availableCores = 16,
+                            ramGigabytes = 32.0,
+                            osName = "Linux / Windows / macOS",
+                            transport = if (hasWifiTransport) "Wi-Fi LAN" else "LAN"
+                        )
+                        discoveredPeers[ip] = peer
+                        peers.add(peer)
+                    }
                 } catch (_: Exception) {}
             }
         } catch (e: Exception) {

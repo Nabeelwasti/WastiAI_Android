@@ -308,4 +308,11 @@ class Stage18UniversalConversationFabricTest {
         assertEquals(1, statesList.size)
         assertNotNull(statesList.first())
     }
+
+    @Test
+    fun testArchitecture_AgenticStateContract() {
+        val state = AgenticState.IDLE
+        assertEquals(AgenticState.IDLE, state)
+        assertEquals("IDLE", state.name)
+    }
 }

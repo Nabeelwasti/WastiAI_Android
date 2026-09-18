@@ -115,7 +115,7 @@ static void computeAttention(
 ) {
     if (kHistory.empty() || vHistory.empty()) {
         if (output && query && d > 0) {
-            std::memcpy(output, query, d * sizeof(float));
+            std::copy_n(query, d, output);
         }
         return;
     }
@@ -222,28 +222,27 @@ static inline float halfToFloat(uint16_t h) {
     uint32_t sign = (static_cast<uint32_t>(h) >> 15) & 0x0001U;
     uint32_t exp  = (static_cast<uint32_t>(h) >> 10) & 0x001fU;
     uint32_t mant = static_cast<uint32_t>(h) & 0x03ffU;
+    uint32_t res = 0;
     if (exp == 0) {
         if (mant == 0) {
-            uint32_t res = sign << 31;
-            float f = 0.0f;
-            std::memcpy(&f, &res, sizeof(float));
-            return f;
+            res = sign << 31;
         } else {
             while (!(mant & 0x0400U)) { mant <<= 1; exp--; }
             exp++;
             mant &= ~0x0400U;
+            exp = exp + (127 - 15);
+            mant = mant << 13;
+            res = (sign << 31) | (exp << 23) | mant;
         }
     } else if (exp == 31) {
-        uint32_t res = (sign << 31) | 0x7f800000U | (mant << 13);
-        float f = 0.0f;
-        std::memcpy(&f, &res, sizeof(float));
-        return f;
+        res = (sign << 31) | 0x7f800000U | (mant << 13);
+    } else {
+        exp = exp + (127 - 15);
+        mant = mant << 13;
+        res = (sign << 31) | (exp << 23) | mant;
     }
-    exp = exp + (127 - 15);
-    mant = mant << 13;
-    uint32_t res = (sign << 31) | (exp << 23) | mant;
     float f = 0.0f;
-    std::memcpy(&f, &res, sizeof(float));
+    std::copy_n(reinterpret_cast<const char*>(&res), sizeof(float), reinterpret_cast<char*>(&f));
     return f;
 }
 

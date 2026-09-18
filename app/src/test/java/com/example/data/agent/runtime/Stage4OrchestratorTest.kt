@@ -355,13 +355,13 @@ class Stage4OrchestratorTest {
     fun test20_modelProviderFailure_handledGracefully() = runBlocking {
         val failingModelProvider = object : AgentModelProvider {
             override suspend fun generatePlan(goal: String, availableCapabilities: List<String>): ModelPlanResponse {
-                throw RuntimeException("Model provider offline")
+                throw IllegalStateException("Model provider offline")
             }
             override suspend fun analyzeError(errorOutput: String, context: String): ModelDiagnosticResponse {
-                throw RuntimeException("Model provider offline")
+                throw IllegalStateException("Model provider offline")
             }
             override suspend fun proposeCorrection(diagnostic: ErrorDiagnostic, context: String): ModelCorrectionResponse {
-                throw RuntimeException("Model provider offline")
+                throw IllegalStateException("Model provider offline")
             }
         }
 

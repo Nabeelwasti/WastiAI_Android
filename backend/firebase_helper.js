@@ -27,12 +27,14 @@ function init() {
     return true;
   }
   const saPath = process.env.FIREBASE_SA_PATH || null;
-  if (saPath) {
+  if (saPath && typeof saPath === 'string' && !saPath.includes('\0')) {
     const resolvedPath = path.resolve(saPath);
-    const sa = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
-    admin.initializeApp({ credential: admin.credential.cert(sa) });
-    initialized = true;
-    return true;
+    if (fs.existsSync(resolvedPath)) {
+      const sa = JSON.parse(fs.readFileSync(resolvedPath, 'utf-8'));
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      initialized = true;
+      return true;
+    }
   }
   return false;
 }

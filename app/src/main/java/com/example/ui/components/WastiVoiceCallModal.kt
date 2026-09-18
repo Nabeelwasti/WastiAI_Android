@@ -286,7 +286,7 @@ fun WastiVoiceCallModal(
             try {
                 recognizer.startListening(intent)
             } catch (e: Exception) {
-                // Keep listening active using direct PCM AudioRecord monitor
+                android.util.Log.w("WastiVoiceCall", "SpeechRecognizer startListening failed, using direct PCM fallback: ${e.message}", e)
             }
         }
         

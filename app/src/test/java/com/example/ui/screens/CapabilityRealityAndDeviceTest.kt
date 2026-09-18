@@ -2,7 +2,15 @@ package com.example.ui.screens
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.example.data.agent.runtime.*
+import com.example.data.agent.runtime.CapabilityRealityRegistry
+import com.example.data.agent.runtime.CapabilityRealityState
+import com.example.data.agent.runtime.ImplementationStatus
+import com.example.data.agent.runtime.LiveConnectionStatus
+import com.example.data.agent.runtime.UnifiedExecutionFabric
+import com.example.data.agent.runtime.UnifiedExecutionRequest
+import com.example.data.agent.runtime.UnifiedExecutionResult
+import com.example.data.agent.runtime.UnifiedExecutionStatus
+import com.example.data.agent.runtime.WorkspaceManager
 import com.example.data.db.ExecutionAuditEntity
 import com.example.data.device.WastiDeviceController
 import org.junit.Assert.assertEquals
@@ -381,6 +389,18 @@ class CapabilityRealityAndDeviceTest {
             assertNotNull(outcome.plannedGraph)
             assertTrue(outcome.plannedGraph!!.nodes.isNotEmpty())
         }
+    }
+
+    @Test
+    fun testArchitecture_CapabilityStatesAndEnums() {
+        val reality = CapabilityRealityState.READY
+        val impl = ImplementationStatus.IMPLEMENTED
+        val live = LiveConnectionStatus.CONNECTED
+        val exec = UnifiedExecutionStatus.SUCCEEDED
+        assertEquals(CapabilityRealityState.READY, reality)
+        assertEquals(ImplementationStatus.IMPLEMENTED, impl)
+        assertEquals(LiveConnectionStatus.CONNECTED, live)
+        assertEquals(UnifiedExecutionStatus.SUCCEEDED, exec)
     }
 }
 

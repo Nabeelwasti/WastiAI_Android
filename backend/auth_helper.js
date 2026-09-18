@@ -65,10 +65,13 @@ function getAuthorizedScopes(providedToken) {
   if (process.env.WASTI_SCOPED_TOKENS && !isPlaceholderToken(process.env.WASTI_SCOPED_TOKENS)) {
     try {
       const parsed = JSON.parse(process.env.WASTI_SCOPED_TOKENS);
-      if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, token)) {
-        const val = parsed[token];
-        if (Array.isArray(val)) {
-          authorizedScopes.push(...val);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const tokenMap = new Map(Object.entries(parsed));
+        if (tokenMap.has(token)) {
+          const val = tokenMap.get(token);
+          if (Array.isArray(val)) {
+            authorizedScopes.push(...val.filter(s => typeof s === 'string'));
+          }
         }
       }
     } catch {

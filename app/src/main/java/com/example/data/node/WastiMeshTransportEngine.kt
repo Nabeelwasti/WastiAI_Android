@@ -292,9 +292,32 @@ object WastiMeshTransportEngine {
             )
         }
 
+        val targetIp = peer.ipAddress.trim()
+        val isValidIp = try {
+            val inet = java.net.InetAddress.getByName(targetIp)
+            !inet.isAnyLocalAddress && !targetIp.contains("/")
+        } catch (_: Exception) {
+            false
+        }
+        if (!isValidIp) {
+            return@withContext UnifiedExecutionResult(
+                taskId = request.taskId,
+                actionId = request.actionId,
+                capabilityId = request.capabilityId,
+                status = UnifiedExecutionStatus.FAILED,
+                output = "",
+                error = "INVALID_PEER_IP:$targetIp",
+                executor = "WastiMeshTransportEngine",
+                startedAt = start,
+                completedAt = System.currentTimeMillis(),
+                verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                verificationEvidence = "Invalid mesh peer network address"
+            )
+        }
+
         try {
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(peer.ipAddress, MESH_EXECUTION_PORT), 3000)
+                socket.connect(InetSocketAddress(targetIp, MESH_EXECUTION_PORT), 3000)
                 socket.soTimeout = 10_000
                 val writer = BufferedWriter(OutputStreamWriter(socket.getOutputStream(), Charsets.UTF_8))
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))

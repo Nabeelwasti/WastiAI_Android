@@ -282,4 +282,20 @@ class Stage17CapabilityFederationAndMeshTest {
         assertEquals(ProactiveTaskState.SCHEDULED, recoveredTask?.state)
         assertEquals("LOCAL", recoveredTask?.leaseOwnerNode)
     }
+
+    @Test
+    fun testArchitecture_DataLocalityAndEventContracts() {
+        val taskId = TaskId("stage17_task_001")
+        val priority = AgentTaskPriority.CRITICAL
+        val locality = DataLocalityPolicy.STRICT_LOCAL
+        val event = AgentEvent.TaskDelegated(
+            taskId = taskId,
+            targetNodeId = "node_pc_01",
+            capabilityId = "camera_stream",
+            priority = priority
+        )
+        assertEquals(taskId, event.taskId)
+        assertEquals("node_pc_01", event.targetNodeId)
+        assertEquals(DataLocalityPolicy.STRICT_LOCAL, locality)
+    }
 }

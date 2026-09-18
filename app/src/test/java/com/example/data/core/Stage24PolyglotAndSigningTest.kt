@@ -321,4 +321,13 @@ class Stage24PolyglotAndSigningTest {
         assertTrue(summary.contains("Audio Output"))
         assertTrue(summary.contains("Input Devices"))
     }
+
+    @Test
+    fun testArchitecture_TestCategoryAndTierContract() {
+        val tier = TestTier.ROBOLECTRIC
+        assertEquals(TestTier.ROBOLECTRIC, tier)
+        val annotation = Stage24PolyglotAndSigningTest::class.java.getAnnotation(TestCategory::class.java)
+        assertNotNull(annotation)
+        assertEquals(TestTier.ROBOLECTRIC, annotation?.tier)
+    }
 }

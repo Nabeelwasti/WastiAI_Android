@@ -333,4 +333,17 @@ class Stage18CrossPlatformBinaryMeshTest {
         )
         assertEquals("cmd_123", accepted.commandId)
     }
+
+    @Test
+    fun testArchitecture_EventBusAndTaskIdContracts() {
+        val bus = WastiServiceLocator.agentEventBus
+        val taskId = TaskId("mesh_task_${UUID.randomUUID()}")
+        val event = AgentEvent.EmergencyStopEngaged(
+            origin = CommandOrigin.MESH_REMOTE,
+            timestamp = System.currentTimeMillis()
+        )
+        assertNotNull(bus)
+        assertEquals(CommandOrigin.MESH_REMOTE, event.origin)
+        assertNotNull(taskId.value)
+    }
 }

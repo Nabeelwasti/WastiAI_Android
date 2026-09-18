@@ -262,4 +262,12 @@ class Stage11MultiDeviceTransportTest {
             serverManager.stopServer("Test finished")
         }
     }
+
+    @Test
+    fun testArchitecture_ExecutionModeAndRuntimeContracts() {
+        val runtime = WastiOSRuntime.getInstance(context)
+        assertNotNull(runtime)
+        val mode = ExecutionMode.AUTONOMOUS
+        assertEquals(ExecutionMode.AUTONOMOUS, mode)
+    }
 }

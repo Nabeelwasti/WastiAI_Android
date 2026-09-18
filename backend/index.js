@@ -133,9 +133,13 @@ function getAuthorizedScopes(providedToken) {
   if (process.env.WASTI_SCOPED_TOKENS) {
     try {
       const parsed = JSON.parse(process.env.WASTI_SCOPED_TOKENS);
-      if (parsed && typeof parsed === 'object' && Object.prototype.hasOwnProperty.call(parsed, providedToken)) {
-        const tokenScopes = Array.isArray(parsed[providedToken]) ? parsed[providedToken] : [parsed[providedToken]];
-        scopes.push(...tokenScopes);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const tokenMap = new Map(Object.entries(parsed));
+        if (tokenMap.has(providedToken)) {
+          const rawScopes = tokenMap.get(providedToken);
+          const tokenScopes = Array.isArray(rawScopes) ? rawScopes : [rawScopes];
+          scopes.push(...tokenScopes.filter(s => typeof s === 'string'));
+        }
       }
     } catch (_) {}
   }
@@ -228,7 +232,8 @@ const PROTECTED_PATCH_PATTERNS = [
   /settings\.gradle(\.kts)?$/i,
   /androidmanifest\.xml$/i,
   /proguard-rules\.pro$/i,
-  /\.env(\.[a-zA-Z0-9_-]+)?$/i,
+  /\.env$/i,
+  /\.env\.[a-zA-Z0-9_-]+$/i,
   /keystore/i,
   /\.jks$/i,
   /\.pem$/i,
@@ -310,7 +315,7 @@ app.post('/dev/patch', requireScope(SCOPES.DEV), async (req, res) => {
     await octokit.git.updateRef({ owner, repo, ref: `refs/heads/${branchName}`, sha: newCommit.data.sha });
 
     const pr = await octokit.pulls.create({ owner, repo, title, head: branchName, base, body });
-    return res.json({ prUrl: pr.data.html_url, branch: branchName });
+    return res.json({ prUrl: encodeURI(String(pr.data.html_url || '')), branch: branchName });
   } catch (err) {
     console.error('dev/patch failed', err?.response?.data || err.message || err);
     res.status(500).json({ error: 'dev/patch failed', detail: err?.response?.data?.message || err.message });
@@ -475,15 +480,14 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
           orchestrator.callProviders({ prompt }, [p])
         );
         const settled = await Promise.allSettled(promises);
-        const outputs = [];
-        for (let i = 0; i < configuredProviders.length; i++) {
-          const s = settled[i];
-          outputs.push({
-            provider: configuredProviders[i],
-            status: s.status,
-            output: s.status === 'fulfilled' ? s.value : { error: s.reason?.message || String(s.reason) }
-          });
-        }
+        const outputs = configuredProviders.map((providerName, idx) => {
+          const s = settled[idx];
+          return {
+            provider: String(providerName),
+            status: s ? s.status : 'rejected',
+            output: (s && s.status === 'fulfilled') ? s.value : { error: s?.reason?.message || String(s?.reason || 'Failed') }
+          };
+        });
         resultData = {
           participatingProviders: configuredProviders,
           streamResults: outputs,
@@ -527,13 +531,14 @@ app.post('/compute/offload', requireScope(SCOPES.COMPUTE), async (req, res) => {
       case 'CODE_COMPILATION_AND_ANALYSIS': {
         const code = payload.code;
         const language = (payload.language || 'javascript').toLowerCase();
-        if (typeof code !== 'string') {
-          return res.status(400).json({ error: 'payload.code must be a string' });
+        if (typeof code !== 'string' || code.length > 500000) {
+          return res.status(400).json({ error: 'payload.code must be a valid string <= 500KB' });
         }
         if (language === 'javascript' || language === 'js') {
           const vm = require('vm');
           try {
-            new vm.Script(code);
+            // Static syntax check only: new vm.Script does not execute code
+            new vm.Script(code, { displayErrors: false });
             resultData = {
               language,
               codeLengthBytes: Buffer.byteLength(code, 'utf-8'),

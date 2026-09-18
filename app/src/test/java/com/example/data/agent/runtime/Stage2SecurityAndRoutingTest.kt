@@ -311,6 +311,7 @@ class Stage2SecurityAndRoutingTest {
             args = mapOf("command" to "test1"),
             context = defaultTask.copy(executionMode = ExecutionMode.PRIVILEGED)
         )
+        assertTrue("Privileged authorization must succeed when auto-approved", req1.isSuccess)
 
         // Reset testing mock flag to simulate non-cached re-prompt
         permissionModel.setAutoApproveBiometricForTesting(false)

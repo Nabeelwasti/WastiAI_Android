@@ -22,9 +22,7 @@ const stripe = (Stripe && stripeKey) ? new Stripe(stripeKey, { apiVersion: '2022
 // Durable idempotency & replay attack mitigation
 const STRIPE_EVENT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_EVENTS_IN_MEMORY = 10000;
-const STRIPE_STORE_PATH = process.env.STRIPE_EVENTS_CACHE_PATH
-  ? path.resolve(process.env.STRIPE_EVENTS_CACHE_PATH)
-  : path.resolve(__dirname, '.stripe_events_store.json');
+const STRIPE_STORE_PATH = path.join(__dirname, '.stripe_events_store.json');
 
 const eventCache = new Map();
 

@@ -743,10 +743,12 @@ class WastiProactiveAutonomousEngine(
 
                 broadcastTaskUpdate(task, "TASK_COMPLETED")
             } catch (e: CancellationException) {
+                Log.w(TAG, "Proactive task ${task.taskId} cancelled: ${e.message}", e)
                 task.state = ProactiveTaskState.CANCELLED
-                task.lastError = "Task execution cancelled"
+                task.lastError = "Task execution cancelled: ${e.message}"
                 persistTask(task)
                 broadcastTaskUpdate(task, "TASK_CANCELLED")
+                throw e
             } catch (e: Exception) {
                 val errMsg = e.message ?: "Unknown execution error"
                 Log.e(TAG, "Error executing proactive task ${task.taskId}: $errMsg", e)
