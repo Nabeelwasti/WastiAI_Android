@@ -159,7 +159,7 @@ class Stage2SecurityAndRoutingTest {
     }
 
     @Test
-    fun test06_symbolicLinkEscape_denied() = runBlocking {
+    fun test06_symbolicLinkEscape_denied(): Unit = runBlocking {
         val externalTarget = File(context.filesDir, "external_secret.txt")
         externalTarget.writeText("sensitive")
 
@@ -179,6 +179,7 @@ class Stage2SecurityAndRoutingTest {
             assertTrue(result.isSecurityBlocked)
         } catch (e: Exception) {
             android.util.Log.d("SecurityTest", "Symlink creation restricted by host environment: ${e.message}")
+            Unit
         } finally {
             if (symlinkFile.exists()) symlinkFile.delete()
             if (externalTarget.exists()) externalTarget.delete()
