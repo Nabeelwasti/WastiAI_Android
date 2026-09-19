@@ -481,7 +481,7 @@ class WebSocketMeshTransport(
 
             WastiMeshMessageType.TASK_OFFER -> {
                 val node = nodeManager.getNode(envelope.senderNodeId)
-                if (node == null || node.trustState == NodeTrustState.REVOKED || node.trustState == NodeTrustState.UNTRUSTED) {
+                if (node == null || node.trustState == NodeTrustState.REVOKED || node.trustState == NodeTrustState.SUSPENDED || (node.trustState != NodeTrustState.ACTIVE && node.trustState != NodeTrustState.PAIRED)) {
                     Log.w(TAG, "TASK_OFFER rejected: Node ${envelope.senderNodeId} trust state is ${node?.trustState ?: "UNKNOWN"}")
                     return WastiMeshEnvelope(
                         protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
