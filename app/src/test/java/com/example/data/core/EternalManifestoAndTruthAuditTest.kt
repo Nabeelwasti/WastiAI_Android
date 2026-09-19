@@ -9,6 +9,7 @@ import com.example.data.agent.runtime.ExecutionFact
 import com.example.data.agent.runtime.ExecutionStrategy
 import com.example.data.agent.runtime.ExecutionStrategyResolver
 import com.example.data.agent.runtime.ObservationRequest
+import com.example.data.agent.runtime.ObservationResult
 import com.example.data.agent.runtime.ObservationStatus
 import com.example.data.agent.runtime.TestCaseResult
 import com.example.data.agent.runtime.TestExecutionStatus
