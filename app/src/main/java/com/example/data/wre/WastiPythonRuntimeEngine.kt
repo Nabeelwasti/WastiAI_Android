@@ -443,7 +443,7 @@ class WastiPythonRuntimeEngine(
                 variables["os.getcwd"] = { workingDir.absolutePath }
             }
             "sys" -> {
-                variables["sys.version"] = pythonVersion
+                variables["sys.version"] = getInstalledPythonVersion()
                 variables["sys.platform"] = "linux"
             }
             "time" -> {
