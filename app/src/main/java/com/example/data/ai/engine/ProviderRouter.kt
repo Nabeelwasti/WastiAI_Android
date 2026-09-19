@@ -1,6 +1,7 @@
 package com.example.data.ai.engine
 
 import com.example.data.ai.model.HealthStatus
+import com.example.data.ai.model.ProviderCapability
 import com.example.data.ai.model.ProviderRequest
 import com.example.data.ai.model.ProviderResponse
 import kotlin.coroutines.cancellation.CancellationException
