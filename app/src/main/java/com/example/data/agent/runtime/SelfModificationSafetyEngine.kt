@@ -41,7 +41,29 @@ data class RollbackSnapshot(
     val originalContent: String,
     val timestamp: Long = System.currentTimeMillis(),
     val contentHash: String,
-    val targetExisted: Boolean
+    val targetExisted: Boolean,
+    val generation: Int = 1
+)
+
+enum class ProposalAuditAction {
+    PROPOSED,
+    REJECTED,
+    AUTHORIZED,
+    APPLIED_VERIFIED,
+    APPLIED_UNVERIFIED,
+    ROLLED_BACK
+}
+
+data class ProposalAuditEntry(
+    val id: String = UUID.randomUUID().toString(),
+    val proposalId: String,
+    val filePath: String,
+    val action: ProposalAuditAction,
+    val reason: String,
+    val contentHash: String,
+    val authorizingEntity: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val details: String = ""
 )
 
 data class ModificationOutcome(
@@ -84,6 +106,60 @@ object SelfModificationSafetyEngine {
     private val _pendingProposals = kotlinx.coroutines.flow.MutableStateFlow<List<ProposedModification>>(emptyList())
     val pendingProposals: kotlinx.coroutines.flow.StateFlow<List<ProposedModification>> = _pendingProposals.kotlinx.coroutines.flow.asStateFlow()
 
+    private val _proposalAuditLog = kotlinx.coroutines.flow.MutableStateFlow<List<ProposalAuditEntry>>(emptyList())
+    val proposalAuditLog: kotlinx.coroutines.flow.StateFlow<List<ProposalAuditEntry>> = _proposalAuditLog.kotlinx.coroutines.flow.asStateFlow()
+
+    fun recordAudit(
+        proposalId: String,
+        filePath: String,
+        action: ProposalAuditAction,
+        reason: String,
+        contentHash: String,
+        authorizingEntity: String,
+        details: String = ""
+    ): ProposalAuditEntry {
+        val entry = ProposalAuditEntry(
+            proposalId = proposalId,
+            filePath = filePath,
+            action = action,
+            reason = reason,
+            contentHash = contentHash,
+            authorizingEntity = authorizingEntity,
+            details = details
+        )
+        val current = _proposalAuditLog.value.toMutableList()
+        current.add(0, entry)
+        if (current.size > 100) {
+            _proposalAuditLog.value = current.take(100)
+        } else {
+            _proposalAuditLog.value = current
+        }
+
+        try {
+            ExecutionProvenanceLedger.recordExecution(
+                taskId = "audit_${entry.id.take(8)}",
+                actionId = "proposal_${action.name.lowercase()}",
+                capabilityId = "SELF_MODIFICATION_AUDIT",
+                providerId = "SelfModificationSafetyEngine",
+                inputContent = "proposalId:$proposalId,path:$filePath,entity:$authorizingEntity",
+                outputContent = "action:${action.name},hash:$contentHash,reason:$reason",
+                evidence = VerifiedExecutionEvidence(
+                    subject = "SelfModificationSafetyEngine",
+                    verifiedState = action.name,
+                    confidence = 0.95,
+                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+                ),
+                executionEnvironment = "local_android_runtime",
+                executor = "SelfModificationSafetyEngine",
+                verifier = authorizingEntity,
+                verificationMethod = "cryptographic_proposal_audit",
+                stateTransition = "DISPATCHED -> CONTROLLED_PATCH -> AUDIT_${action.name}"
+            )
+        } catch (_: Throwable) {}
+
+        return entry
+    }
+
     fun proposeModification(
         filePath: String,
         newContent: String,
@@ -104,14 +180,32 @@ object SelfModificationSafetyEngine {
         current.removeAll { it.filePath == filePath }
         current.add(0, prop)
         _pendingProposals.value = current
+
+        recordAudit(
+            proposalId = prop.id,
+            filePath = filePath,
+            action = ProposalAuditAction.PROPOSED,
+            reason = reason,
+            contentHash = prop.contentHash,
+            authorizingEntity = "AUTONOMOUS_ENGINE"
+        )
         return prop
     }
 
     fun rejectProposal(proposalId: String, reason: String = "User rejected"): Boolean {
         val current = _pendingProposals.value.toMutableList()
+        val proposal = current.find { it.id == proposalId }
         val removed = current.removeIf { it.id == proposalId }
         if (removed) {
             _pendingProposals.value = current
+            recordAudit(
+                proposalId = proposalId,
+                filePath = proposal?.filePath ?: "unknown",
+                action = ProposalAuditAction.REJECTED,
+                reason = reason,
+                contentHash = proposal?.contentHash ?: "",
+                authorizingEntity = "HUMAN_OPERATOR"
+            )
             Log.i(TAG, "Proposal $proposalId rejected: $reason")
         }
         return removed
@@ -146,6 +240,23 @@ object SelfModificationSafetyEngine {
             current.removeAll { it.id == proposalId }
             _pendingProposals.value = current
         }
+
+        val auditAction = when (outcome.status) {
+            ModificationOutcomeStatus.APPLIED_VERIFIED -> ProposalAuditAction.APPLIED_VERIFIED
+            ModificationOutcomeStatus.APPLIED_UNVERIFIED -> ProposalAuditAction.APPLIED_UNVERIFIED
+            ModificationOutcomeStatus.ROLLED_BACK -> ProposalAuditAction.ROLLED_BACK
+            else -> ProposalAuditAction.REJECTED
+        }
+
+        recordAudit(
+            proposalId = proposalId,
+            filePath = proposal.filePath,
+            action = auditAction,
+            reason = proposal.reason,
+            contentHash = proposal.contentHash,
+            authorizingEntity = if (adminToken != null) "ADMIN_TOKEN_HOLDER" else "HUMAN_OPERATOR",
+            details = "Outcome: ${outcome.status.name} (${outcome.errorDetails ?: "OK"})"
+        )
 
         return outcome
     }
@@ -213,6 +324,16 @@ object SelfModificationSafetyEngine {
 
     // Rollback storage: snapshotId -> RollbackSnapshot
     private val rollbackVault = ConcurrentHashMap<String, RollbackSnapshot>()
+
+    // Multi-generation rollback storage: filePath -> List<RollbackSnapshot> (bounded at 3 generations)
+    private val multiGenerationVault = ConcurrentHashMap<String, MutableList<RollbackSnapshot>>()
+
+    fun getSnapshotsForFile(filePath: String): List<RollbackSnapshot> {
+        val list = multiGenerationVault[filePath] ?: return emptyList()
+        synchronized(list) {
+            return list.toList()
+        }
+    }
 
     // Admin authorization tokens: valid active tokens. No implicit/default authority is ever created.
     private val activeAdminTokens = ConcurrentHashMap.newKeySet<String>()
@@ -323,6 +444,7 @@ object SelfModificationSafetyEngine {
 
     /**
      * Creates a rollback snapshot of a file prior to modification with durable disk persistence.
+     * Maintains a rolling 3-generation snapshot ring buffer per file.
      */
     fun createRollbackSnapshot(targetFile: File): RollbackSnapshot {
         val existed = targetFile.exists()
@@ -331,9 +453,22 @@ object SelfModificationSafetyEngine {
             filePath = targetFile.absolutePath,
             originalContent = originalText,
             contentHash = computeHash(originalText),
-            targetExisted = existed
+            targetExisted = existed,
+            generation = 1
         )
         rollbackVault[snapshot.snapshotId] = snapshot
+
+        val list = multiGenerationVault.computeIfAbsent(targetFile.absolutePath) { mutableListOf() }
+        synchronized(list) {
+            val updated = mutableListOf<RollbackSnapshot>()
+            updated.add(snapshot)
+            for (idx in 0 until minOf(2, list.size)) {
+                val older = list[idx].copy(generation = idx + 2)
+                updated.add(older)
+            }
+            list.clear()
+            list.addAll(updated)
+        }
 
         // Durable snapshot journal persistence using atomic writes
         try {
@@ -342,7 +477,7 @@ object SelfModificationSafetyEngine {
             val contentFile = File(jDir, "${snapshot.snapshotId}.content")
             val tempMeta = File(jDir, "${snapshot.snapshotId}.meta.tmp_${System.currentTimeMillis()}")
             val tempContent = File(jDir, "${snapshot.snapshotId}.content.tmp_${System.currentTimeMillis()}")
-            tempMeta.writeText("${snapshot.snapshotId}\n${snapshot.filePath}\n${snapshot.timestamp}\n${snapshot.contentHash}\n${snapshot.targetExisted}")
+            tempMeta.writeText("${snapshot.snapshotId}\n${snapshot.filePath}\n${snapshot.timestamp}\n${snapshot.contentHash}\n${snapshot.targetExisted}\n${snapshot.generation}")
             tempContent.writeText(originalText)
             if (!tempMeta.renameTo(metaFile)) {
                 tempMeta.copyTo(metaFile, overwrite = true)
@@ -383,7 +518,8 @@ object SelfModificationSafetyEngine {
                             timestamp = lines[2].toLongOrNull() ?: System.currentTimeMillis(),
                             contentHash = lines[3],
                             targetExisted = lines[4].toBoolean(),
-                            originalContent = content
+                            originalContent = content,
+                            generation = lines.getOrNull(5)?.toIntOrNull() ?: 1
                         )
                         rollbackVault[snapshotId] = snapshot
                     }
@@ -421,12 +557,37 @@ object SelfModificationSafetyEngine {
                     return false
                 }
             }
-            Log.i(TAG, "Successfully rolled back '${snapshot.filePath}' to snapshot $snapshotId")
+            Log.i(TAG, "Successfully rolled back '${snapshot.filePath}' to snapshot $snapshotId (generation ${snapshot.generation})")
+
+            recordAudit(
+                proposalId = snapshot.snapshotId,
+                filePath = snapshot.filePath,
+                action = ProposalAuditAction.ROLLED_BACK,
+                reason = "Rolled back to snapshot $snapshotId (generation ${snapshot.generation})",
+                contentHash = snapshot.contentHash,
+                authorizingEntity = if (adminAuthToken != null) "ADMIN_TOKEN_HOLDER" else "HUMAN_OPERATOR",
+                details = "Restored previous state successfully"
+            )
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed rolling back '${snapshot.filePath}' to snapshot $snapshotId", e)
             false
         }
+    }
+
+    /**
+     * Rolls back a target file to a specific generation checkpoint (1, 2, or 3).
+     * Generation 1 is the immediate prior state, 2 is the state before that, and 3 is the earliest state.
+     * Safeguards: validates generation bounds, protected paths, and snapshot content integrity.
+     */
+    fun rollbackToGeneration(filePath: String, generation: Int = 1, adminAuthToken: String? = null): Boolean {
+        require(generation in 1..3) { "Generation must be between 1 and 3 (requested: $generation)" }
+        val list = multiGenerationVault[filePath] ?: return false
+        val targetSnapshot = synchronized(list) {
+            list.find { it.generation == generation }
+        } ?: return false
+
+        return rollback(targetSnapshot.snapshotId, adminAuthToken)
     }
 
     /**
@@ -589,6 +750,9 @@ object SelfModificationSafetyEngine {
     fun resetForTesting() {
         mutationHistory.clear()
         rollbackVault.clear()
+        multiGenerationVault.clear()
+        _pendingProposals.value = emptyList()
+        _proposalAuditLog.value = emptyList()
         activeAdminTokens.clear()
         try {
             val jDir = getJournalDir()

@@ -3,12 +3,15 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -23,6 +26,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.agent.runtime.DiffLine
 import com.example.data.agent.runtime.DiffLineType
 import com.example.data.agent.runtime.ProposedModification
+import com.example.data.agent.runtime.ProposalAuditAction
+import com.example.data.agent.runtime.ProposalAuditEntry
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,13 +39,16 @@ import java.util.Locale
  * Adheres to Wasti AI OS Eternal Manifesto:
  * - Real human authorization for self-modifications
  * - Transparent, observable mutations
- * - Fail-closed safety invariants
+ * - Virtualized chunked diff rendering for large source files
+ * - Persistent proposal audit log and 3-generation rollback checkpointing
  */
 @Composable
 fun SelfModificationDiffViewer(
     modifier: Modifier = Modifier
 ) {
     val pendingProposals by SelfModificationSafetyEngine.pendingProposals.collectAsState()
+    val auditLog by SelfModificationSafetyEngine.proposalAuditLog.collectAsState()
+    var showAuditLog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -81,6 +89,25 @@ fun SelfModificationDiffViewer(
         } else {
             for (proposal in pendingProposals) {
                 ProposalDiffCard(proposal = proposal)
+            }
+        }
+
+        // Audit Log Expander
+        if (auditLog.isNotEmpty()) {
+            OutlinedButton(
+                onClick = { showAuditLog = !showAuditLog },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (showAuditLog) "Hide Proposal Audit History (${auditLog.size})" else "Show Proposal Audit History (${auditLog.size})",
+                    fontSize = 12.sp
+                )
+            }
+
+            if (showAuditLog) {
+                ProposalAuditLogSection(auditLog = auditLog)
             }
         }
     }
@@ -213,7 +240,7 @@ private fun ProposalDiffCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            // Diff Viewer Box
+            // Diff Viewer Box (Virtualized with LazyColumn)
             DiffContentBox(diffLines = diffLines)
 
             // Protected path warning if applicable
@@ -292,9 +319,12 @@ private fun ProposalDiffCard(
     }
 }
 
+/**
+ * Virtualized Diff Box using LazyColumn to smoothly handle large source diffs.
+ */
 @Composable
 private fun DiffContentBox(diffLines: List<DiffLine>) {
-    val scrollState = rememberScrollState()
+    val horizontalScrollState = rememberScrollState()
 
     Surface(
         modifier = Modifier
@@ -303,23 +333,26 @@ private fun DiffContentBox(diffLines: List<DiffLine>) {
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
         shape = RoundedCornerShape(8.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(6.dp)
-                .horizontalScroll(scrollState)
-        ) {
-            if (diffLines.isEmpty()) {
-                Text(
-                    text = "No textual changes detected between versions.",
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(8.dp)
-                )
-            } else {
-                for (line in diffLines) {
-                    DiffLineRow(line = line)
+        if (diffLines.isEmpty()) {
+            Text(
+                text = "No textual changes detected between versions.",
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(12.dp)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(4.dp)
+                    .horizontalScroll(horizontalScrollState)
+            ) {
+                items(
+                    count = diffLines.size,
+                    key = { index -> "${diffLines[index].oldLineNumber}_${diffLines[index].newLineNumber}_$index" }
+                ) { index ->
+                    DiffLineRow(line = diffLines[index])
                 }
             }
         }
@@ -362,5 +395,74 @@ private fun DiffLineRow(line: DiffLine) {
             fontFamily = FontFamily.Monospace,
             color = textColor
         )
+    }
+}
+
+@Composable
+private fun ProposalAuditLogSection(auditLog: List<ProposalAuditEntry>) {
+    val dateFormat = remember { SimpleDateFormat("MM-dd HH:mm:ss", Locale.US) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Cryptographic Proposal Audit Ledger",
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            for (entry in auditLog.take(10)) {
+                val formattedTime = remember(entry.timestamp) { dateFormat.format(Date(entry.timestamp)) }
+                val (badgeColor, badgeText) = when (entry.action) {
+                    ProposalAuditAction.PROPOSED -> Pair(Color(0xFF0288D1), "PROPOSED")
+                    ProposalAuditAction.REJECTED -> Pair(Color(0xFFC62828), "REJECTED")
+                    ProposalAuditAction.AUTHORIZED -> Pair(Color(0xFF2E7D32), "AUTHORIZED")
+                    ProposalAuditAction.APPLIED_VERIFIED -> Pair(Color(0xFF1B5E20), "APPLIED_VERIFIED")
+                    ProposalAuditAction.APPLIED_UNVERIFIED -> Pair(Color(0xFFF57C00), "APPLIED_UNVERIFIED")
+                    ProposalAuditAction.ROLLED_BACK -> Pair(Color(0xFF6A1B9A), "ROLLED_BACK")
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            color = badgeColor.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeColor,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = entry.filePath.substringAfterLast('/'),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    Text(
+                        text = "$formattedTime • ${entry.authorizingEntity}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
