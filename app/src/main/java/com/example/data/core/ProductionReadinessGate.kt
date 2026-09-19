@@ -356,7 +356,7 @@ object ProductionReadinessGate {
         )
 
         val verifiedCount = checks.count { it.isOperational && it.isLiveVerified }
-        val mandatoryChecksPassed = startupReady && dbOk && (operationalCount > 0) && !isEmergencyStopped && provenanceIntegrityOk
+        val mandatoryChecksPassed = startupReady && dbOperational && (operationalCount > 0) && !isEmergencyStopped && provenanceIntegrityOk
         val hasLiveRuntimeProof = hasDeviceProof && backendIsLiveVerified && provenanceIntegrityOk
 
         // Zero-Fabrication Rule:
