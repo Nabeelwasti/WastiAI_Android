@@ -695,6 +695,10 @@ fun PrimaryApiKeyField(
             // Status Badge
             val (badgeColor: Color, badgeText: String) = when (status) {
                 is CredentialStatus.Connected -> MaterialTheme.colorScheme.primary to "✅ Verified Connected"
+                is CredentialStatus.ProviderVerified -> MaterialTheme.colorScheme.primary to "✅ Provider Verified"
+                is CredentialStatus.Authenticated -> MaterialTheme.colorScheme.primary to "✅ Authenticated"
+                is CredentialStatus.StoredSecurely -> MaterialTheme.colorScheme.primary to "🔒 Stored Securely"
+                is CredentialStatus.AuthAttempted -> MaterialTheme.colorScheme.secondary to "Auth Attempted"
                 is CredentialStatus.Error -> MaterialTheme.colorScheme.error to "❌ Connection Error"
                 is CredentialStatus.Testing -> MaterialTheme.colorScheme.tertiary to "Testing..."
                 is CredentialStatus.NotConfigured -> {
@@ -851,6 +855,10 @@ fun CredentialItemCard(
 
                 val (statusColor, statusText) = when (val st = state.status) {
                     is CredentialStatus.Connected -> MaterialTheme.colorScheme.primary to st.message
+                    is CredentialStatus.ProviderVerified -> MaterialTheme.colorScheme.primary to st.message
+                    is CredentialStatus.Authenticated -> MaterialTheme.colorScheme.primary to st.message
+                    is CredentialStatus.StoredSecurely -> MaterialTheme.colorScheme.primary to "Stored Securely"
+                    is CredentialStatus.AuthAttempted -> MaterialTheme.colorScheme.secondary to st.message
                     is CredentialStatus.Error -> MaterialTheme.colorScheme.error to st.message
                     is CredentialStatus.Testing -> MaterialTheme.colorScheme.tertiary to "Testing..."
                     is CredentialStatus.NotConfigured -> {

@@ -602,7 +602,11 @@ private fun SecretVaultTabContent(
 
         items(filtered) { state ->
             val entry: CredentialEntry = state.entry
-            val isPersisted = state.status is CredentialStatus.Connected || (state.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(state.rawValue))
+            val isPersisted = state.status is CredentialStatus.Connected ||
+                state.status is CredentialStatus.StoredSecurely ||
+                state.status is CredentialStatus.ProviderVerified ||
+                state.status is CredentialStatus.Authenticated ||
+                (state.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(state.rawValue))
             Card(
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
