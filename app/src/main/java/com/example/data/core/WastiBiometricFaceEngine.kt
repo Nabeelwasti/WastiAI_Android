@@ -31,24 +31,30 @@ data class FaceEnrollmentResult(
     val isSuccess: Boolean,
     val faceSignatureHash: String?,
     val confidence: Float,
-    val message: String
+    val message: String,
+    val isAuthoritativeForSecurity: Boolean = false
 )
 
 data class FaceVerificationResult(
     val isMatch: Boolean,
     val similarityScore: Float,
     val isEnrolled: Boolean,
-    val message: String
+    val message: String,
+    val isAuthoritativeForSecurity: Boolean = false
 )
 
 data class EnrolledFaceDetails(
     val faceSignatureHash: String,
     val enrolledTimestamp: Long,
     val featureVectorLength: Int,
-    val algorithm: String = "Luminance-Spatial-Geometry-64D (Low-Assurance Experimental Demo; Platform BiometricPrompt required for High-Assurance Security)"
+    val algorithm: String = "Luminance-Spatial-Geometry-64D (Low-Assurance Experimental Demo; Platform BiometricPrompt required for High-Assurance Security)",
+    val isAuthoritativeForSecurity: Boolean = false
 )
 
 object WastiBiometricFaceEngine {
+
+    const val isAuthoritativeForSecurity: Boolean = false
+    fun requiresPlatformBiometricPrompt(): Boolean = true
 
     private const val TAG = "BiometricFaceEngine"
     private const val KEY_FACE_SIGNATURE = "user_biometric_face_signature"

@@ -259,6 +259,7 @@ class WastiAutonomousToolSynthesizer(
             PolyglotLanguage.PYTHON -> arrayOf("python3", scriptFile.absolutePath)
             PolyglotLanguage.NODE_JAVASCRIPT -> arrayOf("node", scriptFile.absolutePath)
             PolyglotLanguage.SHELL -> {
+                // Termux bash is an OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY environment; defaults to standard /system/bin/sh
                 if (File("/data/data/com.termux/files/usr/bin/bash").exists()) {
                     arrayOf("/data/data/com.termux/files/usr/bin/bash", scriptFile.absolutePath)
                 } else {

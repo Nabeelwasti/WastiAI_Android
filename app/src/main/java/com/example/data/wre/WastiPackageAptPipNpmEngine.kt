@@ -22,8 +22,20 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class WastiPackageAptPipNpmEngine(
     private val context: Context,
-    private val workspaceManager: WreWorkspaceManager
+    private val workspaceManager: WreWorkspaceManager,
+    var allowSimulated: Boolean = false
 ) {
+
+    fun hasRealBinary(binName: String): Boolean {
+        val candidates = listOf(
+            "/system/bin/$binName",
+            "/system/xbin/$binName",
+            "/vendor/bin/$binName",
+            "/data/data/com.termux/files/usr/bin/$binName",
+            File(context.filesDir, "bin/$binName").absolutePath
+        )
+        return candidates.any { File(it).canExecute() }
+    }
 
     private val availableLinuxPackages = mapOf(
         "python" to "3.11.8 - High-level programming language",
@@ -108,6 +120,19 @@ class WastiPackageAptPipNpmEngine(
         }
 
         val subCmd = tokens[0].lowercase()
+        val isSimulated = allowSimulated || tokens.contains("--simulated") || tokens.contains("--test-only")
+        if (subCmd in listOf("install", "update", "upgrade", "uninstall", "remove") &&
+            !hasRealBinary("pkg") && !hasRealBinary("apt") && !hasRealBinary("apt-get") && !isSimulated) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "CAPABILITY_UNAVAILABLE: Sovereign package manager not available",
+                exitCode = 127,
+                durationMs = System.currentTimeMillis() - startTime,
+                verificationEvidence = "Real package manager not installed and simulation flag not present"
+            )
+        }
 
         when (subCmd) {
             "update" -> {
@@ -275,6 +300,19 @@ class WastiPackageAptPipNpmEngine(
         }
 
         val subCmd = tokens[0].lowercase()
+        val isSimulated = allowSimulated || tokens.contains("--simulated") || tokens.contains("--test-only")
+        if (subCmd in listOf("install", "download", "uninstall") &&
+            !hasRealBinary("pip") && !hasRealBinary("pip3") && !isSimulated) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.PYTHON,
+                stdout = "",
+                stderr = "CAPABILITY_UNAVAILABLE: Sovereign package manager not available",
+                exitCode = 127,
+                durationMs = System.currentTimeMillis() - startTime,
+                verificationEvidence = "Real pip not installed and simulation flag not present"
+            )
+        }
         val sitePkgDir = workspaceManager.resolve("home/wasti/lib/python3/site-packages").getOrNull()
             ?: File(context.filesDir, "workspace/home/wasti/lib/python3/site-packages").apply { mkdirs() }
 
@@ -392,6 +430,19 @@ class WastiPackageAptPipNpmEngine(
         }
 
         val subCmd = tokens[0].lowercase()
+        val isSimulated = allowSimulated || tokens.contains("--simulated") || tokens.contains("--test-only")
+        if (subCmd in listOf("install", "i", "add", "run", "test") &&
+            !hasRealBinary("npm") && !hasRealBinary("npx") && !isSimulated) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.NODE_JAVASCRIPT,
+                stdout = "",
+                stderr = "CAPABILITY_UNAVAILABLE: Sovereign package manager not available",
+                exitCode = 127,
+                durationMs = System.currentTimeMillis() - startTime,
+                verificationEvidence = "Real npm not installed and simulation flag not present"
+            )
+        }
         val nodeModulesDir = File(workingDir, "node_modules")
 
         when (subCmd) {

@@ -622,3 +622,36 @@ test('deployment proof: verifyDeployment generates verifiable cryptographic evid
   }
 });
 
+test('rate limiter: RateLimiterStore defaults to LOCAL_IN_MEMORY_FALLBACK and enforces maxRequests', async () => {
+  const { RateLimiterStore, getClientKey } = require('./rate_limiter');
+  const limiter = new RateLimiterStore({ windowMs: 1000, maxRequests: 2 });
+  assert.strictEqual(limiter.getMode(), 'LOCAL_IN_MEMORY_FALLBACK');
+  assert.strictEqual(limiter.isDistributed(), false);
+
+  const r1 = await limiter.check('test-client');
+  assert.strictEqual(r1.allowed, true);
+  assert.strictEqual(r1.current, 1);
+  assert.strictEqual(r1.remaining, 1);
+
+  const r2 = await limiter.check('test-client');
+  assert.strictEqual(r2.allowed, true);
+  assert.strictEqual(r2.current, 2);
+  assert.strictEqual(r2.remaining, 0);
+
+  const r3 = await limiter.check('test-client');
+  assert.strictEqual(r3.allowed, false);
+  assert.strictEqual(r3.remaining, 0);
+  assert.ok(r3.retryAfterMs > 0);
+
+  // Test getClientKey trustProxy behavior
+  const mockReqUntrusted = {
+    ip: '127.0.0.1',
+    socket: { remoteAddress: '192.168.1.5' },
+    headers: { 'x-forwarded-for': '203.0.113.195' }
+  };
+  // When trustProxy is false, x-forwarded-for is NOT trusted
+  assert.strictEqual(getClientKey(mockReqUntrusted, false), '192.168.1.5');
+  // When trustProxy is true, express req.ip or forwarded header is used
+  assert.strictEqual(getClientKey(mockReqUntrusted, true), '127.0.0.1');
+});
+

@@ -330,6 +330,10 @@ class WastiVerificationEngine {
                     trimmedEvidence.equals("ok", ignoreCase = true) ||
                     trimmedEvidence.equals("done", ignoreCase = true) ||
                     trimmedEvidence.equals("passed", ignoreCase = true) ||
+                    trimmedEvidence.equals("http_200", ignoreCase = true) ||
+                    trimmedEvidence.equals("http 200", ignoreCase = true) ||
+                    trimmedEvidence.equals("200 ok", ignoreCase = true) ||
+                    trimmedEvidence.equals("http_200 ok", ignoreCase = true) ||
                     trimmedEvidence.length < 5
 
                 if (isSyntheticOrMock(trimmedEvidence)) {
@@ -488,10 +492,14 @@ class WastiVerificationEngine {
                 text.contains("LOCAL_MODEL_VERIFIED", ignoreCase = true) ||
                 text.contains("GGUF weights loaded", ignoreCase = true)
 
-            // Web / Network: must anchor to canonical fabric HTTP contract
+            // Web / Network: must anchor to canonical fabric HTTP contract with verified payload or side-effect proof; plain HTTP_200 alone rejected
             cap.contains("web") || cap.contains("search") || cap.contains("http") ->
                 text.contains("Web result returned through the canonical execution fabric", ignoreCase = true) ||
-                text.contains("HTTP_200", ignoreCase = true)
+                (text.contains("HTTP_200", ignoreCase = true) &&
+                    (text.contains("payload_sha256", ignoreCase = true) ||
+                     text.contains("body_hash", ignoreCase = true) ||
+                     text.contains("side_effect_verified", ignoreCase = true) ||
+                     text.contains("verified_side_effect", ignoreCase = true)))
 
             // Canonical environment, project dev, and development toolchain operations
             cap.contains("project") || cap.contains("build") || cap.contains("compile") ||
@@ -542,6 +550,12 @@ class WastiVerificationEngine {
             cap.contains("network") || cap.contains("http") || cap.contains("cloud") -> {
                 if (evidence.observationSource != EvidenceSource.HTTP_CONTRACT) {
                     false to "Network capability requires HTTP_CONTRACT observation source"
+                } else if (evidence.observedState.trim().equals("HTTP_200", ignoreCase = true) ||
+                    evidence.observedState.trim().equals("HTTP 200", ignoreCase = true) ||
+                    evidence.observedState.trim().equals("200 OK", ignoreCase = true) ||
+                    evidence.observedState.trim().equals("HTTP_200 OK", ignoreCase = true)
+                ) {
+                    false to "Plain HTTP_200 alone does not verify real-world side-effects or state mutation"
                 } else {
                     true to "OK"
                 }

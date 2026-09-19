@@ -135,6 +135,7 @@ object WastiProductionSigningEngine {
             "/storage/emulated/0/Download/release.keystore",
             "/storage/emulated/0/release.jks",
             "/storage/emulated/0/wasti_production_release.p12",
+            // OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY paths
             "/data/data/com.termux/files/home/release.jks",
             "/data/data/com.termux/files/home/wasti_production_release.p12",
             "/data/data/com.termux/files/home/release.keystore"

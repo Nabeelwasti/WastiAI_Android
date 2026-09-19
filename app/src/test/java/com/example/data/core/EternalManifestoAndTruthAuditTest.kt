@@ -22,6 +22,9 @@ import com.example.data.agent.runtime.WastiObservationEngine
 import com.example.data.credential.CredentialRegistry
 import com.example.data.db.MemoryEntity
 import com.example.data.db.WastiDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import com.example.data.drive.DriveSyncEngine
 import com.example.data.sync.CloudSyncManager
 import com.example.data.sync.SyncResult
@@ -658,6 +661,151 @@ class EternalManifestoAndTruthAuditTest {
         } finally {
             inMemoryDb.close()
         }
+    }
+
+    @Test
+    fun testRoomAllFourteenMigrationsExecuteValidSql() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val config = SupportSQLiteOpenHelper.Configuration.builder(context)
+            .name(null) // In-memory SQLite database
+            .callback(object : SupportSQLiteOpenHelper.Callback(1) {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    // Create base v1 tables needed for subsequent ALTER statements
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `messages` (
+                            `id` TEXT NOT NULL PRIMARY KEY,
+                            `conversationId` TEXT NOT NULL,
+                            `role` TEXT NOT NULL,
+                            `content` TEXT NOT NULL,
+                            `timestamp` INTEGER NOT NULL,
+                            `agentId` TEXT NOT NULL,
+                            `modelUsed` TEXT NOT NULL,
+                            `tokensUsed` INTEGER NOT NULL,
+                            `toolCallsJson` TEXT,
+                            `thinkingContent` TEXT
+                        )
+                        """.trimIndent()
+                    )
+                }
+
+                override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) {}
+            })
+            .build()
+
+        val helper = FrameworkSQLiteOpenHelperFactory().create(config)
+        val db = helper.writableDatabase
+
+        try {
+            val migrations = listOf(
+                com.example.data.db.MIGRATION_1_2,
+                com.example.data.db.MIGRATION_2_3,
+                com.example.data.db.MIGRATION_3_4,
+                com.example.data.db.MIGRATION_4_5,
+                com.example.data.db.MIGRATION_5_6,
+                com.example.data.db.MIGRATION_6_7,
+                com.example.data.db.MIGRATION_7_8,
+                com.example.data.db.MIGRATION_8_9,
+                com.example.data.db.MIGRATION_9_10,
+                com.example.data.db.MIGRATION_10_11,
+                com.example.data.db.MIGRATION_11_12,
+                com.example.data.db.MIGRATION_12_13,
+                com.example.data.db.MIGRATION_13_14,
+                com.example.data.db.MIGRATION_14_15
+            )
+
+            assertEquals(14, migrations.size)
+
+            // Execute each migration sequentially and verify no SQL syntax error is thrown
+            for (migration in migrations) {
+                migration.migrate(db)
+            }
+
+            // Verify tables created by migrations exist and can be queried
+            val tablesToVerify = listOf(
+                "vector_embeddings",
+                "knowledge_graph_nodes",
+                "knowledge_graph_edges",
+                "developer_logs",
+                "leads",
+                "invoices",
+                "prospects",
+                "media_vault",
+                "terminal_sessions",
+                "proactive_tasks",
+                "node_metadata",
+                "learned_skills",
+                "reusable_workflows",
+                "execution_audits"
+            )
+
+            for (table in tablesToVerify) {
+                val cursor = db.query("SELECT COUNT(*) FROM `$table`")
+                assertTrue("Table $table should exist and be queryable", cursor.moveToFirst())
+                cursor.close()
+            }
+        } finally {
+            db.close()
+            helper.close()
+        }
+    }
+
+    @Test
+    fun testWastiVerificationEngineRejectsPlainHttp200Alone() {
+        val verifier = com.example.data.agent.runtime.WastiVerificationEngine()
+
+        // 1. Evidence with plain HTTP_200 alone as observedState
+        val req1 = com.example.data.agent.runtime.VerificationRequest(
+            taskId = "task_http_1",
+            actionId = "act_http_1",
+            capabilityId = "http_post_webhook",
+            expectedOutcome = "DISPATCHED",
+            executionResult = UnifiedExecutionResult(
+                taskId = "task_http_1",
+                actionId = "act_http_1",
+                capabilityId = "http_post_webhook",
+                status = UnifiedExecutionStatus.COMPLETED,
+                output = "HTTP_200",
+                executor = "NetworkExecutor",
+                startedAt = System.currentTimeMillis() - 1000L,
+                completedAt = System.currentTimeMillis() - 500L,
+                verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+            ),
+            observationResult = ObservationResult(
+                taskId = "task_http_1",
+                actionId = "act_http_1",
+                capabilityId = "http_post_webhook",
+                status = ObservationStatus.OBSERVED,
+                observedState = "HTTP_200",
+                evidence = "HTTP_200",
+                timestamp = System.currentTimeMillis() - 500L,
+                source = "WastiObservationEngine"
+            )
+        )
+
+        val res1 = verifier.verify(req1)
+        // Plain HTTP_200 alone must NOT be VERIFIED
+        assertNotEquals(com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED, res1.status)
+        assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.FAILED, res1.status)
+
+        // 2. Capability-specific evidence with plain HTTP_200 alone must fail domain validation
+        val capEvidence = com.example.data.agent.runtime.CapabilitySpecificEvidence(
+            taskId = "task_http_2",
+            actionId = "act_http_2",
+            capabilityId = "network_mutate_state",
+            observationSource = com.example.data.agent.runtime.EvidenceSource.HTTP_CONTRACT,
+            artifactOrStateReference = "https://api.example.com/v1/resource",
+            expectedState = "CREATED",
+            observedState = "HTTP_200",
+            verificationMethod = "REMOTE_HTTP_STATUS",
+            verifierIdentity = "IndependentProbe",
+            executor = "NetworkExecutor",
+            confidence = 0.99,
+            timestamp = System.currentTimeMillis()
+        )
+        val res2 = verifier.verify(capEvidence)
+        assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.FAILED, res2.status)
+        assertTrue(res2.failureReason?.contains("Plain HTTP_200 alone does not verify real-world side-effects") == true)
     }
 
     @Test
@@ -2342,7 +2490,7 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals(2, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertEquals(entry1.entryHash, entry2.previousEntryHash)
         assertFalse("Unverified entry must report isVerified == false", entry2.isVerified)
-        assertEquals("OBSERVED", entry2.verificationStatus)
+        assertEquals("EXECUTOR_COMPLETED", entry2.verificationStatus)
         assertTrue(com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(entry2.entryId))
         assertTrue("Ledger with 2 chained entries must maintain integrity", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyLedgerIntegrity())
 

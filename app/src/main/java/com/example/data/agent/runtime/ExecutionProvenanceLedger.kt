@@ -62,8 +62,13 @@ object ExecutionProvenanceLedger {
         val entryId = "prov_${System.currentTimeMillis()}_${(Math.random() * 10000).toInt()}"
 
         val source = evidence?.evidenceSource ?: EvidenceSource.PROCESS_TELEMETRY
-        val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
-        val status = if (evidence != null && evidence.confidence >= 0.85) "VERIFIED" else "OBSERVED"
+        val status = if (evidence != null && evidence.confidence >= 0.85) {
+            "VERIFIED"
+        } else if (evidence != null && evidence.confidence > 0.0) {
+            "OBSERVED"
+        } else {
+            "EXECUTOR_COMPLETED"
+        }
         val isVerified = status == "VERIFIED"
 
         val payloadToHash = "$prevHash|$taskId|$actionId|$capabilityId|$providerId|$inputHash|$outputHash|$status|$timestamp"

@@ -93,7 +93,11 @@ object BciSignalProcessor {
     /**
      * Process an incoming raw analog voltage sample (e.g. from ESP32 ADC 0-4095 or microvolt stream).
      */
-    fun ingestRawVoltageSample(rawMicrovolts: Float) {
+    fun ingestRawVoltageSample(
+        rawMicrovolts: Float,
+        isSimulated: Boolean = false,
+        telemetryLabel: String = "LIVE_UNVERIFIED"
+    ) {
         timeStep += 0.04 // 250 Hz step ~ 4ms
         val notchFiltered = if (Random.nextFloat() > 0.02f) rawMicrovolts else rawMicrovolts * 0.9f
         val filtered = notchFiltered.coerceIn(-150.0f, 150.0f)
@@ -123,7 +127,9 @@ object BciSignalProcessor {
             meditationScorePercent = meditationRatio,
             isArtifactDetected = Math.abs(rawMicrovolts) > 120.0f,
             electrodeImpedanceOk = true,
-            timestampMs = System.currentTimeMillis()
+            timestampMs = System.currentTimeMillis(),
+            isSimulated = isSimulated,
+            telemetryLabel = telemetryLabel
         )
 
         // Sync with biological interface
@@ -137,7 +143,7 @@ object BciSignalProcessor {
         timeStep += 0.05
         val baseSignal = (sin(timeStep * 10.0) * 20.0f * focusLevel).toFloat()
         val noise = (Random.nextFloat() - 0.5f) * 6.0f
-        ingestRawVoltageSample(baseSignal + noise)
+        ingestRawVoltageSample(baseSignal + noise, isSimulated = true, telemetryLabel = "SIMULATED_DEMO")
     }
 
     fun generateEsp32FirmwareCode(): String {

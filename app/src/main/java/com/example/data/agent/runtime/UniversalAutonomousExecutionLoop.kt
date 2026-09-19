@@ -312,7 +312,12 @@ class UniversalAutonomousExecutionLoop(
 
         val finalMsg = if (overallSuccess) {
             val skillMsg = if (learnedSkill != null) "\n[Learned Skill: '${learnedSkill.name}' (Tier: ${learnedSkill.promotionTier})]" else ""
-            "Autonomous execution successfully completed and verified.$skillMsg\nOutput: ${executedAudits.lastOrNull()?.verificationEvidence ?: "Execution confirmed."}"
+            val allNodesVerified = executedAudits.isNotEmpty() && executedAudits.all { it.verificationStatus == "VERIFIED" }
+            if (allNodesVerified) {
+                "Autonomous execution successfully completed and verified.$skillMsg\nOutput: ${executedAudits.lastOrNull()?.verificationEvidence ?: "Execution confirmed."}"
+            } else {
+                "Autonomous execution completed (unverified side-effects).$skillMsg\nOutput: ${executedAudits.lastOrNull()?.verificationEvidence ?: "Execution finished."}"
+            }
         } else {
             "Autonomous execution halted at step ${currentState.currentStepIndex}/${currentState.totalSteps}: ${failureMessage ?: "Unknown failure"}"
         }

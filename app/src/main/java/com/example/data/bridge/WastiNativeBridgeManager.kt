@@ -76,7 +76,7 @@ class WastiNativeBridgeManager(
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WastiNativeBridgeManager",
                 supportedOperations = listOf("execute_termux_command", "run_pkg", "apt"),
-                limitations = listOf("Compatibility and developer bridge only. Production execution defaults to Native Wasti Runtime."),
+                limitations = listOf("OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY. Production execution defaults to Native Wasti Runtime."),
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )

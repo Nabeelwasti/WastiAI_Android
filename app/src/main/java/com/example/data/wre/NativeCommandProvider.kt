@@ -96,7 +96,7 @@ class NativeCommandProvider(
         val wsFound = workspaceCandidates.firstOrNull { it != null && it.exists() && it.isFile }
         if (wsFound != null) return wsFound
 
-        // 3. Termux Toolchain Binaries
+        // 3. Termux Toolchain Binaries (OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY)
         val termuxCandidates = listOf(
             File("/data/data/com.termux/files/usr/bin", cmd),
             File("/data/data/com.termux/files/usr/bin/applets", cmd)

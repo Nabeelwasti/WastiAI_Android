@@ -11,7 +11,7 @@ pluginManagement {
     gradlePluginPortal()
   }
 
-  // Use a current R8 release with AGP 9.1.x. This keeps the existing
+  // Use a current R8 release with AGP 9.3.x. This keeps the existing
   // Android Gradle Plugin and application architecture intact while fixing
   // upstream Kotlin-metadata diagnostics emitted by the bundled shrinker.
   buildscript {

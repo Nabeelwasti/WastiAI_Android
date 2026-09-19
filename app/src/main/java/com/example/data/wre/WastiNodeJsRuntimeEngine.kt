@@ -340,6 +340,7 @@ class WastiNodeJsRuntimeEngine(
             "/data/data/com.aistudio.wastios.k9v2pz/files/bin/node",
             "/system/bin/node",
             "/system/xbin/node",
+            // OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY paths
             "/data/data/com.termux/files/usr/bin/node",
             "/data/data/com.termux/files/usr/bin/nodejs"
         )

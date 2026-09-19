@@ -90,4 +90,11 @@ object AutonomousBugBountyForge {
         _forgeSessionState.value = summary
         return summary
     }
+
+    /**
+     * Quarantines simulated reports: only returns production findings that are not simulation.
+     */
+    fun getProductionFindings(): List<BugBountyVulnerabilityReport> {
+        return _discoveredReports.value.filter { !it.isSimulation && it.reportClassification != "TEST_ONLY_SIMULATION" }
+    }
 }

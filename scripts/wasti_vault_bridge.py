@@ -4,7 +4,7 @@ Wasti AI OS — Unified Secret Management & Vault Bridge
 Provides a unified, secure credential interface for Python CLI tools, scripts, and local developer workflows.
 Seamlessly bridges:
   1. Environment variables (process-level)
-  2. Encrypted Vault token store: ~/.wasti_ai/tokens/
+  2. Legacy plaintext migration token store: ~/.wasti_ai/tokens/ (Production secrets stored in Android Keystore)
   3. Credential JSON vault: ~/.wasti_ai/vault.json / credentials.json
   4. Firebase configuration: app/google-services.json
   5. Workspace .env configuration fallback

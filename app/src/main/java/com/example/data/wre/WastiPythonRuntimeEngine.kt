@@ -725,6 +725,7 @@ class WastiPythonRuntimeEngine(
             "/system/bin/python3",
             "/system/bin/python",
             "/system/xbin/python3",
+            // OPTIONAL_COMPATIBILITY_BRIDGE / TEST_ONLY paths
             "/data/data/com.termux/files/usr/bin/python3",
             "/data/data/com.termux/files/usr/bin/python"
         )

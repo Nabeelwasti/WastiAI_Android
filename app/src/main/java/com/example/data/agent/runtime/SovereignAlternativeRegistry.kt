@@ -303,8 +303,8 @@ object SovereignAlternativeRegistry {
         AutonomousHardwareOffloader.isBluetoothOffloadAvailable(context)
 
     /**
-     * Evaluates whether a credential has a connected [CredentialStatus].
+     * Evaluates whether a credential has a connected or verified [CredentialStatus].
      */
     fun isCredentialStatusConnected(status: CredentialStatus): Boolean =
-        status is CredentialStatus.Connected
+        status is CredentialStatus.ProviderVerified || status is CredentialStatus.Authenticated || status is CredentialStatus.Connected
 }

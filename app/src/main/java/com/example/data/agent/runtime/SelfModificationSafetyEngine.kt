@@ -214,13 +214,23 @@ object SelfModificationSafetyEngine {
         )
         rollbackVault[snapshot.snapshotId] = snapshot
 
-        // Durable snapshot journal persistence
+        // Durable snapshot journal persistence using atomic writes
         try {
             val jDir = getJournalDir()
             val metaFile = File(jDir, "${snapshot.snapshotId}.meta")
             val contentFile = File(jDir, "${snapshot.snapshotId}.content")
-            metaFile.writeText("${snapshot.snapshotId}\n${snapshot.filePath}\n${snapshot.timestamp}\n${snapshot.contentHash}\n${snapshot.targetExisted}")
-            contentFile.writeText(originalText)
+            val tempMeta = File(jDir, "${snapshot.snapshotId}.meta.tmp_${System.currentTimeMillis()}")
+            val tempContent = File(jDir, "${snapshot.snapshotId}.content.tmp_${System.currentTimeMillis()}")
+            tempMeta.writeText("${snapshot.snapshotId}\n${snapshot.filePath}\n${snapshot.timestamp}\n${snapshot.contentHash}\n${snapshot.targetExisted}")
+            tempContent.writeText(originalText)
+            if (!tempMeta.renameTo(metaFile)) {
+                tempMeta.copyTo(metaFile, overwrite = true)
+                tempMeta.delete()
+            }
+            if (!tempContent.renameTo(contentFile)) {
+                tempContent.copyTo(contentFile, overwrite = true)
+                tempContent.delete()
+            }
         } catch (_: Exception) {
             // Non-blocking durable journal write
         }
@@ -278,7 +288,12 @@ object SelfModificationSafetyEngine {
             val file = File(snapshot.filePath)
             if (snapshot.targetExisted) {
                 file.parentFile?.mkdirs()
-                file.writeText(snapshot.originalContent)
+                val tempFile = File(file.parentFile, "${file.name}.tmp_rb_${System.currentTimeMillis()}")
+                tempFile.writeText(snapshot.originalContent)
+                if (!tempFile.renameTo(file)) {
+                    tempFile.copyTo(file, overwrite = true)
+                    tempFile.delete()
+                }
             } else if (file.exists()) {
                 if (!file.delete()) {
                     Log.e(TAG, "Failed deleting newly-created file during rollback: ${snapshot.filePath}")
@@ -322,10 +337,15 @@ object SelfModificationSafetyEngine {
         // 1. Create rollback snapshot
         val snapshot = createRollbackSnapshot(targetFile)
 
-        // 2. Stage write
+        // 2. Stage write using atomic temporary file
         try {
             targetFile.parentFile?.mkdirs()
-            targetFile.writeText(newContent)
+            val tempFile = File(targetFile.parentFile, "${targetFile.name}.tmp_stage_${System.currentTimeMillis()}")
+            tempFile.writeText(newContent)
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
         } catch (e: Exception) {
             return ModificationOutcome(
                 status = ModificationOutcomeStatus.FAILED_IO,
@@ -337,6 +357,7 @@ object SelfModificationSafetyEngine {
         }
 
         // 3. Staged Verification
+        var validatorVerified = false
         if (stagedValidator != null) {
             var isValid = false
             try {
@@ -362,6 +383,7 @@ object SelfModificationSafetyEngine {
                     snapshotId = snapshot.snapshotId
                 )
             }
+            validatorVerified = true
         }
 
         // 4. Record successful mutation into history for loop detection
@@ -370,7 +392,8 @@ object SelfModificationSafetyEngine {
             list.add(Pair(System.currentTimeMillis(), computeHash(newContent)))
         }
 
-        val outcomeStatus = if (stagedValidator != null) {
+        val contentIntegrityOk = targetFile.exists() && computeHash(targetFile.readText()) == computeHash(newContent)
+        val outcomeStatus = if (validatorVerified && contentIntegrityOk) {
             ModificationOutcomeStatus.APPLIED_VERIFIED
         } else {
             ModificationOutcomeStatus.APPLIED_UNVERIFIED

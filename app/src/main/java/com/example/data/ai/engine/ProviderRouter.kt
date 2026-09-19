@@ -197,15 +197,23 @@ class ProviderRouter(
             )
         }
 
+        val detailedErrors = if (providerErrors.isNotEmpty()) {
+            "All AI provider attempts failed (${attemptedProviders.joinToString(", ")}): ${providerErrors.joinToString("; ")}"
+        } else if (lastErrorMsg.isNotBlank()) {
+            "All AI provider attempts failed. Last error: $lastErrorMsg"
+        } else {
+            "All AI provider attempts failed: No capable AI providers available or configured."
+        }
+
         return ProviderResponse(
-            content = "All AI provider attempts failed. Last error: $lastErrorMsg",
+            content = detailedErrors,
             providerId = "failed",
             providerName = "Provider Router",
             modelUsed = "none",
             isError = true,
             isFallback = attemptedProviders.isNotEmpty(),
             fallbackReason = if (attemptedProviders.isNotEmpty()) "All attempted providers failed: ${attemptedProviders.joinToString(", ")}" else null,
-            errorMessage = lastErrorMsg,
+            errorMessage = if (lastErrorMsg.isNotBlank()) lastErrorMsg else detailedErrors,
             attemptedProviders = attemptedProviders.toList()
         )
     }

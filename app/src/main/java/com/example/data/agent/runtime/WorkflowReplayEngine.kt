@@ -47,6 +47,7 @@ class WorkflowReplayEngine(
         )
 
         var allSucceeded = true
+        var allVerified = true
         for (req in requests) {
             if (dryRun) {
                 session.stepsExecuted++
@@ -56,8 +57,12 @@ class WorkflowReplayEngine(
             val res = executionFabric.execute(req, context)
             if (res.status != UnifiedExecutionStatus.COMPLETED && res.status != UnifiedExecutionStatus.VERIFIED) {
                 allSucceeded = false
+                allVerified = false
                 session.outcomeMessage = "Replay failed at capability ${req.capabilityId}: ${res.output}"
                 break
+            }
+            if (res.status != UnifiedExecutionStatus.VERIFIED) {
+                allVerified = false
             }
             session.stepsExecuted++
         }
@@ -67,7 +72,13 @@ class WorkflowReplayEngine(
             session.outcomeMessage += " (Filesystem rolled back to snapshot $snapshotId)"
         } else if (allSucceeded) {
             session.isSuccess = true
-            session.outcomeMessage = if (dryRun) "Dry-run validation successful." else "Workflow successfully replayed and verified."
+            session.outcomeMessage = if (dryRun) {
+                "Dry-run validation successful."
+            } else if (allVerified) {
+                "Workflow successfully replayed and verified."
+            } else {
+                "Workflow replayed (executor completed, unverified side-effects)."
+            }
         }
 
         return session

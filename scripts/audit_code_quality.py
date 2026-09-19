@@ -80,6 +80,23 @@ def audit_kotlin_file(filepath):
                     f"Remove dead code or make it accessible/used."
                 )
 
+    # 4. Check for unused private properties (dead code)
+    for line_idx, line in enumerate(lines, 1):
+        prop_match = RE_PRIVATE_PROP.search(line)
+        if prop_match:
+            prop_name = prop_match.group(1)
+            if (prop_name in EXCLUDED_PROP_NAMES or
+                prop_name.startswith('_') or
+                prop_name.startswith('KEY_') or
+                prop_name.isupper()):
+                continue
+            occurrences = len(re.findall(r'\b' + re.escape(prop_name) + r'\b', content))
+            if occurrences <= 1:
+                errors.append(
+                    f"{filepath}:{line_idx}: Unused private property '{prop_name}' detected (only declared, never accessed). "
+                    f"Remove dead code or make it accessible/used."
+                )
+
     return errors
 
 def main():

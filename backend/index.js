@@ -15,6 +15,7 @@ const wakewordQueue = require('./wakeword_queue');
 const { isValidAdminCredential } = require('./auth_helper');
 
 const app = express();
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
 
 // Production CORS Security Policy
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000,http://localhost:8080')

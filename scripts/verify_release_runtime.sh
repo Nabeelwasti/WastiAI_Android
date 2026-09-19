@@ -47,7 +47,8 @@ PYEOF
 
 # 2. Native Shared Library (.so) Packaging Verification
 echo "--- Step 2: Native Architecture (.so) Packaging Audit ---"
-python3 - << PYEOF
+NATIVE_PACKAGING_STATUS="NOT_PACKAGED"
+if python3 - << PYEOF
 import zipfile, sys
 
 required_libs = [
@@ -56,14 +57,24 @@ required_libs = [
 ]
 with zipfile.ZipFile("$TARGET_APK") as z:
     names = set(z.namelist())
+    found = 0
     for lib in required_libs:
         if lib in names:
             info = z.getinfo(lib)
             print(f"SUCCESS: Found bundled native library: {lib} ({info.file_size} bytes)")
+            found += 1
         else:
             print(f"INFO: Native library {lib} not bundled (may be built in standard ABI or optional).")
-
+    if found > 0:
+        sys.exit(0)
+    else:
+        sys.exit(2)
 PYEOF
+then
+  NATIVE_PACKAGING_STATUS="VERIFIED"
+else
+  NATIVE_PACKAGING_STATUS="NOT_PACKAGED"
+fi
 
 # 3. Cryptographic Signature Verification
 echo "--- Step 3: Cryptographic Signature Audit ---"
@@ -149,10 +160,12 @@ if command -v adb >/dev/null 2>&1 && adb devices | grep -v "List of devices" | g
   adb -s "$DEVICE_ID" shell am force-stop "$CANONICAL_PACKAGE"
 
   RUNTIME_STATUS="RUNTIME_VERIFIED"
+  NATIVE_INFERENCE_STATUS="NOT_RUN_ON_HOST"
   echo "SUCCESS: Real Android runtime installation, launch, and smoke test passed cleanly."
 else
   echo "INFO: No connected physical device/emulator. Status classified as BUILD_VERIFIED."
   RUNTIME_STATUS="BUILD_VERIFIED"
+  NATIVE_INFERENCE_STATUS="NOT_RUN_ON_HOST"
 fi
 
 # 6. Generate Verifiable Release Evidence JSON
@@ -168,7 +181,9 @@ cat << JEOF > "$OUTPUT_JSON"
     "manifestIdentity": "VERIFIED",
     "bytecodeComponents": "VERIFIED",
     "signingIntegrity": "VERIFIED",
-    "runtimeExecution": "$RUNTIME_STATUS"
+    "runtimeExecution": "$RUNTIME_STATUS",
+    "nativePackagingProof": "$NATIVE_PACKAGING_STATUS",
+    "nativeInferenceRuntimeProof": "$NATIVE_INFERENCE_STATUS"
   }
 }
 JEOF

@@ -50,7 +50,7 @@ def main():
     firebase_json_path = "app/google-services.json"
     firebase_injected = os.path.exists(firebase_json_path) and os.path.getsize(firebase_json_path) > 10
 
-    # Cross-check with Unified Vault Bridge
+    # Cross-check with legacy plaintext migration tokens
     vault_keys = []
     tokens_dir = os.path.expanduser("~/.wasti_ai/tokens")
     if os.path.isdir(tokens_dir):

@@ -34,7 +34,7 @@ def resolve_openrouter_key():
     Unifies API key resolution across both Kotlin (CredentialRegistry.kt) and Python runtimes
     via scripts/wasti_vault_bridge.py:
     1. Direct environment variable (OPENROUTER_API_KEY)
-    2. Encrypted Vault token directory: ~/.wasti_ai/tokens/ (matching CredentialRegistry IPC bridge)
+    2. Legacy plaintext migration token directory: ~/.wasti_ai/tokens/
     3. JSON credentials registry: ~/.wasti_ai/vault.json or ~/.wasti_ai/credentials.json
     4. Fallback workspace .env file
     """

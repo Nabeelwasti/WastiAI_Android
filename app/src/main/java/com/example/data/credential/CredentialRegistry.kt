@@ -952,7 +952,7 @@ object CredentialRegistry {
                     description = "Custom User API Secret / Integration Token",
                     testConnection = { value ->
                         if (value.isBlank()) Pair(false, "Not Configured (Empty Secret)")
-                        else Pair(true, "Custom Secret Configured & Validated")
+                        else Pair(true, "Stored Securely (unverified custom secret - no automated provider validation endpoint)")
                     }
                 )
             }
@@ -983,7 +983,7 @@ object CredentialRegistry {
                 val initialStatus = if (finalRaw.isBlank() || isPlaceholder(finalRaw)) {
                     CredentialStatus.NotConfigured
                 } else {
-                    CredentialStatus.Connected("Secured in Hardware Vault")
+                    CredentialStatus.StoredSecurely
                 }
                 CredentialState(entry = entry, rawValue = finalRaw, status = initialStatus)
             }
@@ -998,12 +998,16 @@ object CredentialRegistry {
             if (index == -1) return@withContext
 
             val item = currentStates[index]
-            currentStates[index] = item.copy(status = CredentialStatus.Testing)
+            currentStates[index] = item.copy(status = CredentialStatus.AuthAttempted("Testing connection with provider..."))
             _credentialStates.value = currentStates.toList()
 
             val (success, message) = item.entry.testConnection(item.rawValue)
             val finalStatus = if (success) {
-                CredentialStatus.Connected(message)
+                if (message.contains("unverified custom secret")) {
+                    CredentialStatus.StoredSecurely
+                } else {
+                    CredentialStatus.ProviderVerified(message)
+                }
             } else {
                 CredentialStatus.Error(message)
             }

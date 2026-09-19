@@ -99,19 +99,30 @@ object ProductionReadinessGate {
         )
 
         // 2. Room Database & Local Persistence
-        val dbOk = try {
+        val (dbOperational, dbLiveVerified) = try {
             val db = WastiDatabase.getDatabase(context)
-            db.openHelper.writableDatabase.isOpen
+            val isOpen = db.openHelper.writableDatabase.isOpen
+            val testQuery = db.openHelper.writableDatabase.query("SELECT 1")
+            val hasValidResult = testQuery.moveToFirst() && testQuery.getInt(0) == 1
+            testQuery.close()
+            Pair(isOpen, hasValidResult)
         } catch (_: Exception) {
-            false
+            Pair(false, false)
+        }
+        val dbState = when {
+            dbLiveVerified -> ProductionReadinessState.RELEASE_VERIFIED
+            dbOperational -> ProductionReadinessState.TEST_VERIFIED
+            else -> ProductionReadinessState.NOT_READY
         }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "RoomDatabase",
-                isOperational = dbOk,
-                isLiveVerified = dbOk,
-                state = if (dbOk) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.NOT_READY,
-                notes = if (dbOk) "Database writable & active (Schema v15)" else "Database inaccessible"
+                isOperational = dbOperational,
+                isLiveVerified = dbLiveVerified,
+                state = dbState,
+                notes = if (dbLiveVerified) "Database writable & active with live query integrity (Schema v15)"
+                        else if (dbOperational) "Database open (TEST_VERIFIED, awaiting live transaction verification)"
+                        else "Database inaccessible"
             )
         )
 
@@ -155,16 +166,17 @@ object ProductionReadinessGate {
 
         // 5. External Credentials & Integrations - Gated per Capability
         val credStates = CredentialRegistry.credentialStates.value
-        val connectedCreds = credStates.count { it.status is CredentialStatus.Connected }
+        val verifiedCreds = credStates.count { it.status is CredentialStatus.ProviderVerified || it.status is CredentialStatus.Authenticated }
         val totalConfigured = credStates.count { it.rawValue.isNotBlank() && !CredentialRegistry.isPlaceholder(it.rawValue) }
         val hasGeminiOrCoreModel = credStates.any { 
             (it.entry.keyName == "GEMINI_API_KEY" || it.entry.keyName == "OPENAI_API_KEY" || it.entry.keyName == "GROQ_API_KEY") && 
-            it.status is CredentialStatus.Connected 
+            (it.status is CredentialStatus.ProviderVerified || it.status is CredentialStatus.Authenticated)
         }
         val credState = when {
-            hasGeminiOrCoreModel && connectedCreds >= 3 -> ProductionReadinessState.RELEASE_VERIFIED
+            hasGeminiOrCoreModel && verifiedCreds >= 3 -> ProductionReadinessState.RELEASE_VERIFIED
             hasGeminiOrCoreModel -> ProductionReadinessState.RELEASE_VERIFIED
-            totalConfigured > 0 -> ProductionReadinessState.TEST_VERIFIED
+            verifiedCreds > 0 -> ProductionReadinessState.TEST_VERIFIED
+            totalConfigured > 0 -> ProductionReadinessState.DEVELOPMENT_READY
             else -> ProductionReadinessState.DEVELOPMENT_READY
         }
         checks.add(
@@ -173,7 +185,7 @@ object ProductionReadinessGate {
                 isOperational = totalConfigured > 0,
                 isLiveVerified = hasGeminiOrCoreModel,
                 state = credState,
-                notes = "$connectedCreds verified connected ($totalConfigured configured keys, coreModelConnected=$hasGeminiOrCoreModel)"
+                notes = "$verifiedCreds provider verified ($totalConfigured configured keys, coreModelVerified=$hasGeminiOrCoreModel)"
             )
         )
 
@@ -321,7 +333,7 @@ object ProductionReadinessGate {
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "ProductionReleaseKeystoreSigning",
-                isOperational = true,
+                isOperational = keystoreGate.isVerified,
                 isLiveVerified = keystoreGate.isVerified,
                 state = if (keystoreGate.isVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
                 notes = keystoreGate.details

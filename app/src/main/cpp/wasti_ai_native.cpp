@@ -30,6 +30,7 @@ struct TensorDescriptor {
 
 struct NativeModelContext {
     std::string modelPath;
+    std::string architecture;
     uint32_t version{0};
     uint64_t tensorCount{0};
     uint64_t metadataCount{0};
@@ -39,14 +40,23 @@ struct NativeModelContext {
     int nLayers{4};
     int nHeads{4};
     int vocabSize{32000};
+    int lastGeneratedTokenCount{0};
     bool isValid{false};
     bool tensorsLoaded{false};
     bool isRealNeural{false};
 
     std::vector<TensorDescriptor> tensors;
     std::vector<float> tokenEmbeddings;
+    std::vector<float> qWeights;
+    std::vector<float> kWeights;
+    std::vector<float> vWeights;
+    std::vector<float> oWeights;
+    std::vector<float> ffnGateWeights;
+    std::vector<float> ffnUpWeights;
+    std::vector<float> ffnDownWeights;
     std::vector<float> attentionWeights;
     std::vector<float> rmsNormGammas;
+    std::vector<float> ffnNormGammas;
     std::vector<std::string> vocab;
     std::vector<float> lmHeadWeights;
 
@@ -186,12 +196,17 @@ static void executeNeuralForwardPass(
 
     for (int layer = 0; layer < ctx->nLayers; ++layer) {
         // Pre-attention RMSNorm
-        computeRmsNorm(normed.data(), hiddenState.data(), ctx->rmsNormGammas.data(), d);
+        const float* attnNorm = !ctx->rmsNormGammas.empty() ? ctx->rmsNormGammas.data() : nullptr;
+        computeRmsNorm(normed.data(), hiddenState.data(), attnNorm, d);
 
-        // Q, K, V projections
-        computeMatVec(q.data(), ctx->attentionWeights.data(), normed.data(), d, d);
-        computeMatVec(k.data(), ctx->attentionWeights.data(), normed.data(), d, d);
-        computeMatVec(v.data(), ctx->attentionWeights.data(), normed.data(), d, d);
+        // Separate Q, K, V projections
+        const float* qMat = !ctx->qWeights.empty() ? ctx->qWeights.data() : ctx->attentionWeights.data();
+        const float* kMat = !ctx->kWeights.empty() ? ctx->kWeights.data() : ctx->attentionWeights.data();
+        const float* vMat = !ctx->vWeights.empty() ? ctx->vWeights.data() : ctx->attentionWeights.data();
+
+        computeMatVec(q.data(), qMat, normed.data(), d, d);
+        computeMatVec(k.data(), kMat, normed.data(), d, d);
+        computeMatVec(v.data(), vMat, normed.data(), d, d);
 
         // Cache K & V
         kCache.push_back(k);
@@ -200,16 +215,32 @@ static void executeNeuralForwardPass(
         // Attention
         computeAttention(attOut.data(), q.data(), kCache, vCache, d);
 
-        // Residual connection
-        for (int i = 0; i < d; ++i) {
-            hiddenState[i] += attOut[i];
+        // O projection (out = W_o * attOut) if available
+        if (!ctx->oWeights.empty()) {
+            std::vector<float> projAttOut(d);
+            computeMatVec(projAttOut.data(), ctx->oWeights.data(), attOut.data(), d, d);
+            for (int i = 0; i < d; ++i) hiddenState[i] += projAttOut[i];
+        } else {
+            for (int i = 0; i < d; ++i) hiddenState[i] += attOut[i];
         }
 
         // Pre-FFN RMSNorm & Feed-Forward layer
-        computeRmsNorm(normed.data(), hiddenState.data(), ctx->rmsNormGammas.data(), d);
-        for (int i = 0; i < d; ++i) {
-            float ffnVal = silu(normed[i]) * 0.5f;
-            hiddenState[i] += ffnVal;
+        const float* ffnNorm = !ctx->ffnNormGammas.empty() ? ctx->ffnNormGammas.data() : (!ctx->rmsNormGammas.empty() ? ctx->rmsNormGammas.data() : nullptr);
+        computeRmsNorm(normed.data(), hiddenState.data(), ffnNorm, d);
+
+        // SwiGLU / FFN forward pass: gate, up, down
+        if (!ctx->ffnGateWeights.empty() && !ctx->ffnUpWeights.empty() && !ctx->ffnDownWeights.empty()) {
+            std::vector<float> gate(d), up(d), inter(d), ffnOut(d);
+            computeMatVec(gate.data(), ctx->ffnGateWeights.data(), normed.data(), d, d);
+            computeMatVec(up.data(), ctx->ffnUpWeights.data(), normed.data(), d, d);
+            for (int i = 0; i < d; ++i) inter[i] = silu(gate[i]) * up[i];
+            computeMatVec(ffnOut.data(), ctx->ffnDownWeights.data(), inter.data(), d, d);
+            for (int i = 0; i < d; ++i) hiddenState[i] += ffnOut[i];
+        } else {
+            for (int i = 0; i < d; ++i) {
+                float ffnVal = silu(normed[i]) * 0.5f;
+                hiddenState[i] += ffnVal;
+            }
         }
     }
 
@@ -278,7 +309,10 @@ static bool skipOrReadGgufValue(std::ifstream& file, uint32_t type, const std::s
             return (bool)file;
         }
         case 8: { // string
-            readGgufString(file);
+            std::string strVal = readGgufString(file);
+            if (key.find("architecture") != std::string::npos && ctx) {
+                ctx->architecture = strVal;
+            }
             return (bool)file;
         }
         case 9: { // array
@@ -406,7 +440,15 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
 
         ctx->tokenEmbeddings.resize(ctx->vocabSize * ctx->dim, 0.0f);
         ctx->rmsNormGammas.resize(ctx->dim, 1.0f);
+        ctx->ffnNormGammas.resize(ctx->dim, 1.0f);
         ctx->attentionWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->qWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->kWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->vWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->oWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->ffnGateWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->ffnUpWeights.resize(ctx->dim * ctx->dim, 0.0f);
+        ctx->ffnDownWeights.resize(ctx->dim * ctx->dim, 0.0f);
         ctx->lmHeadWeights.resize(ctx->dim * ctx->vocabSize, 0.0f);
 
         bool mappedEmbeddings = false;
@@ -424,57 +466,61 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
             uint64_t numElements = 1;
             for (auto d : tensor.dims) numElements *= d;
 
-            // Map embedding weights
-            if (tensor.name == "token_embd.weight" || tensor.name.find("embed_tokens") != std::string::npos || tensor.name.find("tok_embeddings") != std::string::npos) {
-                size_t toRead = std::min<size_t>(numElements, ctx->tokenEmbeddings.size());
+            auto readTensorData = [&](std::vector<float>& targetBuf) -> bool {
+                size_t toRead = std::min<size_t>(numElements, targetBuf.size());
                 if (tensor.type == 0) { // F32
-                    file.read(reinterpret_cast<char*>(ctx->tokenEmbeddings.data()), toRead * sizeof(float));
-                    mappedEmbeddings = true;
+                    file.read(reinterpret_cast<char*>(targetBuf.data()), toRead * sizeof(float));
+                    return true;
                 } else if (tensor.type == 1) { // F16
                     std::vector<uint16_t> halfBuf(toRead);
                     file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
-                    for (size_t k = 0; k < toRead; ++k) ctx->tokenEmbeddings[k] = halfToFloat(halfBuf[k]);
-                    mappedEmbeddings = true;
+                    for (size_t k = 0; k < toRead; ++k) targetBuf[k] = halfToFloat(halfBuf[k]);
+                    return true;
                 }
+                return false;
+            };
+
+            // Map embedding weights
+            if (tensor.name == "token_embd.weight" || tensor.name.find("embed_tokens") != std::string::npos || tensor.name.find("tok_embeddings") != std::string::npos) {
+                mappedEmbeddings = readTensorData(ctx->tokenEmbeddings);
             }
             // Map normalization weights
             else if (tensor.name == "output_norm.weight" || tensor.name.find("norm.weight") != std::string::npos) {
-                size_t toRead = std::min<size_t>(numElements, ctx->rmsNormGammas.size());
-                if (tensor.type == 0) {
-                    file.read(reinterpret_cast<char*>(ctx->rmsNormGammas.data()), toRead * sizeof(float));
-                    mappedNorm = true;
-                } else if (tensor.type == 1) {
-                    std::vector<uint16_t> halfBuf(toRead);
-                    file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
-                    for (size_t k = 0; k < toRead; ++k) ctx->rmsNormGammas[k] = halfToFloat(halfBuf[k]);
-                    mappedNorm = true;
-                }
+                mappedNorm = readTensorData(ctx->rmsNormGammas);
             }
-            // Map attention weights
-            else if (tensor.name.find("attn_q.weight") != std::string::npos || tensor.name.find("self_attn") != std::string::npos || tensor.name.find("attention") != std::string::npos) {
-                size_t toRead = std::min<size_t>(numElements, ctx->attentionWeights.size());
-                if (tensor.type == 0) {
-                    file.read(reinterpret_cast<char*>(ctx->attentionWeights.data()), toRead * sizeof(float));
-                    mappedAttention = true;
-                } else if (tensor.type == 1) {
-                    std::vector<uint16_t> halfBuf(toRead);
-                    file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
-                    for (size_t k = 0; k < toRead; ++k) ctx->attentionWeights[k] = halfToFloat(halfBuf[k]);
-                    mappedAttention = true;
-                }
+            else if (tensor.name.find("ffn_norm") != std::string::npos) {
+                readTensorData(ctx->ffnNormGammas);
+            }
+            // Map Q, K, V, Output projection weights
+            else if (tensor.name.find("attn_q.weight") != std::string::npos || tensor.name.find("q_proj") != std::string::npos) {
+                if (readTensorData(ctx->qWeights)) mappedAttention = true;
+            }
+            else if (tensor.name.find("attn_k.weight") != std::string::npos || tensor.name.find("k_proj") != std::string::npos) {
+                readTensorData(ctx->kWeights);
+            }
+            else if (tensor.name.find("attn_v.weight") != std::string::npos || tensor.name.find("v_proj") != std::string::npos) {
+                readTensorData(ctx->vWeights);
+            }
+            else if (tensor.name.find("attn_output.weight") != std::string::npos || tensor.name.find("o_proj") != std::string::npos) {
+                readTensorData(ctx->oWeights);
+            }
+            // Map generic attention weights if unified
+            else if (tensor.name.find("self_attn") != std::string::npos || tensor.name.find("attention") != std::string::npos) {
+                if (readTensorData(ctx->attentionWeights)) mappedAttention = true;
+            }
+            // Map FFN projection weights (SwiGLU gate, up, down)
+            else if (tensor.name.find("ffn_gate") != std::string::npos || tensor.name.find("gate_proj") != std::string::npos) {
+                readTensorData(ctx->ffnGateWeights);
+            }
+            else if (tensor.name.find("ffn_up") != std::string::npos || tensor.name.find("up_proj") != std::string::npos) {
+                readTensorData(ctx->ffnUpWeights);
+            }
+            else if (tensor.name.find("ffn_down") != std::string::npos || tensor.name.find("down_proj") != std::string::npos) {
+                readTensorData(ctx->ffnDownWeights);
             }
             // Map LM head weights
             else if (tensor.name == "output.weight" || tensor.name == "lm_head.weight") {
-                size_t toRead = std::min<size_t>(numElements, ctx->lmHeadWeights.size());
-                if (tensor.type == 0) {
-                    file.read(reinterpret_cast<char*>(ctx->lmHeadWeights.data()), toRead * sizeof(float));
-                    mappedLmHead = true;
-                } else if (tensor.type == 1) {
-                    std::vector<uint16_t> halfBuf(toRead);
-                    file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
-                    for (size_t k = 0; k < toRead; ++k) ctx->lmHeadWeights[k] = halfToFloat(halfBuf[k]);
-                    mappedLmHead = true;
-                }
+                mappedLmHead = readTensorData(ctx->lmHeadWeights);
             }
         }
 
@@ -506,7 +552,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_getNativeRuntimeVersion(
     JNIEnv *env,
     jobject /* thiz */
 ) {
-    const char* ver = "wasti-llama-runtime-v1.0.0-aarch64 (SIMD/RMSNorm/SwiGLU/Attention)";
+    const char* ver = "wasti-neural-tensor-bridge-v1.0.0-aarch64 (RMSNorm/SwiGLU/Attention-Kernel)";
     return env->NewStringUTF(ver);
 }
 
@@ -565,8 +611,10 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
         return env->NewStringUTF("[NATIVE_ERROR]: Corrupted native model context");
     }
 
+    ctx->lastGeneratedTokenCount = 0;
+
     if (!ctx->tensorsLoaded || !ctx->isRealNeural) {
-        return env->NewStringUTF("[NATIVE_NEURAL_UNAVAILABLE]: GGUF container validated on disk, but genuine tensor payload weights are not mapped in memory.");
+        return env->NewStringUTF("[LOCAL_MODEL_UNAVAILABLE]: GGUF container validated on disk, but required neural tensors are not mapped in memory.");
     }
 
     if (!prompt) {
@@ -612,7 +660,6 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
         wasti::executeNeuralForwardPass(ctx, currentToken, hidden, kCache, vCache);
 
         // Project hidden state to output vocabulary logits
-        // For efficiency, compute top-K candidate subwords from vocabulary
         int vocabWindow = std::min(ctx->vocabSize, 1024);
         std::vector<float> logits(vocabWindow, 0.0f);
         float maxLogit = -1e9f;
@@ -655,6 +702,8 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
             break;
         }
 
+        ctx->lastGeneratedTokenCount++;
+
         // Detokenize token to UTF-8
         if (nextToken < static_cast<int>(ctx->vocab.size()) && !ctx->vocab[nextToken].empty()) {
             outputText += ctx->vocab[nextToken];
@@ -667,10 +716,11 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
     }
 
     if (outputText.empty()) {
-        outputText = "Wasti AI neural runtime processed prompt successfully.";
+        outputText = "[LOCAL_MODEL_UNAVAILABLE]: No valid tokens produced by native engine.";
     }
 
-    LOGI("Native neural inference completed. Generated %zu characters.", outputText.length());
+    LOGI("Native neural inference completed. Generated %zu characters, %d tokens.",
+         outputText.length(), ctx->lastGeneratedTokenCount);
     return env->NewStringUTF(outputText.c_str());
 }
 
@@ -699,6 +749,18 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_hasLoadedTensors(
     return (ctx->tensorsLoaded && ctx->isRealNeural) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jint JNICALL
+Java_com_example_data_ai_runtime_NativeLlamaBridge_getGeneratedTokenCount(
+    JNIEnv * /* env */,
+    jobject /* thiz */,
+    jlong modelHandle
+) {
+    if (modelHandle == 0L) return 0;
+    auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
+    if (!ctx->isValid) return 0;
+    return ctx->lastGeneratedTokenCount;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     JNIEnv *env,
@@ -712,19 +774,74 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
     if (!ctx->isValid || !ctx->tensorsLoaded || !ctx->isRealNeural) return JNI_FALSE;
 
-    // Run real tensor forward pass probe
-    std::vector<float> hidden;
-    std::vector<std::vector<float>> kCache;
-    std::vector<std::vector<float>> vCache;
-    wasti::executeNeuralForwardPass(ctx, 1, hidden, kCache, vCache);
-
-    // Verify non-zero energy in output tensor
-    float energy = 0.0f;
-    for (float val : hidden) {
-        energy += std::abs(val);
+    // 1. Structural Invariants: Validate required tensor dimensions and buffers
+    if (ctx->dim < 16 || ctx->vocabSize < 256 || ctx->nLayers < 1) {
+        LOGE("Structural validation failed: dim=%d, vocab=%d, layers=%d", ctx->dim, ctx->vocabSize, ctx->nLayers);
+        return JNI_FALSE;
     }
 
-    return (energy > 1e-4f) ? JNI_TRUE : JNI_FALSE;
+    if (ctx->tokenEmbeddings.size() < static_cast<size_t>(ctx->vocabSize * ctx->dim)) {
+        LOGE("Token embeddings buffer size mismatch");
+        return JNI_FALSE;
+    }
+
+    if (ctx->attentionWeights.empty() && ctx->qWeights.empty()) {
+        LOGE("Attention weights unmapped");
+        return JNI_FALSE;
+    }
+
+    if (ctx->vocab.size() < 256) {
+        LOGE("Tokenizer vocabulary insufficient");
+        return JNI_FALSE;
+    }
+
+    // 2. Deterministic Inference Probing: Run forward pass twice with fixed probe input
+    std::vector<float> probe1, probe2;
+    std::vector<std::vector<float>> k1, v1, k2, v2;
+
+    wasti::executeNeuralForwardPass(ctx, 1, probe1, k1, v1);
+    wasti::executeNeuralForwardPass(ctx, 1, probe2, k2, v2);
+
+    if (probe1.size() != static_cast<size_t>(ctx->dim) || probe2.size() != static_cast<size_t>(ctx->dim)) {
+        return JNI_FALSE;
+    }
+
+    float energy = 0.0f;
+    for (size_t i = 0; i < probe1.size(); ++i) {
+        float v = probe1[i];
+        if (!std::isfinite(v)) return JNI_FALSE; // Reject NaN / Inf
+        if (std::abs(probe1[i] - probe2[i]) > 1e-5f) return JNI_FALSE; // Reject non-deterministic probe
+        energy += std::abs(v);
+    }
+
+    if (energy <= 1e-4f) {
+        return JNI_FALSE;
+    }
+
+    // 3. Model-Specific Output Projection Verification
+    int vocabWindow = std::min(ctx->vocabSize, 256);
+    const float* projWeights = (!ctx->lmHeadWeights.empty() && ctx->lmHeadWeights[0] != 0.0f)
+        ? ctx->lmHeadWeights.data()
+        : ctx->tokenEmbeddings.data();
+
+    float expSum = 0.0f;
+    float maxLogit = -1e9f;
+    std::vector<float> logits(vocabWindow);
+    for (int v = 0; v < vocabWindow; ++v) {
+        float sum = 0.0f;
+        for (int d = 0; d < ctx->dim; ++d) {
+            sum += probe1[d] * projWeights[(v * ctx->dim) + d];
+        }
+        logits[v] = sum;
+        if (sum > maxLogit) maxLogit = sum;
+    }
+    for (int v = 0; v < vocabWindow; ++v) {
+        float expVal = std::exp(logits[v] - maxLogit);
+        if (!std::isfinite(expVal)) return JNI_FALSE;
+        expSum += expVal;
+    }
+
+    return (expSum > 0.0f) ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

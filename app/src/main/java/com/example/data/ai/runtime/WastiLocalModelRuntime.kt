@@ -141,6 +141,18 @@ object NativeLlamaBridge {
         }
     }
 
+    fun getNativeGeneratedTokens(modelHandle: Long): Int {
+        return if (isNativeLibraryLoaded && modelHandle != 0L) {
+            try {
+                getGeneratedTokenCount(modelHandle)
+            } catch (_: Throwable) {
+                0
+            }
+        } else {
+            0
+        }
+    }
+
     // Native external declarations (bound when native .so is bundled)
     external fun getNativeRuntimeVersion(): String
     external fun initModel(modelPath: String, nThreads: Int, contextLength: Int): Long
@@ -148,6 +160,7 @@ object NativeLlamaBridge {
     external fun freeModel(modelHandle: Long)
     external fun verifyNeuralInference(modelHandle: Long, prompt: String): Boolean
     external fun hasLoadedTensors(modelHandle: Long): Boolean
+    external fun getGeneratedTokenCount(modelHandle: Long): Int
 }
 
 /**
@@ -316,17 +329,21 @@ class WastiLocalModelRuntime(
                         "<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
                     }
                     val result = NativeLlamaBridge.evalPrompt(handle, fullPrompt, maxTokens, temperature)
+                    val nativeTokens = NativeLlamaBridge.getNativeGeneratedTokens(handle)
                     val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
                     val isNeuralVerified = if (hasTensors) NativeLlamaBridge.isVerifiedNeural(handle, fullPrompt) else false
                     NativeLlamaBridge.freeModel(handle)
 
                     val latency = System.currentTimeMillis() - startTime
-                    val isGenuineNeural = hasTensors && isNeuralVerified && !result.startsWith("[NATIVE_") && !result.startsWith("[ERROR")
+                    val isGenuineNeural = hasTensors && isNeuralVerified &&
+                        !result.startsWith("[NATIVE_") &&
+                        !result.startsWith("[ERROR") &&
+                        !result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")
 
                     if (!isGenuineNeural) {
                         return@withContext LocalInferenceResult(
                             status = LocalInferenceStatus.UNAVAILABLE,
-                            output = if (result.startsWith("[NATIVE_") || result.startsWith("[ERROR")) result else "[NATIVE_NEURAL_UNAVAILABLE]: Model '$modelId' container validated, but genuine neural tensor execution is unmapped or unsupported.",
+                            output = if (result.startsWith("[NATIVE_") || result.startsWith("[ERROR") || result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")) result else "[NATIVE_NEURAL_UNAVAILABLE]: Model '$modelId' container validated, but genuine neural tensor execution is unmapped or unsupported.",
                             modelId = modelId,
                             latencyMs = latency,
                             isNeuralOutput = false,
@@ -336,7 +353,24 @@ class WastiLocalModelRuntime(
                         )
                     }
 
-                    val estimatedTokens = result.split(Regex("\\s+")).filter { it.isNotBlank() }.size.coerceAtLeast(1)
+                    val tokensGenerated = if (nativeTokens > 0) {
+                        nativeTokens
+                    } else {
+                        WastiLocalTokenizer().encode(result).size
+                    }
+
+                    if (tokensGenerated <= 0) {
+                        return@withContext LocalInferenceResult(
+                            status = LocalInferenceStatus.UNAVAILABLE,
+                            output = "[LOCAL_MODEL_UNAVAILABLE]: No valid tokens produced by native engine.",
+                            modelId = modelId,
+                            latencyMs = latency,
+                            isNeuralOutput = false,
+                            errorMessage = "No valid tokens generated",
+                            engineUsed = "Wasti Native Tensor Bridge",
+                            tokensGenerated = 0
+                        )
+                    }
 
                     try {
                         val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
@@ -366,7 +400,7 @@ class WastiLocalModelRuntime(
                         latencyMs = latency,
                         isNeuralOutput = true,
                         engineUsed = "Wasti Native Llama Tensor Engine (Genuine Neural Inference)",
-                        tokensGenerated = estimatedTokens
+                        tokensGenerated = tokensGenerated
                     )
                 } else {
                     LocalInferenceResult(
@@ -557,6 +591,10 @@ enum class LocalInferenceStatus {
     NATIVE_LOAD_FAILED,
     NATIVE_EXECUTION_ERROR,
     ABORTED_EMERGENCY_STOP,
+    RATE_LIMITED,
+    AUTH_FAILED,
+    TIMEOUT,
+    UNSUPPORTED_MODEL,
     UNAVAILABLE
 }
 

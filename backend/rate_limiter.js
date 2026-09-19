@@ -5,12 +5,34 @@
  * and in-memory Map fallback for local development. Explicitly identifies active mode.
  */
 
+function getClientKey(req, trustProxy = false) {
+  if (trustProxy && req.ip) {
+    return req.ip;
+  }
+  const socketAddress = req.socket?.remoteAddress || req.connection?.remoteAddress;
+  if (socketAddress) {
+    return socketAddress;
+  }
+  if (trustProxy && req.headers && req.headers['x-forwarded-for']) {
+    const forwarded = String(req.headers['x-forwarded-for']).split(',')[0].trim();
+    if (forwarded) return forwarded;
+  }
+  return req.ip || 'unknown';
+}
+
 class RateLimiterStore {
   constructor(options = {}) {
     this.windowMs = options.windowMs || 60 * 1000;
     this.maxRequests = options.maxRequests || 120;
-    this.storageMode = process.env.RATE_LIMITER_DISTRIBUTED_URL ? 'DISTRIBUTED_DURABLE' : 'LOCAL_IN_MEMORY_FALLBACK';
+    this.distributedClient = options.distributedClient || null;
     this.memoryStore = new Map();
+    // Only claim DISTRIBUTED_DURABLE if a genuine distributed client exists and reports active connectivity
+    const hasActiveDistributed = !!(
+      this.distributedClient &&
+      typeof this.distributedClient.isConnected === 'function' &&
+      this.distributedClient.isConnected()
+    );
+    this.storageMode = hasActiveDistributed ? 'DISTRIBUTED_DURABLE' : 'LOCAL_IN_MEMORY_FALLBACK';
   }
 
   getMode() {
@@ -22,6 +44,15 @@ class RateLimiterStore {
   }
 
   async check(key) {
+    if (this.isDistributed() && this.distributedClient) {
+      try {
+        return await this.distributedClient.check(key, this.windowMs, this.maxRequests);
+      } catch (err) {
+        // Fall back safely to in-memory store if distributed check fails
+        this.storageMode = 'LOCAL_IN_MEMORY_FALLBACK';
+      }
+    }
+
     const now = Date.now();
     let record = this.memoryStore.get(key);
 
@@ -73,9 +104,10 @@ class RateLimiterStore {
 
 const defaultLimiter = new RateLimiterStore();
 
-function createRateLimiterMiddleware(limiter = defaultLimiter) {
+function createRateLimiterMiddleware(limiter = defaultLimiter, options = {}) {
   return async (req, res, next) => {
-    const ip = req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'] || 'unknown';
+    const trustProxy = req.app?.get?.('trust proxy') ?? options.trustProxy ?? false;
+    const ip = getClientKey(req, trustProxy);
     const result = await limiter.check(ip);
 
     res.setHeader('X-RateLimit-Limit', limiter.maxRequests);
@@ -97,5 +129,6 @@ function createRateLimiterMiddleware(limiter = defaultLimiter) {
 module.exports = {
   RateLimiterStore,
   defaultLimiter,
+  getClientKey,
   createRateLimiterMiddleware
 };
