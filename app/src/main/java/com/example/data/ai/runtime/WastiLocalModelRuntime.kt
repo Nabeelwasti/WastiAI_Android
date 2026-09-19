@@ -213,6 +213,28 @@ object NativeLlamaBridge {
         return info.tensorsLoaded && info.isRealNeural
     }
 
+    fun getVerificationDetails(modelHandle: Long, prompt: String = "probe"): NativeNeuralVerificationDetails? {
+        if (!isNativeLibraryLoaded || modelHandle == 0L) return null
+        return try {
+            val jsonStr = getNeuralVerificationDetails(modelHandle, prompt)
+            if (jsonStr.isBlank() || jsonStr.startsWith("{\"error\"")) return null
+            val obj = org.json.JSONObject(jsonStr)
+            NativeNeuralVerificationDetails(
+                architecture = obj.optString("architecture", "unknown"),
+                architectureVerified = obj.optBoolean("architectureVerified", false),
+                tensorExecutionVerified = obj.optBoolean("tensorExecutionVerified", false),
+                referenceVerified = obj.optBoolean("referenceVerified", false),
+                tiedEmbeddings = obj.optBoolean("tiedEmbeddings", false),
+                vocabSize = obj.optInt("vocabSize", 0),
+                dim = obj.optInt("dim", 0),
+                nLayers = obj.optInt("nLayers", 0)
+            )
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to parse neural verification details", e)
+            null
+        }
+    }
+
     // Native external declarations (bound when native .so is bundled)
     external fun getNativeRuntimeVersion(): String
     external fun initModel(modelPath: String, nThreads: Int, contextLength: Int): Long
@@ -222,7 +244,19 @@ object NativeLlamaBridge {
     external fun hasLoadedTensors(modelHandle: Long): Boolean
     external fun getGeneratedTokenCount(modelHandle: Long): Int
     external fun getNativeModelInfo(modelHandle: Long): String
+    external fun getNeuralVerificationDetails(modelHandle: Long, prompt: String): String
 }
+
+data class NativeNeuralVerificationDetails(
+    val architecture: String,
+    val architectureVerified: Boolean,
+    val tensorExecutionVerified: Boolean,
+    val referenceVerified: Boolean,
+    val tiedEmbeddings: Boolean,
+    val vocabSize: Int,
+    val dim: Int,
+    val nLayers: Int
+)
 
 /**
  * Byte-Pair Encoding & Byte-Fallback Tokenizer for On-Device Models

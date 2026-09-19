@@ -112,6 +112,66 @@ object SelfModificationSafetyEngine {
     private val _proposalAuditLog = MutableStateFlow<List<ProposalAuditEntry>>(emptyList())
     val proposalAuditLog: StateFlow<List<ProposalAuditEntry>> = _proposalAuditLog.asStateFlow()
 
+    init {
+        loadPersistedAuditLog()
+    }
+
+    private fun loadPersistedAuditLog() {
+        try {
+            val jDir = getJournalDir()
+            val auditFile = File(jDir, "proposal_audit_log.jsonl")
+            if (!auditFile.exists()) return
+
+            val loaded = mutableListOf<ProposalAuditEntry>()
+            auditFile.forEachLine { line ->
+                if (line.isNotBlank()) {
+                    try {
+                        val obj = org.json.JSONObject(line)
+                        val actionName = obj.getString("action")
+                        val action = try { ProposalAuditAction.valueOf(actionName) } catch (_: Exception) { ProposalAuditAction.PROPOSED }
+                        loaded.add(
+                            ProposalAuditEntry(
+                                id = obj.optString("id", UUID.randomUUID().toString()),
+                                proposalId = obj.getString("proposalId"),
+                                filePath = obj.getString("filePath"),
+                                action = action,
+                                reason = obj.optString("reason", ""),
+                                contentHash = obj.optString("contentHash", ""),
+                                authorizingEntity = obj.optString("authorizingEntity", "UNKNOWN"),
+                                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
+                                details = obj.optString("details", "")
+                            )
+                        )
+                    } catch (_: Exception) {}
+                }
+            }
+            if (loaded.isNotEmpty()) {
+                _proposalAuditLog.value = loaded.takeLast(100).reversed()
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun persistAuditEntry(entry: ProposalAuditEntry) {
+        try {
+            val jDir = getJournalDir()
+            val auditFile = File(jDir, "proposal_audit_log.jsonl")
+            val obj = org.json.JSONObject().apply {
+                put("id", entry.id)
+                put("proposalId", entry.proposalId)
+                put("filePath", entry.filePath)
+                put("action", entry.action.name)
+                put("reason", entry.reason)
+                put("contentHash", entry.contentHash)
+                put("authorizingEntity", entry.authorizingEntity)
+                put("timestamp", entry.timestamp)
+                put("details", entry.details)
+            }
+            synchronized(this) {
+                auditFile.appendText(obj.toString() + "\n")
+            }
+        } catch (_: Exception) {}
+    }
+
     fun recordAudit(
         proposalId: String,
         filePath: String,
@@ -137,6 +197,7 @@ object SelfModificationSafetyEngine {
         } else {
             _proposalAuditLog.value = current
         }
+        persistAuditEntry(entry)
 
         try {
             ExecutionProvenanceLedger.recordExecution(
@@ -267,29 +328,44 @@ object SelfModificationSafetyEngine {
     fun computeDiff(original: String, modified: String): List<DiffLine> {
         val origLines = if (original.isEmpty()) emptyList() else original.lines()
         val modLines = if (modified.isEmpty()) emptyList() else modified.lines()
-        val diff = mutableListOf<DiffLine>()
+        val n = origLines.size
+        val m = modLines.size
 
-        var i = 0
-        var j = 0
-        while (i < origLines.size || j < modLines.size) {
-            if (i < origLines.size && j < modLines.size && origLines[i] == modLines[j]) {
-                diff.add(DiffLine(DiffLineType.UNCHANGED, origLines[i], i + 1, j + 1))
-                i++
-                j++
-            } else if (i < origLines.size && (j >= modLines.size || !modLines.contains(origLines[i]))) {
-                diff.add(DiffLine(DiffLineType.DELETED, origLines[i], i + 1, null))
-                i++
-            } else if (j < modLines.size && (i >= origLines.size || !origLines.contains(modLines[j]))) {
-                diff.add(DiffLine(DiffLineType.ADDED, modLines[j], null, j + 1))
-                j++
-            } else {
-                diff.add(DiffLine(DiffLineType.DELETED, origLines[i], i + 1, null))
-                diff.add(DiffLine(DiffLineType.ADDED, modLines[j], null, j + 1))
-                i++
-                j++
+        if (n == 0 && m == 0) return emptyList()
+        if (n == 0) return modLines.mapIndexed { idx, line -> DiffLine(DiffLineType.ADDED, line, null, idx + 1) }
+        if (m == 0) return origLines.mapIndexed { idx, line -> DiffLine(DiffLineType.DELETED, line, idx + 1, null) }
+
+        // LCS matrix
+        val lcs = Array(n + 1) { IntArray(m + 1) }
+        for (i in 1..n) {
+            for (j in 1..m) {
+                if (origLines[i - 1] == modLines[j - 1]) {
+                    lcs[i][j] = lcs[i - 1][j - 1] + 1
+                } else {
+                    lcs[i][j] = maxOf(lcs[i - 1][j], lcs[i][j - 1])
+                }
             }
         }
-        return diff
+
+        // Backtrack to build ordered DiffLine sequence
+        var i = n
+        var j = m
+        val reverseDiff = mutableListOf<DiffLine>()
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && origLines[i - 1] == modLines[j - 1]) {
+                reverseDiff.add(DiffLine(DiffLineType.UNCHANGED, origLines[i - 1], i, j))
+                i--
+                j--
+            } else if (j > 0 && (i == 0 || lcs[i][j - 1] >= lcs[i - 1][j])) {
+                reverseDiff.add(DiffLine(DiffLineType.ADDED, modLines[j - 1], null, j))
+                j--
+            } else if (i > 0 && (j == 0 || lcs[i][j - 1] < lcs[i - 1][j])) {
+                reverseDiff.add(DiffLine(DiffLineType.DELETED, origLines[i - 1], i, null))
+                i--
+            }
+        }
+        reverseDiff.reverse()
+        return reverseDiff
     }
 
     // Maximum mutations permitted on a single file within the sliding window
