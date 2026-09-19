@@ -25,7 +25,8 @@ object IntegrationAuditRegistry {
     private fun mapRealityToStatus(reality: CapabilityReality?): IntegrationStatus {
         if (reality == null) return IntegrationStatus.UNAVAILABLE
         return when (reality.liveConnectionStatus) {
-            LiveConnectionStatus.VERIFIED -> IntegrationStatus.VERIFIED_CONNECTED
+            LiveConnectionStatus.VERIFIED,
+            LiveConnectionStatus.CONNECTED -> IntegrationStatus.VERIFIED_CONNECTED
             LiveConnectionStatus.NOT_VERIFIED -> {
                 if (reality.implementationStatus == ImplementationStatus.READY) {
                     IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED
@@ -35,8 +36,10 @@ object IntegrationAuditRegistry {
                     IntegrationStatus.PLACEHOLDER
                 }
             }
-            LiveConnectionStatus.DISCONNECTED, LiveConnectionStatus.ERROR -> IntegrationStatus.UNAVAILABLE
+            LiveConnectionStatus.DISCONNECTED,
+            LiveConnectionStatus.FAILED -> IntegrationStatus.UNAVAILABLE
             LiveConnectionStatus.AUTHENTICATION_REQUIRED -> IntegrationStatus.IMPLEMENTED_BUT_NOT_LIVE_VERIFIED
+            else -> IntegrationStatus.UNAVAILABLE
         }
     }
 
