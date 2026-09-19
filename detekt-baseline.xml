@@ -124,8 +124,6 @@
     <ID>UnusedImports:ProactiveReconciliationWorker.kt$import androidx.work.WorkManager</ID>
     <ID>UnusedImports:ProductionReadinessGate.kt$import com.example.data.agent.runtime.CapabilityRealityState</ID>
     <ID>UnusedImports:ProjectsTasksScreen.kt$import androidx.compose.ui.graphics.Color</ID>
-    <ID>UnusedImports:ProviderRouter.kt$import com.example.data.ai.model.ProviderCapability</ID>
-    <ID>UnusedImports:ProviderRouter.kt$import com.example.data.ai.provider.AIProvider</ID>
     <ID>UnusedImports:RealityDiagnosticsView.kt$import androidx.compose.ui.draw.clip</ID>
     <ID>UnusedImports:RealityDiagnosticsView.kt$import com.example.data.agent.runtime.CapabilityRealityRegistry</ID>
     <ID>UnusedImports:ReverseAppStoreIntentCard.kt$import androidx.compose.animation.AnimatedVisibility</ID>

@@ -35,11 +35,20 @@ class WastiLocalBrainProvider(
     override val id: String = modelDescriptor.id
     override val name: String = modelDescriptor.brandDisplayName
     override val defaultModel: String = modelDescriptor.defaultVersion
-    override val capabilities: Set<ProviderCapability> = setOf(
-        ProviderCapability.TEXT_GENERATION,
-        ProviderCapability.STREAMING,
-        ProviderCapability.MULTI_TURN
-    )
+    override val capabilities: Set<ProviderCapability>
+        get() = if (isNeuralInferenceActive) {
+            setOf(
+                ProviderCapability.TEXT_GENERATION,
+                ProviderCapability.STREAMING,
+                ProviderCapability.MULTI_TURN
+            )
+        } else if (isHeuristicFallbackAvailable()) {
+            setOf(
+                ProviderCapability.TEXT_GENERATION
+            )
+        } else {
+            emptySet()
+        }
 
     /**
      * Truthful availability: returns true ONLY when genuine neural execution is active.
@@ -113,7 +122,7 @@ class WastiLocalBrainProvider(
         )
         val adaptedRequest = request.copy(systemInstruction = adaptedSystemInstruction)
 
-        val (content, _, modelLabel) = if (appCtx != null && isNeuralInferenceActive) {
+        val (content, isNeural, modelLabel) = if (appCtx != null && isNeuralInferenceActive) {
             ModelArtifactManager.updateStatus(id, ModelRuntimeStatus.ACTIVE_LOADED)
             val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(appCtx)
             val result = runtime.executeInferenceDetailed(
@@ -143,6 +152,14 @@ class WastiLocalBrainProvider(
         }
 
         val latency = System.currentTimeMillis() - startTime
+        val isFallbackResponse = !isNeural || modelLabel.contains("[HEURISTIC_NON_NEURAL]") || modelLabel.contains("[CONTAINER_VALIDATED_MATH_ENGINE]") || modelLabel.contains("[EXTERNAL_LOCAL_SERVER]") || modelLabel.contains("[HUGGINGFACE_REMOTE_API]")
+        val fallbackReasonStr = if (isFallbackResponse) {
+            if (modelLabel.contains("[HEURISTIC_NON_NEURAL]")) {
+                "Local neural execution not active or verified; executed via deterministic domain heuristic fallback"
+            } else {
+                "External or container-validated execution fallback: $modelLabel"
+            }
+        } else null
 
         return ProviderResponse(
             content = content,
@@ -152,7 +169,9 @@ class WastiLocalBrainProvider(
             promptTokens = request.prompt.length / 4,
             completionTokens = content.length / 4,
             latencyMs = latency,
-            costUsd = 0.0
+            costUsd = 0.0,
+            isFallback = isFallbackResponse,
+            fallbackReason = fallbackReasonStr
         )
     }
 

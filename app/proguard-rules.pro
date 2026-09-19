@@ -32,6 +32,7 @@
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }
+-keep class com.example.data.ai.runtime.** { *; }
 -keep class com.example.data.ai.runtime.NativeLlamaBridge {
     native <methods>;
     *;

@@ -57,6 +57,7 @@ class WastiEmergencyStopController : EmergencyStopController {
 
     private val registeredScopes = ConcurrentHashMap<String, CoroutineScope>()
     private val registeredJobs = ConcurrentHashMap<String, Job>()
+    private val registeredProcesses = ConcurrentHashMap<String, Process>()
     private val registeredHooks = ConcurrentHashMap<String, (reason: String) -> Unit>()
     private val registeredOkHttpClients = CopyOnWriteArrayList<OkHttpClient>()
 
@@ -92,6 +93,11 @@ class WastiEmergencyStopController : EmergencyStopController {
     fun registerJob(job: Job): AutoCloseable =
         registerJob("job_${System.identityHashCode(job)}", job)
 
+    fun registerProcess(name: String, process: Process): AutoCloseable {
+        registeredProcesses[name] = process
+        return AutoCloseable { registeredProcesses.remove(name) }
+    }
+
     fun registerCancellationHook(name: String, hook: (reason: String) -> Unit): AutoCloseable {
         registeredHooks[name] = hook
         return AutoCloseable { registeredHooks.remove(name) }
@@ -104,6 +110,19 @@ class WastiEmergencyStopController : EmergencyStopController {
 
     fun registerWorkManagerCancellation(hook: (reason: String) -> Unit) {
         workManagerCancellationHook = hook
+    }
+
+    /**
+     * Cancels a specific task by its taskId without triggering a global emergency stop
+     * or canceling unrelated running tasks.
+     */
+    fun cancelTask(taskId: String, reason: String = "Task cancelled") {
+        registeredJobs.remove(taskId)?.cancel(CancellationException("Task cancelled: $reason"))
+        registeredScopes.remove(taskId)?.coroutineContext?.cancelChildren(CancellationException("Task cancelled: $reason"))
+        try {
+            registeredProcesses.remove(taskId)?.destroyForcibly()
+        } catch (_: Throwable) {}
+        registeredHooks.remove(taskId)?.invoke(reason)
     }
 
     /**
@@ -151,6 +170,13 @@ class WastiEmergencyStopController : EmergencyStopController {
                     job.cancel(CancellationException("Emergency Stop: $normalizedReason"))
                     cancelledJobs++
                 }
+            } catch (_: Throwable) {}
+        }
+
+        // 2b. Actively destroy registered child processes to prevent orphaned processes
+        for ((_, process) in registeredProcesses) {
+            try {
+                process.destroyForcibly()
             } catch (_: Throwable) {}
         }
 
@@ -250,6 +276,8 @@ class WastiEmergencyStopController : EmergencyStopController {
         fun registerScope(name: String, scope: CoroutineScope): AutoCloseable = instance.registerScope(name, scope)
         fun registerJob(job: Job): AutoCloseable = instance.registerJob(job)
         fun registerJob(name: String, job: Job): AutoCloseable = instance.registerJob(name, job)
+        fun registerProcess(name: String, process: Process): AutoCloseable = instance.registerProcess(name, process)
+        fun cancelTask(taskId: String, reason: String = "Task cancelled") = instance.cancelTask(taskId, reason)
         fun registerCancellationHook(name: String, hook: (reason: String) -> Unit): AutoCloseable = instance.registerCancellationHook(name, hook)
         fun registerOkHttpClient(client: OkHttpClient): AutoCloseable = instance.registerOkHttpClient(client)
         fun registerWorkManagerCancellation(hook: (reason: String) -> Unit) = instance.registerWorkManagerCancellation(hook)

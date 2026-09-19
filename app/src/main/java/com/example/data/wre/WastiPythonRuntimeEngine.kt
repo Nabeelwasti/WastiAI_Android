@@ -38,7 +38,19 @@ class WastiPythonRuntimeEngine(
     private val workspaceManager: WreWorkspaceManager
 ) {
 
-    private val pythonVersion = "3.11.8 (Wasti Sovereign Polyglot Engine, Nov 2026)"
+    fun getInstalledPythonVersion(): String {
+        val nativeBin = findNativePythonBinary()
+        if (nativeBin != null && isFullNativePythonExecutable(nativeBin)) {
+            try {
+                val p = Runtime.getRuntime().exec(arrayOf(nativeBin, "--version"))
+                val out = (p.inputStream.bufferedReader().readText() + p.errorStream.bufferedReader().readText()).trim()
+                if (p.waitFor() == 0 && out.isNotBlank()) {
+                    return out
+                }
+            } catch (_: Exception) {}
+        }
+        return "Python 3.11 (Wasti Embedded Polyglot Engine)"
+    }
     private val sitePackagesVirtualDir = "home/wasti/lib/python3/site-packages"
 
     init {
@@ -77,7 +89,7 @@ class WastiPythonRuntimeEngine(
             return@withContext PolyglotExecutionOutcome(
                 isSuccess = true,
                 language = PolyglotLanguage.PYTHON,
-                stdout = "Python $pythonVersion on linux\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\n>>> ",
+                stdout = "${getInstalledPythonVersion()} on linux\nType \"help\", \"copyright\", \"credits\" or \"license\" for more information.\n>>> ",
                 exitCode = 0,
                 durationMs = System.currentTimeMillis() - startTime,
                 verificationEvidence = "Python REPL initialized"

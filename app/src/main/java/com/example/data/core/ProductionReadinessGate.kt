@@ -218,26 +218,46 @@ object ProductionReadinessGate {
         } catch (_: Throwable) {
             false
         }
-        val progressiveState = try {
-            com.example.data.ai.runtime.WastiLocalModelRuntime(context).getProgressiveState("wasti-smollm")
+        val runtime = try {
+            com.example.data.ai.runtime.WastiLocalModelRuntime(context)
         } catch (_: Throwable) {
-            com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+            null
         }
-        val isVerifiedNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED
-        val isExecutableNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE
+        val progressiveState = runtime?.getProgressiveState("wasti-smollm")
+            ?: com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+        val isProvenNeural = runtime?.isGenuineNeuralExecutionProven("wasti-smollm") ?: false
+
+        // Check if there is valid provenance evidence recorded in the ledger for local neural inference
+        val provenanceEvidenceOk = try {
+            val history = com.example.data.agent.runtime.ExecutionProvenanceLedger.entries.value
+            history.any { entry ->
+                (entry.capabilityId.contains("neural", ignoreCase = true) ||
+                 entry.capabilityId.contains("local_model", ignoreCase = true) ||
+                 entry.capabilityId.contains("local_native", ignoreCase = true) ||
+                 entry.evidenceSource == com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE) &&
+                entry.isVerified
+            }
+        } catch (_: Throwable) {
+            false
+        }
+
+        val isVerifiedNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED && isProvenNeural && provenanceEvidenceOk
+        val isExecutableNeural = (progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE || progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED) && isProvenNeural
+        val isOperationalNeural = nativeLlamaAvailable && smolLmPresent && isExecutableNeural
+
         val localNeuralState = when {
             isVerifiedNeural -> ProductionReadinessState.RELEASE_VERIFIED
             isExecutableNeural -> ProductionReadinessState.TEST_VERIFIED
-            nativeLlamaAvailable || smolLmPresent -> ProductionReadinessState.DEVELOPMENT_READY
+            nativeLlamaAvailable && smolLmPresent -> ProductionReadinessState.DEVELOPMENT_READY
             else -> ProductionReadinessState.NOT_READY
         }
         checks.add(
             SubsystemReadinessCheck(
                 subsystemName = "LocalNeuralInferenceEngine",
-                isOperational = nativeLlamaAvailable || smolLmPresent,
+                isOperational = isOperationalNeural,
                 isLiveVerified = isVerifiedNeural,
                 state = localNeuralState,
-                notes = "State: $progressiveState (nativeLib=$nativeLlamaAvailable, weightsPresent=$smolLmPresent)"
+                notes = "State: $progressiveState (nativeLib=$nativeLlamaAvailable, weightsPresent=$smolLmPresent, provenNeural=$isProvenNeural, provenanceOk=$provenanceEvidenceOk)"
             )
         )
 

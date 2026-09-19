@@ -59,6 +59,15 @@ enum class MemoryTier {
     }
 }
 
+enum class MemoryProvenanceCategory {
+    USER_STATED,
+    OBSERVED,
+    IMPORTED,
+    INFERRED,
+    VERIFIED,
+    SUPERSEDED
+}
+
 data class MemoryItem(
     val id: String,
     val key: String,
@@ -71,7 +80,8 @@ data class MemoryItem(
     val isArchived: Boolean = false,
     val accessCount: Int = 0,
     val lastAccessedTimestamp: Long = System.currentTimeMillis(),
-    val tier: MemoryTier = MemoryTier.SYSTEM_MEMORY
+    val tier: MemoryTier = MemoryTier.SYSTEM_MEMORY,
+    val provenanceCategory: MemoryProvenanceCategory = MemoryProvenanceCategory.OBSERVED
 )
 
 data class MemorySearchQuery(

@@ -461,7 +461,8 @@ class WebSocketMeshTransport(
 
             WastiMeshMessageType.AUTHENTICATE -> {
                 val node = nodeManager.getNode(envelope.senderNodeId)
-                val isTrusted = node != null && node.trustState != NodeTrustState.REVOKED
+                val isTrusted = node != null && node.trustState != NodeTrustState.REVOKED &&
+                    (node.trustState == NodeTrustState.ACTIVE || node.trustState == NodeTrustState.PAIRED)
                 if (isTrusted) {
                     nodeManager.updateNodeTrust(envelope.senderNodeId, NodeTrustState.ACTIVE)
                 }
@@ -479,6 +480,19 @@ class WebSocketMeshTransport(
             }
 
             WastiMeshMessageType.TASK_OFFER -> {
+                val node = nodeManager.getNode(envelope.senderNodeId)
+                if (node == null || node.trustState == NodeTrustState.REVOKED || node.trustState == NodeTrustState.UNTRUSTED) {
+                    Log.w(TAG, "TASK_OFFER rejected: Node ${envelope.senderNodeId} trust state is ${node?.trustState ?: "UNKNOWN"}")
+                    return WastiMeshEnvelope(
+                        protocolVersion = WastiMeshEnvelope.CURRENT_PROTOCOL_VERSION,
+                        messageType = WastiMeshMessageType.SECURITY_BLOCK,
+                        requestId = envelope.requestId,
+                        correlationId = envelope.correlationId,
+                        senderNodeId = "local_android_node",
+                        payloadBytes = "SECURITY_BLOCK: Untrusted or revoked peer".toByteArray(Charsets.UTF_8)
+                    )
+                }
+
                 val taskPayload = if (envelope.payloadBytes.isNotEmpty()) String(envelope.payloadBytes, Charsets.UTF_8) else "{}"
                 val reqObj = JSONObject(taskPayload)
                 val paramsObj = reqObj.optJSONObject("parameters") ?: JSONObject()
@@ -564,6 +578,28 @@ class WebSocketMeshTransport(
                     verificationStatus = finalVerificationStatus,
                     verificationEvidence = candidateEvidence
                 )
+
+                try {
+                    com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                        taskId = result.taskId,
+                        actionId = result.actionId,
+                        capabilityId = result.capabilityId,
+                        providerId = "MeshRemote_${envelope.senderNodeId}",
+                        inputContent = "remote_task_result:${envelope.requestId}",
+                        outputContent = "status:${result.status.name}:output:${result.output.take(100)}",
+                        evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                            subject = "MeshRemote_${envelope.senderNodeId}",
+                            verifiedState = result.status.name,
+                            confidence = 0.50, // UNVERIFIED remote candidate evidence
+                            evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY
+                        ),
+                        executionEnvironment = "mesh_remote_peer",
+                        executor = result.executor,
+                        verifier = null, // No independent verification yet
+                        verificationMethod = "mesh_candidate_evidence_capture",
+                        stateTransition = "DISPATCHED -> REMOTE_ACCEPTED -> EXECUTOR_COMPLETED -> UNVERIFIED"
+                    )
+                } catch (_: Exception) {}
 
                 pendingTaskResults.remove(envelope.requestId)?.complete(result)
                 null

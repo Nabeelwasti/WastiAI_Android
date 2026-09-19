@@ -36,12 +36,20 @@ enum class PolyglotLanguage {
     NODE_JAVASCRIPT,
     SQL_DATABASE,
     C_CPP,
+    WASM,
     SYSTEM_DIAGNOSTIC,
     SOVEREIGN_KEYSTORE,
     SOVEREIGN_TUNNEL,
     LEAD_RADAR,
     WEB_SCRAPER,
     CRM_PIPELINE
+}
+
+enum class PolyglotRuntimeState {
+    CONFIGURED,
+    PHYSICALLY_AVAILABLE,
+    EXECUTED,
+    INDEPENDENTLY_VERIFIED
 }
 
 data class PolyglotExecutionOutcome(
@@ -51,7 +59,10 @@ data class PolyglotExecutionOutcome(
     val stderr: String = "",
     val exitCode: Int = 0,
     val durationMs: Long = 0L,
-    val verificationEvidence: String? = null
+    val verificationEvidence: String? = null,
+    val runtimeIdentity: String = language.name,
+    val artifactReference: String? = null,
+    val verificationState: String = if (isSuccess && verificationEvidence != null && verificationEvidence.contains("INDEPENDENT_VERIFIED")) "VERIFIED" else if (isSuccess) "OBSERVED" else "EXECUTOR_COMPLETED"
 )
 
 class WastiPolyglotTerminalEngine(
@@ -71,6 +82,10 @@ class WastiPolyglotTerminalEngine(
     private val meshBridge by lazy { com.example.data.mesh.WastiUniversalMeshBridge.getInstance(context) }
     val sessionId: String = UUID.randomUUID().toString()
 
+    init {
+        registerDynamicPolyglotCapabilities()
+    }
+
     fun logDiagnostic(message: String) {
         Log.d("WastiPolyglotTerminalEngine", "[$sessionId] $message")
     }
@@ -80,7 +95,7 @@ class WastiPolyglotTerminalEngine(
         "node", "nodejs", "js", "npm", "npx",
         "sql", "sqlite", "sqlite3", "query",
         "git", "pkg", "apt", "apt-get",
-        "gcc", "clang", "g++", "clang++", "make", "rustc", "cargo",
+        "gcc", "clang", "g++", "clang++", "make", "rustc", "cargo", "wasm",
         "ffmpeg", "ffprobe", "mesh", "peers", "offload", "net", "wifi", "p2p", "inet", "internet",
         "ssh", "ssh-keygen", "tmux",
         "neofetch", "htop", "top", "tree", "curl", "wget", "tar", "zip", "unzip", "base64", "sha256sum", "md5sum",
@@ -156,11 +171,38 @@ class WastiPolyglotTerminalEngine(
             "lead", "hunt", "leads" -> executeLeadCommand(raw)
             "scrape", "crawl" -> executeScrapeCommand(raw)
             "crm" -> executeCrmCommand(raw)
+            "wasm" -> executeWasm(restOfCmd, workingDir)
             "model", "agent" -> executeModelAgentCommand(firstToken, restOfCmd, workingDir)
             else -> executeShellProcess(raw)
         }
 
         val duration = System.currentTimeMillis() - startTime
+        val isExplicitlyVerified = outcome.verificationState == "VERIFIED"
+
+        try {
+            val evidence = if (outcome.verificationEvidence != null) {
+                com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                    evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+                    subject = "polyglot_${outcome.language.name.lowercase()}",
+                    verifiedState = outcome.verificationState,
+                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.50 else 0.0
+                )
+            } else null
+            com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                taskId = "polyglot_${System.currentTimeMillis()}",
+                actionId = request.executionId.ifBlank { "exec_${System.currentTimeMillis()}" },
+                capabilityId = "POLYGLOT_${outcome.language.name}",
+                providerId = "WastiPolyglotTerminalEngine",
+                inputContent = request.command,
+                outputContent = outcome.stdout.ifBlank { outcome.stderr },
+                evidence = evidence,
+                runtimeVersion = outcome.runtimeIdentity,
+                executionEnvironment = "wasti_polyglot_terminal",
+                executor = "WastiPolyglotTerminalEngine",
+                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> ${outcome.verificationState}"
+            )
+        } catch (_: Throwable) {}
+
         ExecutionResult(
             executionId = request.executionId,
             command = request.command,
@@ -169,7 +211,7 @@ class WastiPolyglotTerminalEngine(
             stderr = outcome.stderr,
             durationMs = duration,
             status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
-            verified = outcome.isSuccess,
+            verified = isExplicitlyVerified,
             verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
         )
     }
@@ -780,5 +822,107 @@ Commands:
                 )
             }
         }
+    }
+
+    private suspend fun executeWasm(scriptOrArgs: String, workingDir: File): PolyglotExecutionOutcome {
+        val startTime = System.currentTimeMillis()
+        return try {
+            val wasmRes = com.example.data.sandbox.WastiWasmRuntime.instance.runSandboxedScript(
+                toolName = "terminal_wasm",
+                expression = scriptOrArgs,
+                params = emptyMap()
+            )
+            val duration = System.currentTimeMillis() - startTime
+            PolyglotExecutionOutcome(
+                isSuccess = wasmRes.isSuccess,
+                language = PolyglotLanguage.WASM,
+                stdout = wasmRes.stringOutput ?: wasmRes.diagnosticMessage,
+                stderr = if (!wasmRes.isSuccess) wasmRes.diagnosticMessage else "",
+                exitCode = if (wasmRes.isSuccess) 0 else 1,
+                durationMs = duration,
+                verificationEvidence = if (wasmRes.isSuccess) "WASM sandbox execution verified" else null,
+                runtimeIdentity = "WastiWasmRuntime",
+                artifactReference = "wasm_script:${scriptOrArgs.hashCode()}",
+                verificationState = if (wasmRes.isSuccess) "OBSERVED" else "EXECUTOR_COMPLETED"
+            )
+        } catch (e: Exception) {
+            PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.WASM,
+                stdout = "",
+                stderr = e.message ?: "WASM execution failed",
+                exitCode = 1,
+                durationMs = System.currentTimeMillis() - startTime,
+                runtimeIdentity = "WastiWasmRuntime",
+                verificationState = "EXECUTOR_COMPLETED"
+            )
+        }
+    }
+
+    fun getRuntimeState(language: PolyglotLanguage): PolyglotRuntimeState {
+        return when (language) {
+            PolyglotLanguage.PYTHON -> {
+                val hasBin = File(context.filesDir, "bin/python3").canExecute() ||
+                    File("/system/bin/python3").canExecute() ||
+                    File("/system/bin/python").canExecute() ||
+                    File("/data/data/com.termux/files/usr/bin/python3").canExecute()
+                if (hasBin) PolyglotRuntimeState.PHYSICALLY_AVAILABLE else PolyglotRuntimeState.CONFIGURED
+            }
+            PolyglotLanguage.NODE_JAVASCRIPT -> {
+                val hasBin = File(context.filesDir, "bin/node").canExecute() ||
+                    File("/system/bin/node").canExecute() ||
+                    File("/data/data/com.termux/files/usr/bin/node").canExecute()
+                if (hasBin) PolyglotRuntimeState.PHYSICALLY_AVAILABLE else PolyglotRuntimeState.CONFIGURED
+            }
+            PolyglotLanguage.WASM -> {
+                if (com.example.data.sandbox.WastiWasmRuntime.instance.isNativeWasmAvailable) {
+                    PolyglotRuntimeState.PHYSICALLY_AVAILABLE
+                } else {
+                    PolyglotRuntimeState.CONFIGURED
+                }
+            }
+            PolyglotLanguage.SHELL, PolyglotLanguage.SHELL_BASH -> {
+                if (File("/system/bin/sh").canExecute()) PolyglotRuntimeState.PHYSICALLY_AVAILABLE else PolyglotRuntimeState.CONFIGURED
+            }
+            PolyglotLanguage.SQL_DATABASE -> {
+                PolyglotRuntimeState.PHYSICALLY_AVAILABLE
+            }
+            PolyglotLanguage.C_CPP -> {
+                val hasClang = File("/data/data/com.termux/files/usr/bin/clang").canExecute() ||
+                    File("/system/bin/clang").canExecute()
+                if (hasClang) PolyglotRuntimeState.PHYSICALLY_AVAILABLE else PolyglotRuntimeState.CONFIGURED
+            }
+            else -> PolyglotRuntimeState.CONFIGURED
+        }
+    }
+
+    fun registerDynamicPolyglotCapabilities() {
+        try {
+            val registry = com.example.data.agent.runtime.UnifiedExecutionFabric.instance.realityRegistry
+            for (lang in PolyglotLanguage.values()) {
+                val state = getRuntimeState(lang)
+                val capId = "POLYGLOT_${lang.name}"
+                val realityState = when (state) {
+                    PolyglotRuntimeState.INDEPENDENTLY_VERIFIED -> com.example.data.agent.runtime.CapabilityRealityState.NATIVE
+                    PolyglotRuntimeState.EXECUTED -> com.example.data.agent.runtime.CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+                    PolyglotRuntimeState.PHYSICALLY_AVAILABLE -> com.example.data.agent.runtime.CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
+                    PolyglotRuntimeState.CONFIGURED -> com.example.data.agent.runtime.CapabilityRealityState.CONTRACT_ONLY
+                }
+                registry.updateCapabilityReality(
+                    com.example.data.agent.runtime.CapabilityReality(
+                        capabilityId = capId,
+                        category = "POLYGLOT_RUNTIME",
+                        implementationStatus = com.example.data.agent.runtime.ImplementationStatus.READY,
+                        liveConnectionStatus = if (state == PolyglotRuntimeState.INDEPENDENTLY_VERIFIED) com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED else com.example.data.agent.runtime.LiveConnectionStatus.NOT_VERIFIED,
+                        executionStatus = if (state == PolyglotRuntimeState.PHYSICALLY_AVAILABLE || state == PolyglotRuntimeState.EXECUTED || state == PolyglotRuntimeState.INDEPENDENTLY_VERIFIED) com.example.data.agent.runtime.CapabilityExecutionStatus.OPERATIONAL else com.example.data.agent.runtime.CapabilityExecutionStatus.DEGRADED,
+                        authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                        provider = "WastiPolyglotTerminalEngine",
+                        supportedOperations = listOf("execute", "run_script", "inspect"),
+                        limitations = listOf("State: $state"),
+                        realityState = realityState
+                    )
+                )
+            }
+        } catch (_: Throwable) {}
     }
 }

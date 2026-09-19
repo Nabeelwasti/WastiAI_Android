@@ -237,6 +237,16 @@ fun RealityDiagnosticsView(
                 }
             }
         }
+
+        // Section 6: Self-Modification Proposals & Code Diff Viewer
+        item {
+            DiagnosticSectionCard(
+                title = "Self-Modification Proposals & Code Diff Viewer",
+                icon = Icons.Default.Security
+            ) {
+                SelfModificationDiffViewer()
+            }
+        }
     }
 }
 

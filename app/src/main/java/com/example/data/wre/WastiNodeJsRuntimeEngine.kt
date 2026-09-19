@@ -26,7 +26,19 @@ class WastiNodeJsRuntimeEngine(
     private val workspaceManager: WreWorkspaceManager
 ) {
 
-    private val nodeVersion = "v20.11.1 (Wasti Sovereign Node Runtime, Nov 2026)"
+    fun getInstalledNodeVersion(): String {
+        val nativeBin = findNativeNodeBinary()
+        if (nativeBin != null && isFullNativeNodeExecutable(nativeBin)) {
+            try {
+                val p = Runtime.getRuntime().exec(arrayOf(nativeBin, "--version"))
+                val out = (p.inputStream.bufferedReader().readText() + p.errorStream.bufferedReader().readText()).trim()
+                if (p.waitFor() == 0 && out.isNotBlank()) {
+                    return out
+                }
+            } catch (_: Exception) {}
+        }
+        return "Node.js v20 (Wasti Embedded JavaScript Interpreter)"
+    }
     private val nodeModulesVirtualDir = "home/wasti/node_modules"
 
     init {
@@ -63,7 +75,7 @@ class WastiNodeJsRuntimeEngine(
             return@withContext PolyglotExecutionOutcome(
                 isSuccess = true,
                 language = PolyglotLanguage.NODE_JAVASCRIPT,
-                stdout = "Welcome to Node.js $nodeVersion.\nType \".help\" for more information.\n> ",
+                stdout = "Welcome to ${getInstalledNodeVersion()}.\nType \".help\" for more information.\n> ",
                 exitCode = 0,
                 durationMs = System.currentTimeMillis() - startTime,
                 verificationEvidence = "Node.js REPL initialized"

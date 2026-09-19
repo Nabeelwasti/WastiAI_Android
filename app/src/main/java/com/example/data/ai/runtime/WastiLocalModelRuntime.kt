@@ -80,6 +80,25 @@ enum class LocalNeuralProgressiveState {
 }
 
 /**
+ * Architectural metadata for a loaded native model, extracted directly from native GGUF context.
+ */
+data class NativeModelArchitectureInfo(
+    val architecture: String,
+    val supported: Boolean,
+    val dim: Int,
+    val nLayers: Int,
+    val nHeads: Int,
+    val nKvHeads: Int,
+    val headDim: Int,
+    val ffnInterDim: Int,
+    val vocabSize: Int,
+    val tensorsLoaded: Boolean,
+    val isRealNeural: Boolean,
+    val lastGeneratedTokens: Int,
+    val loadError: String
+)
+
+/**
  * JNI Native Bridge to Llama.cpp / GGML Open-Source Inference Engine
  */
 object NativeLlamaBridge {
@@ -153,6 +172,47 @@ object NativeLlamaBridge {
         }
     }
 
+    fun getModelInfo(modelHandle: Long): NativeModelArchitectureInfo? {
+        if (!isNativeLibraryLoaded || modelHandle == 0L) return null
+        return try {
+            val jsonStr = getNativeModelInfo(modelHandle)
+            if (jsonStr.isBlank() || jsonStr.startsWith("{\"error\"")) return null
+            val obj = org.json.JSONObject(jsonStr)
+            NativeModelArchitectureInfo(
+                architecture = obj.optString("architecture", "unknown"),
+                supported = obj.optBoolean("supported", false),
+                dim = obj.optInt("dim", 0),
+                nLayers = obj.optInt("nLayers", 0),
+                nHeads = obj.optInt("nHeads", 0),
+                nKvHeads = obj.optInt("nKvHeads", 0),
+                headDim = obj.optInt("headDim", 0),
+                ffnInterDim = obj.optInt("ffnInterDim", 0),
+                vocabSize = obj.optInt("vocabSize", 0),
+                tensorsLoaded = obj.optBoolean("tensorsLoaded", false),
+                isRealNeural = obj.optBoolean("isRealNeural", false),
+                lastGeneratedTokens = obj.optInt("lastGeneratedTokens", 0),
+                loadError = obj.optString("loadError", "")
+            )
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to parse native model info", e)
+            null
+        }
+    }
+
+    fun isArchitectureSupported(modelHandle: Long): Boolean {
+        return getModelInfo(modelHandle)?.supported ?: false
+    }
+
+    fun isTokenizerValid(modelHandle: Long): Boolean {
+        val info = getModelInfo(modelHandle) ?: return false
+        return info.vocabSize > 0
+    }
+
+    fun isTensorComplete(modelHandle: Long): Boolean {
+        val info = getModelInfo(modelHandle) ?: return false
+        return info.tensorsLoaded && info.isRealNeural
+    }
+
     // Native external declarations (bound when native .so is bundled)
     external fun getNativeRuntimeVersion(): String
     external fun initModel(modelPath: String, nThreads: Int, contextLength: Int): Long
@@ -161,6 +221,7 @@ object NativeLlamaBridge {
     external fun verifyNeuralInference(modelHandle: Long, prompt: String): Boolean
     external fun hasLoadedTensors(modelHandle: Long): Boolean
     external fun getGeneratedTokenCount(modelHandle: Long): Int
+    external fun getNativeModelInfo(modelHandle: Long): String
 }
 
 /**
@@ -323,85 +384,102 @@ class WastiLocalModelRuntime(
             return@withContext try {
                 val handle = NativeLlamaBridge.initModel(modelFile.absolutePath, 4, 2048)
                 if (handle != 0L) {
-                    val fullPrompt = if (systemInstruction.isNotBlank()) {
-                        "<|im_start|>system\n$systemInstruction<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
-                    } else {
-                        "<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
-                    }
-                    val result = NativeLlamaBridge.evalPrompt(handle, fullPrompt, maxTokens, temperature)
-                    val nativeTokens = NativeLlamaBridge.getNativeGeneratedTokens(handle)
-                    val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
-                    val isNeuralVerified = if (hasTensors) NativeLlamaBridge.isVerifiedNeural(handle, fullPrompt) else false
-                    NativeLlamaBridge.freeModel(handle)
-
-                    val latency = System.currentTimeMillis() - startTime
-                    val isGenuineNeural = hasTensors && isNeuralVerified &&
-                        !result.startsWith("[NATIVE_") &&
-                        !result.startsWith("[ERROR") &&
-                        !result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")
-
-                    if (!isGenuineNeural) {
-                        return@withContext LocalInferenceResult(
-                            status = LocalInferenceStatus.UNAVAILABLE,
-                            output = if (result.startsWith("[NATIVE_") || result.startsWith("[ERROR") || result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")) result else "[NATIVE_NEURAL_UNAVAILABLE]: Model '$modelId' container validated, but genuine neural tensor execution is unmapped or unsupported.",
-                            modelId = modelId,
-                            latencyMs = latency,
-                            isNeuralOutput = false,
-                            errorMessage = "Neural execution not proven for model",
-                            engineUsed = "Wasti Native Tensor Bridge (Unverified/Unsupported)",
-                            tokensGenerated = 0
-                        )
-                    }
-
-                    val tokensGenerated = if (nativeTokens > 0) {
-                        nativeTokens
-                    } else {
-                        WastiLocalTokenizer().encode(result).size
-                    }
-
-                    if (tokensGenerated <= 0) {
-                        return@withContext LocalInferenceResult(
-                            status = LocalInferenceStatus.UNAVAILABLE,
-                            output = "[LOCAL_MODEL_UNAVAILABLE]: No valid tokens produced by native engine.",
-                            modelId = modelId,
-                            latencyMs = latency,
-                            isNeuralOutput = false,
-                            errorMessage = "No valid tokens generated",
-                            engineUsed = "Wasti Native Tensor Bridge",
-                            tokensGenerated = 0
-                        )
-                    }
-
                     try {
-                        val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
-                            evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
-                            subject = "local_native_inference:$modelId",
-                            verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                            confidence = 0.90
-                        )
-                        com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
-                            taskId = "task_native_${System.currentTimeMillis()}",
-                            actionId = "inference_${System.currentTimeMillis()}",
-                            capabilityId = "local_native_runtime",
-                            providerId = "NativeLlamaBridge",
-                            modelId = modelId,
-                            inputContent = prompt,
-                            outputContent = result,
-                            evidence = evidence
-                        )
-                    } catch (_: Throwable) {
-                        // Non-blocking provenance recording
-                    }
+                        val fullPrompt = if (systemInstruction.isNotBlank()) {
+                            "<|im_start|>system\n$systemInstruction<|im_end|>\n<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+                        } else {
+                            "<|im_start|>user\n$prompt<|im_end|>\n<|im_start|>assistant\n"
+                        }
+                        val result = NativeLlamaBridge.evalPrompt(handle, fullPrompt, maxTokens, temperature)
+                        val nativeTokens = NativeLlamaBridge.getNativeGeneratedTokens(handle)
+                        val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
+                        val isNeuralVerified = if (hasTensors) NativeLlamaBridge.isVerifiedNeural(handle, fullPrompt) else false
 
-                    LocalInferenceResult(
-                        status = LocalInferenceStatus.SUCCESS,
-                        output = result,
-                        modelId = modelId,
-                        latencyMs = latency,
-                        isNeuralOutput = true,
-                        engineUsed = "Wasti Native Llama Tensor Engine (Genuine Neural Inference)",
-                        tokensGenerated = tokensGenerated
-                    )
+                        val latency = System.currentTimeMillis() - startTime
+                        val isGenuineNeural = hasTensors && isNeuralVerified &&
+                            !result.startsWith("[NATIVE_") &&
+                            !result.startsWith("[ERROR") &&
+                            !result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")
+
+                        if (!isGenuineNeural) {
+                            return@withContext LocalInferenceResult(
+                                status = LocalInferenceStatus.UNAVAILABLE,
+                                output = if (result.startsWith("[NATIVE_") || result.startsWith("[ERROR") || result.startsWith("[LOCAL_MODEL_UNAVAILABLE]")) result else "[NATIVE_NEURAL_UNAVAILABLE]: Model '$modelId' container validated, but genuine neural tensor execution is unmapped or unsupported.",
+                                modelId = modelId,
+                                latencyMs = latency,
+                                isNeuralOutput = false,
+                                errorMessage = "Neural execution not proven for model",
+                                engineUsed = "Wasti Native Tensor Bridge (Unverified/Unsupported)",
+                                tokensGenerated = 0
+                            )
+                        }
+
+                        val tokensGenerated = if (nativeTokens > 0) {
+                            nativeTokens
+                        } else {
+                            WastiLocalTokenizer().encode(result).size
+                        }
+
+                        if (tokensGenerated <= 0) {
+                            return@withContext LocalInferenceResult(
+                                status = LocalInferenceStatus.UNAVAILABLE,
+                                output = "[LOCAL_MODEL_UNAVAILABLE]: No valid tokens produced by native engine.",
+                                modelId = modelId,
+                                latencyMs = latency,
+                                isNeuralOutput = false,
+                                errorMessage = "No valid tokens generated",
+                                engineUsed = "Wasti Native Tensor Bridge",
+                                tokensGenerated = 0
+                            )
+                        }
+
+                        try {
+                            val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                                evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
+                                subject = "local_native_inference:$modelId",
+                                verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                                confidence = 0.90
+                            )
+                            com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                                taskId = "task_native_${System.currentTimeMillis()}",
+                                actionId = "inference_${System.currentTimeMillis()}",
+                                capabilityId = "local_native_runtime",
+                                providerId = "NativeLlamaBridge",
+                                modelId = modelId,
+                                inputContent = prompt,
+                                outputContent = result,
+                                evidence = evidence
+                            )
+                            com.example.data.agent.runtime.UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
+                                com.example.data.agent.runtime.CapabilityReality(
+                                    capabilityId = "LOCAL_NEURAL_INFERENCE",
+                                    category = "AI_PROVIDERS",
+                                    implementationStatus = com.example.data.agent.runtime.ImplementationStatus.READY,
+                                    liveConnectionStatus = com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED,
+                                    executionStatus = com.example.data.agent.runtime.CapabilityExecutionStatus.OPERATIONAL,
+                                    authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                                    provider = "WastiLocalModelRuntime:wasti_ai_native",
+                                    supportedOperations = listOf("run_local_model_inference", "local_neural_inference", "local_ai", "execute_prompt"),
+                                    limitations = emptyList(),
+                                    realityState = com.example.data.agent.runtime.CapabilityRealityState.NATIVE
+                                )
+                            )
+                        } catch (_: Throwable) {
+                            // Non-blocking provenance recording
+                        }
+
+                        LocalInferenceResult(
+                            status = LocalInferenceStatus.SUCCESS,
+                            output = result,
+                            modelId = modelId,
+                            latencyMs = latency,
+                            isNeuralOutput = true,
+                            engineUsed = "Wasti Native Llama Tensor Engine (Genuine Neural Inference)",
+                            tokensGenerated = tokensGenerated
+                        )
+                    } finally {
+                        NativeLlamaBridge.freeModel(handle)
+                    }
                 } else {
                     LocalInferenceResult(
                         status = LocalInferenceStatus.NATIVE_LOAD_FAILED,
@@ -474,27 +552,49 @@ class WastiLocalModelRuntime(
         val proven = try {
             val handle = NativeLlamaBridge.initModel(modelFile.absolutePath, 2, 512)
             if (handle != 0L) {
-                val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
-                val probeOk = if (hasTensors) {
-                    try {
-                        NativeLlamaBridge.verifyNeuralInference(handle, "probe")
-                    } catch (_: Throwable) {
-                        false
-                    }
-                } else false
-                val evalProbeOk = if (hasTensors && probeOk) {
-                    try {
-                        val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
-                        testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
-                    } catch (_: Throwable) {
-                        false
-                    }
-                } else false
-                NativeLlamaBridge.freeModel(handle)
-                hasTensors && probeOk && evalProbeOk
+                try {
+                    val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
+                    val probeOk = if (hasTensors) {
+                        try {
+                            NativeLlamaBridge.verifyNeuralInference(handle, "probe")
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    } else false
+                    val evalProbeOk = if (hasTensors && probeOk) {
+                        try {
+                            val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
+                            testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    } else false
+                    hasTensors && probeOk && evalProbeOk
+                } finally {
+                    NativeLlamaBridge.freeModel(handle)
+                }
             } else false
         } catch (_: Throwable) {
             false
+        }
+
+        if (proven) {
+            try {
+                com.example.data.agent.runtime.UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
+                    com.example.data.agent.runtime.CapabilityReality(
+                        capabilityId = "LOCAL_NEURAL_INFERENCE",
+                        category = "AI_PROVIDERS",
+                        implementationStatus = com.example.data.agent.runtime.ImplementationStatus.READY,
+                        liveConnectionStatus = com.example.data.agent.runtime.LiveConnectionStatus.VERIFIED,
+                        executionStatus = com.example.data.agent.runtime.CapabilityExecutionStatus.OPERATIONAL,
+                        authenticationStatus = com.example.data.agent.runtime.CapabilityAuthStatus.NOT_REQUIRED,
+                        provider = "WastiLocalModelRuntime:wasti_ai_native",
+                        supportedOperations = listOf("run_local_model_inference", "local_neural_inference", "local_ai", "execute_prompt"),
+                        limitations = emptyList(),
+                        realityState = com.example.data.agent.runtime.CapabilityRealityState.NATIVE
+                    )
+                )
+            } catch (_: Throwable) {}
         }
 
         provenNeuralExecutionCache[modelId] = proven to now
@@ -525,31 +625,34 @@ class WastiLocalModelRuntime(
         return try {
             val handle = NativeLlamaBridge.initModel(modelFile.absolutePath, 2, 512)
             if (handle != 0L) {
-                val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
-                val isNeuralProbeOk = if (hasTensors) {
-                    try {
-                        NativeLlamaBridge.verifyNeuralInference(handle, "probe")
-                    } catch (_: Throwable) {
-                        false
+                try {
+                    val hasTensors = NativeLlamaBridge.hasTensorsLoaded(handle)
+                    val isNeuralProbeOk = if (hasTensors) {
+                        try {
+                            NativeLlamaBridge.verifyNeuralInference(handle, "probe")
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    } else false
+                    val evalProbeOk = if (hasTensors && isNeuralProbeOk) {
+                        try {
+                            val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
+                            testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
+                        } catch (_: Throwable) {
+                            false
+                        }
+                    } else false
+                    if (hasTensors && isNeuralProbeOk && evalProbeOk) {
+                        LocalNeuralProgressiveState.VERIFIED
+                    } else if (hasTensors && isNeuralProbeOk) {
+                        LocalNeuralProgressiveState.EXECUTABLE
+                    } else if (hasTensors) {
+                        LocalNeuralProgressiveState.LOADABLE
+                    } else {
+                        LocalNeuralProgressiveState.LOADABLE
                     }
-                } else false
-                val evalProbeOk = if (hasTensors && isNeuralProbeOk) {
-                    try {
-                        val testOutput = NativeLlamaBridge.evalPrompt(handle, "probe", 2, 0.5f)
-                        testOutput.isNotBlank() && !testOutput.startsWith("[NATIVE_") && !testOutput.startsWith("[ERROR")
-                    } catch (_: Throwable) {
-                        false
-                    }
-                } else false
-                NativeLlamaBridge.freeModel(handle)
-                if (hasTensors && isNeuralProbeOk && evalProbeOk) {
-                    LocalNeuralProgressiveState.VERIFIED
-                } else if (hasTensors && isNeuralProbeOk) {
-                    LocalNeuralProgressiveState.EXECUTABLE
-                } else if (hasTensors) {
-                    LocalNeuralProgressiveState.LOADABLE
-                } else {
-                    LocalNeuralProgressiveState.LOADABLE
+                } finally {
+                    NativeLlamaBridge.freeModel(handle)
                 }
             } else {
                 LocalNeuralProgressiveState.LOADABLE

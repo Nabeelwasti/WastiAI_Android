@@ -11,6 +11,7 @@ import com.example.data.memory.graph.KnowledgeGraphEngine
 import com.example.data.memory.model.EmbeddingVector
 import com.example.data.memory.model.MemoryItem
 import com.example.data.memory.model.MemoryObservabilityStats
+import com.example.data.memory.model.MemoryProvenanceCategory
 import com.example.data.memory.model.MemorySearchQuery
 import com.example.data.memory.model.MemorySearchResult
 import com.example.data.memory.model.MemoryTier
@@ -61,6 +62,13 @@ object MemoryManager {
             // Index all memories into the knowledge graph & vector index without arbitrary caps
             list.forEach { entity ->
                 val embedding = embeddingService.generateEmbedding(entity.value)
+                val provenanceCat = if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
+                    MemoryProvenanceCategory.USER_STATED
+                } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
+                    MemoryProvenanceCategory.INFERRED
+                } else {
+                    MemoryProvenanceCategory.OBSERVED
+                }
                 val item = MemoryItem(
                     id = entity.id,
                     key = entity.key,
@@ -70,7 +78,8 @@ object MemoryManager {
                     timestamp = entity.timestamp,
                     sourceMessageId = entity.sourceMessageId,
                     embedding = embedding,
-                    tier = resolveTierForCategory(entity.category, entity.key)
+                    tier = resolveTierForCategory(entity.category, entity.key),
+                    provenanceCategory = provenanceCat
                 )
                 activeMemoriesMap[entity.id] = item
                 vectorIndex.indexVector(entity.id, embedding, "{\"key\":\"${entity.key}\"}")
@@ -99,15 +108,35 @@ object MemoryManager {
     /**
      * Checks whether a memory can be promoted to the target tier.
      * Boundary gating: CREDENTIAL can never be promoted; USER_MEMORY cannot become global knowledge/skill.
+     * Furthermore, INFERRED memories can NEVER be converted into VERIFIED_KNOWLEDGE or USER_MEMORY facts
+     * merely due to high confidence without independent empirical verification.
      */
     fun canPromoteMemory(memory: MemoryItem, targetTier: MemoryTier): Boolean {
+        if (memory.provenanceCategory == MemoryProvenanceCategory.INFERRED) {
+            if (targetTier == MemoryTier.VERIFIED_KNOWLEDGE || targetTier == MemoryTier.USER_MEMORY) {
+                return false
+            }
+        }
         return memory.tier.canPromoteTo(targetTier)
+    }
+
+    /**
+     * Checks whether a memory's provenance category can be promoted.
+     * INFERRED memories can NEVER be promoted to VERIFIED or USER_STATED merely due to high confidence.
+     */
+    fun canPromoteProvenance(currentCategory: MemoryProvenanceCategory, targetCategory: MemoryProvenanceCategory): Boolean {
+        if (currentCategory == MemoryProvenanceCategory.INFERRED) {
+            if (targetCategory == MemoryProvenanceCategory.VERIFIED || targetCategory == MemoryProvenanceCategory.USER_STATED) {
+                return false
+            }
+        }
+        return true
     }
 
     suspend fun promoteMemoryTier(memoryId: String, targetTier: MemoryTier): Boolean = withContext(Dispatchers.IO) {
         val existing = activeMemoriesMap[memoryId] ?: return@withContext false
         if (!canPromoteMemory(existing, targetTier)) {
-            Log.w("MemoryManager", "Security Boundary Violation: Cannot promote memory ${existing.id} of tier ${existing.tier} to target tier $targetTier")
+            Log.w("MemoryManager", "Security Boundary Violation: Cannot promote memory ${existing.id} of tier ${existing.tier} (provenance: ${existing.provenanceCategory}) to target tier $targetTier")
             return@withContext false
         }
         val updated = existing.copy(tier = targetTier)
@@ -146,7 +175,8 @@ object MemoryManager {
                 value = userPrompt.trim(),
                 importanceScore = 0.95f,
                 sourceMessageId = sourceMessageId,
-                tier = MemoryTier.USER_MEMORY
+                tier = MemoryTier.USER_MEMORY,
+                provenanceCategory = MemoryProvenanceCategory.USER_STATED
             )
             Log.i("MemoryManager", "Explicit memory intent processed & indexed: $key")
         }
@@ -158,7 +188,8 @@ object MemoryManager {
         value: String,
         importanceScore: Float = 0.9f,
         sourceMessageId: String? = null,
-        tier: MemoryTier = resolveTierForCategory(category, key)
+        tier: MemoryTier = resolveTierForCategory(category, key),
+        provenanceCategory: MemoryProvenanceCategory = MemoryProvenanceCategory.OBSERVED
     ): MemoryItem = withContext(Dispatchers.IO) {
         val existingDuplicate = activeMemoriesMap.values.find {
             policyEngine.isDuplicate(it.value, value)
@@ -190,7 +221,8 @@ object MemoryManager {
             timestamp = System.currentTimeMillis(),
             sourceMessageId = sourceMessageId,
             embedding = embedding,
-            tier = tier
+            tier = tier,
+            provenanceCategory = provenanceCategory
         )
 
         activeMemoriesMap[id] = newItem
@@ -347,6 +379,13 @@ object MemoryManager {
         val items: List<MemoryItem> = if (dao != null) {
             try {
                 dao.getAllMemoriesSync().map { entity ->
+                    val provenanceCat = if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
+                        MemoryProvenanceCategory.USER_STATED
+                    } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
+                        MemoryProvenanceCategory.INFERRED
+                    } else {
+                        MemoryProvenanceCategory.OBSERVED
+                    }
                     MemoryItem(
                         id = entity.id,
                         key = entity.key,
@@ -354,7 +393,9 @@ object MemoryManager {
                         value = entity.value,
                         importanceScore = entity.importanceScore,
                         timestamp = entity.timestamp,
-                        sourceMessageId = entity.sourceMessageId
+                        sourceMessageId = entity.sourceMessageId,
+                        tier = resolveTierForCategory(entity.category, entity.key),
+                        provenanceCategory = provenanceCat
                     )
                 }
             } catch (_: Exception) {

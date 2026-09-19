@@ -10,6 +10,9 @@
 #include <sstream>
 #include <cstdint>
 #include <random>
+#include <unordered_map>
+#include <map>
+#include <limits>
 
 #define TAG "WastiAiNative"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -20,45 +23,94 @@ namespace wasti {
 
 constexpr uint32_t GGUF_MAGIC = 0x46554747; // "GGUF" in little endian
 
+// Supported GGML tensor types
+constexpr uint32_t GGML_TYPE_F32  = 0;
+constexpr uint32_t GGML_TYPE_F16  = 1;
+constexpr uint32_t GGML_TYPE_Q4_0 = 2;
+constexpr uint32_t GGML_TYPE_Q4_1 = 3;
+constexpr uint32_t GGML_TYPE_Q8_0 = 8;
+
 struct TensorDescriptor {
     std::string name;
     uint32_t n_dims{0};
     std::vector<uint64_t> dims;
     uint32_t type{0};
     uint64_t offset{0};
+    uint64_t numElements{0};
+    uint64_t byteSize{0};
+};
+
+// Architecture-aware per-layer tensor storage
+struct LayerTensors {
+    int layerIndex{-1};
+    // Pre-attention RMSNorm (dim)
+    std::vector<float> attnNorm;
+    // Multi-head / GQA projections
+    std::vector<float> qWeight; // (nHeads * headDim) * dim
+    std::vector<float> kWeight; // (nKvHeads * headDim) * dim
+    std::vector<float> vWeight; // (nKvHeads * headDim) * dim
+    std::vector<float> oWeight; // dim * (nHeads * headDim)
+    // Pre-FFN RMSNorm (dim)
+    std::vector<float> ffnNorm;
+    // SwiGLU FFN projections
+    std::vector<float> ffnGate; // ffnInterDim * dim
+    std::vector<float> ffnUp;   // ffnInterDim * dim
+    std::vector<float> ffnDown; // dim * ffnInterDim
+
+    bool isComplete() const {
+        return !attnNorm.empty() && !qWeight.empty() && !kWeight.empty() &&
+               !vWeight.empty() && !oWeight.empty() && !ffnNorm.empty() &&
+               !ffnGate.empty() && !ffnUp.empty() && !ffnDown.empty();
+    }
 };
 
 struct NativeModelContext {
     std::string modelPath;
     std::string architecture;
+    bool architectureSupported{false};
     uint32_t version{0};
     uint64_t tensorCount{0};
     uint64_t metadataCount{0};
     int nThreads{4};
     int contextLength{2048};
-    int dim{128};
-    int nLayers{4};
-    int nHeads{4};
-    int vocabSize{32000};
+    int dim{0};
+    int nLayers{0};
+    int nHeads{0};
+    int nKvHeads{0};
+    int headDim{0};
+    int ffnInterDim{0};
+    float ropeFreqBase{10000.0f};
+    float ropeFreqScale{1.0f};
+    int ropeDim{0};
+
+    // Tokenizer metadata
+    std::string tokenizerModel{"llama"};
+    int vocabSize{0};
+    int bosTokenId{1};
+    int eosTokenId{2};
+    int padTokenId{-1};
+    int nlTokenId{13};
+    std::vector<std::string> vocab;
+    std::unordered_map<std::string, int> tokenToId;
+
+    // Global & Head tensors
+    std::vector<float> tokenEmbeddings; // vocabSize * dim
+    std::vector<float> finalNormGammas; // dim
+    std::vector<float> lmHeadWeights;   // vocabSize * dim
+    bool hasExplicitLmHead{false};
+    bool tiedEmbeddings{false};
+
+    // Per-layer tensor storage
+    std::vector<LayerTensors> layers;
+
+    // Lifecycle, accounting, and truth states
     int lastGeneratedTokenCount{0};
     bool isValid{false};
     bool tensorsLoaded{false};
     bool isRealNeural{false};
+    std::string loadErrorReason;
 
     std::vector<TensorDescriptor> tensors;
-    std::vector<float> tokenEmbeddings;
-    std::vector<float> qWeights;
-    std::vector<float> kWeights;
-    std::vector<float> vWeights;
-    std::vector<float> oWeights;
-    std::vector<float> ffnGateWeights;
-    std::vector<float> ffnUpWeights;
-    std::vector<float> ffnDownWeights;
-    std::vector<float> attentionWeights;
-    std::vector<float> rmsNormGammas;
-    std::vector<float> ffnNormGammas;
-    std::vector<std::string> vocab;
-    std::vector<float> lmHeadWeights;
 
     void initializeDefaultVocab() {
         if (vocabSize <= 0) vocabSize = 32000;
@@ -69,187 +121,42 @@ struct NativeModelContext {
         vocab[2] = "</s>";
         vocab[3] = "<|im_start|>";
         vocab[4] = "<|im_end|>";
-        vocab[5] = "Wasti";
-        vocab[6] = "AI";
-        vocab[7] = "OS";
-        vocab[8] = "system";
-        vocab[9] = "active";
-        vocab[10] = "verified";
-        vocab[11] = "ready";
-        vocab[12] = "task";
-        vocab[13] = "execution";
-        vocab[14] = "completed";
-        vocab[15] = "healthy";
-        for (int i = 16; i < std::min(vocabSize, 256 + 16); ++i) {
-            char ch = static_cast<char>(i - 16);
-            if (ch >= 32 && ch <= 126) {
-                vocab[i] = std::string(1, ch);
-            } else {
-                vocab[i] = "<0x" + std::to_string(i - 16) + ">";
+        for (int i = 5; i < std::min(vocabSize, 256 + 5); ++i) {
+            char ch = static_cast<char>(i - 5);
+            vocab[i] = std::string(1, ch);
+        }
+        for (size_t i = 0; i < vocab.size(); ++i) {
+            if (!vocab[i].empty()) {
+                tokenToId[vocab[i]] = static_cast<int>(i);
+            }
+        }
+    }
+
+    void buildTokenMap() {
+        tokenToId.clear();
+        for (size_t i = 0; i < vocab.size(); ++i) {
+            if (!vocab[i].empty()) {
+                tokenToId[vocab[i]] = static_cast<int>(i);
             }
         }
     }
 };
 
-// RMSNorm forward pass: x_norm = (x / rms(x)) * gamma
-static void computeRmsNorm(float* out, const float* x, const float* gamma, int d, float eps = 1e-5f) {
-    float sumSq = 0.0f;
-    for (int i = 0; i < d; ++i) {
-        sumSq += x[i] * x[i];
+// Safe multiplication with overflow check
+static inline bool safeMultiply(uint64_t a, uint64_t b, uint64_t& out) {
+    if (a == 0 || b == 0) {
+        out = 0;
+        return true;
     }
-    float rms = 1.0f / std::sqrt((sumSq / static_cast<float>(d)) + eps);
-    for (int i = 0; i < d; ++i) {
-        out[i] = x[i] * rms * (gamma ? gamma[i] : 1.0f);
+    if (a > std::numeric_limits<uint64_t>::max() / b) {
+        return false;
     }
+    out = a * b;
+    return true;
 }
 
-// Matrix-vector multiplication: y = W * x
-static void computeMatVec(float* y, const float* W, const float* x, int rows, int cols) {
-    for (int r = 0; r < rows; ++r) {
-        float sum = 0.0f;
-        const float* rowPtr = W + (r * cols);
-        for (int c = 0; c < cols; ++c) {
-            sum += rowPtr[c] * x[c];
-        }
-        y[r] = sum;
-    }
-}
-
-// Scaled dot-product attention
-static void computeAttention(
-    float* output,
-    const float* query,
-    const std::vector<std::vector<float>>& kHistory,
-    const std::vector<std::vector<float>>& vHistory,
-    int d
-) {
-    if (kHistory.empty() || vHistory.empty()) {
-        if (output && query && d > 0) {
-            std::copy_n(query, d, output);
-        }
-        return;
-    }
-
-    size_t seqLen = kHistory.size();
-    std::vector<float> scores(seqLen, 0.0f);
-    float scale = 1.0f / std::sqrt(static_cast<float>(d));
-
-    float maxScore = -1e9f;
-    for (size_t t = 0; t < seqLen; ++t) {
-        float dot = 0.0f;
-        for (int i = 0; i < d; ++i) {
-            dot += query[i] * kHistory[t][i];
-        }
-        scores[t] = dot * scale;
-        if (scores[t] > maxScore) maxScore = scores[t];
-    }
-
-    // Softmax
-    float expSum = 0.0f;
-    for (size_t t = 0; t < seqLen; ++t) {
-        scores[t] = std::exp(scores[t] - maxScore);
-        expSum += scores[t];
-    }
-    float invSum = (expSum > 0.0f) ? (1.0f / expSum) : 1.0f;
-    for (size_t t = 0; t < seqLen; ++t) {
-        scores[t] *= invSum;
-    }
-
-    // Weighted sum of values
-    std::fill(output, output + d, 0.0f);
-    for (size_t t = 0; t < seqLen; ++t) {
-        float weight = scores[t];
-        for (int i = 0; i < d; ++i) {
-            output[i] += weight * vHistory[t][i];
-        }
-    }
-}
-
-// SwiGLU non-linear activation: x * sigmoid(x)
-static inline float silu(float x) {
-    return x / (1.0f + std::exp(-x));
-}
-
-// Neural Forward Pass Step for 1 token through all layers
-static void executeNeuralForwardPass(
-    NativeModelContext* ctx,
-    int tokenId,
-    std::vector<float>& hiddenState,
-    std::vector<std::vector<float>>& kCache,
-    std::vector<std::vector<float>>& vCache
-) {
-    int d = ctx->dim;
-    hiddenState.resize(d);
-
-    // 1. Embedding lookup
-    int embOffset = (tokenId % ctx->vocabSize) * d;
-    for (int i = 0; i < d; ++i) {
-        hiddenState[i] = ctx->tokenEmbeddings[embOffset + i];
-    }
-
-    // 2. Transformer layers
-    std::vector<float> normed(d);
-    std::vector<float> q(d);
-    std::vector<float> k(d);
-    std::vector<float> v(d);
-    std::vector<float> attOut(d);
-
-    for (int layer = 0; layer < ctx->nLayers; ++layer) {
-        // Pre-attention RMSNorm
-        const float* attnNorm = !ctx->rmsNormGammas.empty() ? ctx->rmsNormGammas.data() : nullptr;
-        computeRmsNorm(normed.data(), hiddenState.data(), attnNorm, d);
-
-        // Separate Q, K, V projections
-        const float* qMat = !ctx->qWeights.empty() ? ctx->qWeights.data() : ctx->attentionWeights.data();
-        const float* kMat = !ctx->kWeights.empty() ? ctx->kWeights.data() : ctx->attentionWeights.data();
-        const float* vMat = !ctx->vWeights.empty() ? ctx->vWeights.data() : ctx->attentionWeights.data();
-
-        computeMatVec(q.data(), qMat, normed.data(), d, d);
-        computeMatVec(k.data(), kMat, normed.data(), d, d);
-        computeMatVec(v.data(), vMat, normed.data(), d, d);
-
-        // Cache K & V
-        kCache.push_back(k);
-        vCache.push_back(v);
-
-        // Attention
-        computeAttention(attOut.data(), q.data(), kCache, vCache, d);
-
-        // O projection (out = W_o * attOut) if available
-        if (!ctx->oWeights.empty()) {
-            std::vector<float> projAttOut(d);
-            computeMatVec(projAttOut.data(), ctx->oWeights.data(), attOut.data(), d, d);
-            for (int i = 0; i < d; ++i) hiddenState[i] += projAttOut[i];
-        } else {
-            for (int i = 0; i < d; ++i) hiddenState[i] += attOut[i];
-        }
-
-        // Pre-FFN RMSNorm & Feed-Forward layer
-        const float* ffnNorm = !ctx->ffnNormGammas.empty() ? ctx->ffnNormGammas.data() : (!ctx->rmsNormGammas.empty() ? ctx->rmsNormGammas.data() : nullptr);
-        computeRmsNorm(normed.data(), hiddenState.data(), ffnNorm, d);
-
-        // SwiGLU / FFN forward pass: gate, up, down
-        if (!ctx->ffnGateWeights.empty() && !ctx->ffnUpWeights.empty() && !ctx->ffnDownWeights.empty()) {
-            std::vector<float> gate(d), up(d), inter(d), ffnOut(d);
-            computeMatVec(gate.data(), ctx->ffnGateWeights.data(), normed.data(), d, d);
-            computeMatVec(up.data(), ctx->ffnUpWeights.data(), normed.data(), d, d);
-            for (int i = 0; i < d; ++i) inter[i] = silu(gate[i]) * up[i];
-            computeMatVec(ffnOut.data(), ctx->ffnDownWeights.data(), inter.data(), d, d);
-            for (int i = 0; i < d; ++i) hiddenState[i] += ffnOut[i];
-        } else {
-            for (int i = 0; i < d; ++i) {
-                float ffnVal = silu(normed[i]) * 0.5f;
-                hiddenState[i] += ffnVal;
-            }
-        }
-    }
-
-    // Final RMSNorm
-    computeRmsNorm(hiddenState.data(), hiddenState.data(), ctx->rmsNormGammas.data(), d);
-}
-
+// Convert IEEE 754 half-precision float to single-precision float
 static inline float halfToFloat(uint16_t h) {
-    static_assert(sizeof(float) == sizeof(uint32_t), "float and uint32_t size mismatch");
     uint32_t sign = (static_cast<uint32_t>(h) >> 15) & 0x0001U;
     uint32_t exp  = (static_cast<uint32_t>(h) >> 10) & 0x001fU;
     uint32_t mant = static_cast<uint32_t>(h) & 0x03ffU;
@@ -277,98 +184,472 @@ static inline float halfToFloat(uint16_t h) {
     return f;
 }
 
-static std::string readGgufString(std::ifstream& file) {
-    uint64_t len = 0;
-    file.read(reinterpret_cast<char*>(&len), sizeof(len));
-    if (!file || len > 65536) return "";
-    std::string s(static_cast<size_t>(len), '\0');
-    file.read(&s[0], static_cast<std::streamsize>(len));
-    return s;
+// RMSNorm forward pass: out = (x / sqrt(mean(x^2) + eps)) * gamma
+static void computeRmsNorm(float* out, const float* x, const float* gamma, int d, float eps = 1e-5f) {
+    float sumSq = 0.0f;
+    for (int i = 0; i < d; ++i) {
+        sumSq += x[i] * x[i];
+    }
+    float rms = 1.0f / std::sqrt((sumSq / static_cast<float>(d)) + eps);
+    for (int i = 0; i < d; ++i) {
+        out[i] = x[i] * rms * (gamma ? gamma[i] : 1.0f);
+    }
 }
 
+// Matrix-vector multiplication: y = W * x, where W is (rows x cols), x is (cols), y is (rows)
+static void computeMatVec(float* y, const float* W, const float* x, int rows, int cols) {
+    for (int r = 0; r < rows; ++r) {
+        float sum = 0.0f;
+        const float* rowPtr = W + (r * cols);
+        for (int c = 0; c < cols; ++c) {
+            sum += rowPtr[c] * x[c];
+        }
+        y[r] = sum;
+    }
+}
+
+// SwiGLU activation function: silu(x) = x * sigmoid(x)
+static inline float silu(float x) {
+    return x / (1.0f + std::exp(-x));
+}
+
+// Apply Rotary Positional Embedding (RoPE) to a head vector
+static void applyRope(float* vec, int headDim, int ropeDim, int pos, float freqBase, float freqScale) {
+    int rotDim = (ropeDim > 0 && ropeDim <= headDim) ? ropeDim : headDim;
+    int halfRot = rotDim / 2;
+    for (int i = 0; i < halfRot; ++i) {
+        float theta = std::pow(freqBase, -2.0f * static_cast<float>(i) / static_cast<float>(rotDim)) * freqScale;
+        float angle = static_cast<float>(pos) * theta;
+        float cos_a = std::cos(angle);
+        float sin_a = std::sin(angle);
+        float v0 = vec[2 * i];
+        float v1 = vec[2 * i + 1];
+        vec[2 * i]     = v0 * cos_a - v1 * sin_a;
+        vec[2 * i + 1] = v0 * sin_a + v1 * cos_a;
+    }
+}
+
+// Grouped-Query Attention (GQA) & Multi-Query Attention (MQA) calculation
+static void computeGqaAttention(
+    float* attOutput,
+    const float* q,
+    const std::vector<std::vector<float>>& kCache,
+    const std::vector<std::vector<float>>& vCache,
+    int nHeads,
+    int nKvHeads,
+    int headDim
+) {
+    int totalQDim = nHeads * headDim;
+    int kvGroupSize = (nKvHeads > 0) ? (nHeads / nKvHeads) : 1;
+    if (kvGroupSize < 1) kvGroupSize = 1;
+
+    size_t seqLen = kCache.size();
+    if (seqLen == 0) {
+        std::fill(attOutput, attOutput + totalQDim, 0.0f);
+        return;
+    }
+
+    float scale = 1.0f / std::sqrt(static_cast<float>(headDim));
+    std::vector<float> scores(seqLen);
+
+    for (int h = 0; h < nHeads; ++h) {
+        int kvHead = h / kvGroupSize;
+        const float* qHead = q + (h * headDim);
+        float* outHead = attOutput + (h * headDim);
+
+        float maxScore = -1e9f;
+        for (size_t t = 0; t < seqLen; ++t) {
+            const float* kHead = kCache[t].data() + (kvHead * headDim);
+            float dot = 0.0f;
+            for (int i = 0; i < headDim; ++i) {
+                dot += qHead[i] * kHead[i];
+            }
+            scores[t] = dot * scale;
+            if (scores[t] > maxScore) maxScore = scores[t];
+        }
+
+        // Softmax
+        float expSum = 0.0f;
+        for (size_t t = 0; t < seqLen; ++t) {
+            scores[t] = std::exp(scores[t] - maxScore);
+            expSum += scores[t];
+        }
+        float invSum = (expSum > 0.0f) ? (1.0f / expSum) : 1.0f;
+        for (size_t t = 0; t < seqLen; ++t) {
+            scores[t] *= invSum;
+        }
+
+        // Weighted sum of V
+        std::fill(outHead, outHead + headDim, 0.0f);
+        for (size_t t = 0; t < seqLen; ++t) {
+            float weight = scores[t];
+            const float* vHead = vCache[t].data() + (kvHead * headDim);
+            for (int i = 0; i < headDim; ++i) {
+                outHead[i] += weight * vHead[i];
+            }
+        }
+    }
+}
+
+// Neural Forward Pass Step for 1 token through all layers with per-layer tensors
+static bool executeNeuralForwardPass(
+    NativeModelContext* ctx,
+    int tokenId,
+    int pos,
+    std::vector<float>& hiddenState,
+    std::vector<std::vector<std::vector<float>>>& layerKCache,
+    std::vector<std::vector<std::vector<float>>>& layerVCache
+) {
+    int d = ctx->dim;
+    if (d <= 0 || ctx->vocabSize <= 0 || tokenId < 0 || tokenId >= ctx->vocabSize) {
+        return false;
+    }
+
+    hiddenState.resize(d);
+
+    // 1. Embedding lookup
+    int embOffset = tokenId * d;
+    if (static_cast<size_t>(embOffset + d) > ctx->tokenEmbeddings.size()) {
+        return false;
+    }
+    std::copy_n(ctx->tokenEmbeddings.data() + embOffset, d, hiddenState.data());
+
+    // 2. Transformer layers
+    std::vector<float> normed(d);
+    int totalQDim = ctx->nHeads * ctx->headDim;
+    int totalKvDim = ctx->nKvHeads * ctx->headDim;
+    std::vector<float> q(totalQDim);
+    std::vector<float> k(totalKvDim);
+    std::vector<float> v(totalKvDim);
+    std::vector<float> attConcat(totalQDim);
+    std::vector<float> attOut(d);
+
+    for (int l = 0; l < ctx->nLayers; ++l) {
+        const auto& layer = ctx->layers[l];
+        if (!layer.isComplete()) {
+            return false;
+        }
+
+        // 2a. Pre-attention RMSNorm
+        computeRmsNorm(normed.data(), hiddenState.data(), layer.attnNorm.data(), d);
+
+        // 2b. Q, K, V projections
+        computeMatVec(q.data(), layer.qWeight.data(), normed.data(), totalQDim, d);
+        computeMatVec(k.data(), layer.kWeight.data(), normed.data(), totalKvDim, d);
+        computeMatVec(v.data(), layer.vWeight.data(), normed.data(), totalKvDim, d);
+
+        // 2c. RoPE
+        for (int h = 0; h < ctx->nHeads; ++h) {
+            applyRope(q.data() + (h * ctx->headDim), ctx->headDim, ctx->ropeDim, pos, ctx->ropeFreqBase, ctx->ropeFreqScale);
+        }
+        for (int h = 0; h < ctx->nKvHeads; ++h) {
+            applyRope(k.data() + (h * ctx->headDim), ctx->headDim, ctx->ropeDim, pos, ctx->ropeFreqBase, ctx->ropeFreqScale);
+        }
+
+        // 2d. Cache K & V for this layer
+        layerKCache[l].push_back(k);
+        layerVCache[l].push_back(v);
+
+        // 2e. GQA Attention
+        computeGqaAttention(attConcat.data(), q.data(), layerKCache[l], layerVCache[l], ctx->nHeads, ctx->nKvHeads, ctx->headDim);
+
+        // 2f. O projection & residual
+        computeMatVec(attOut.data(), layer.oWeight.data(), attConcat.data(), d, totalQDim);
+        for (int i = 0; i < d; ++i) hiddenState[i] += attOut[i];
+
+        // 2g. Pre-FFN RMSNorm
+        computeRmsNorm(normed.data(), hiddenState.data(), layer.ffnNorm.data(), d);
+
+        // 2h. SwiGLU FFN: gate, up, down
+        std::vector<float> gate(ctx->ffnInterDim);
+        std::vector<float> up(ctx->ffnInterDim);
+        std::vector<float> inter(ctx->ffnInterDim);
+        std::vector<float> ffnOut(d);
+
+        computeMatVec(gate.data(), layer.ffnGate.data(), normed.data(), ctx->ffnInterDim, d);
+        computeMatVec(up.data(), layer.ffnUp.data(), normed.data(), ctx->ffnInterDim, d);
+        for (int i = 0; i < ctx->ffnInterDim; ++i) {
+            inter[i] = silu(gate[i]) * up[i];
+        }
+        computeMatVec(ffnOut.data(), layer.ffnDown.data(), inter.data(), d, ctx->ffnInterDim);
+        for (int i = 0; i < d; ++i) hiddenState[i] += ffnOut[i];
+    }
+
+    // 3. Final RMSNorm
+    if (ctx->finalNormGammas.size() == static_cast<size_t>(d)) {
+        computeRmsNorm(hiddenState.data(), hiddenState.data(), ctx->finalNormGammas.data(), d);
+    }
+    return true;
+}
+
+// Bounds-checked GGUF string reader
+static bool readGgufString(std::ifstream& file, std::string& outStr) {
+    uint64_t len = 0;
+    file.read(reinterpret_cast<char*>(&len), sizeof(len));
+    if (!file || file.gcount() != sizeof(len) || len > 65536) {
+        return false;
+    }
+    outStr.resize(static_cast<size_t>(len));
+    if (len > 0) {
+        file.read(&outStr[0], static_cast<std::streamsize>(len));
+        if (!file || static_cast<uint64_t>(file.gcount()) != len) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Bounds-checked GGUF metadata reader
 static bool skipOrReadGgufValue(std::ifstream& file, uint32_t type, const std::string& key, NativeModelContext* ctx) {
     switch (type) {
         case 0: case 1: case 7: { // uint8, int8, bool
-            char c; file.read(&c, 1);
-            return (bool)file;
+            char c;
+            file.read(&c, 1);
+            return (file && file.gcount() == 1);
         }
         case 2: case 3: { // uint16, int16
-            int16_t v; file.read(reinterpret_cast<char*>(&v), 2);
-            return (bool)file;
+            int16_t v;
+            file.read(reinterpret_cast<char*>(&v), 2);
+            return (file && file.gcount() == 2);
         }
         case 4: case 5: { // uint32, int32
-            uint32_t v; file.read(reinterpret_cast<char*>(&v), 4);
+            uint32_t v;
+            file.read(reinterpret_cast<char*>(&v), 4);
+            if (!file || file.gcount() != 4) return false;
             if (key.find("embedding_length") != std::string::npos) ctx->dim = static_cast<int>(v);
             else if (key.find("block_count") != std::string::npos) ctx->nLayers = static_cast<int>(v);
+            else if (key.find("feed_forward_length") != std::string::npos) ctx->ffnInterDim = static_cast<int>(v);
+            else if (key.find("head_count_kv") != std::string::npos) ctx->nKvHeads = static_cast<int>(v);
             else if (key.find("head_count") != std::string::npos) ctx->nHeads = static_cast<int>(v);
             else if (key.find("context_length") != std::string::npos) ctx->contextLength = static_cast<int>(v);
-            return (bool)file;
+            else if (key.find("bos_token_id") != std::string::npos) ctx->bosTokenId = static_cast<int>(v);
+            else if (key.find("eos_token_id") != std::string::npos) ctx->eosTokenId = static_cast<int>(v);
+            return true;
         }
         case 6: { // float32
-            float f; file.read(reinterpret_cast<char*>(&f), 4);
-            return (bool)file;
+            float f;
+            file.read(reinterpret_cast<char*>(&f), 4);
+            if (!file || file.gcount() != 4) return false;
+            if (key.find("rope.freq_base") != std::string::npos) ctx->ropeFreqBase = f;
+            else if (key.find("rope.freq_scale") != std::string::npos) ctx->ropeFreqScale = f;
+            return true;
         }
         case 8: { // string
-            std::string strVal = readGgufString(file);
+            std::string strVal;
+            if (!readGgufString(file, strVal)) return false;
             if (key.find("architecture") != std::string::npos && ctx) {
                 ctx->architecture = strVal;
+            } else if (key.find("tokenizer.ggml.model") != std::string::npos && ctx) {
+                ctx->tokenizerModel = strVal;
             }
-            return (bool)file;
+            return true;
         }
         case 9: { // array
             uint32_t elemType = 0;
             uint64_t elemCount = 0;
             file.read(reinterpret_cast<char*>(&elemType), sizeof(elemType));
             file.read(reinterpret_cast<char*>(&elemCount), sizeof(elemCount));
-            if (!file || elemCount > 500000) return false;
+            if (!file || file.gcount() != sizeof(elemCount) || elemCount > 500000) {
+                return false;
+            }
             for (uint64_t i = 0; i < elemCount; ++i) {
                 if (elemType == 8) {
-                    std::string tokenStr = readGgufString(file);
-                    if (key.find("tokens") != std::string::npos && ctx->vocab.size() < 32000) {
+                    std::string tokenStr;
+                    if (!readGgufString(file, tokenStr)) return false;
+                    if (key.find("tokens") != std::string::npos) {
                         ctx->vocab.push_back(tokenStr);
                     }
                 } else {
                     if (!skipOrReadGgufValue(file, elemType, "", ctx)) return false;
                 }
             }
-            return (bool)file;
+            return true;
         }
         case 10: case 11: { // uint64, int64
-            uint64_t v; file.read(reinterpret_cast<char*>(&v), 8);
+            uint64_t v;
+            file.read(reinterpret_cast<char*>(&v), 8);
+            if (!file || file.gcount() != 8) return false;
             if (key.find("embedding_length") != std::string::npos) ctx->dim = static_cast<int>(v);
             else if (key.find("block_count") != std::string::npos) ctx->nLayers = static_cast<int>(v);
+            else if (key.find("feed_forward_length") != std::string::npos) ctx->ffnInterDim = static_cast<int>(v);
+            else if (key.find("head_count_kv") != std::string::npos) ctx->nKvHeads = static_cast<int>(v);
             else if (key.find("head_count") != std::string::npos) ctx->nHeads = static_cast<int>(v);
             else if (key.find("context_length") != std::string::npos) ctx->contextLength = static_cast<int>(v);
-            return (bool)file;
+            else if (key.find("bos_token_id") != std::string::npos) ctx->bosTokenId = static_cast<int>(v);
+            else if (key.find("eos_token_id") != std::string::npos) ctx->eosTokenId = static_cast<int>(v);
+            return true;
         }
         case 12: { // float64
-            double d; file.read(reinterpret_cast<char*>(&d), 8);
-            return (bool)file;
+            double d;
+            file.read(reinterpret_cast<char*>(&d), 8);
+            return (file && file.gcount() == 8);
         }
         default:
             return false;
     }
 }
 
-// Genuine GGUF container parser and tensor payload weight loader
+// Calculate byte requirement for a supported GGML tensor type
+static bool calculateTensorByteSize(uint32_t type, uint64_t numElements, uint64_t& outBytes) {
+    switch (type) {
+        case GGML_TYPE_F32:
+            return safeMultiply(numElements, 4, outBytes);
+        case GGML_TYPE_F16:
+            return safeMultiply(numElements, 2, outBytes);
+        case GGML_TYPE_Q4_0: {
+            if (numElements % 32 != 0) return false;
+            uint64_t nBlocks = numElements / 32;
+            return safeMultiply(nBlocks, 18, outBytes);
+        }
+        case GGML_TYPE_Q4_1: {
+            if (numElements % 32 != 0) return false;
+            uint64_t nBlocks = numElements / 32;
+            return safeMultiply(nBlocks, 20, outBytes);
+        }
+        case GGML_TYPE_Q8_0: {
+            if (numElements % 32 != 0) return false;
+            uint64_t nBlocks = numElements / 32;
+            return safeMultiply(nBlocks, 34, outBytes);
+        }
+        default:
+            return false; // Unsupported quantized type
+    }
+}
+
+// Decode tensor payload directly to destination float buffer
+static bool loadAndDecodeTensor(
+    std::ifstream& file,
+    uint64_t fileOffset,
+    uint32_t type,
+    uint64_t numElements,
+    std::vector<float>& targetBuf
+) {
+    if (targetBuf.size() != numElements) {
+        LOGE("loadAndDecodeTensor: dimension mismatch (targetBuf=%zu, tensor=%llu)",
+             targetBuf.size(), static_cast<unsigned long long>(numElements));
+        return false;
+    }
+
+    file.seekg(static_cast<std::streamoff>(fileOffset));
+    if (!file) return false;
+
+    if (type == GGML_TYPE_F32) {
+        file.read(reinterpret_cast<char*>(targetBuf.data()), numElements * sizeof(float));
+        return (file && static_cast<uint64_t>(file.gcount()) == numElements * sizeof(float));
+    } else if (type == GGML_TYPE_F16) {
+        std::vector<uint16_t> halfBuf(numElements);
+        file.read(reinterpret_cast<char*>(halfBuf.data()), numElements * sizeof(uint16_t));
+        if (!file || static_cast<uint64_t>(file.gcount()) != numElements * sizeof(uint16_t)) return false;
+        for (size_t i = 0; i < numElements; ++i) {
+            targetBuf[i] = halfToFloat(halfBuf[i]);
+        }
+        return true;
+    } else if (type == GGML_TYPE_Q4_0) {
+        uint64_t nBlocks = numElements / 32;
+        std::vector<uint8_t> blockBuf(nBlocks * 18);
+        file.read(reinterpret_cast<char*>(blockBuf.data()), blockBuf.size());
+        if (!file || static_cast<size_t>(file.gcount()) != blockBuf.size()) return false;
+
+        const uint8_t* ptr = blockBuf.data();
+        for (uint64_t b = 0; b < nBlocks; ++b) {
+            uint16_t d_raw = *reinterpret_cast<const uint16_t*>(ptr);
+            float d = halfToFloat(d_raw);
+            const uint8_t* qs = ptr + 2;
+            for (int i = 0; i < 16; ++i) {
+                uint8_t v0 = qs[i] & 0x0F;
+                uint8_t v1 = (qs[i] >> 4) & 0x0F;
+                targetBuf[b * 32 + 2 * i]     = (static_cast<float>(v0) - 8.0f) * d;
+                targetBuf[b * 32 + 2 * i + 1] = (static_cast<float>(v1) - 8.0f) * d;
+            }
+            ptr += 18;
+        }
+        return true;
+    } else if (type == GGML_TYPE_Q4_1) {
+        uint64_t nBlocks = numElements / 32;
+        std::vector<uint8_t> blockBuf(nBlocks * 20);
+        file.read(reinterpret_cast<char*>(blockBuf.data()), blockBuf.size());
+        if (!file || static_cast<size_t>(file.gcount()) != blockBuf.size()) return false;
+
+        const uint8_t* ptr = blockBuf.data();
+        for (uint64_t b = 0; b < nBlocks; ++b) {
+            uint16_t d_raw = *reinterpret_cast<const uint16_t*>(ptr);
+            uint16_t m_raw = *reinterpret_cast<const uint16_t*>(ptr + 2);
+            float d = halfToFloat(d_raw);
+            float m = halfToFloat(m_raw);
+            const uint8_t* qs = ptr + 4;
+            for (int i = 0; i < 16; ++i) {
+                uint8_t v0 = qs[i] & 0x0F;
+                uint8_t v1 = (qs[i] >> 4) & 0x0F;
+                targetBuf[b * 32 + 2 * i]     = (static_cast<float>(v0) * d) + m;
+                targetBuf[b * 32 + 2 * i + 1] = (static_cast<float>(v1) * d) + m;
+            }
+            ptr += 20;
+        }
+        return true;
+    } else if (type == GGML_TYPE_Q8_0) {
+        uint64_t nBlocks = numElements / 32;
+        std::vector<uint8_t> blockBuf(nBlocks * 34);
+        file.read(reinterpret_cast<char*>(blockBuf.data()), blockBuf.size());
+        if (!file || static_cast<size_t>(file.gcount()) != blockBuf.size()) return false;
+
+        const uint8_t* ptr = blockBuf.data();
+        for (uint64_t b = 0; b < nBlocks; ++b) {
+            uint16_t d_raw = *reinterpret_cast<const uint16_t*>(ptr);
+            float d = halfToFloat(d_raw);
+            const int8_t* qs = reinterpret_cast<const int8_t*>(ptr + 2);
+            for (int i = 0; i < 32; ++i) {
+                targetBuf[b * 32 + i] = static_cast<float>(qs[i]) * d;
+            }
+            ptr += 34;
+        }
+        return true;
+    }
+    return false;
+}
+
+// Extract layer index from canonical tensor names like "blk.0.attn_q.weight" or "model.layers.0.self_attn.q_proj.weight"
+static int extractLayerIndex(const std::string& name) {
+    size_t pos = name.find("blk.");
+    if (pos != std::string::npos) {
+        size_t start = pos + 4;
+        size_t end = name.find('.', start);
+        if (end != std::string::npos) {
+            return std::atoi(name.substr(start, end - start).c_str());
+        }
+    }
+    pos = name.find("layers.");
+    if (pos != std::string::npos) {
+        size_t start = pos + 7;
+        size_t end = name.find('.', start);
+        if (end != std::string::npos) {
+            return std::atoi(name.substr(start, end - start).c_str());
+        }
+    }
+    return -1;
+}
+
+// Genuine GGUF container parser, validator, and per-layer tensor payload loader
 static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
     std::ifstream file(path, std::ios::binary);
     if (!file.is_open()) {
-        LOGE("Failed to open model file: %s", path.c_str());
+        ctx->loadErrorReason = "Failed to open model file on disk: " + path;
+        LOGE("%s", ctx->loadErrorReason.c_str());
         return false;
     }
 
     uint32_t magic = 0;
     file.read(reinterpret_cast<char*>(&magic), sizeof(magic));
-    if (magic != GGUF_MAGIC) {
-        LOGE("Invalid GGUF magic bytes: 0x%08X (expected 0x%08X)", magic, GGUF_MAGIC);
+    if (!file || file.gcount() != sizeof(magic) || magic != GGUF_MAGIC) {
+        ctx->loadErrorReason = "Invalid GGUF magic bytes (corrupt or non-GGUF file)";
+        LOGE("%s", ctx->loadErrorReason.c_str());
         return false;
     }
 
     uint32_t version = 0;
     file.read(reinterpret_cast<char*>(&version), sizeof(version));
-    if (version != 2 && version != 3) {
-        LOGE("Unsupported GGUF version: %u", version);
+    if (!file || file.gcount() != sizeof(version) || (version != 2 && version != 3)) {
+        ctx->loadErrorReason = "Unsupported GGUF version: " + std::to_string(version);
+        LOGE("%s", ctx->loadErrorReason.c_str());
         return false;
     }
 
@@ -376,40 +657,105 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
     uint64_t metadataCount = 0;
     file.read(reinterpret_cast<char*>(&tensorCount), sizeof(tensorCount));
     file.read(reinterpret_cast<char*>(&metadataCount), sizeof(metadataCount));
+    if (!file || file.gcount() != sizeof(metadataCount) || tensorCount > 100000 || metadataCount > 100000) {
+        ctx->loadErrorReason = "Corrupt GGUF header (impossible tensor/metadata count)";
+        LOGE("%s", ctx->loadErrorReason.c_str());
+        return false;
+    }
 
     ctx->version = version;
     ctx->tensorCount = tensorCount;
     ctx->metadataCount = metadataCount;
-    ctx->initializeDefaultVocab();
-
-    LOGI("Parsing GGUF container: version=%u, tensors=%llu, metadata=%llu",
-         version, static_cast<unsigned long long>(tensorCount),
-         static_cast<unsigned long long>(metadataCount));
 
     // 1. Read metadata key-value pairs
     for (uint64_t i = 0; i < metadataCount; ++i) {
-        std::string key = readGgufString(file);
+        std::string key;
+        if (!readGgufString(file, key)) {
+            ctx->loadErrorReason = "Corrupt metadata key at index " + std::to_string(i);
+            return false;
+        }
         uint32_t valType = 0;
         file.read(reinterpret_cast<char*>(&valType), sizeof(valType));
-        if (!file || !skipOrReadGgufValue(file, valType, key, ctx)) {
-            LOGD("Completed or stopped reading GGUF metadata at key %s", key.c_str());
-            break;
+        if (!file || file.gcount() != sizeof(valType)) {
+            ctx->loadErrorReason = "Corrupt metadata value type for key: " + key;
+            return false;
         }
+        if (!skipOrReadGgufValue(file, valType, key, ctx)) {
+            ctx->loadErrorReason = "Failed to parse metadata value for key: " + key;
+            return false;
+        }
+    }
+
+    // Determine architecture support
+    std::string arch = ctx->architecture;
+    std::transform(arch.begin(), arch.end(), arch.begin(), ::tolower);
+    if (arch.empty() || arch == "llama" || arch == "mistral" || arch == "qwen2" || arch == "gemma" || arch == "phi3") {
+        ctx->architectureSupported = true;
+    } else {
+        ctx->architectureSupported = false;
+        ctx->loadErrorReason = "Unsupported model architecture family: " + ctx->architecture;
+        LOGE("%s", ctx->loadErrorReason.c_str());
+        return false;
+    }
+
+    // Validate essential architecture dimensions
+    if (ctx->dim <= 0 || ctx->dim > 65536) ctx->dim = 128;
+    if (ctx->nLayers <= 0 || ctx->nLayers > 256) ctx->nLayers = 4;
+    if (ctx->nHeads <= 0 || ctx->nHeads > 256) ctx->nHeads = 4;
+    if (ctx->nKvHeads <= 0) ctx->nKvHeads = ctx->nHeads;
+    if (ctx->headDim <= 0) ctx->headDim = ctx->dim / ctx->nHeads;
+    if (ctx->ffnInterDim <= 0) ctx->ffnInterDim = ctx->dim * 4;
+    if (ctx->ropeDim <= 0) ctx->ropeDim = ctx->headDim;
+
+    if (ctx->vocab.empty()) {
+        ctx->initializeDefaultVocab();
+    } else {
+        ctx->vocabSize = static_cast<int>(ctx->vocab.size());
+        ctx->buildTokenMap();
     }
 
     // 2. Read tensor descriptors
     uint32_t alignment = 32;
     for (uint64_t i = 0; i < tensorCount; ++i) {
-        std::string name = readGgufString(file);
+        std::string name;
+        if (!readGgufString(file, name)) {
+            ctx->loadErrorReason = "Failed to read tensor name at index " + std::to_string(i);
+            return false;
+        }
         uint32_t nDims = 0;
         file.read(reinterpret_cast<char*>(&nDims), sizeof(nDims));
-        if (!file || nDims > 8) break;
+        if (!file || file.gcount() != sizeof(nDims) || nDims > 8) {
+            ctx->loadErrorReason = "Malformed tensor dimension count for " + name;
+            return false;
+        }
         std::vector<uint64_t> dims(nDims);
         file.read(reinterpret_cast<char*>(dims.data()), nDims * sizeof(uint64_t));
+        if (!file || file.gcount() != static_cast<std::streamsize>(nDims * sizeof(uint64_t))) {
+            ctx->loadErrorReason = "Malformed tensor dimensions for " + name;
+            return false;
+        }
         uint32_t type = 0;
         uint64_t offset = 0;
         file.read(reinterpret_cast<char*>(&type), sizeof(type));
         file.read(reinterpret_cast<char*>(&offset), sizeof(offset));
+        if (!file || file.gcount() != sizeof(offset)) {
+            ctx->loadErrorReason = "Malformed tensor type/offset for " + name;
+            return false;
+        }
+
+        uint64_t numElements = 1;
+        for (auto d : dims) {
+            if (!safeMultiply(numElements, d, numElements)) {
+                ctx->loadErrorReason = "Tensor element count overflow for " + name;
+                return false;
+            }
+        }
+
+        uint64_t byteSize = 0;
+        if (!calculateTensorByteSize(type, numElements, byteSize)) {
+            ctx->loadErrorReason = "Unsupported tensor type or invalid shape for " + name;
+            return false;
+        }
 
         TensorDescriptor desc;
         desc.name = name;
@@ -417,130 +763,179 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
         desc.dims = dims;
         desc.type = type;
         desc.offset = offset;
+        desc.numElements = numElements;
+        desc.byteSize = byteSize;
         ctx->tensors.push_back(desc);
     }
 
-    // 3. Compute tensor data payload start offset
+    // 3. Compute tensor binary data start offset
     uint64_t currentStreamPos = static_cast<uint64_t>(file.tellg());
     uint64_t tensorDataStart = ((currentStreamPos + alignment - 1) / alignment) * alignment;
 
     file.seekg(0, std::ios::end);
     uint64_t fileSize = static_cast<uint64_t>(file.tellg());
 
-    if (fileSize > tensorDataStart && !ctx->tensors.empty()) {
-        LOGI("GGUF tensor binary block detected: start=%llu, fileSize=%llu, tensors=%zu",
-             static_cast<unsigned long long>(tensorDataStart),
-             static_cast<unsigned long long>(fileSize),
-             ctx->tensors.size());
-
-        if (ctx->dim <= 0) ctx->dim = 128;
-        if (ctx->vocabSize <= 0) ctx->vocabSize = 32000;
-        if (ctx->nLayers <= 0) ctx->nLayers = 4;
-        if (ctx->nHeads <= 0) ctx->nHeads = 4;
-
-        ctx->tokenEmbeddings.resize(ctx->vocabSize * ctx->dim, 0.0f);
-        ctx->rmsNormGammas.resize(ctx->dim, 1.0f);
-        ctx->ffnNormGammas.resize(ctx->dim, 1.0f);
-        ctx->attentionWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->qWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->kWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->vWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->oWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->ffnGateWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->ffnUpWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->ffnDownWeights.resize(ctx->dim * ctx->dim, 0.0f);
-        ctx->lmHeadWeights.resize(ctx->dim * ctx->vocabSize, 0.0f);
-
-        bool mappedEmbeddings = false;
-        bool mappedNorm = false;
-        bool mappedAttention = false;
-        bool mappedLmHead = false;
-
-        for (const auto& tensor : ctx->tensors) {
-            uint64_t tensorByteOffset = tensorDataStart + tensor.offset;
-            if (tensorByteOffset >= fileSize) continue;
-
-            file.seekg(static_cast<std::streamoff>(tensorByteOffset));
-            if (!file) continue;
-
-            uint64_t numElements = 1;
-            for (auto d : tensor.dims) numElements *= d;
-
-            auto readTensorData = [&](std::vector<float>& targetBuf) -> bool {
-                size_t toRead = std::min<size_t>(numElements, targetBuf.size());
-                if (tensor.type == 0) { // F32
-                    file.read(reinterpret_cast<char*>(targetBuf.data()), toRead * sizeof(float));
-                    return true;
-                } else if (tensor.type == 1) { // F16
-                    std::vector<uint16_t> halfBuf(toRead);
-                    file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
-                    for (size_t k = 0; k < toRead; ++k) targetBuf[k] = halfToFloat(halfBuf[k]);
-                    return true;
-                }
-                return false;
-            };
-
-            // Map embedding weights
-            if (tensor.name == "token_embd.weight" || tensor.name.find("embed_tokens") != std::string::npos || tensor.name.find("tok_embeddings") != std::string::npos) {
-                mappedEmbeddings = readTensorData(ctx->tokenEmbeddings);
-            }
-            // Map normalization weights
-            else if (tensor.name == "output_norm.weight" || tensor.name.find("norm.weight") != std::string::npos) {
-                mappedNorm = readTensorData(ctx->rmsNormGammas);
-            }
-            else if (tensor.name.find("ffn_norm") != std::string::npos) {
-                readTensorData(ctx->ffnNormGammas);
-            }
-            // Map Q, K, V, Output projection weights
-            else if (tensor.name.find("attn_q.weight") != std::string::npos || tensor.name.find("q_proj") != std::string::npos) {
-                if (readTensorData(ctx->qWeights)) mappedAttention = true;
-            }
-            else if (tensor.name.find("attn_k.weight") != std::string::npos || tensor.name.find("k_proj") != std::string::npos) {
-                readTensorData(ctx->kWeights);
-            }
-            else if (tensor.name.find("attn_v.weight") != std::string::npos || tensor.name.find("v_proj") != std::string::npos) {
-                readTensorData(ctx->vWeights);
-            }
-            else if (tensor.name.find("attn_output.weight") != std::string::npos || tensor.name.find("o_proj") != std::string::npos) {
-                readTensorData(ctx->oWeights);
-            }
-            // Map generic attention weights if unified
-            else if (tensor.name.find("self_attn") != std::string::npos || tensor.name.find("attention") != std::string::npos) {
-                if (readTensorData(ctx->attentionWeights)) mappedAttention = true;
-            }
-            // Map FFN projection weights (SwiGLU gate, up, down)
-            else if (tensor.name.find("ffn_gate") != std::string::npos || tensor.name.find("gate_proj") != std::string::npos) {
-                readTensorData(ctx->ffnGateWeights);
-            }
-            else if (tensor.name.find("ffn_up") != std::string::npos || tensor.name.find("up_proj") != std::string::npos) {
-                readTensorData(ctx->ffnUpWeights);
-            }
-            else if (tensor.name.find("ffn_down") != std::string::npos || tensor.name.find("down_proj") != std::string::npos) {
-                readTensorData(ctx->ffnDownWeights);
-            }
-            // Map LM head weights
-            else if (tensor.name == "output.weight" || tensor.name == "lm_head.weight") {
-                mappedLmHead = readTensorData(ctx->lmHeadWeights);
-            }
-        }
-
-        // Truth boundary: Genuine neural execution requires all essential pipeline components
-        if (mappedEmbeddings && mappedAttention) {
-            ctx->tensorsLoaded = true;
-            ctx->isRealNeural = true;
-            ctx->isValid = true;
-            LOGI("Genuine GGUF model tensor payloads successfully loaded and mapped into native memory (lmHeadMapped=%d, normMapped=%d).", mappedLmHead, mappedNorm);
-            return true;
+    // Validate all tensor byte ranges fit cleanly within file
+    for (const auto& t : ctx->tensors) {
+        uint64_t tStart = tensorDataStart + t.offset;
+        if (tStart + t.byteSize > fileSize) {
+            ctx->loadErrorReason = "Tensor payload out of file bounds: " + t.name;
+            LOGE("%s", ctx->loadErrorReason.c_str());
+            return false;
         }
     }
 
-    LOGI("Parsed valid GGUF container header: version=%u, tensors=%llu, metadata=%llu. Incomplete or unsupported tensor payload on disk.",
-         version, static_cast<unsigned long long>(tensorCount),
-         static_cast<unsigned long long>(metadataCount));
+    // Allocate memory buffers
+    ctx->layers.resize(ctx->nLayers);
+    for (int l = 0; l < ctx->nLayers; ++l) {
+        ctx->layers[l].layerIndex = l;
+        ctx->layers[l].attnNorm.resize(ctx->dim, 1.0f);
+        ctx->layers[l].qWeight.resize((ctx->nHeads * ctx->headDim) * ctx->dim, 0.0f);
+        ctx->layers[l].kWeight.resize((ctx->nKvHeads * ctx->headDim) * ctx->dim, 0.0f);
+        ctx->layers[l].vWeight.resize((ctx->nKvHeads * ctx->headDim) * ctx->dim, 0.0f);
+        ctx->layers[l].oWeight.resize(ctx->dim * (ctx->nHeads * ctx->headDim), 0.0f);
+        ctx->layers[l].ffnNorm.resize(ctx->dim, 1.0f);
+        ctx->layers[l].ffnGate.resize(ctx->ffnInterDim * ctx->dim, 0.0f);
+        ctx->layers[l].ffnUp.resize(ctx->ffnInterDim * ctx->dim, 0.0f);
+        ctx->layers[l].ffnDown.resize(ctx->dim * ctx->ffnInterDim, 0.0f);
+    }
+
+    ctx->tokenEmbeddings.resize(ctx->vocabSize * ctx->dim, 0.0f);
+    ctx->finalNormGammas.resize(ctx->dim, 1.0f);
+    ctx->lmHeadWeights.resize(ctx->vocabSize * ctx->dim, 0.0f);
+
+    bool mappedEmbeddings = false;
+    bool mappedFinalNorm = false;
+    bool mappedLmHead = false;
+    std::vector<bool> mappedAttnQ(ctx->nLayers, false);
+    std::vector<bool> mappedAttnK(ctx->nLayers, false);
+    std::vector<bool> mappedAttnV(ctx->nLayers, false);
+    std::vector<bool> mappedAttnO(ctx->nLayers, false);
+    std::vector<bool> mappedAttnNorm(ctx->nLayers, false);
+    std::vector<bool> mappedFfnNorm(ctx->nLayers, false);
+    std::vector<bool> mappedFfnGate(ctx->nLayers, false);
+    std::vector<bool> mappedFfnUp(ctx->nLayers, false);
+    std::vector<bool> mappedFfnDown(ctx->nLayers, false);
+
+    // 4. Map and load exact tensor payloads
+    for (const auto& tensor : ctx->tensors) {
+        uint64_t tOffset = tensorDataStart + tensor.offset;
+        int layerIdx = extractLayerIndex(tensor.name);
+
+        if (tensor.name == "token_embd.weight" || tensor.name == "model.embed_tokens.weight") {
+            mappedEmbeddings = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, ctx->tokenEmbeddings);
+        } else if (tensor.name == "output_norm.weight" || tensor.name == "model.norm.weight") {
+            mappedFinalNorm = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, ctx->finalNormGammas);
+        } else if (tensor.name == "output.weight" || tensor.name == "lm_head.weight") {
+            mappedLmHead = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, ctx->lmHeadWeights);
+            ctx->hasExplicitLmHead = mappedLmHead;
+        } else if (layerIdx >= 0 && layerIdx < ctx->nLayers) {
+            auto& l = ctx->layers[layerIdx];
+            if (tensor.name.find("attn_norm.weight") != std::string::npos || tensor.name.find("input_layernorm.weight") != std::string::npos) {
+                mappedAttnNorm[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.attnNorm);
+            } else if (tensor.name.find("attn_q.weight") != std::string::npos || tensor.name.find("q_proj.weight") != std::string::npos) {
+                mappedAttnQ[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.qWeight);
+            } else if (tensor.name.find("attn_k.weight") != std::string::npos || tensor.name.find("k_proj.weight") != std::string::npos) {
+                mappedAttnK[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.kWeight);
+            } else if (tensor.name.find("attn_v.weight") != std::string::npos || tensor.name.find("v_proj.weight") != std::string::npos) {
+                mappedAttnV[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.vWeight);
+            } else if (tensor.name.find("attn_output.weight") != std::string::npos || tensor.name.find("o_proj.weight") != std::string::npos) {
+                mappedAttnO[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.oWeight);
+            } else if (tensor.name.find("ffn_norm.weight") != std::string::npos || tensor.name.find("post_attention_layernorm.weight") != std::string::npos) {
+                mappedFfnNorm[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.ffnNorm);
+            } else if (tensor.name.find("ffn_gate.weight") != std::string::npos || tensor.name.find("gate_proj.weight") != std::string::npos) {
+                mappedFfnGate[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.ffnGate);
+            } else if (tensor.name.find("ffn_up.weight") != std::string::npos || tensor.name.find("up_proj.weight") != std::string::npos) {
+                mappedFfnUp[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.ffnUp);
+            } else if (tensor.name.find("ffn_down.weight") != std::string::npos || tensor.name.find("down_proj.weight") != std::string::npos) {
+                mappedFfnDown[layerIdx] = loadAndDecodeTensor(file, tOffset, tensor.type, tensor.numElements, l.ffnDown);
+            }
+        }
+    }
+
+    // Tied embeddings support (if no explicit LM head, verify whether tied embeddings are allowable)
+    if (!mappedLmHead && mappedEmbeddings) {
+        ctx->tiedEmbeddings = true;
+        mappedLmHead = true;
+    }
+
+    // Check complete layer completeness across all layers
+    bool allLayersComplete = true;
+    for (int l = 0; l < ctx->nLayers; ++l) {
+        if (!mappedAttnQ[l] || !mappedAttnK[l] || !mappedAttnV[l] || !mappedAttnO[l] ||
+            !mappedAttnNorm[l] || !mappedFfnNorm[l] || !mappedFfnGate[l] || !mappedFfnUp[l] || !mappedFfnDown[l]) {
+            allLayersComplete = false;
+            break;
+        }
+    }
+
+    // Truth boundary: Genuine neural execution requires all essential pipeline components
+    if (mappedEmbeddings && allLayersComplete && mappedFinalNorm && mappedLmHead && ctx->architectureSupported) {
+        ctx->tensorsLoaded = true;
+        ctx->isRealNeural = true;
+        ctx->isValid = true;
+        ctx->loadErrorReason = "";
+        LOGI("Genuine GGUF model tensor payloads successfully verified and loaded: arch=%s, layers=%d, dim=%d",
+             ctx->architecture.c_str(), ctx->nLayers, ctx->dim);
+        return true;
+    }
+
     ctx->tensorsLoaded = false;
     ctx->isRealNeural = false;
     ctx->isValid = true;
+    ctx->loadErrorReason = "GGUF container parsed, but required per-layer neural tensors are incomplete on disk";
+    LOGI("%s", ctx->loadErrorReason.c_str());
     return true;
+}
+
+// BPE/SentencePiece tokenizer lookup: find longest matching token
+static int findLongestToken(const NativeModelContext* ctx, const std::string& text, size_t start, size_t& matchedLen) {
+    size_t maxLen = std::min(text.length() - start, static_cast<size_t>(64));
+    for (size_t len = maxLen; len >= 1; --len) {
+        std::string sub = text.substr(start, len);
+        auto it = ctx->tokenToId.find(sub);
+        if (it != ctx->tokenToId.end()) {
+            matchedLen = len;
+            return it->second;
+        }
+    }
+    // Fallback single character
+    matchedLen = 1;
+    uint8_t b = static_cast<uint8_t>(text[start]);
+    if (b < ctx->vocabSize) return b;
+    return 0; // <unk>
+}
+
+// Tokenize text into genuine model token IDs
+static std::vector<int> tokenize(const NativeModelContext* ctx, const std::string& text) {
+    std::vector<int> tokens;
+    if (ctx->bosTokenId >= 0 && ctx->bosTokenId < ctx->vocabSize) {
+        tokens.push_back(ctx->bosTokenId);
+    }
+    size_t idx = 0;
+    while (idx < text.length()) {
+        size_t matchedLen = 1;
+        int tId = findLongestToken(ctx, text, idx, matchedLen);
+        tokens.push_back(tId);
+        idx += matchedLen;
+    }
+    return tokens;
+}
+
+// Detokenize token ID to text string
+static std::string detokenize(const NativeModelContext* ctx, int tokenId) {
+    if (tokenId < 0 || tokenId >= static_cast<int>(ctx->vocab.size())) {
+        return "";
+    }
+    const std::string& s = ctx->vocab[tokenId];
+    // Convert SentencePiece prefix ' ' (\xe2\x96\x81) or Byte-BPE 'Ġ' to space
+    if (s.rfind("\xe2\x96\x81", 0) == 0) {
+        return " " + s.substr(3);
+    }
+    if (s.rfind("\xc4\xa0", 0) == 0) {
+        return " " + s.substr(2);
+    }
+    return s;
 }
 
 } // namespace wasti
@@ -552,7 +947,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_getNativeRuntimeVersion(
     JNIEnv *env,
     jobject /* thiz */
 ) {
-    const char* ver = "wasti-neural-tensor-bridge-v1.0.0-aarch64 (RMSNorm/SwiGLU/Attention-Kernel)";
+    const char* ver = "wasti-neural-tensor-bridge-v2.0.0-aarch64 (RMSNorm/SwiGLU/GQA/PerLayer-Kernel)";
     return env->NewStringUTF(ver);
 }
 
@@ -584,12 +979,14 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_initModel(
     ctx->contextLength = (contextLength > 0) ? contextLength : 2048;
 
     if (!wasti::parseGguf(pathStr, ctx)) {
-        LOGE("Failed to parse and initialize GGUF model: %s", pathStr.c_str());
+        LOGE("Failed to parse and initialize GGUF model: %s. Reason: %s",
+             pathStr.c_str(), ctx->loadErrorReason.c_str());
         delete ctx;
         return 0L;
     }
 
-    LOGI("Native model context initialized (GGUF container parsed & verified). Context handle: %p", ctx);
+    LOGI("Native model context initialized. Handle: %p, tensorsLoaded=%d, realNeural=%d",
+         ctx, ctx->tensorsLoaded, ctx->isRealNeural);
     return reinterpret_cast<jlong>(ctx);
 }
 
@@ -614,7 +1011,9 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
     ctx->lastGeneratedTokenCount = 0;
 
     if (!ctx->tensorsLoaded || !ctx->isRealNeural) {
-        return env->NewStringUTF("[LOCAL_MODEL_UNAVAILABLE]: GGUF container validated on disk, but required neural tensors are not mapped in memory.");
+        std::string err = "[LOCAL_MODEL_UNAVAILABLE]: " +
+            (ctx->loadErrorReason.empty() ? "Required neural tensors are not mapped in memory." : ctx->loadErrorReason);
+        return env->NewStringUTF(err.c_str());
     }
 
     if (!prompt) {
@@ -628,90 +1027,87 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
     }
 
     int tokenLimit = (maxTokens > 0) ? std::min(maxTokens, 512) : 128;
-    float temp = (temperature > 0.01f) ? temperature : 0.7f;
+    float temp = (temperature > 0.01f) ? temperature : 0.0f; // 0.0f = deterministic greedy
 
-    LOGI("Evaluating prompt with native math engine (len=%zu, maxTokens=%d, temp=%.2f)",
-         promptStr.length(), tokenLimit, temp);
-
-    // Byte-pair/character tokenization of input prompt
-    std::vector<int> promptTokens;
-    for (char c : promptStr) {
-        uint8_t byteVal = static_cast<uint8_t>(c);
-        promptTokens.push_back((byteVal % (ctx->vocabSize - 16)) + 16);
+    // 1. Tokenize prompt using real model vocabulary
+    std::vector<int> promptTokens = wasti::tokenize(ctx, promptStr);
+    if (promptTokens.empty()) {
+        return env->NewStringUTF("[LOCAL_MODEL_UNAVAILABLE]: Tokenizer failed to produce tokens for input.");
     }
-    if (promptTokens.empty()) promptTokens.push_back(1); // <s>
 
     std::vector<float> hidden;
-    std::vector<std::vector<float>> kCache;
-    std::vector<std::vector<float>> vCache;
+    std::vector<std::vector<std::vector<float>>> layerKCache(ctx->nLayers);
+    std::vector<std::vector<std::vector<float>>> layerVCache(ctx->nLayers);
 
-    // 1. Ingest prompt tokens through the neural network
+    // 2. Ingest prompt tokens through the neural network
+    int pos = 0;
     for (int tId : promptTokens) {
-        wasti::executeNeuralForwardPass(ctx, tId, hidden, kCache, vCache);
+        if (!wasti::executeNeuralForwardPass(ctx, tId, pos++, hidden, layerKCache, layerVCache)) {
+            return env->NewStringUTF("[LOCAL_MODEL_UNAVAILABLE]: Forward pass execution failed on prompt ingestion.");
+        }
     }
 
-    // 2. Autoregressive neural token generation loop
+    // 3. Autoregressive neural token generation loop
     std::string outputText;
     std::mt19937 rng(1337);
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
+    const float* projectionWeights = ctx->hasExplicitLmHead
+        ? ctx->lmHeadWeights.data()
+        : ctx->tokenEmbeddings.data();
+
     int currentToken = promptTokens.back();
     for (int step = 0; step < tokenLimit; ++step) {
-        wasti::executeNeuralForwardPass(ctx, currentToken, hidden, kCache, vCache);
+        if (!wasti::executeNeuralForwardPass(ctx, currentToken, pos++, hidden, layerKCache, layerVCache)) {
+            break;
+        }
 
         // Project hidden state to output vocabulary logits
         int vocabWindow = std::min(ctx->vocabSize, 1024);
         std::vector<float> logits(vocabWindow, 0.0f);
         float maxLogit = -1e9f;
 
-        const float* projectionWeights = (!ctx->lmHeadWeights.empty() && ctx->lmHeadWeights[0] != 0.0f)
-            ? ctx->lmHeadWeights.data()
-            : ctx->tokenEmbeddings.data();
-
         for (int v = 0; v < vocabWindow; ++v) {
             float sum = 0.0f;
             for (int d = 0; d < ctx->dim; ++d) {
                 sum += hidden[d] * projectionWeights[(v * ctx->dim) + d];
             }
-            logits[v] = sum / temp;
-            if (logits[v] > maxLogit) maxLogit = logits[v];
+            logits[v] = sum;
+            if (sum > maxLogit) maxLogit = sum;
         }
 
-        // Softmax
-        float expSum = 0.0f;
-        for (int v = 0; v < vocabWindow; ++v) {
-            logits[v] = std::exp(logits[v] - maxLogit);
-            expSum += logits[v];
-        }
-        float invSum = (expSum > 0.0f) ? (1.0f / expSum) : 1.0f;
-
-        // Sample token
-        float r = dist(rng);
-        float cumulative = 0.0f;
         int nextToken = 0;
-        for (int v = 0; v < vocabWindow; ++v) {
-            cumulative += logits[v] * invSum;
-            if (r <= cumulative) {
-                nextToken = v;
-                break;
+        if (temp <= 0.01f) {
+            // Greedy deterministic argmax
+            for (int v = 1; v < vocabWindow; ++v) {
+                if (logits[v] > logits[nextToken]) nextToken = v;
+            }
+        } else {
+            // Softmax & sample
+            float expSum = 0.0f;
+            for (int v = 0; v < vocabWindow; ++v) {
+                logits[v] = std::exp((logits[v] - maxLogit) / temp);
+                expSum += logits[v];
+            }
+            float invSum = (expSum > 0.0f) ? (1.0f / expSum) : 1.0f;
+            float r = dist(rng);
+            float cumulative = 0.0f;
+            for (int v = 0; v < vocabWindow; ++v) {
+                cumulative += logits[v] * invSum;
+                if (r <= cumulative) {
+                    nextToken = v;
+                    break;
+                }
             }
         }
 
-        // Stop tokens: </s> or <|im_end|>
-        if (nextToken == 2 || nextToken == 4) {
+        // Stop tokens: EOS or <|im_end|>
+        if (nextToken == ctx->eosTokenId || nextToken == 2 || nextToken == 4) {
             break;
         }
 
         ctx->lastGeneratedTokenCount++;
-
-        // Detokenize token to UTF-8
-        if (nextToken < static_cast<int>(ctx->vocab.size()) && !ctx->vocab[nextToken].empty()) {
-            outputText += ctx->vocab[nextToken];
-        } else if (nextToken >= 16 && nextToken < 256 + 16) {
-            char ch = static_cast<char>(nextToken - 16);
-            outputText += ch;
-        }
-
+        outputText += wasti::detokenize(ctx, nextToken);
         currentToken = nextToken;
     }
 
@@ -733,6 +1129,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_freeModel(
     if (modelHandle != 0L) {
         auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
         LOGI("Freeing native neural model context handle: %p", ctx);
+        ctx->isValid = false;
         delete ctx;
     }
 }
@@ -761,6 +1158,39 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_getGeneratedTokenCount(
     return ctx->lastGeneratedTokenCount;
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_example_data_ai_runtime_NativeLlamaBridge_getNativeModelInfo(
+    JNIEnv *env,
+    jobject /* thiz */,
+    jlong modelHandle
+) {
+    if (modelHandle == 0L) {
+        return env->NewStringUTF("{\"error\":\"null_handle\"}");
+    }
+    auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
+    if (!ctx->isValid) {
+        return env->NewStringUTF("{\"error\":\"invalid_context\"}");
+    }
+
+    std::ostringstream ss;
+    ss << "{"
+       << "\"architecture\":\"" << ctx->architecture << "\","
+       << "\"supported\":" << (ctx->architectureSupported ? "true" : "false") << ","
+       << "\"dim\":" << ctx->dim << ","
+       << "\"nLayers\":" << ctx->nLayers << ","
+       << "\"nHeads\":" << ctx->nHeads << ","
+       << "\"nKvHeads\":" << ctx->nKvHeads << ","
+       << "\"headDim\":" << ctx->headDim << ","
+       << "\"ffnInterDim\":" << ctx->ffnInterDim << ","
+       << "\"vocabSize\":" << ctx->vocabSize << ","
+       << "\"tensorsLoaded\":" << (ctx->tensorsLoaded ? "true" : "false") << ","
+       << "\"isRealNeural\":" << (ctx->isRealNeural ? "true" : "false") << ","
+       << "\"lastGeneratedTokens\":" << ctx->lastGeneratedTokenCount << ","
+       << "\"loadError\":\"" << ctx->loadErrorReason << "\""
+       << "}";
+    return env->NewStringUTF(ss.str().c_str());
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     JNIEnv *env,
@@ -774,8 +1204,8 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
     if (!ctx->isValid || !ctx->tensorsLoaded || !ctx->isRealNeural) return JNI_FALSE;
 
-    // 1. Structural Invariants: Validate required tensor dimensions and buffers
-    if (ctx->dim < 16 || ctx->vocabSize < 256 || ctx->nLayers < 1) {
+    // 1. Structural Invariants: Validate required architecture dimensions and layer buffers
+    if (ctx->dim < 16 || ctx->vocabSize < 256 || ctx->nLayers < 1 || ctx->nHeads < 1 || ctx->nKvHeads < 1) {
         LOGE("Structural validation failed: dim=%d, vocab=%d, layers=%d", ctx->dim, ctx->vocabSize, ctx->nLayers);
         return JNI_FALSE;
     }
@@ -785,9 +1215,11 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
         return JNI_FALSE;
     }
 
-    if (ctx->attentionWeights.empty() && ctx->qWeights.empty()) {
-        LOGE("Attention weights unmapped");
-        return JNI_FALSE;
+    for (int l = 0; l < ctx->nLayers; ++l) {
+        if (!ctx->layers[l].isComplete()) {
+            LOGE("Layer %d is incomplete in native context", l);
+            return JNI_FALSE;
+        }
     }
 
     if (ctx->vocab.size() < 256) {
@@ -797,10 +1229,13 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
 
     // 2. Deterministic Inference Probing: Run forward pass twice with fixed probe input
     std::vector<float> probe1, probe2;
-    std::vector<std::vector<float>> k1, v1, k2, v2;
+    std::vector<std::vector<std::vector<float>>> k1(ctx->nLayers), v1(ctx->nLayers);
+    std::vector<std::vector<std::vector<float>>> k2(ctx->nLayers), v2(ctx->nLayers);
 
-    wasti::executeNeuralForwardPass(ctx, 1, probe1, k1, v1);
-    wasti::executeNeuralForwardPass(ctx, 1, probe2, k2, v2);
+    if (!wasti::executeNeuralForwardPass(ctx, 1, 0, probe1, k1, v1) ||
+        !wasti::executeNeuralForwardPass(ctx, 1, 0, probe2, k2, v2)) {
+        return JNI_FALSE;
+    }
 
     if (probe1.size() != static_cast<size_t>(ctx->dim) || probe2.size() != static_cast<size_t>(ctx->dim)) {
         return JNI_FALSE;
@@ -820,7 +1255,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
 
     // 3. Model-Specific Output Projection Verification
     int vocabWindow = std::min(ctx->vocabSize, 256);
-    const float* projWeights = (!ctx->lmHeadWeights.empty() && ctx->lmHeadWeights[0] != 0.0f)
+    const float* projWeights = ctx->hasExplicitLmHead
         ? ctx->lmHeadWeights.data()
         : ctx->tokenEmbeddings.data();
 

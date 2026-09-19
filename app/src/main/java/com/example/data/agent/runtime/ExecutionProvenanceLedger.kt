@@ -29,7 +29,15 @@ data class ProvenanceEntry(
     val operationId: String = actionId,
     val executorResult: String = outputHash,
     val observationSource: String = evidenceSource.name,
-    val independentVerifier: String? = null
+    val independentVerifier: String? = null,
+    val modelHash: String? = null,
+    val architecture: String? = null,
+    val runtimeVersion: String? = null,
+    val executionEnvironment: String = "local_android_runtime",
+    val executor: String = providerId,
+    val verifier: String? = independentVerifier,
+    val verificationMethod: String = "canonical_hash_chain",
+    val stateTransition: String = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED"
 )
 
 /**
@@ -51,7 +59,15 @@ object ExecutionProvenanceLedger {
         modelId: String? = null,
         inputContent: String,
         outputContent: String,
-        evidence: VerifiedExecutionEvidence?
+        evidence: VerifiedExecutionEvidence?,
+        modelHash: String? = null,
+        architecture: String? = null,
+        runtimeVersion: String? = null,
+        executionEnvironment: String = "local_android_runtime",
+        executor: String? = null,
+        verifier: String? = null,
+        verificationMethod: String = "canonical_hash_chain",
+        stateTransition: String = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED"
     ): ProvenanceEntry {
         val currentList = _entries.value
         val prevHash = currentList.lastOrNull()?.entryHash ?: GENESIS_HASH
@@ -91,7 +107,19 @@ object ExecutionProvenanceLedger {
             timestamp = timestamp,
             previousEntryHash = prevHash,
             entryHash = entryHash,
-            confidence = evidence?.confidence ?: 0.0
+            confidence = evidence?.confidence ?: 0.0,
+            operationId = actionId,
+            executorResult = outputHash,
+            observationSource = source.name,
+            independentVerifier = verifier ?: evidence?.let { "WastiVerificationEngine" },
+            modelHash = modelHash,
+            architecture = architecture,
+            runtimeVersion = runtimeVersion,
+            executionEnvironment = executionEnvironment,
+            executor = executor ?: providerId,
+            verifier = verifier ?: evidence?.let { "WastiVerificationEngine" },
+            verificationMethod = verificationMethod,
+            stateTransition = stateTransition
         )
 
         _entries.value = currentList + entry
@@ -190,6 +218,14 @@ object ExecutionProvenanceLedger {
                 put("timestamp", e.timestamp)
                 put("previousEntryHash", e.previousEntryHash)
                 put("entryHash", e.entryHash)
+                put("modelHash", e.modelHash ?: "")
+                put("architecture", e.architecture ?: "")
+                put("runtimeVersion", e.runtimeVersion ?: "")
+                put("executionEnvironment", e.executionEnvironment)
+                put("executor", e.executor)
+                put("verifier", e.verifier ?: "")
+                put("verificationMethod", e.verificationMethod)
+                put("stateTransition", e.stateTransition)
             }
             array.put(obj)
         }

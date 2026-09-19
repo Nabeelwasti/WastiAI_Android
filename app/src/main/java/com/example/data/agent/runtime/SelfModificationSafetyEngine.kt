@@ -53,9 +53,130 @@ data class ModificationOutcome(
     val snapshotId: String? = null
 )
 
+data class ProposedModification(
+    val id: String = UUID.randomUUID().toString(),
+    val filePath: String,
+    val originalContent: String,
+    val newContent: String,
+    val reason: String = "Autonomous repair or code improvement",
+    val timestamp: Long = System.currentTimeMillis(),
+    val isProtected: Boolean = false,
+    val contentHash: String = ""
+)
+
+enum class DiffLineType {
+    UNCHANGED,
+    ADDED,
+    DELETED
+}
+
+data class DiffLine(
+    val type: DiffLineType,
+    val text: String,
+    val oldLineNumber: Int? = null,
+    val newLineNumber: Int? = null
+)
+
 object SelfModificationSafetyEngine {
 
     private const val TAG = "SelfModSafetyEngine"
+
+    private val _pendingProposals = kotlinx.coroutines.flow.MutableStateFlow<List<ProposedModification>>(emptyList())
+    val pendingProposals: kotlinx.coroutines.flow.StateFlow<List<ProposedModification>> = _pendingProposals.kotlinx.coroutines.flow.asStateFlow()
+
+    fun proposeModification(
+        filePath: String,
+        newContent: String,
+        reason: String = "Autonomous code modification"
+    ): ProposedModification {
+        val file = File(filePath)
+        val orig = if (file.exists()) file.readText() else ""
+        val isProt = isProtectedPath(filePath)
+        val prop = ProposedModification(
+            filePath = filePath,
+            originalContent = orig,
+            newContent = newContent,
+            reason = reason,
+            isProtected = isProt,
+            contentHash = computeHash(newContent)
+        )
+        val current = _pendingProposals.value.toMutableList()
+        current.removeAll { it.filePath == filePath }
+        current.add(0, prop)
+        _pendingProposals.value = current
+        return prop
+    }
+
+    fun rejectProposal(proposalId: String, reason: String = "User rejected"): Boolean {
+        val current = _pendingProposals.value.toMutableList()
+        val removed = current.removeIf { it.id == proposalId }
+        if (removed) {
+            _pendingProposals.value = current
+            Log.i(TAG, "Proposal $proposalId rejected: $reason")
+        }
+        return removed
+    }
+
+    fun authorizeAndApply(
+        proposalId: String,
+        adminToken: String? = null,
+        stagedValidator: ((File) -> Boolean)? = null
+    ): ModificationOutcome {
+        val proposal = _pendingProposals.value.find { it.id == proposalId }
+            ?: return ModificationOutcome(
+                status = ModificationOutcomeStatus.BLOCKED_POLICY,
+                filePath = "",
+                decision = ModificationDecision.REQUIRES_ADMIN_AUTHORIZATION,
+                errorDetails = "Proposal $proposalId not found"
+            )
+
+        val targetFile = File(proposal.filePath)
+        val outcome = executeModificationWithStagedRollback(
+            targetFile = targetFile,
+            newContent = proposal.newContent,
+            isAutonomous = false,
+            adminAuthToken = adminToken,
+            stagedValidator = stagedValidator
+        )
+
+        if (outcome.status == ModificationOutcomeStatus.APPLIED_VERIFIED ||
+            outcome.status == ModificationOutcomeStatus.APPLIED_UNVERIFIED
+        ) {
+            val current = _pendingProposals.value.toMutableList()
+            current.removeAll { it.id == proposalId }
+            _pendingProposals.value = current
+        }
+
+        return outcome
+    }
+
+    fun computeDiff(original: String, modified: String): List<DiffLine> {
+        val origLines = if (original.isEmpty()) emptyList() else original.lines()
+        val modLines = if (modified.isEmpty()) emptyList() else modified.lines()
+        val diff = mutableListOf<DiffLine>()
+
+        var i = 0
+        var j = 0
+        while (i < origLines.size || j < modLines.size) {
+            if (i < origLines.size && j < modLines.size && origLines[i] == modLines[j]) {
+                diff.add(DiffLine(DiffLineType.UNCHANGED, origLines[i], i + 1, j + 1))
+                i++
+                j++
+            } else if (i < origLines.size && (j >= modLines.size || !modLines.contains(origLines[i]))) {
+                diff.add(DiffLine(DiffLineType.DELETED, origLines[i], i + 1, null))
+                i++
+            } else if (j < modLines.size && (i >= origLines.size || !origLines.contains(modLines[j]))) {
+                diff.add(DiffLine(DiffLineType.ADDED, modLines[j], null, j + 1))
+                j++
+            } else {
+                diff.add(DiffLine(DiffLineType.DELETED, origLines[i], i + 1, null))
+                diff.add(DiffLine(DiffLineType.ADDED, modLines[j], null, j + 1))
+                i++
+                j++
+            }
+        }
+        return diff
+    }
 
     // Maximum mutations permitted on a single file within the sliding window
     private const val MAX_MUTATIONS_PER_WINDOW = 3
@@ -370,6 +491,28 @@ object SelfModificationSafetyEngine {
             if (!isValid) {
                 // Validation failed -> execute immediate automatic rollback with the same authority context
                 val rolledBack = rollback(snapshot.snapshotId, adminAuthToken)
+                try {
+                    ExecutionProvenanceLedger.recordExecution(
+                        taskId = "task_selfmod_${snapshot.snapshotId.take(8)}",
+                        actionId = "self_modify_${targetFile.name}",
+                        capabilityId = "SELF_MODIFICATION_SAFETY",
+                        providerId = "SelfModificationSafetyEngine",
+                        inputContent = "modify:${targetFile.absolutePath}",
+                        outputContent = "status:ROLLED_BACK:snapshot:${snapshot.snapshotId}",
+                        evidence = VerifiedExecutionEvidence(
+                            subject = "SelfModificationSafetyEngine",
+                            verifiedState = "ROLLED_BACK",
+                            confidence = 0.90,
+                            evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+                        ),
+                        executionEnvironment = "local_android_runtime",
+                        executor = "SelfModificationSafetyEngine",
+                        verifier = "stagedValidator",
+                        verificationMethod = "staged_atomic_validation_and_rollback",
+                        stateTransition = "DISPATCHED -> CONTROLLED_PATCH -> VALIDATION_FAILED -> ROLLED_BACK"
+                    )
+                } catch (_: Exception) {}
+
                 return ModificationOutcome(
                     status = ModificationOutcomeStatus.ROLLED_BACK,
                     filePath = targetFile.absolutePath,
@@ -398,6 +541,38 @@ object SelfModificationSafetyEngine {
         } else {
             ModificationOutcomeStatus.APPLIED_UNVERIFIED
         }
+
+        try {
+            val evidence = if (outcomeStatus == ModificationOutcomeStatus.APPLIED_VERIFIED) {
+                VerifiedExecutionEvidence(
+                    subject = "SelfModificationSafetyEngine",
+                    verifiedState = "APPLIED_VERIFIED",
+                    confidence = 0.95,
+                    evidenceSource = EvidenceSource.TEST_EXECUTION
+                )
+            } else {
+                VerifiedExecutionEvidence(
+                    subject = "SelfModificationSafetyEngine",
+                    verifiedState = "APPLIED_UNVERIFIED",
+                    confidence = 0.50,
+                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+                )
+            }
+            ExecutionProvenanceLedger.recordExecution(
+                taskId = "task_selfmod_${snapshot.snapshotId.take(8)}",
+                actionId = "self_modify_${targetFile.name}",
+                capabilityId = "SELF_MODIFICATION_SAFETY",
+                providerId = "SelfModificationSafetyEngine",
+                inputContent = "modify:${targetFile.absolutePath}",
+                outputContent = "status:${outcomeStatus.name}:snapshot:${snapshot.snapshotId}",
+                evidence = evidence,
+                executionEnvironment = "local_android_runtime",
+                executor = "SelfModificationSafetyEngine",
+                verifier = if (validatorVerified) "stagedValidator" else null,
+                verificationMethod = "staged_atomic_validation_and_rollback",
+                stateTransition = "DISPATCHED -> CONTROLLED_PATCH -> ${if (validatorVerified) "VERIFIED" else "UNVERIFIED"}"
+            )
+        } catch (_: Exception) {}
 
         return ModificationOutcome(
             status = outcomeStatus,

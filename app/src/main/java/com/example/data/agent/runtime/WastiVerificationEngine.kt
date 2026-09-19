@@ -488,9 +488,11 @@ class WastiVerificationEngine {
 
             // Local Neural inference
             cap.contains("neural") || cap.contains("llama") || cap.contains("model") ->
-                text.contains("NEURAL_EXECUTION_VERIFIED", ignoreCase = true) ||
-                text.contains("LOCAL_MODEL_VERIFIED", ignoreCase = true) ||
-                text.contains("GGUF weights loaded", ignoreCase = true)
+                (text.contains("NEURAL_EXECUTION_VERIFIED", ignoreCase = true) ||
+                 text.contains("LOCAL_MODEL_VERIFIED", ignoreCase = true) ||
+                 text.contains("GENUINE_NEURAL_TENSOR_FORWARD_PASS", ignoreCase = true)) &&
+                !text.contains("UNVERIFIED", ignoreCase = true) &&
+                !text.contains("HEURISTIC", ignoreCase = true)
 
             // Web / Network: must anchor to canonical fabric HTTP contract with verified payload or side-effect proof; plain HTTP_200 alone rejected
             cap.contains("web") || cap.contains("search") || cap.contains("http") ->
@@ -543,6 +545,14 @@ class WastiVerificationEngine {
             cap.contains("neural") || cap.contains("llama") || cap.contains("model") -> {
                 if (evidence.observationSource != EvidenceSource.LOCAL_MODEL_INFERENCE) {
                     false to "Local model capability requires LOCAL_MODEL_INFERENCE observation source"
+                } else if (evidence.artifactOrStateReference.isBlank()) {
+                    false to "Local model evidence must specify modelId and artifact reference"
+                } else if (evidence.expectedState.isBlank() || evidence.observedState.isBlank()) {
+                    false to "Local model evidence requires non-blank expected and observed state specifications"
+                } else if (evidence.executor.isNotBlank() && evidence.verifierIdentity.isNotBlank() && evidence.executor.equals(evidence.verifierIdentity, ignoreCase = true)) {
+                    false to "Executor and verifier cannot be identical for neural model verification (executor/verifier separation required)"
+                } else if (evidence.observedState.contains("HEURISTIC", ignoreCase = true) || evidence.observedState.contains("UNVERIFIED", ignoreCase = true)) {
+                    false to "Heuristic or unverified state cannot satisfy neural model verification contract"
                 } else {
                     true to "OK"
                 }

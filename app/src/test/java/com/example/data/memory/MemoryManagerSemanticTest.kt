@@ -83,4 +83,50 @@ class MemoryManagerSemanticTest {
         assertEquals(0, statsAfter.totalActiveMemories)
         assertEquals(0, statsAfter.totalVectorsIndexed)
     }
+
+    @Test
+    fun testInferenceToFactProtection() = runBlocking {
+        MemoryManager.resetForTesting()
+
+        // Create an INFERRED memory
+        val inferredMemory = MemoryManager.saveMemory(
+            key = "user_inferred_diet",
+            category = "Inferred Interests",
+            value = "User might be vegetarian based on recipe queries",
+            importanceScore = 0.99f, // Even with 99% confidence
+            provenanceCategory = com.example.data.memory.model.MemoryProvenanceCategory.INFERRED
+        )
+
+        assertEquals(com.example.data.memory.model.MemoryProvenanceCategory.INFERRED, inferredMemory.provenanceCategory)
+
+        // Promotion to VERIFIED_KNOWLEDGE must be prohibited
+        assertFalse(
+            "INFERRED memory must never be promoted to VERIFIED_KNOWLEDGE merely due to high confidence",
+            MemoryManager.canPromoteMemory(inferredMemory, com.example.data.memory.model.MemoryTier.VERIFIED_KNOWLEDGE)
+        )
+
+        // Promotion to USER_MEMORY must also be prohibited
+        assertFalse(
+            "INFERRED memory must never be promoted to USER_MEMORY fact merely due to high confidence",
+            MemoryManager.canPromoteMemory(inferredMemory, com.example.data.memory.model.MemoryTier.USER_MEMORY)
+        )
+
+        // promoteMemoryTier must return false
+        val promoted = MemoryManager.promoteMemoryTier(inferredMemory.id, com.example.data.memory.model.MemoryTier.VERIFIED_KNOWLEDGE)
+        assertFalse(promoted)
+
+        // canPromoteProvenance must reject INFERRED -> VERIFIED or USER_STATED
+        assertFalse(
+            MemoryManager.canPromoteProvenance(
+                com.example.data.memory.model.MemoryProvenanceCategory.INFERRED,
+                com.example.data.memory.model.MemoryProvenanceCategory.VERIFIED
+            )
+        )
+        assertFalse(
+            MemoryManager.canPromoteProvenance(
+                com.example.data.memory.model.MemoryProvenanceCategory.INFERRED,
+                com.example.data.memory.model.MemoryProvenanceCategory.USER_STATED
+            )
+        )
+    }
 }
