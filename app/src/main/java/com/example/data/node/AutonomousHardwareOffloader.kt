@@ -215,10 +215,12 @@ object AutonomousHardwareOffloader {
 
         // If remote offloading completed on the remote node, return result in EXECUTOR_COMPLETED state (never falsely promoted to VERIFIED)
         if (result.status == UnifiedExecutionStatus.COMPLETED || result.status == UnifiedExecutionStatus.EXECUTOR_COMPLETED) {
+            val preservedEvidence = result.verificationEvidence?.takeIf { it.isNotBlank() }
+                ?: "Fingerprint: ${targetNode.capabilityFingerprint} address: ${targetNode.addressOrIp}"
             return@withContext result.copy(
                 status = UnifiedExecutionStatus.EXECUTOR_COMPLETED,
                 verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
-                verificationEvidence = "Remote execution completed on '${targetNode.deviceName}'; independent observation required for VERIFIED state"
+                verificationEvidence = "$preservedEvidence (Remote execution completed on '${targetNode.deviceName}'; independent observation required for VERIFIED state)"
             )
         }
 

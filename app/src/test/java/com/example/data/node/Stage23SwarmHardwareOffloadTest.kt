@@ -239,10 +239,10 @@ class Stage23SwarmHardwareOffloadTest {
 
         val result = AutonomousHardwareOffloader.executeWithOffload(request, btLaptopNode, context)
 
-        // Robolectric does not provide a real Bluetooth adapter/socket. Execution may
-        // therefore be represented as a completed peer dispatch, but it must remain
+        // Robolectric does not provide a real Bluetooth adapter/socket. Execution is
+        // represented as EXECUTOR_COMPLETED (peer reports execution) and must remain
         // explicitly UNVERIFIED until an independent observer verifies the remote state.
-        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
+        assertEquals(UnifiedExecutionStatus.EXECUTOR_COMPLETED, result.status)
         assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
         assertTrue(result.output.contains("Bluetooth") || result.output.contains("ThinkPad"))
         assertTrue(result.verificationEvidence!!.contains("fp_bt_thinkpad"))
