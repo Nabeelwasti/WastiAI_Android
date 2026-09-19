@@ -728,7 +728,7 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = if (dispatched) UnifiedExecutionStatus.DISPATCHED else UnifiedExecutionStatus.FAILED,
+            status = if (dispatched) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
             output = if (dispatched) "Dispatched navigation to destination screen: $destination" else "Failed to dispatch navigation action",
             executor = "WastiAppActionBus",
             startedAt = startedAt,
