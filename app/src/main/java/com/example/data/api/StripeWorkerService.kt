@@ -74,21 +74,49 @@ object StripeWorkerService {
             val response = client.newCall(request).execute()
             val bodyStr = response.body?.string().orEmpty()
             if (response.isSuccessful) {
-                // Parse genuine charge result
-                val isSuccess = bodyStr.contains("\"success\":true") || bodyStr.contains("\"status\":\"succeeded\"") || bodyStr.contains("ch_")
-                if (isSuccess) {
-                    val chargeIdMatch = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"").find(bodyStr)?.groupValues?.get(1)
-                        ?: "ch_cf_${System.currentTimeMillis()}"
+                // Parse genuine charge result via JSON validation
+                var authoritativeId: String? = null
+                var isExplicitlySucceeded = false
+                try {
+                    val json = org.json.JSONObject(bodyStr)
+                    val id = json.optString("id", "")
+                    val status = json.optString("status", "")
+                    val paid = json.optBoolean("paid", false)
+                    val successFlag = json.optBoolean("success", false)
+
+                    if (id.startsWith("ch_") || id.startsWith("pi_") || id.startsWith("in_") || id.startsWith("txn_")) {
+                        authoritativeId = id
+                    }
+
+                    if (status.equals("succeeded", ignoreCase = true) || paid || (successFlag && authoritativeId != null)) {
+                        isExplicitlySucceeded = true
+                    }
+                } catch (_: Exception) {
+                    // Fallback to strict regex only if valid JSON object parsing fails
+                    val chargeIdMatch = Regex("\"id\"\\s*:\\s*\"(ch_[a-zA-Z0-9]+|pi_[a-zA-Z0-9]+|txn_[a-zA-Z0-9]+)\"").find(bodyStr)?.groupValues?.get(1)
+                    if (chargeIdMatch != null && (bodyStr.contains("\"status\":\"succeeded\"") || bodyStr.contains("\"paid\":true"))) {
+                        authoritativeId = chargeIdMatch
+                        isExplicitlySucceeded = true
+                    }
+                }
+
+                if (isExplicitlySucceeded && authoritativeId != null) {
                     StripeChargeResult(
                         success = true,
-                        chargeId = chargeIdMatch,
+                        chargeId = authoritativeId,
                         message = "Success: Charged $$amountCents via Cloudflare Server-Side Worker Proxy."
+                    )
+                } else if (authoritativeId == null && isExplicitlySucceeded) {
+                    StripeChargeResult(
+                        success = false,
+                        chargeId = null,
+                        message = "PAYMENT_STATUS_UNKNOWN: Response succeeded but lacked authoritative Stripe charge identifier."
                     )
                 } else {
                     StripeChargeResult(
                         success = false,
                         chargeId = null,
-                        message = "Stripe charge declined or unsuccessful: $bodyStr"
+                        message = "Stripe charge declined or unsuccessful: ${bodyStr.take(120)}"
                     )
                 }
             } else {

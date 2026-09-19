@@ -25,7 +25,11 @@ data class ProvenanceEntry(
     val timestamp: Long,
     val previousEntryHash: String,
     val entryHash: String,
-    val confidence: Double = 0.0
+    val confidence: Double = 0.0,
+    val operationId: String = actionId,
+    val executorResult: String = outputHash,
+    val observationSource: String = evidenceSource.name,
+    val independentVerifier: String? = null
 )
 
 /**

@@ -29,6 +29,7 @@ enum class ModificationDecision {
 
 enum class ModificationOutcomeStatus {
     APPLIED_VERIFIED,
+    APPLIED_UNVERIFIED,
     ROLLED_BACK,
     BLOCKED_POLICY,
     FAILED_IO
@@ -192,8 +193,15 @@ object SelfModificationSafetyEngine {
         return ModificationDecision.ALLOWED
     }
 
+    private fun getJournalDir(): File {
+        val userHome = System.getProperty("user.home") ?: System.getProperty("java.io.tmpdir") ?: "."
+        val dir = File(userHome, ".wasti_ai/snapshots")
+        if (!dir.exists()) dir.mkdirs()
+        return dir
+    }
+
     /**
-     * Creates a rollback snapshot of a file prior to modification.
+     * Creates a rollback snapshot of a file prior to modification with durable disk persistence.
      */
     fun createRollbackSnapshot(targetFile: File): RollbackSnapshot {
         val existed = targetFile.exists()
@@ -205,16 +213,57 @@ object SelfModificationSafetyEngine {
             targetExisted = existed
         )
         rollbackVault[snapshot.snapshotId] = snapshot
+
+        // Durable snapshot journal persistence
+        try {
+            val jDir = getJournalDir()
+            val metaFile = File(jDir, "${snapshot.snapshotId}.meta")
+            val contentFile = File(jDir, "${snapshot.snapshotId}.content")
+            metaFile.writeText("${snapshot.snapshotId}\n${snapshot.filePath}\n${snapshot.timestamp}\n${snapshot.contentHash}\n${snapshot.targetExisted}")
+            contentFile.writeText(originalText)
+        } catch (_: Exception) {
+            // Non-blocking durable journal write
+        }
+
         return snapshot
     }
 
     /**
      * Reverts a file from an existing rollback snapshot.
+     * Recovers from in-memory vault or durable disk journal.
      * Protected targets require the same explicit admin authority boundary as mutation.
      * Snapshot integrity is checked before any filesystem write/delete occurs.
      */
     fun rollback(snapshotId: String, adminAuthToken: String? = null): Boolean {
-        val snapshot = rollbackVault[snapshotId] ?: return false
+        var snapshot = rollbackVault[snapshotId]
+        if (snapshot == null) {
+            // Attempt recovery from durable disk journal
+            try {
+                val jDir = getJournalDir()
+                val metaFile = File(jDir, "$snapshotId.meta")
+                val contentFile = File(jDir, "$snapshotId.content")
+                if (metaFile.exists() && contentFile.exists()) {
+                    val lines = metaFile.readLines()
+                    if (lines.size >= 5) {
+                        val content = contentFile.readText()
+                        snapshot = RollbackSnapshot(
+                            snapshotId = lines[0],
+                            filePath = lines[1],
+                            timestamp = lines[2].toLongOrNull() ?: System.currentTimeMillis(),
+                            contentHash = lines[3],
+                            targetExisted = lines[4].toBoolean(),
+                            originalContent = content
+                        )
+                        rollbackVault[snapshotId] = snapshot
+                    }
+                }
+            } catch (_: Exception) {
+                // Ignore recovery failure
+            }
+        }
+
+        if (snapshot == null) return false
+
         if (isProtectedPath(snapshot.filePath) && !isValidAdminToken(adminAuthToken)) {
             Log.w(TAG, "Rollback of protected path '${snapshot.filePath}' BLOCKED without admin authorization token")
             return false
@@ -321,8 +370,14 @@ object SelfModificationSafetyEngine {
             list.add(Pair(System.currentTimeMillis(), computeHash(newContent)))
         }
 
+        val outcomeStatus = if (stagedValidator != null) {
+            ModificationOutcomeStatus.APPLIED_VERIFIED
+        } else {
+            ModificationOutcomeStatus.APPLIED_UNVERIFIED
+        }
+
         return ModificationOutcome(
-            status = ModificationOutcomeStatus.APPLIED_VERIFIED,
+            status = outcomeStatus,
             filePath = targetFile.absolutePath,
             decision = decision,
             rollbackPerformed = false,
@@ -337,5 +392,9 @@ object SelfModificationSafetyEngine {
         mutationHistory.clear()
         rollbackVault.clear()
         activeAdminTokens.clear()
+        try {
+            val jDir = getJournalDir()
+            jDir.listFiles()?.forEach { it.delete() }
+        } catch (_: Exception) {}
     }
 }

@@ -14,7 +14,9 @@ data class BugBountyVulnerabilityReport(
     val reproductionSteps: String,
     val generatedPatchDiff: String,
     val isVerifiedInSandbox: Boolean,
-    val timestampMs: Long = System.currentTimeMillis()
+    val timestampMs: Long = System.currentTimeMillis(),
+    val isSimulation: Boolean = true,
+    val reportClassification: String = "TEST_ONLY_SIMULATION"
 )
 
 data class ForgeSessionSummary(

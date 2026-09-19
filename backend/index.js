@@ -33,29 +33,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-wasti-auth-token', 'x-api-key', 'x-wasti-admin-token', 'x-approval-token', 'stripe-signature']
 }));
 
-// Basic Rate Limiting / Request Throttling In-Memory Counter
-const requestCounts = new Map();
-const RATE_LIMIT_WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS_PER_WINDOW = 120;
+const { createRateLimiterMiddleware, defaultLimiter } = require('./rate_limiter');
 
-app.use((req, res, next) => {
-  const ip = req.ip || req.connection.remoteAddress || 'unknown';
-  const now = Date.now();
-  const clientRecord = requestCounts.get(ip) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
-
-  if (now > clientRecord.resetAt) {
-    clientRecord.count = 1;
-    clientRecord.resetAt = now + RATE_LIMIT_WINDOW_MS;
-  } else {
-    clientRecord.count++;
-  }
-  requestCounts.set(ip, clientRecord);
-
-  if (clientRecord.count > MAX_REQUESTS_PER_WINDOW) {
-    return res.status(429).json({ error: 'Too Many Requests', retryAfterMs: clientRecord.resetAt - now });
-  }
-  next();
-});
+app.use(createRateLimiterMiddleware(defaultLimiter));
 
 // Stripe webhook raw body handling with strict cryptographic signature verification & durable idempotency
 // NOTE: Must be mounted BEFORE global bodyParser.json() to preserve raw Buffer for signature verification

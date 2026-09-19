@@ -230,7 +230,7 @@ class WastiNodeJsRuntimeEngine(
                 language = PolyglotLanguage.NODE_JAVASCRIPT,
                 stdout = finalOut.ifBlank { if (printResult) "undefined" else "Process finished with exit code 0" },
                 exitCode = 0,
-                verificationEvidence = "JavaScript evaluation executed ($lineNum statements)"
+                verificationEvidence = "Wasti Embedded JS Evaluator (Restricted Compatibility Mode - Not Full Node.js/V8 runtime; evaluated $lineNum statements)"
             )
         } catch (e: Exception) {
             stderr.appendLine("ReferenceError: ${e.message}")
@@ -333,10 +333,15 @@ class WastiNodeJsRuntimeEngine(
     }
 
     private fun findNativeNodeBinary(): String? {
+        val sovereignBin = File(context.filesDir, "bin/node")
+        if (sovereignBin.canExecute()) return sovereignBin.absolutePath
+
         val candidates = listOf(
+            "/data/data/com.aistudio.wastios.k9v2pz/files/bin/node",
+            "/system/bin/node",
+            "/system/xbin/node",
             "/data/data/com.termux/files/usr/bin/node",
-            "/data/data/com.termux/files/usr/bin/nodejs",
-            "/system/bin/node"
+            "/data/data/com.termux/files/usr/bin/nodejs"
         )
         return candidates.firstOrNull { File(it).canExecute() }
     }

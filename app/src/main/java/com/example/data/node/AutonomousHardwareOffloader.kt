@@ -213,9 +213,13 @@ object AutonomousHardwareOffloader {
             }
         }
 
-        // If remote offloading succeeded, return with verified evidence
-        if (result.status == UnifiedExecutionStatus.COMPLETED) {
-            return@withContext result
+        // If remote offloading completed on the remote node, return result in EXECUTOR_COMPLETED state (never falsely promoted to VERIFIED)
+        if (result.status == UnifiedExecutionStatus.COMPLETED || result.status == UnifiedExecutionStatus.EXECUTOR_COMPLETED) {
+            return@withContext result.copy(
+                status = UnifiedExecutionStatus.EXECUTOR_COMPLETED,
+                verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                verificationEvidence = "Remote execution completed on '${targetNode.deviceName}'; independent observation required for VERIFIED state"
+            )
         }
 
         Log.w(TAG, "Remote offload to '${targetNode.deviceName}' failed: ${result.error}. Falling back to safe local execution.")

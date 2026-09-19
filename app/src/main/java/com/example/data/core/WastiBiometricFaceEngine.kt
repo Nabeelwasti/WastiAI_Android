@@ -45,7 +45,7 @@ data class EnrolledFaceDetails(
     val faceSignatureHash: String,
     val enrolledTimestamp: Long,
     val featureVectorLength: Int,
-    val algorithm: String = "Luminance-Spatial-Geometry-64D"
+    val algorithm: String = "Luminance-Spatial-Geometry-64D (Low-Assurance Experimental Demo; Platform BiometricPrompt required for High-Assurance Security)"
 )
 
 object WastiBiometricFaceEngine {
@@ -72,6 +72,10 @@ object WastiBiometricFaceEngine {
             val vector = extractFacialFeatureVector(bitmap)
             val hash = computeSha256(vector)
 
+            val mean = vector.average().toFloat()
+            val variance = vector.map { (it - mean) * (it - mean) }.average().toFloat()
+            val dynamicConfidence = (kotlin.math.sqrt(variance.toDouble()) * 2.0).toFloat().coerceIn(0.15f, 0.75f)
+
             val db = WastiDatabase.getDatabase(context)
             
             // Save hash
@@ -95,12 +99,12 @@ object WastiBiometricFaceEngine {
             )
             db.memoryDao().insertMemory(vectorEntity)
 
-            Log.i(TAG, "User face enrolled successfully on-device. Signature: $hash")
+            Log.i(TAG, "User face enrolled on-device (Experimental/Low-Assurance Demo). Signature: $hash")
             FaceEnrollmentResult(
                 isSuccess = true,
                 faceSignatureHash = hash,
-                confidence = 0.94f,
-                message = "Live camera face enrolled. Sovereign biometric identity active."
+                confidence = dynamicConfidence,
+                message = "Live camera face enrolled (Experimental/Low-Assurance Demo; platform BiometricPrompt required for high-assurance security)."
             )
         } catch (e: Exception) {
             Log.e(TAG, "Face enrollment failed: ${e.message}", e)

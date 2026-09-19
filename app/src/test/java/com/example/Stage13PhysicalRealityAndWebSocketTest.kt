@@ -319,8 +319,8 @@ class Stage13PhysicalRealityAndWebSocketTest {
     fun testArchitecture_NodeStateAndFabricContracts() {
         val fabric = UnifiedExecutionFabric.instance
         assertNotNull(fabric)
-        val agenticState = AgenticState.IDLE
-        assertEquals(AgenticState.IDLE, agenticState)
+        val agenticState = AgenticState.Idle()
+        assertEquals(AgenticState.Idle(), agenticState)
         val connState = NodeConnectionState.CONNECTED
         assertEquals(NodeConnectionState.CONNECTED, connState)
         val adv = AdvertisedCapabilityInfo(

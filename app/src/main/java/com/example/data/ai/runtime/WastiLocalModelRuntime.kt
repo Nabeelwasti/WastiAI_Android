@@ -321,14 +321,29 @@ class WastiLocalModelRuntime(
                     NativeLlamaBridge.freeModel(handle)
 
                     val latency = System.currentTimeMillis() - startTime
-                    val isGenuineNeural = hasTensors && isNeuralVerified && !result.startsWith("[NATIVE_")
+                    val isGenuineNeural = hasTensors && isNeuralVerified && !result.startsWith("[NATIVE_") && !result.startsWith("[ERROR")
+
+                    if (!isGenuineNeural) {
+                        return@withContext LocalInferenceResult(
+                            status = LocalInferenceStatus.UNAVAILABLE,
+                            output = if (result.startsWith("[NATIVE_") || result.startsWith("[ERROR")) result else "[NATIVE_NEURAL_UNAVAILABLE]: Model '$modelId' container validated, but genuine neural tensor execution is unmapped or unsupported.",
+                            modelId = modelId,
+                            latencyMs = latency,
+                            isNeuralOutput = false,
+                            errorMessage = "Neural execution not proven for model",
+                            engineUsed = "Wasti Native Tensor Bridge (Unverified/Unsupported)",
+                            tokensGenerated = 0
+                        )
+                    }
+
+                    val estimatedTokens = result.split(Regex("\\s+")).filter { it.isNotBlank() }.size.coerceAtLeast(1)
 
                     try {
                         val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
                             evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
                             subject = "local_native_inference:$modelId",
-                            verifiedState = if (isGenuineNeural) "GENUINE_NEURAL_TENSOR_FORWARD_PASS" else "NATIVE_CONTAINER_PARSE_ONLY",
-                            confidence = if (isGenuineNeural) 0.90 else 0.40
+                            verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                            confidence = 0.90
                         )
                         com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                             taskId = "task_native_${System.currentTimeMillis()}",
@@ -349,8 +364,9 @@ class WastiLocalModelRuntime(
                         output = result,
                         modelId = modelId,
                         latencyMs = latency,
-                        isNeuralOutput = isGenuineNeural,
-                        engineUsed = if (isGenuineNeural) "Wasti Native Llama Tensor Engine (Genuine Neural Inference)" else "Wasti Native Tensor Bridge (GGUF Container Verified • Payload Pending)"
+                        isNeuralOutput = true,
+                        engineUsed = "Wasti Native Llama Tensor Engine (Genuine Neural Inference)",
+                        tokensGenerated = estimatedTokens
                     )
                 } else {
                     LocalInferenceResult(
@@ -359,7 +375,8 @@ class WastiLocalModelRuntime(
                         modelId = modelId,
                         latencyMs = System.currentTimeMillis() - startTime,
                         isNeuralOutput = false,
-                        errorMessage = "Failed to initialize native model handle"
+                        errorMessage = "Failed to initialize native model handle",
+                        tokensGenerated = 0
                     )
                 }
             } catch (e: Throwable) {
@@ -370,33 +387,26 @@ class WastiLocalModelRuntime(
                     modelId = modelId,
                     latencyMs = System.currentTimeMillis() - startTime,
                     isNeuralOutput = false,
-                    errorMessage = e.message
+                    errorMessage = e.message,
+                    tokensGenerated = 0
                 )
             }
         }
 
-        // Truthful reporting: GGUF weights verified and container validated on device
-        val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(18L)
+        // Truthful reporting: Native runtime is unavailable
+        val latency = (System.currentTimeMillis() - startTime).coerceAtLeast(5L)
         val modelDesc = OpenSourceModelCatalog.getModelById(modelId)
         val brandName = modelDesc?.brandDisplayName ?: manifest?.canonicalFileName ?: modelId
-        val specName = modelDesc?.primarySpecialization?.name ?: "GENERAL_REASONING"
-
-        val synthesizedOutput = """
-[NATIVE ENGINE PRESENT — GGUF CONTAINER PARSED & VALIDATED: $brandName]
-• Format: GGUF v${header.version} (${header.tensorCount} tensors, ${header.metadataKvCount} metadata keys, ${modelFile.length() / (1024 * 1024)}MB)
-• Architecture: ${modelDesc?.defaultVersion ?: "GGUF-Transformer"} • Specialization: $specName
-• Latency: ${latency}ms • Engine: Wasti Native Tensor Bridge (GGUF Container Verified)
-• Status: GGUF Container Verified On-Disk • Tensor Payload Byte-Level Forward Pass Pending Full GGML Weight Ingestion
-""".trimIndent()
 
         LocalInferenceResult(
-            status = LocalInferenceStatus.SUCCESS,
-            output = synthesizedOutput,
+            status = LocalInferenceStatus.NATIVE_RUNTIME_UNAVAILABLE,
+            output = "[LOCAL_MODEL_UNAVAILABLE]: Native neural execution engine (libwasti_ai_native.so / libllama.so) is unavailable for on-device inference for $brandName.",
             modelId = modelId,
             latencyMs = latency,
             isNeuralOutput = false,
-            engineUsed = "Wasti Native Tensor Bridge (GGUF Container Verified)",
-            tokensGenerated = 32
+            errorMessage = "Native inference engine unavailable",
+            engineUsed = "Wasti Native Tensor Bridge (Unavailable)",
+            tokensGenerated = 0
         )
     }
 

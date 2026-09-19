@@ -26,7 +26,9 @@ data class BciTelemetrySnapshot(
     val isArtifactDetected: Boolean,  // Muscle / Blink artifact
     val electrodeImpedanceOk: Boolean,
     val sampleRateHz: Int = 250,
-    val timestampMs: Long = System.currentTimeMillis()
+    val timestampMs: Long = System.currentTimeMillis(),
+    val isSimulated: Boolean = true,
+    val telemetryLabel: String = "SIMULATED_DEMO"
 )
 
 enum class BciSourceType {

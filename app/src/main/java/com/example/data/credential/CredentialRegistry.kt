@@ -32,9 +32,23 @@ enum class CredentialCategory(val title: String) {
     AUTOMATION_COMMS("Automation & Communications")
 }
 
+enum class CredentialLifecycleState {
+    NOT_CONFIGURED,
+    CONFIGURED,
+    STORED_SECURELY,
+    AUTH_ATTEMPTED,
+    AUTHENTICATED,
+    PROVIDER_VERIFIED,
+    AUTH_FAILED
+}
+
 sealed class CredentialStatus {
     object NotConfigured : CredentialStatus()
+    object StoredSecurely : CredentialStatus()
     object Testing : CredentialStatus()
+    data class AuthAttempted(val message: String = "Authentication attempted") : CredentialStatus()
+    data class Authenticated(val message: String) : CredentialStatus()
+    data class ProviderVerified(val message: String) : CredentialStatus()
     data class Connected(val message: String) : CredentialStatus()
     data class Error(val message: String) : CredentialStatus()
 }
@@ -754,7 +768,7 @@ object CredentialRegistry {
             return directBuildConfig
         }
 
-        // 3.5. Cross-Runtime Bridge: Unified CLI token directory (~/.wasti_ai/tokens/)
+        // 3.5. Legacy Migration: Migrate any legacy CLI tokens (~/.wasti_ai/tokens/) into EncryptedSharedPreferences
         try {
             val userHome = System.getProperty("user.home") ?: targetCtx?.filesDir?.absolutePath ?: "/data/data/com.aistudio.wastios.k9v2pz/files"
             val tokenDir = java.io.File(userHome, ".wasti_ai/tokens")
@@ -768,6 +782,15 @@ object CredentialRegistry {
                     if (tf.isFile && tf.canRead()) {
                         val fileVal = tf.readText().trim()
                         if (fileVal.isNotBlank() && !isPlaceholder(fileVal)) {
+                            // Migrate securely
+                            if (targetCtx != null) {
+                                try {
+                                    val securePrefs = getSecureSharedPreferences(targetCtx)
+                                    securePrefs.edit().putString(keyName.lowercase(), fileVal).putString(keyName, fileVal).apply()
+                                } catch (_: Throwable) {}
+                            }
+                            // Delete legacy plaintext file
+                            try { tf.delete() } catch (_: Throwable) {}
                             return fileVal
                         }
                     }
@@ -1019,15 +1042,17 @@ object CredentialRegistry {
             db.settingDao().deleteSetting(keyName.lowercase())
             db.settingDao().deleteSetting(keyName)
 
-            // Cross-Runtime Sync: Mirror to unified CLI tokens (~/.wasti_ai/tokens/) for Python CLI tools (claude_free_edit.py)
+            // Zero-Plaintext Security: Never write raw secrets to disk or mirror plaintext tokens
             try {
                 val userHome = System.getProperty("user.home") ?: context.filesDir?.absolutePath ?: "/data/data/com.aistudio.wastios.k9v2pz/files"
                 val tokenDir = java.io.File(userHome, ".wasti_ai/tokens")
-                if (!tokenDir.exists()) tokenDir.mkdirs()
-                java.io.File(tokenDir, keyName).writeText(newValue.trim())
-                java.io.File(tokenDir, keyName.lowercase()).writeText(newValue.trim())
+                if (tokenDir.exists() && tokenDir.isDirectory) {
+                    java.io.File(tokenDir, keyName).delete()
+                    java.io.File(tokenDir, keyName.lowercase()).delete()
+                    java.io.File(tokenDir, "${keyName.lowercase()}.token").delete()
+                }
             } catch (_: Throwable) {
-                // Ignore if filesystem permissions are restricted
+                // Ignore filesystem cleanup restrictions
             }
 
             refreshAll(context)

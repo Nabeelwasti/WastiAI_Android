@@ -387,7 +387,7 @@ class WastiPythonRuntimeEngine(
                 language = PolyglotLanguage.PYTHON,
                 stdout = finalOut.ifBlank { "Program completed successfully (exit code 0)." },
                 exitCode = 0,
-                verificationEvidence = "Python AST evaluated (${lines.size} lines, ${variables.size} symbols)"
+                verificationEvidence = "Wasti Embedded AST Evaluator (Restricted/Test Fallback Mode - Not Full CPython interpreter; evaluated ${lines.size} lines)"
             )
         } catch (e: Exception) {
             stderr.appendLine("Traceback (most recent call last):")
@@ -717,11 +717,16 @@ class WastiPythonRuntimeEngine(
     }
 
     private fun findNativePythonBinary(): String? {
+        val sovereignBin = File(context.filesDir, "bin/python3")
+        if (sovereignBin.canExecute()) return sovereignBin.absolutePath
+
         val candidates = listOf(
-            "/data/data/com.termux/files/usr/bin/python3",
-            "/data/data/com.termux/files/usr/bin/python",
+            "/data/data/com.aistudio.wastios.k9v2pz/files/bin/python3",
             "/system/bin/python3",
-            "/system/bin/python"
+            "/system/bin/python",
+            "/system/xbin/python3",
+            "/data/data/com.termux/files/usr/bin/python3",
+            "/data/data/com.termux/files/usr/bin/python"
         )
         return candidates.firstOrNull { File(it).canExecute() }
     }

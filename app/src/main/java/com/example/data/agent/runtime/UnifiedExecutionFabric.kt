@@ -722,18 +722,18 @@ class UnifiedExecutionFabric(
             ?: request.parameters["tab"]?.toString()
             ?: "chat"
 
-        com.example.data.action.WastiAppActionBus.tryDispatch(
+        val dispatched = com.example.data.action.WastiAppActionBus.tryDispatch(
             com.example.data.action.WastiAppAction.NavigateTo(destination)
         )
 
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
-            output = "Navigated to destination screen: $destination",
+            status = if (dispatched) UnifiedExecutionStatus.DISPATCHED else UnifiedExecutionStatus.FAILED,
+            output = if (dispatched) "Dispatched navigation to destination screen: $destination" else "Failed to dispatch navigation action",
             executor = "WastiAppActionBus",
             startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
-            verificationEvidence = "Dispatched NavigateTo($destination) to WastiAppActionBus"
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+            verificationEvidence = "Dispatched NavigateTo($destination) to WastiAppActionBus; physical/UI navigation requires independent observation before VERIFIED"
         )
     }
 
@@ -1850,12 +1850,12 @@ class UnifiedExecutionFabric(
             com.example.data.ai.runtime.LocalInferenceStatus.SUCCESS -> {
                 createResult(
                     request = request,
-                    status = UnifiedExecutionStatus.VERIFIED,
+                    status = UnifiedExecutionStatus.COMPLETED,
                     output = result.output,
                     executor = "WastiLocalModelRuntime:${result.engineUsed}",
                     startedAt = startedAt,
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
-                    verificationEvidence = "Local neural inference executed via ${result.engineUsed} (${result.tokensGenerated} tokens, ${result.latencyMs}ms, progressiveState=$progressiveState)"
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
+                    verificationEvidence = "Local neural inference completed via ${result.engineUsed} (${result.tokensGenerated} tokens, ${result.latencyMs}ms, progressiveState=$progressiveState)"
                 )
             }
             com.example.data.ai.runtime.LocalInferenceStatus.UNAVAILABLE -> {

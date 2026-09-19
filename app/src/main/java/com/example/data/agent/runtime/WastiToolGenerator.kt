@@ -46,11 +46,13 @@ object WastiToolGenerator {
 
             class $toolName {
                 fun execute(params: Map<String, Any>): Map<String, Any> {
-                    // Automatically generated tool for $missingCapabilityId ($goalDescription)
+                    // Generated scaffold for $missingCapabilityId ($goalDescription)
+                    // Real execution requires sandbox dispatch and independent verification
                     return mapOf(
-                        "status" to "COMPLETED",
+                        "status" to "REAL_EXECUTION_REQUIRED",
                         "capability" to "$missingCapabilityId",
-                        "output" to "Generated tool execution completed for $missingCapabilityId"
+                        "stage" to "GENERATED",
+                        "output" to "Scaffold generated for $missingCapabilityId. Pending sandbox compilation and execution."
                     )
                 }
             }
@@ -60,7 +62,7 @@ object WastiToolGenerator {
             fun test$toolName() {
                 val tool = $toolName()
                 val result = tool.execute(emptyMap())
-                assert(result["status"] == "COMPLETED")
+                assert(result["status"] == "REAL_EXECUTION_REQUIRED" || result["stage"] == "GENERATED")
             }
         """.trimIndent()
 

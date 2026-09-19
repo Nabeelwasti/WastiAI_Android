@@ -409,7 +409,10 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
         ctx->attentionWeights.resize(ctx->dim * ctx->dim, 0.0f);
         ctx->lmHeadWeights.resize(ctx->dim * ctx->vocabSize, 0.0f);
 
-        bool anyTensorMapped = false;
+        bool mappedEmbeddings = false;
+        bool mappedNorm = false;
+        bool mappedAttention = false;
+        bool mappedLmHead = false;
 
         for (const auto& tensor : ctx->tensors) {
             uint64_t tensorByteOffset = tensorDataStart + tensor.offset;
@@ -426,12 +429,12 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
                 size_t toRead = std::min<size_t>(numElements, ctx->tokenEmbeddings.size());
                 if (tensor.type == 0) { // F32
                     file.read(reinterpret_cast<char*>(ctx->tokenEmbeddings.data()), toRead * sizeof(float));
-                    anyTensorMapped = true;
+                    mappedEmbeddings = true;
                 } else if (tensor.type == 1) { // F16
                     std::vector<uint16_t> halfBuf(toRead);
                     file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
                     for (size_t k = 0; k < toRead; ++k) ctx->tokenEmbeddings[k] = halfToFloat(halfBuf[k]);
-                    anyTensorMapped = true;
+                    mappedEmbeddings = true;
                 }
             }
             // Map normalization weights
@@ -439,12 +442,12 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
                 size_t toRead = std::min<size_t>(numElements, ctx->rmsNormGammas.size());
                 if (tensor.type == 0) {
                     file.read(reinterpret_cast<char*>(ctx->rmsNormGammas.data()), toRead * sizeof(float));
-                    anyTensorMapped = true;
+                    mappedNorm = true;
                 } else if (tensor.type == 1) {
                     std::vector<uint16_t> halfBuf(toRead);
                     file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
                     for (size_t k = 0; k < toRead; ++k) ctx->rmsNormGammas[k] = halfToFloat(halfBuf[k]);
-                    anyTensorMapped = true;
+                    mappedNorm = true;
                 }
             }
             // Map attention weights
@@ -452,12 +455,12 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
                 size_t toRead = std::min<size_t>(numElements, ctx->attentionWeights.size());
                 if (tensor.type == 0) {
                     file.read(reinterpret_cast<char*>(ctx->attentionWeights.data()), toRead * sizeof(float));
-                    anyTensorMapped = true;
+                    mappedAttention = true;
                 } else if (tensor.type == 1) {
                     std::vector<uint16_t> halfBuf(toRead);
                     file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
                     for (size_t k = 0; k < toRead; ++k) ctx->attentionWeights[k] = halfToFloat(halfBuf[k]);
-                    anyTensorMapped = true;
+                    mappedAttention = true;
                 }
             }
             // Map LM head weights
@@ -465,26 +468,27 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
                 size_t toRead = std::min<size_t>(numElements, ctx->lmHeadWeights.size());
                 if (tensor.type == 0) {
                     file.read(reinterpret_cast<char*>(ctx->lmHeadWeights.data()), toRead * sizeof(float));
-                    anyTensorMapped = true;
+                    mappedLmHead = true;
                 } else if (tensor.type == 1) {
                     std::vector<uint16_t> halfBuf(toRead);
                     file.read(reinterpret_cast<char*>(halfBuf.data()), toRead * sizeof(uint16_t));
                     for (size_t k = 0; k < toRead; ++k) ctx->lmHeadWeights[k] = halfToFloat(halfBuf[k]);
-                    anyTensorMapped = true;
+                    mappedLmHead = true;
                 }
             }
         }
 
-        if (anyTensorMapped) {
+        // Truth boundary: Genuine neural execution requires all essential pipeline components
+        if (mappedEmbeddings && mappedAttention) {
             ctx->tensorsLoaded = true;
             ctx->isRealNeural = true;
             ctx->isValid = true;
-            LOGI("Genuine GGUF model tensor payloads successfully loaded and mapped into native memory.");
+            LOGI("Genuine GGUF model tensor payloads successfully loaded and mapped into native memory (lmHeadMapped=%d, normMapped=%d).", mappedLmHead, mappedNorm);
             return true;
         }
     }
 
-    LOGI("Parsed valid GGUF container header: version=%u, tensors=%llu, metadata=%llu. No tensor payload found on disk.",
+    LOGI("Parsed valid GGUF container header: version=%u, tensors=%llu, metadata=%llu. Incomplete or unsupported tensor payload on disk.",
          version, static_cast<unsigned long long>(tensorCount),
          static_cast<unsigned long long>(metadataCount));
     ctx->tensorsLoaded = false;
@@ -613,10 +617,14 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_evalPrompt(
         std::vector<float> logits(vocabWindow, 0.0f);
         float maxLogit = -1e9f;
 
+        const float* projectionWeights = (!ctx->lmHeadWeights.empty() && ctx->lmHeadWeights[0] != 0.0f)
+            ? ctx->lmHeadWeights.data()
+            : ctx->tokenEmbeddings.data();
+
         for (int v = 0; v < vocabWindow; ++v) {
             float sum = 0.0f;
             for (int d = 0; d < ctx->dim; ++d) {
-                sum += hidden[d] * ctx->tokenEmbeddings[(v * ctx->dim) + d];
+                sum += hidden[d] * projectionWeights[(v * ctx->dim) + d];
             }
             logits[v] = sum / temp;
             if (logits[v] > maxLogit) maxLogit = logits[v];

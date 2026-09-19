@@ -311,8 +311,8 @@ class Stage18UniversalConversationFabricTest {
 
     @Test
     fun testArchitecture_AgenticStateContract() {
-        val state = AgenticState.IDLE
-        assertEquals(AgenticState.IDLE, state)
+        val state = AgenticState.Idle()
+        assertEquals(AgenticState.Idle(), state)
         assertEquals("IDLE", state.name)
     }
 }
