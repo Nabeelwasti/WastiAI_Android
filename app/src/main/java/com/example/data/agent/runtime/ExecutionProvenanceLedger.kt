@@ -127,14 +127,17 @@ object ExecutionProvenanceLedger {
         return entry
     }
 
+    @Synchronized
     fun getProvenanceForTask(taskId: String): List<ProvenanceEntry> {
         return _entries.value.filter { it.taskId == taskId }
     }
 
+    @Synchronized
     fun getLatestEntry(): ProvenanceEntry? {
         return _entries.value.lastOrNull()
     }
 
+    @Synchronized
     fun count(): Int {
         return _entries.value.size
     }
@@ -172,12 +175,14 @@ object ExecutionProvenanceLedger {
         injectTamperedEntryForTesting(entry)
     }
 
+    @Synchronized
     fun verifyEntry(entryId: String): Boolean {
         val entry = _entries.value.find { it.entryId == entryId } ?: return false
         val payload = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
         return hashString(payload) == entry.entryHash
     }
 
+    @Synchronized
     fun verifyLedgerIntegrity(): Boolean {
         val list = _entries.value
         if (list.isEmpty()) return true
@@ -199,6 +204,7 @@ object ExecutionProvenanceLedger {
         return true
     }
 
+    @Synchronized
     fun exportLedgerAuditJson(): String {
         val array = org.json.JSONArray()
         for (e in _entries.value) {

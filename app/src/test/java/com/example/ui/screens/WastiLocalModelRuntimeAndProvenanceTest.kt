@@ -39,6 +39,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,6 +63,16 @@ class WastiLocalModelRuntimeAndProvenanceTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
+        ExecutionProvenanceLedger.resetForTesting()
+        com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
+        com.example.data.agent.runtime.SelfModificationSafetyEngine.resetForTesting()
+    }
+
+    @After
+    fun tearDown() {
+        ExecutionProvenanceLedger.resetForTesting()
+        com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
+        com.example.data.agent.runtime.SelfModificationSafetyEngine.resetForTesting()
     }
 
     @Test

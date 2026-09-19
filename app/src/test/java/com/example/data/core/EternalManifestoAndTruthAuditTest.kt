@@ -42,6 +42,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -53,6 +55,20 @@ import java.util.UUID
     description = "Robolectric host simulation of Android framework and manifesto invariants"
 )
 class EternalManifestoAndTruthAuditTest {
+
+    @Before
+    fun setUp() {
+        com.example.data.agent.runtime.ExecutionProvenanceLedger.resetForTesting()
+        com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
+        com.example.data.agent.runtime.SelfModificationSafetyEngine.resetForTesting()
+    }
+
+    @After
+    fun tearDown() {
+        com.example.data.agent.runtime.ExecutionProvenanceLedger.resetForTesting()
+        com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
+        com.example.data.agent.runtime.SelfModificationSafetyEngine.resetForTesting()
+    }
 
     @Test
     fun testTerminalTruthStateAlgebra() {

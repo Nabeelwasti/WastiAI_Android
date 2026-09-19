@@ -96,7 +96,7 @@ object IntegrationAuditRegistry {
             IntegrationCapabilityAudit(
                 capabilityName = "Wasti Local 12-Brain Suite",
                 status = mapRealityToStatus(localNeuralReality),
-                detail = if (localNeuralReality.liveConnectionStatus == LiveConnectionStatus.VERIFIED) {
+                detail = if (localNeuralReality?.liveConnectionStatus == LiveConnectionStatus.VERIFIED) {
                     "12 open-source brand models with genuine neural tensor execution verified on-device"
                 } else {
                     "12 open-source brand models with domain-specialized native reasoning, multi-model consensus, and self-training distillation loop (awaiting native weights/verified execution)"

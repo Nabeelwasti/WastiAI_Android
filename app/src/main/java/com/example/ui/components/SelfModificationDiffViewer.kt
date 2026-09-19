@@ -346,13 +346,12 @@ private fun DiffContentBox(diffLines: List<DiffLine>) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(4.dp)
-                    .horizontalScroll(horizontalScrollState)
             ) {
                 items(
                     count = diffLines.size,
                     key = { index -> "${diffLines[index].oldLineNumber}_${diffLines[index].newLineNumber}_$index" }
                 ) { index ->
-                    DiffLineRow(line = diffLines[index])
+                    DiffLineRow(line = diffLines[index], horizontalScrollState = horizontalScrollState)
                 }
             }
         }
@@ -360,18 +359,24 @@ private fun DiffContentBox(diffLines: List<DiffLine>) {
 }
 
 @Composable
-private fun DiffLineRow(line: DiffLine) {
+private fun DiffLineRow(
+    line: DiffLine,
+    horizontalScrollState: androidx.compose.foundation.ScrollState? = null
+) {
     val (bgColor, textColor, prefix) = when (line.type) {
         DiffLineType.ADDED -> Triple(Color(0x334CAF50), Color(0xFF1B5E20), "+ ")
         DiffLineType.DELETED -> Triple(Color(0x33F44336), Color(0xFFB71C1C), "- ")
         DiffLineType.UNCHANGED -> Triple(Color.Transparent, MaterialTheme.colorScheme.onSurface, "  ")
     }
 
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .let { mod -> if (horizontalScrollState != null) mod.horizontalScroll(horizontalScrollState) else mod }
+        .background(bgColor, RoundedCornerShape(2.dp))
+        .padding(horizontal = 4.dp, vertical = 1.dp)
+
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bgColor, RoundedCornerShape(2.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp),
+        modifier = rowModifier,
         verticalAlignment = Alignment.CenterVertically
     ) {
         val lineNum = (line.newLineNumber ?: line.oldLineNumber)?.toString() ?: ""

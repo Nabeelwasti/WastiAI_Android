@@ -1,6 +1,9 @@
 package com.example.data.agent.runtime
 
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.security.MessageDigest
 import java.util.UUID
@@ -103,11 +106,11 @@ object SelfModificationSafetyEngine {
 
     private const val TAG = "SelfModSafetyEngine"
 
-    private val _pendingProposals = kotlinx.coroutines.flow.MutableStateFlow<List<ProposedModification>>(emptyList())
-    val pendingProposals: kotlinx.coroutines.flow.StateFlow<List<ProposedModification>> = _pendingProposals.kotlinx.coroutines.flow.asStateFlow()
+    private val _pendingProposals = MutableStateFlow<List<ProposedModification>>(emptyList())
+    val pendingProposals: StateFlow<List<ProposedModification>> = _pendingProposals.asStateFlow()
 
-    private val _proposalAuditLog = kotlinx.coroutines.flow.MutableStateFlow<List<ProposalAuditEntry>>(emptyList())
-    val proposalAuditLog: kotlinx.coroutines.flow.StateFlow<List<ProposalAuditEntry>> = _proposalAuditLog.kotlinx.coroutines.flow.asStateFlow()
+    private val _proposalAuditLog = MutableStateFlow<List<ProposalAuditEntry>>(emptyList())
+    val proposalAuditLog: StateFlow<List<ProposalAuditEntry>> = _proposalAuditLog.asStateFlow()
 
     fun recordAudit(
         proposalId: String,
