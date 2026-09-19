@@ -712,7 +712,7 @@ object SelfModificationSafetyEngine {
                     subject = "SelfModificationSafetyEngine",
                     verifiedState = "APPLIED_VERIFIED",
                     confidence = 0.95,
-                    evidenceSource = EvidenceSource.TEST_EXECUTION
+                    evidenceSource = EvidenceSource.FILESYSTEM_AUDIT
                 )
             } else {
                 VerifiedExecutionEvidence(
