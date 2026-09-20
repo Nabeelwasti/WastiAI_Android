@@ -813,17 +813,25 @@ static bool parseGguf(const std::string& path, NativeModelContext* ctx) {
     ctx->vocabSize = static_cast<int>(ctx->vocab.size());
     ctx->buildTokenMap();
 
-    // 2. Read tensor descriptors with overflow protection
+    // 2. Read tensor descriptors with overflow protection and duplicate detection
     uint32_t alignment = 32;
+    std::unordered_map<std::string, bool> seenTensorNames;
     for (uint64_t i = 0; i < tensorCount; ++i) {
         std::string name;
         if (!readGgufString(file, name)) {
             ctx->loadErrorReason = "Failed to read tensor name at index " + std::to_string(i);
             return false;
         }
+        if (seenTensorNames.find(name) != seenTensorNames.end()) {
+            ctx->loadErrorReason = "Duplicate tensor name detected in GGUF schema: " + name;
+            LOGE("%s", ctx->loadErrorReason.c_str());
+            return false;
+        }
+        seenTensorNames[name] = true;
+
         uint32_t nDims = 0;
         file.read(reinterpret_cast<char*>(&nDims), sizeof(nDims));
-        if (!file || file.gcount() != sizeof(nDims) || nDims > 8) {
+        if (!file || file.gcount() != sizeof(nDims) || nDims == 0 || nDims > 8) {
             ctx->loadErrorReason = "Malformed tensor dimension count for " + name;
             return false;
         }
@@ -1525,4 +1533,92 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralInference(
     return (expSum > 0.0f) ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralReferenceFixture(
+    JNIEnv *env,
+    jobject /* thiz */,
+    jlong modelHandle,
+    jintArray expectedPromptTokens,
+    jfloatArray expectedHiddenStatePrefix,
+    jfloatArray expectedLogitsPrefix,
+    jfloat tolerance
+) {
+    if (modelHandle == 0L) return JNI_FALSE;
+    auto ctx = reinterpret_cast<wasti::NativeModelContext*>(modelHandle);
+    if (!ctx->isValid || !ctx->tensorsLoaded || !ctx->isRealNeural) return JNI_FALSE;
+
+    float tol = (tolerance > 0.0f) ? tolerance : 1e-3f;
+
+    jsize promptLen = expectedPromptTokens ? env->GetArrayLength(expectedPromptTokens) : 0;
+    if (promptLen <= 0) return JNI_FALSE;
+
+    jint* pTokens = env->GetIntArrayElements(expectedPromptTokens, nullptr);
+    if (!pTokens) return JNI_FALSE;
+
+    std::vector<float> hidden;
+    std::vector<std::vector<std::vector<float>>> layerKCache(ctx->nLayers);
+    std::vector<std::vector<std::vector<float>>> layerVCache(ctx->nLayers);
+
+    bool forwardOk = true;
+    for (int i = 0; i < promptLen; ++i) {
+        int tId = pTokens[i];
+        if (tId < 0 || tId >= ctx->vocabSize) {
+            forwardOk = false;
+            break;
+        }
+        if (!wasti::executeNeuralForwardPass(ctx, tId, i, hidden, layerKCache, layerVCache)) {
+            forwardOk = false;
+            break;
+        }
+    }
+    env->ReleaseIntArrayElements(expectedPromptTokens, pTokens, JNI_ABORT);
+    if (!forwardOk || hidden.size() != static_cast<size_t>(ctx->dim)) return JNI_FALSE;
+
+    // Verify hidden state prefix if provided
+    if (expectedHiddenStatePrefix) {
+        jsize hLen = env->GetArrayLength(expectedHiddenStatePrefix);
+        if (hLen > 0 && hLen <= static_cast<jsize>(hidden.size())) {
+            jfloat* hExpected = env->GetFloatArrayElements(expectedHiddenStatePrefix, nullptr);
+            if (hExpected) {
+                for (int i = 0; i < hLen; ++i) {
+                    if (!std::isfinite(hidden[i]) || std::abs(hidden[i] - hExpected[i]) > tol) {
+                        forwardOk = false;
+                        break;
+                    }
+                }
+                env->ReleaseFloatArrayElements(expectedHiddenStatePrefix, hExpected, JNI_ABORT);
+            }
+        }
+    }
+    if (!forwardOk) return JNI_FALSE;
+
+    // Verify logits prefix if provided
+    if (expectedLogitsPrefix) {
+        jsize lLen = env->GetArrayLength(expectedLogitsPrefix);
+        if (lLen > 0 && lLen <= static_cast<jsize>(ctx->vocabSize)) {
+            const float* projWeights = ctx->hasExplicitLmHead
+                ? ctx->lmHeadWeights.data()
+                : ctx->tokenEmbeddings.data();
+            jfloat* lExpected = env->GetFloatArrayElements(expectedLogitsPrefix, nullptr);
+            if (lExpected) {
+                for (int v = 0; v < lLen; ++v) {
+                    float sum = 0.0f;
+                    const float* wRow = projWeights + (v * ctx->dim);
+                    for (int d = 0; d < ctx->dim; ++d) {
+                        sum += hidden[d] * wRow[d];
+                    }
+                    if (!std::isfinite(sum) || std::abs(sum - lExpected[v]) > tol) {
+                        forwardOk = false;
+                        break;
+                    }
+                }
+                env->ReleaseFloatArrayElements(expectedLogitsPrefix, lExpected, JNI_ABORT);
+            }
+        }
+    }
+
+    return forwardOk ? JNI_TRUE : JNI_FALSE;
+}
+
 } // extern "C"
+

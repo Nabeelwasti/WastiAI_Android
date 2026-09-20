@@ -288,6 +288,50 @@ data class NodeCryptoIdentity(
     val createdAtMs: Long = System.currentTimeMillis()
 )
 
+object MeshCryptoSigner {
+    private const val EC_ALGO = "EC"
+    private const val SIG_ALGO = "SHA256withECDSA"
+
+    fun generateKeyPair(): java.security.KeyPair {
+        val kpg = java.security.KeyPairGenerator.getInstance(EC_ALGO)
+        kpg.initialize(256)
+        return kpg.generateKeyPair()
+    }
+
+    fun sign(privateKey: java.security.PrivateKey, data: ByteArray): String {
+        val sig = java.security.Signature.getInstance(SIG_ALGO)
+        sig.initSign(privateKey)
+        sig.update(data)
+        return sig.sign().joinToString("") { "%02x".format(it) }
+    }
+
+    fun verify(publicKeyHex: String, data: ByteArray, signatureHex: String): Boolean {
+        if (publicKeyHex.isBlank() || signatureHex.isBlank() || signatureHex.length % 2 != 0) return false
+        return try {
+            val pubBytes = hexToBytes(publicKeyHex)
+            val sigBytes = hexToBytes(signatureHex)
+            val keySpec = java.security.spec.X509EncodedKeySpec(pubBytes)
+            val kf = java.security.KeyFactory.getInstance(EC_ALGO)
+            val pubKey = kf.generatePublic(keySpec)
+            val sig = java.security.Signature.getInstance(SIG_ALGO)
+            sig.initVerify(pubKey)
+            sig.update(data)
+            sig.verify(sigBytes)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun hexToBytes(hex: String): ByteArray {
+        val len = hex.length
+        val data = ByteArray(len / 2)
+        for (i in 0 until len step 2) {
+            data[i / 2] = ((Character.digit(hex[i], 16) shl 4) + Character.digit(hex[i + 1], 16)).toByte()
+        }
+        return data
+    }
+}
+
 /**
  * Stage 16: Signed Capability Advertisement with lease terms and verifiable signature.
  */
@@ -300,7 +344,25 @@ data class SignedCapabilityAdvertisement(
     val isRevoked: Boolean = false
 ) {
     fun isExpired(): Boolean = System.currentTimeMillis() > (timestamp + leaseDurationMs)
-    fun isValid(): Boolean = !isRevoked && !isExpired() && signature.isNotBlank()
+
+    fun getCanonicalPayload(): ByteArray {
+        val raw = "$publisherNodeId|${capabilityInfo.capabilityId}|${capabilityInfo.version}|$timestamp|$leaseDurationMs"
+        return raw.toByteArray(Charsets.UTF_8)
+    }
+
+    fun verifySignature(publisherPublicKeyHex: String): Boolean {
+        if (isRevoked || isExpired() || signature.isBlank()) return false
+        return MeshCryptoSigner.verify(publisherPublicKeyHex, getCanonicalPayload(), signature)
+    }
+
+    fun isValid(publisherPublicKeyHex: String? = null): Boolean {
+        if (isRevoked || isExpired() || signature.isBlank()) return false
+        return if (publisherPublicKeyHex != null) {
+            verifySignature(publisherPublicKeyHex)
+        } else {
+            signature.isNotBlank() && signature.length >= 64
+        }
+    }
 }
 
 /**
@@ -318,7 +380,25 @@ data class CapabilityLease(
     val isRevoked: Boolean = false
 ) {
     fun isExpired(): Boolean = System.currentTimeMillis() > expiresAtMs
-    fun isAuthorized(): Boolean = !isRevoked && !isExpired()
+
+    fun getCanonicalPayload(): ByteArray {
+        val raw = "$leaseId|$capabilityId|$granterNodeId|$granteeNodeId|$grantedAtMs|$expiresAtMs|$maxOperationsAllowed"
+        return raw.toByteArray(Charsets.UTF_8)
+    }
+
+    fun verifySignature(granterPublicKeyHex: String): Boolean {
+        if (isRevoked || isExpired() || signature.isBlank()) return false
+        return MeshCryptoSigner.verify(granterPublicKeyHex, getCanonicalPayload(), signature)
+    }
+
+    fun isAuthorized(granterPublicKeyHex: String? = null): Boolean {
+        if (isRevoked || isExpired()) return false
+        return if (granterPublicKeyHex != null) {
+            verifySignature(granterPublicKeyHex)
+        } else {
+            signature.isNotBlank()
+        }
+    }
 }
 
 /**
@@ -337,5 +417,12 @@ data class MeshHandshakeResponse(
     val signedNonce: String,
     val responderPublicKey: String,
     val timestamp: Long = System.currentTimeMillis()
-)
+) {
+    fun verify(challenge: MeshHandshakeChallenge): Boolean {
+        if (challengeId != challenge.challengeId) return false
+        val nonceBytes = challenge.nonce.toByteArray(Charsets.UTF_8)
+        return MeshCryptoSigner.verify(responderPublicKey, nonceBytes, signedNonce)
+    }
+}
+
 

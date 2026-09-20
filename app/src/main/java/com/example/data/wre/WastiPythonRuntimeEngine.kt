@@ -77,6 +77,18 @@ class WastiPythonRuntimeEngine(
         val startTime = System.currentTimeMillis()
         val trimmed = scriptOrArgs.trim()
 
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.PYTHON,
+                stdout = "",
+                stderr = "[EMERGENCY_STOP_ACTIVE]: Python execution aborted by emergency stop latch.",
+                exitCode = 130,
+                durationMs = 0L,
+                verificationEvidence = "Execution aborted by emergency stop"
+            )
+        }
+
         // 1. Check if native python3 binary is available on device/Termux
         val nativeBin = findNativePythonBinary()
         if (nativeBin != null && isFullNativePythonExecutable(nativeBin)) {
@@ -754,21 +766,27 @@ class WastiPythonRuntimeEngine(
     }
 
     private fun runNativeBinary(binPath: String, args: String, workingDir: File): PolyglotExecutionOutcome? {
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) return null
         return try {
             val fullCmd = if (args.isNotBlank()) "$binPath $args" else "$binPath -V"
             val p = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", fullCmd), null, workingDir)
-            val out = p.inputStream.bufferedReader().readText()
-            val err = p.errorStream.bufferedReader().readText()
-            val code = p.waitFor()
+            val regHandle = com.example.data.agent.runtime.WastiEmergencyStopController.registerProcess("python_proc_${System.identityHashCode(p)}", p)
+            try {
+                val out = p.inputStream.bufferedReader().readText()
+                val err = p.errorStream.bufferedReader().readText()
+                val code = p.waitFor()
 
-            PolyglotExecutionOutcome(
-                isSuccess = code == 0,
-                language = PolyglotLanguage.PYTHON,
-                stdout = out,
-                stderr = err,
-                exitCode = code,
-                verificationEvidence = "Native binary execution via $binPath (exit $code)"
-            )
+                PolyglotExecutionOutcome(
+                    isSuccess = code == 0,
+                    language = PolyglotLanguage.PYTHON,
+                    stdout = out,
+                    stderr = err,
+                    exitCode = code,
+                    verificationEvidence = "Native binary execution via $binPath (exit $code)"
+                )
+            } finally {
+                regHandle.close()
+            }
         } catch (_: Exception) {
             null
         }

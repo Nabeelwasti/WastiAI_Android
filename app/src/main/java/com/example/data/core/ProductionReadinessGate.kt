@@ -213,7 +213,7 @@ object ProductionReadinessGate {
         } catch (_: Throwable) {
             false
         }
-        val supportedCandidateModelIds = listOf("wasti-smollm", "smollm", "llama-3.2-1b", "qwen2.5-0.5b", "mistral-7b", "gemma-2b", "phi-3-mini")
+        val supportedCandidateModelIds = com.example.data.ai.model.SupportedModelContract.getAllLocalCandidateModelIds()
         val anyModelWeightsPresent = supportedCandidateModelIds.any { modelId ->
             try {
                 com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, modelId)

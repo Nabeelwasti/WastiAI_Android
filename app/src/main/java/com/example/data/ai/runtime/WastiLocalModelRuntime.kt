@@ -213,6 +213,24 @@ object NativeLlamaBridge {
         return info.tensorsLoaded && info.isRealNeural
     }
 
+    fun isReferenceVerified(modelHandle: Long, fixture: com.example.data.ai.model.NeuralReferenceFixture): Boolean {
+        return if (isNativeLibraryLoaded && modelHandle != 0L) {
+            try {
+                verifyNeuralReferenceFixture(
+                    modelHandle = modelHandle,
+                    expectedPromptTokens = fixture.expectedPromptTokens,
+                    expectedHiddenStatePrefix = fixture.expectedHiddenStatePrefix,
+                    expectedLogitsPrefix = fixture.expectedLogitsPrefix,
+                    tolerance = fixture.numericalTolerance
+                )
+            } catch (_: Throwable) {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
     fun getVerificationDetails(modelHandle: Long, prompt: String = "probe"): NativeNeuralVerificationDetails? {
         if (!isNativeLibraryLoaded || modelHandle == 0L) return null
         return try {
@@ -223,7 +241,8 @@ object NativeLlamaBridge {
                 architecture = obj.optString("architecture", "unknown"),
                 architectureVerified = obj.optBoolean("architectureVerified", false),
                 tensorExecutionVerified = obj.optBoolean("tensorExecutionVerified", false),
-                referenceVerified = obj.optBoolean("referenceVerified", false),
+                deterministicProbeVerified = obj.optBoolean("referenceVerified", false),
+                referenceVerified = false, // Granted only after actual fixture comparison
                 tiedEmbeddings = obj.optBoolean("tiedEmbeddings", false),
                 vocabSize = obj.optInt("vocabSize", 0),
                 dim = obj.optInt("dim", 0),
@@ -250,6 +269,13 @@ object NativeLlamaBridge {
     external fun evalPrompt(modelHandle: Long, prompt: String, maxTokens: Int, temperature: Float): String
     external fun freeModel(modelHandle: Long)
     external fun verifyNeuralInference(modelHandle: Long, prompt: String): Boolean
+    external fun verifyNeuralReferenceFixture(
+        modelHandle: Long,
+        expectedPromptTokens: IntArray,
+        expectedHiddenStatePrefix: FloatArray,
+        expectedLogitsPrefix: FloatArray,
+        tolerance: Float
+    ): Boolean
     external fun hasLoadedTensors(modelHandle: Long): Boolean
     external fun getGeneratedTokenCount(modelHandle: Long): Int
     external fun getNativeModelInfo(modelHandle: Long): String
@@ -260,6 +286,7 @@ data class NativeNeuralVerificationDetails(
     val architecture: String,
     val architectureVerified: Boolean,
     val tensorExecutionVerified: Boolean,
+    val deterministicProbeVerified: Boolean,
     val referenceVerified: Boolean,
     val tiedEmbeddings: Boolean,
     val vocabSize: Int,

@@ -63,6 +63,18 @@ class WastiNodeJsRuntimeEngine(
         val startTime = System.currentTimeMillis()
         val trimmed = scriptOrArgs.trim()
 
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.NODE_JAVASCRIPT,
+                stdout = "",
+                stderr = "[EMERGENCY_STOP_ACTIVE]: Node.js execution aborted by emergency stop latch.",
+                exitCode = 130,
+                durationMs = 0L,
+                verificationEvidence = "Execution aborted by emergency stop"
+            )
+        }
+
         // 1. Check native node binary
         val nativeBin = findNativeNodeBinary()
         if (nativeBin != null && isFullNativeNodeExecutable(nativeBin)) {
@@ -369,21 +381,27 @@ class WastiNodeJsRuntimeEngine(
     }
 
     private fun runNativeBinary(binPath: String, args: String, workingDir: File): PolyglotExecutionOutcome? {
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) return null
         return try {
             val fullCmd = if (args.isNotBlank()) "$binPath $args" else "$binPath -v"
             val p = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", fullCmd), null, workingDir)
-            val out = p.inputStream.bufferedReader().readText()
-            val err = p.errorStream.bufferedReader().readText()
-            val code = p.waitFor()
+            val regHandle = com.example.data.agent.runtime.WastiEmergencyStopController.registerProcess("node_proc_${System.identityHashCode(p)}", p)
+            try {
+                val out = p.inputStream.bufferedReader().readText()
+                val err = p.errorStream.bufferedReader().readText()
+                val code = p.waitFor()
 
-            PolyglotExecutionOutcome(
-                isSuccess = code == 0,
-                language = PolyglotLanguage.NODE_JAVASCRIPT,
-                stdout = out,
-                stderr = err,
-                exitCode = code,
-                verificationEvidence = "Native Node.js binary execution via $binPath"
-            )
+                PolyglotExecutionOutcome(
+                    isSuccess = code == 0,
+                    language = PolyglotLanguage.NODE_JAVASCRIPT,
+                    stdout = out,
+                    stderr = err,
+                    exitCode = code,
+                    verificationEvidence = "Native Node.js binary execution via $binPath"
+                )
+            } finally {
+                regHandle.close()
+            }
         } catch (_: Exception) {
             null
         }

@@ -114,6 +114,11 @@ object SelfModificationSafetyEngine {
     private val _proposalAuditLog = MutableStateFlow<List<ProposalAuditEntry>>(emptyList())
     val proposalAuditLog: StateFlow<List<ProposalAuditEntry>> = _proposalAuditLog.asStateFlow()
 
+    @Volatile
+    private var isAuditLogCompromised = false
+
+    fun isCompromised(): Boolean = isAuditLogCompromised
+
     init {
         loadPersistedAuditLog()
     }
@@ -126,9 +131,10 @@ object SelfModificationSafetyEngine {
 
             val loaded = mutableListOf<ProposalAuditEntry>()
             var expectedPrevHash = ExecutionProvenanceLedger.GENESIS_HASH
+            var corruptionDetected = false
 
             auditFile.forEachLine { line ->
-                if (line.isNotBlank()) {
+                if (line.isNotBlank() && !corruptionDetected) {
                     try {
                         val obj = org.json.JSONObject(line)
                         val actionName = obj.getString("action")
@@ -159,22 +165,29 @@ object SelfModificationSafetyEngine {
                             entryHash = if (entryHash.isNotBlank()) entryHash else computedHash
                         )
 
-                        if (entryHash.isBlank() || entryHash == computedHash) {
+                        if ((entryHash.isBlank() || entryHash == computedHash) && prevHash == expectedPrevHash) {
                             loaded.add(entry)
                             expectedPrevHash = entry.entryHash
                         } else {
-                            Log.w(TAG, "Tampered proposal audit record detected: $id")
+                            Log.e(TAG, "Tampered proposal audit record detected: $id (Fail-Closed)")
+                            corruptionDetected = true
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Malformed proposal audit record skipped", e)
+                        Log.e(TAG, "Malformed proposal audit record detected (Fail-Closed)", e)
+                        corruptionDetected = true
                     }
                 }
             }
-            if (loaded.isNotEmpty()) {
+            if (corruptionDetected) {
+                isAuditLogCompromised = true
+                Log.e(TAG, "SelfModification proposal audit log marked COMPROMISED. Autonomous self-modification blocked.")
+            } else if (loaded.isNotEmpty()) {
                 _proposalAuditLog.value = loaded.takeLast(100).reversed()
+                isAuditLogCompromised = false
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed reading persisted proposal audit log", e)
+            isAuditLogCompromised = true
         }
     }
 
@@ -529,6 +542,12 @@ object SelfModificationSafetyEngine {
         // 1. Emergency stop check
         if (WastiEmergencyStopController.isEmergencyStopped) {
             return ModificationDecision.BLOCKED_EMERGENCY_STOP
+        }
+
+        // 1b. Audit log integrity check (Fail-Closed)
+        if (isAuditLogCompromised && isAutonomous && !isValidAdminToken(adminAuthToken)) {
+            Log.e(TAG, "Autonomous modification BLOCKED: Proposal audit log is compromised")
+            return ModificationDecision.REQUIRES_ADMIN_AUTHORIZATION
         }
 
         // 2. Size limit check
