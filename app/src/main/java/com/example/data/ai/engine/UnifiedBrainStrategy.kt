@@ -622,7 +622,7 @@ object UnifiedBrainStrategy {
             checksumOrHash = proofHash,
             expectedPostcondition = "STEPS_${steps.size}_INVARIANTS_PASSED",
             observedResult = "STEPS_${steps.size}_INVARIANTS_PASSED",
-            declaredVerifier = "UnifiedBrainStrategy",
+            declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "invariant_consensus_hash"
         )
         val vRes = com.example.data.agent.runtime.WastiVerificationEngine().verifyStructuredEvidence(

@@ -92,7 +92,7 @@ object CapabilityEvolutionPipeline {
                 checksumOrHash = proofHash,
                 expectedPostcondition = verificationEvidence,
                 observedResult = verificationEvidence,
-                declaredVerifier = "CapabilityEvolutionPipeline",
+                declaredVerifier = "WastiVerificationEngine",
                 verificationMethod = "cryptographic_runtime_diagnostic"
             )
         )
