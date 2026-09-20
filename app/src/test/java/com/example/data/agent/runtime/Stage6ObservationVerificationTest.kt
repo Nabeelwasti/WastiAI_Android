@@ -92,9 +92,9 @@ class Stage6ObservationVerificationTest {
         )
 
         val result = fabric.execute(request, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
-        assertNotNull(result.verificationEvidence)
+        // Ordinary execution completes without self-certifying verification
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
 
         val obsReq = ObservationRequest(
             taskId = result.taskId,
@@ -103,17 +103,38 @@ class Stage6ObservationVerificationTest {
             parameters = mapOf("action" to "write_file", "path" to "test_verification.txt")
         )
         val obsRes = observationEngine.observe(obsReq, context, result)
-        assertEquals(ObservationStatus.CHANGED, obsRes.status)
+        assertEquals(ObservationStatus.OBSERVED, obsRes.status)
+
+        // Authoritative verification with genuine CapabilitySpecificEvidence
+        val now = System.currentTimeMillis()
+        val capEvidence = CapabilitySpecificEvidence(
+            taskId = result.taskId,
+            actionId = result.actionId,
+            capabilityId = "files",
+            executor = "WorkspaceManager",
+            observationSource = EvidenceSource.FILESYSTEM,
+            timestamp = now,
+            artifactOrStateReference = "test_verification.txt",
+            checksumOrHash = "SHA256_PROBED_DISK_STATE",
+            expectedState = "FILE_WRITTEN_PROBED",
+            observedState = "FILE_WRITTEN_PROBED",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "FILESYSTEM_DISK_AUDIT",
+            confidence = 1.0
+        )
 
         val verReq = VerificationRequest(
             taskId = result.taskId,
             actionId = result.actionId,
             capabilityId = "files",
+            expectedOutcome = "FILE_WRITTEN_PROBED",
             executionResult = result,
-            observationResult = obsRes
+            observationResult = obsRes,
+            capabilitySpecificEvidence = capEvidence
         )
         val verRes = verificationEngine.verify(verReq)
         assertEquals(ActionVerificationStatus.VERIFIED, verRes.status)
+        assertEquals(1.0, verRes.confidence, 0.001)
     }
 
     // 3. Failed verification scenario

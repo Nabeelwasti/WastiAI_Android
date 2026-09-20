@@ -455,34 +455,18 @@ class WastiVerificationEngine {
                         capabilitySpecificEvidence = request.capabilitySpecificEvidence
                     )
                 } else {
-                    // [P0-02] Capability-specific independent validation of observation evidence
-                    val isIndependentlyVerifiable = isObservationIndependentlyVerifiable(request, obs)
-                    if (isIndependentlyVerifiable) {
-                        val verifiedConfidence = if (obs.confidence >= MIN_VERIFIED_CONFIDENCE) obs.confidence else MIN_VERIFIED_CONFIDENCE
-                        VerificationResult(
-                            taskId = request.taskId,
-                            actionId = request.actionId,
-                            capabilityId = request.capabilityId,
-                            status = ActionVerificationStatus.VERIFIED,
-                            evidence = "Verified: $trimmedEvidence",
-                            confidence = verifiedConfidence,
-                            structuredEvidence = request.structuredEvidence,
-                            capabilitySpecificEvidence = request.capabilitySpecificEvidence
-                        )
-                    } else {
-                        // [P0-02 CRITICAL FIX]: Freeform non-generic text cannot falsely become VERIFIED!
-                        VerificationResult(
-                            taskId = request.taskId,
-                            actionId = request.actionId,
-                            capabilityId = request.capabilityId,
-                            status = ActionVerificationStatus.NOT_VERIFIABLE,
-                            evidence = "Verification Unavailable: Observation lacks independent capability-specific state anchors ($trimmedEvidence). Requires structured probe or physical state verification.",
-                            confidence = 0.0,
-                            failureReason = "Lacks independent capability-specific state anchors",
-                            structuredEvidence = request.structuredEvidence,
-                            capabilitySpecificEvidence = request.capabilitySpecificEvidence
-                        )
-                    }
+                    // Freeform observation text without authoritative CapabilitySpecificEvidence or StructuredEvidence cannot self-certify verification
+                    VerificationResult(
+                        taskId = request.taskId,
+                        actionId = request.actionId,
+                        capabilityId = request.capabilityId,
+                        status = ActionVerificationStatus.NOT_VERIFIABLE,
+                        evidence = "Verification Unavailable: Observation lacks independent authoritative postcondition verification proof ($trimmedEvidence). Requires structured probe or authoritative verification evidence.",
+                        confidence = 0.0,
+                        failureReason = null,
+                        structuredEvidence = request.structuredEvidence,
+                        capabilitySpecificEvidence = request.capabilitySpecificEvidence
+                    )
                 }
             }
             ObservationStatus.NOT_OBSERVED, ObservationStatus.UNCHANGED -> {
@@ -519,99 +503,11 @@ class WastiVerificationEngine {
                     status = ActionVerificationStatus.VERIFICATION_UNAVAILABLE,
                     evidence = "Verification Unavailable: State observation unavailable for capability ${request.capabilityId} (${obs.evidence})",
                     confidence = 0.0,
-                    failureReason = "Observation unavailable",
+                    failureReason = null,
                     structuredEvidence = request.structuredEvidence,
                     capabilitySpecificEvidence = request.capabilitySpecificEvidence
                 )
             }
-        }
-    }
-
-    /**
-     * Verifies that observation text anchors to concrete, capability-specific evidence patterns
-     * produced by independent observation engines rather than arbitrary freeform claims.
-     */
-    private fun isObservationIndependentlyVerifiable(
-        request: VerificationRequest,
-        obs: ObservationResult
-    ): Boolean {
-        // Observer must be separated from executor unless verified through an external probe
-        val exec = request.executionResult
-        if (obs.source.equals(exec.executor, ignoreCase = true) && obs.source != "WastiObservationEngine") {
-            return false
-        }
-
-        val cap = normalizeCapability(request.capabilityId)
-        val text = obs.evidence
-
-        return when {
-            // Filesystem: must anchor to path inspection, existence, or size
-            cap.contains("file") || cap.contains("workspace") ->
-                text.contains("inspected at", ignoreCase = true) ||
-                text.contains("File-system post-state", ignoreCase = true) ||
-                text.contains("exists=", ignoreCase = true) ||
-                text.contains("bytes", ignoreCase = true) ||
-                text.contains("Post-execution file is present", ignoreCase = true) ||
-                text.contains("Workspace operation verified", ignoreCase = true)
-
-            // Memory: must anchor to memory capability store query with independent verification proof
-            cap.contains("memory") ->
-                text.contains("Memory operation verified through independent execution proof", ignoreCase = true) ||
-                text.contains("Record found", ignoreCase = true) ||
-                text.contains("MemoryItem", ignoreCase = true)
-
-            // UI / Device Control / In-App Navigation: must anchor to accessibility window/package match or verified navigation dispatch
-            cap.contains("device") || cap.contains("accessibility") ||
-                cap == "ui" || cap.startsWith("ui_") || cap.endsWith("_ui") || cap.contains("_ui_") ||
-                cap == "navigate_to" || cap == "open_screen" || cap == "navigate" ->
-                text.contains("Accessibility observed", ignoreCase = true) ||
-                text.contains("active package matching", ignoreCase = true) ||
-                text.contains("window package", ignoreCase = true) ||
-                text.contains("Navigated to destination screen", ignoreCase = true) &&
-                (text.contains("active package", ignoreCase = true) || text.contains("window package", ignoreCase = true))
-
-            // Process / Shell / Code / Transform / Server: must anchor to verified execution
-            cap.contains("terminal") || cap.contains("shell") || cap.contains("code") || cap.contains("script") ||
-                cap.contains("invented") || cap.contains("transformer") || cap.contains("transform") ||
-                cap.contains("reverse") || cap.contains("extractor") || cap.contains("aggregator") ||
-                cap.startsWith("wre_tool_") || cap.contains("server") ->
-                text.contains("returned exit code 0", ignoreCase = true) &&
-                text.contains("post-state", ignoreCase = true) ||
-                text.contains("filesystem post-state", ignoreCase = true) ||
-                text.contains("independent execution proof:", ignoreCase = true)
-
-            // Local Neural inference
-            cap.contains("neural") || cap.contains("llama") || cap.contains("model") ->
-                (text.contains("NEURAL_EXECUTION_VERIFIED", ignoreCase = true) ||
-                 text.contains("LOCAL_MODEL_VERIFIED", ignoreCase = true) ||
-                 text.contains("GENUINE_NEURAL_TENSOR_FORWARD_PASS", ignoreCase = true)) &&
-                !text.contains("UNVERIFIED", ignoreCase = true) &&
-                !text.contains("HEURISTIC", ignoreCase = true)
-
-            // Web / Network: must anchor to canonical fabric HTTP contract with verified payload or side-effect proof; plain HTTP_200 alone rejected
-            cap.contains("web") || cap.contains("search") || cap.contains("http") ->
-                text.contains("Web result returned through the canonical execution fabric", ignoreCase = true) ||
-                (text.contains("HTTP_200", ignoreCase = true) &&
-                    (text.contains("payload_sha256", ignoreCase = true) ||
-                     text.contains("body_hash", ignoreCase = true) ||
-                     text.contains("side_effect_verified", ignoreCase = true) ||
-                     text.contains("verified_side_effect", ignoreCase = true)))
-
-            // Canonical environment, project dev, and development toolchain operations
-            cap.contains("project") || cap.contains("build") || cap.contains("compile") ||
-                cap.contains("test") || cap.contains("debug") || cap.contains("diag") ||
-                cap.contains("package") || cap.contains("system") || cap.contains("environment") ||
-                cap.contains("sysinfo") ->
-                text.contains("returned through the canonical execution fabric", ignoreCase = true) &&
-                (text.contains("post-state", ignoreCase = true) || text.contains("independent", ignoreCase = true)) ||
-                text.contains("verified through independent execution proof:", ignoreCase = true) ||
-                text.contains("STATICALLY_VALIDATED", ignoreCase = true) ||
-                text.contains("Syntax validated", ignoreCase = true) ||
-                text.contains("Tests Run", ignoreCase = true) ||
-                text.contains("Diagnostics for", ignoreCase = true) ||
-                (text.contains("Package", ignoreCase = true) && text.contains("installed", ignoreCase = true))
-
-            else -> false
         }
     }
 
