@@ -356,12 +356,8 @@ data class SignedCapabilityAdvertisement(
     }
 
     fun isValid(publisherPublicKeyHex: String? = null): Boolean {
-        if (isRevoked || isExpired() || signature.isBlank()) return false
-        return if (publisherPublicKeyHex != null) {
-            verifySignature(publisherPublicKeyHex)
-        } else {
-            signature.isNotBlank() && signature.length >= 64
-        }
+        if (isRevoked || isExpired() || signature.isBlank() || publisherPublicKeyHex.isNullOrBlank()) return false
+        return verifySignature(publisherPublicKeyHex)
     }
 }
 
@@ -387,17 +383,13 @@ data class CapabilityLease(
     }
 
     fun verifySignature(granterPublicKeyHex: String): Boolean {
-        if (isRevoked || isExpired() || signature.isBlank()) return false
+        if (isRevoked || isExpired() || signature.isBlank() || granterPublicKeyHex.isBlank()) return false
         return MeshCryptoSigner.verify(granterPublicKeyHex, getCanonicalPayload(), signature)
     }
 
     fun isAuthorized(granterPublicKeyHex: String? = null): Boolean {
-        if (isRevoked || isExpired()) return false
-        return if (granterPublicKeyHex != null) {
-            verifySignature(granterPublicKeyHex)
-        } else {
-            signature.isNotBlank()
-        }
+        if (isRevoked || isExpired() || signature.isBlank() || granterPublicKeyHex.isNullOrBlank()) return false
+        return verifySignature(granterPublicKeyHex)
     }
 }
 

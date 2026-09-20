@@ -1086,7 +1086,7 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_getNativeRuntimeVersion(
     JNIEnv *env,
     jobject /* thiz */
 ) {
-    const char* ver = "wasti-neural-tensor-bridge-v2.2.0-aarch64 (Complete-GGUF/Llama/Mistral/Qwen2/Gemma/Phi3/Truth-Verified)";
+    const char* ver = "wasti-neural-tensor-bridge-v2.2.0-aarch64 (Complete-GGUF/Llama/Mistral/Qwen2/Gemma/Phi3/Native-Bridge)";
     return env->NewStringUTF(ver);
 }
 

@@ -63,6 +63,8 @@ class MeshCryptographicSecurityAndHandshakeTest {
 
         assertTrue("Signed ad must verify valid with authentic public key", ad.verifySignature(pubHex))
         assertTrue("isValid helper must pass with public key", ad.isValid(pubHex))
+        assertFalse("isValid must fail-closed if public key is null", ad.isValid(null))
+        assertFalse("isValid must fail-closed if public key is blank", ad.isValid(""))
 
         // Check rejection of bad signature
         val badAd = ad.copy(signature = "deadbeef1234")
@@ -94,6 +96,8 @@ class MeshCryptographicSecurityAndHandshakeTest {
 
         assertTrue("Authentic lease must verify authorized", lease.verifySignature(pubHex))
         assertTrue(lease.isAuthorized(pubHex))
+        assertFalse("isAuthorized must fail-closed if public key is null", lease.isAuthorized(null))
+        assertFalse("isAuthorized must fail-closed if public key is blank", lease.isAuthorized(""))
 
         // Check expired lease
         val expiredLease = lease.copy(expiresAtMs = System.currentTimeMillis() - 1000L)

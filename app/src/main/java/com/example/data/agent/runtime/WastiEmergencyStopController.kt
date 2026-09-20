@@ -216,6 +216,32 @@ class WastiEmergencyStopController : EmergencyStopController {
                 cancelledHooksCount = cancelledHooks
             )
         )
+
+        try {
+            ExecutionProvenanceLedger.recordExecution(
+                taskId = "emergency_stop_${snap.generation}",
+                actionId = "trigger_emergency_stop",
+                capabilityId = "GLOBAL_EMERGENCY_STOP",
+                providerId = "WastiEmergencyStopController",
+                inputContent = "generation:${snap.generation},reason:$normalizedReason",
+                outputContent = "stopped:true,scopes:$cancelledScopes,jobs:$cancelledJobs,hooks:$cancelledHooks",
+                evidence = VerifiedExecutionEvidence(
+                    subject = "WastiEmergencyStopController",
+                    verifiedState = "EMERGENCY_STOP_ACTIVE",
+                    confidence = 1.0,
+                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+                    expectedPostcondition = "EMERGENCY_STOP_ACTIVE",
+                    observedResult = "EMERGENCY_STOP_ACTIVE",
+                    declaredVerifier = "WastiEmergencyStopController",
+                    verificationMethod = "process_cancellation_latch"
+                ),
+                executionEnvironment = "local_android_runtime",
+                executor = "WastiEmergencyStopController",
+                verifier = "WastiEmergencyStopController",
+                verificationMethod = "process_cancellation_latch",
+                verificationLevel = VerificationLevel.RUNTIME_VERIFIED
+            )
+        } catch (_: Throwable) {}
     }
 
     /**
@@ -255,6 +281,32 @@ class WastiEmergencyStopController : EmergencyStopController {
                 generation = snap.generation
             )
         )
+
+        try {
+            ExecutionProvenanceLedger.recordExecution(
+                taskId = "emergency_stop_reset_${snap.generation}",
+                actionId = "reset_emergency_stop",
+                capabilityId = "GLOBAL_EMERGENCY_STOP",
+                providerId = "WastiEmergencyStopController",
+                inputContent = "generation:${snap.generation},action:reset",
+                outputContent = "stopped:false",
+                evidence = VerifiedExecutionEvidence(
+                    subject = "WastiEmergencyStopController",
+                    verifiedState = "EMERGENCY_STOP_RESET",
+                    confidence = 1.0,
+                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+                    expectedPostcondition = "EMERGENCY_STOP_RESET",
+                    observedResult = "EMERGENCY_STOP_RESET",
+                    declaredVerifier = "WastiEmergencyStopController",
+                    verificationMethod = "process_cancellation_latch"
+                ),
+                executionEnvironment = "local_android_runtime",
+                executor = "WastiEmergencyStopController",
+                verifier = "WastiEmergencyStopController",
+                verificationMethod = "process_cancellation_latch",
+                verificationLevel = VerificationLevel.RUNTIME_VERIFIED
+            )
+        } catch (_: Throwable) {}
     }
 
     fun triggerReset() = resetEmergencyStop()

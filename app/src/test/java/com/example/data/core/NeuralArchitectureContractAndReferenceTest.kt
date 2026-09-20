@@ -20,24 +20,29 @@ class NeuralArchitectureContractAndReferenceTest {
 
     @Test
     fun testAllClaimedArchitecturesHaveAuthoritativeContracts() {
-        val claimedFamilies = listOf(
-            ModelArchitectureFamily.LLAMA,
-            ModelArchitectureFamily.MISTRAL,
-            ModelArchitectureFamily.QWEN2,
-            ModelArchitectureFamily.GEMMA,
-            ModelArchitectureFamily.PHI3
-        )
+        val claimedFamilies = ModelArchitectureFamily.values().toList()
 
         for (family in claimedFamilies) {
             assertNotNull("Family canonical name must not be empty", family.canonicalName)
             assertTrue("Default activation must be SwiGLU or GeGLU", family.defaultActivation in listOf("SwiGLU", "GeGLU"))
-            assertTrue("Default normalization must be RMSNorm or GemmaRMSNorm", family.defaultNormalization in listOf("RMSNorm", "GemmaRMSNorm"))
+            assertTrue("Default normalization must be RMSNorm, GemmaRMSNorm or LayerNorm", family.defaultNormalization in listOf("RMSNorm", "GemmaRMSNorm", "LayerNorm"))
             assertTrue("RoPE base frequency must be positive", family.defaultRopeFreqBase > 0.0f)
         }
     }
 
     @Test
     fun testSupportedModelContractProvidesExactArchitectureMetadata() {
+        assertEquals(12, SupportedModelContract.SUPPORTED_LOCAL_MODEL_IDS.size)
+
+        for (modelId in SupportedModelContract.SUPPORTED_LOCAL_MODEL_IDS) {
+            val contract = SupportedModelContract.getArchitectureContract(modelId)
+            assertNotNull("Contract must exist for $modelId", contract)
+            assertTrue("Expected dimensions must be > 0 for $modelId", contract!!.expectedDimensions > 0)
+            assertTrue("Expected layers must be > 0 for $modelId", contract.expectedLayers > 0)
+            assertTrue("Expected heads must be > 0 for $modelId", contract.expectedHeads > 0)
+            assertTrue("Expected vocab size must be > 0 for $modelId", contract.expectedVocabSize > 0)
+        }
+
         val smollmContract = SupportedModelContract.getArchitectureContract("wasti-smollm")
         assertNotNull("SmolLM contract must exist", smollmContract)
         assertEquals(2048, smollmContract!!.expectedDimensions)
@@ -45,6 +50,7 @@ class NeuralArchitectureContractAndReferenceTest {
         assertEquals(32, smollmContract.expectedHeads)
         assertEquals(49152, smollmContract.expectedVocabSize)
         assertEquals(QuantizationType.Q4_K_M, smollmContract.quantization)
+        assertTrue(smollmContract.isLocalExecutionSupported)
 
         val qwenContract = SupportedModelContract.getArchitectureContract("wasti-qwen")
         assertNotNull("Qwen contract must exist", qwenContract)
@@ -52,12 +58,22 @@ class NeuralArchitectureContractAndReferenceTest {
         assertEquals(28, qwenContract.expectedLayers)
         assertEquals(12, qwenContract.expectedHeads)
         assertEquals(2, qwenContract.expectedKvHeads)
+        assertTrue(qwenContract.isLocalExecutionSupported)
 
         val gemmaContract = SupportedModelContract.getArchitectureContract("wasti-gemma")
         assertNotNull("Gemma contract must exist", gemmaContract)
         assertEquals(2304, gemmaContract!!.expectedDimensions)
         assertEquals(26, gemmaContract.expectedLayers)
         assertTrue("Gemma requires explicit LM head", gemmaContract.family.requiresExplicitLmHead)
+        assertTrue(gemmaContract.isLocalExecutionSupported)
+
+        val deepseekContract = SupportedModelContract.getArchitectureContract("wasti-deepseek")
+        assertNotNull("DeepSeek contract must exist", deepseekContract)
+        assertFalse("DeepSeek requires server/mesh", deepseekContract!!.isLocalExecutionSupported)
+
+        val mistralContract = SupportedModelContract.getArchitectureContract("wasti-mistral")
+        assertNotNull("Mistral contract must exist", mistralContract)
+        assertFalse("Mistral requires server/mesh", mistralContract!!.isLocalExecutionSupported)
     }
 
     @Test
