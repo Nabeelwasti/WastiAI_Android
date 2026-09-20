@@ -100,7 +100,7 @@ class CapabilityRealityAndDeviceTest {
             )
             val result = fabric.execute(req, context)
             assertNotNull(result)
-            assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
+            assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
             assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         }
     }

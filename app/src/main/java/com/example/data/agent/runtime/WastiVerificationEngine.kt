@@ -554,9 +554,9 @@ class WastiVerificationEngine {
                 text.contains("Post-execution file is present", ignoreCase = true) ||
                 text.contains("Workspace operation verified", ignoreCase = true)
 
-            // Memory: must anchor to memory capability store query
+            // Memory: must anchor to memory capability store query with independent verification proof
             cap.contains("memory") ->
-                text.contains("Memory operation returned a result", ignoreCase = true) ||
+                text.contains("Memory operation verified through independent execution proof", ignoreCase = true) ||
                 text.contains("Record found", ignoreCase = true) ||
                 text.contains("MemoryItem", ignoreCase = true)
 

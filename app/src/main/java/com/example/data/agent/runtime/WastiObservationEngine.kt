@@ -229,12 +229,10 @@ class WastiObservationEngine(
         return when {
             capabilityId in MEMORY_CAPABILITIES -> observeMemory(request, executorResult)
 
-            capabilityId in setOf("search_web", "web_search", "read_web_page", "b2b_xray_search") -> result(
+            capabilityId in setOf("search_web", "web_search", "read_web_page", "b2b_xray_search") -> successfulExecutionObservation(
                 request = request,
-                status = ObservationStatus.OBSERVED,
-                observedState = executorResult.output,
-                evidence = "Web result returned through the canonical execution fabric.",
-                confidence = if (isExecutionSuccessful(executorResult)) 1.0 else 0.5
+                executorResult = executorResult,
+                description = "Web operation"
             )
 
             capabilityId in setOf(
@@ -465,13 +463,31 @@ class WastiObservationEngine(
     private fun observeMemory(
         request: ObservationRequest,
         executorResult: UnifiedExecutionResult
-    ): ObservationResult = result(
-        request = request,
-        status = ObservationStatus.OBSERVED,
-        observedState = executorResult.output,
-        evidence = "Memory operation returned a result through the canonical memory capability.",
-        confidence = if (isExecutionSuccessful(executorResult)) 1.0 else 0.4
-    )
+    ): ObservationResult = if (isVerified(executorResult)) {
+        result(
+            request = request,
+            status = ObservationStatus.OBSERVED,
+            observedState = executorResult.output,
+            evidence = "Memory operation verified through independent execution proof: ${executorResult.output.take(EVIDENCE_PREVIEW_LENGTH)}",
+            confidence = 1.0
+        )
+    } else if (isExecutionSuccessful(executorResult)) {
+        result(
+            request = request,
+            status = ObservationStatus.UNAVAILABLE,
+            observedState = executorResult.output,
+            evidence = "Memory operation completed execution, but no independent post-state probe is available for capability '${request.capabilityId}'.",
+            confidence = 0.0
+        )
+    } else {
+        result(
+            request = request,
+            status = ObservationStatus.UNKNOWN,
+            observedState = executorResult.output,
+            evidence = "Memory operation has no successful terminal execution state.",
+            confidence = 0.0
+        )
+    }
 
     private fun observeCommunication(
         request: ObservationRequest,

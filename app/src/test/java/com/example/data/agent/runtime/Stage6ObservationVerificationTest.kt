@@ -75,7 +75,7 @@ class Stage6ObservationVerificationTest {
         val obsReq = ObservationRequest(taskId = "task-1", actionId = "act-1", capabilityId = "memory_search")
         val obsRes = observationEngine.observe(obsReq, context, execResult)
 
-        assertEquals(ObservationStatus.OBSERVED, obsRes.status)
+        assertEquals(ObservationStatus.UNAVAILABLE, obsRes.status)
         assertEquals("Memory query executed", obsRes.observedState)
     }
 
@@ -83,23 +83,32 @@ class Stage6ObservationVerificationTest {
     @Test
     fun testSuccessfulVerificationScenario() = runBlocking {
         val request = UnifiedExecutionRequest(
-            capabilityId = "memory_search",
-            parameters = mapOf("query" to "test verification query")
+            capabilityId = "files",
+            parameters = mapOf(
+                "action" to "write_file",
+                "path" to "test_verification.txt",
+                "content" to "test verification content"
+            )
         )
 
         val result = fabric.execute(request, context)
-        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
+        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
         assertNotNull(result.verificationEvidence)
 
-        val obsReq = ObservationRequest(taskId = result.taskId, actionId = result.actionId, capabilityId = "memory_search")
+        val obsReq = ObservationRequest(
+            taskId = result.taskId,
+            actionId = result.actionId,
+            capabilityId = "files",
+            parameters = mapOf("action" to "write_file", "path" to "test_verification.txt")
+        )
         val obsRes = observationEngine.observe(obsReq, context, result)
         assertEquals(ObservationStatus.OBSERVED, obsRes.status)
 
         val verReq = VerificationRequest(
             taskId = result.taskId,
             actionId = result.actionId,
-            capabilityId = "memory_search",
+            capabilityId = "files",
             executionResult = result,
             observationResult = obsRes
         )

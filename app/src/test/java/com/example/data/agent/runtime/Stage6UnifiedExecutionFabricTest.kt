@@ -53,7 +53,7 @@ class Stage6UnifiedExecutionFabricTest {
         assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertEquals("MemoryManager", result.executor)
         assertNull(result.error)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
     }
 
     // 2. Executor failure path (e.g. open_app with non-existent package)
