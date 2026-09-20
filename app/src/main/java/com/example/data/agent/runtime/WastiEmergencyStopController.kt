@@ -239,7 +239,7 @@ class WastiEmergencyStopController : EmergencyStopController {
                 evidenceLevel = EvidenceLadder.INTEGRATION_TESTED
             )
         } catch (t: Throwable) {
-            Log.w(TAG, "Emergency stop provenance recording notice: ${t.message}")
+            android.util.Log.w("EmergencyStop", "Emergency stop provenance recording notice: ${t.message}")
         }
     }
 
