@@ -337,6 +337,10 @@ object AuthoritativeNeuralFixtures {
 
     fun getFixture(modelId: String): NeuralReferenceFixture? = fixtures[modelId]
 
+    fun hasProvenBinding(modelId: String): Boolean = fixtures.containsKey(modelId)
+
+    fun getAllProvenModelIds(): List<String> = fixtures.keys.toList()
+
     fun validateTensors(
         tensorNames: List<String>,
         contract: ModelArchitectureContract

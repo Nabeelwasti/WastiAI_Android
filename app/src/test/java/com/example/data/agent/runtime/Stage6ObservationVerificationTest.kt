@@ -516,7 +516,9 @@ class Stage6ObservationVerificationTest {
         assertNull(defaultEvidence.declaredVerifier)
         assertNull(defaultEvidence.verificationMethod)
         // 2. Status keywords, confidence, or self-asserted fields must NEVER grant VERIFIED alone
-        assertFalse(defaultEvidence.isVerifiedState())
+        val engine = WastiVerificationEngine()
+        val defaultRes = engine.verifyStructuredEvidence("t", "a", "c", defaultEvidence)
+        assertFalse(defaultRes.status == ActionVerificationStatus.VERIFIED)
 
         // 3. Mock/synthetic verifier or method must be rejected
         val mockVerifierEvidence = defaultEvidence.copy(
@@ -525,16 +527,18 @@ class Stage6ObservationVerificationTest {
             declaredVerifier = "mock_verifier",
             verificationMethod = "synthetic_method"
         )
-        assertFalse(mockVerifierEvidence.isVerifiedState())
+        val mockRes = engine.verifyStructuredEvidence("t", "a", "c", mockVerifierEvidence)
+        assertFalse(mockRes.status == ActionVerificationStatus.VERIFIED)
 
         // 4. Mismatched expected and observed must be rejected
         val mismatchEvidence = defaultEvidence.copy(
             expectedPostcondition = "FILE_CREATED",
             observedResult = "FILE_NOT_FOUND",
-            declaredVerifier = "FilesystemAuditor",
+            declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "direct_stat_probe"
         )
-        assertFalse(mismatchEvidence.isVerifiedState())
+        val mismatchRes = engine.verifyStructuredEvidence("t", "a", "c", mismatchEvidence)
+        assertFalse(mismatchRes.status == ActionVerificationStatus.VERIFIED)
 
         // 5. Genuine verifier comparing expected and observed results via verification method must succeed
         val genuineEvidence = defaultEvidence.copy(
@@ -543,7 +547,8 @@ class Stage6ObservationVerificationTest {
             declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "canonical_sha256_audit"
         )
-        assertTrue(genuineEvidence.isVerifiedState())
+        val genuineRes = engine.verifyStructuredEvidence("t", "a", "c", genuineEvidence)
+        assertTrue(genuineRes.status == ActionVerificationStatus.VERIFIED)
     }
 
     // 17. [P0-02 Adversarial Test]: Stale and forward-dated evidence rejection

@@ -178,47 +178,141 @@ class WastiVerificationEngine {
         evidence: VerifiedExecutionEvidence
     ): VerificationResult {
         val now = System.currentTimeMillis()
-        val isStale = (now - evidence.observedAt) > MAX_EVIDENCE_AGE_MS || (evidence.observedAt > now + 30000L)
-
-        val proof = if (!evidence.checksumOrHash.isNullOrBlank()) evidence.checksumOrHash else evidence.getEffectiveChecksum()
-        val hasIndependentProof = !proof.isNullOrBlank()
-
-        val isTrulyVerified = hasIndependentProof &&
-            evidence.confidence >= MIN_VERIFIED_CONFIDENCE &&
-            evidence.subject.isNotBlank() &&
-            evidence.verifiedState.isNotBlank() &&
-            !isSyntheticOrMock(evidence.subject) &&
-            !isSyntheticOrMock(evidence.verifiedState) &&
-            !isStale
-
-        return if (isTrulyVerified) {
-            VerificationResult(
-                taskId = taskId,
-                actionId = actionId,
-                capabilityId = capabilityId,
-                status = ActionVerificationStatus.VERIFIED,
-                evidence = "Verified: ${evidence.evidenceSource} [${evidence.subject} -> ${evidence.verifiedState}]",
-                confidence = evidence.confidence,
-                structuredEvidence = evidence
-            )
-        } else {
-            val reason = when {
-                isStale -> "Evidence timestamp is stale or forward-dated"
-                evidence.confidence < MIN_VERIFIED_CONFIDENCE -> "Confidence ${evidence.confidence} below threshold $MIN_VERIFIED_CONFIDENCE"
-                isSyntheticOrMock(evidence.subject) || isSyntheticOrMock(evidence.verifiedState) -> "Rejected synthetic or mock evidence"
-                else -> "Structured evidence failed integrity validation"
-            }
-            VerificationResult(
+        if (evidence.observedAt > now + 30000L) {
+            return VerificationResult(
                 taskId = taskId,
                 actionId = actionId,
                 capabilityId = capabilityId,
                 status = ActionVerificationStatus.FAILED,
-                evidence = "Verification Failed: $reason",
+                evidence = "Verification Failed: Evidence timestamp is in the future (${evidence.observedAt} > $now)",
                 confidence = 1.0,
-                failureReason = reason,
+                failureReason = "Forward-dated evidence rejected",
                 structuredEvidence = evidence
             )
         }
+        if (now - evidence.observedAt > MAX_EVIDENCE_AGE_MS) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Evidence is stale (${now - evidence.observedAt}ms > ${MAX_EVIDENCE_AGE_MS}ms)",
+                confidence = 1.0,
+                failureReason = "Stale timestamp evidence",
+                structuredEvidence = evidence
+            )
+        }
+
+        val verifier = evidence.declaredVerifier?.trim().orEmpty()
+        val method = evidence.verificationMethod?.trim().orEmpty()
+        val expected = evidence.expectedPostcondition?.trim().orEmpty()
+        val observed = evidence.observedResult?.trim().orEmpty()
+        val subject = evidence.subject.trim()
+        val verifiedState = evidence.verifiedState.trim()
+
+        if (verifier.isBlank() || method.isBlank() || expected.isBlank() || observed.isBlank() || subject.isBlank() || verifiedState.isBlank()) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Missing mandatory verifier, method, or postcondition comparisons in structured evidence",
+                confidence = 1.0,
+                failureReason = "Incomplete objective postcondition metadata",
+                structuredEvidence = evidence
+            )
+        }
+
+        // Sole Verification Authority check
+        val isAuthoritativeVerifier = verifier == "WastiVerificationEngine" || verifier.startsWith("WastiVerificationEngine")
+        if (!isAuthoritativeVerifier) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Non-authoritative verifier '$verifier' cannot produce verified truth",
+                confidence = 1.0,
+                failureReason = "Unauthorized verifier identity",
+                structuredEvidence = evidence
+            )
+        }
+
+        // Synthetic / Mock detection
+        if (isSyntheticOrMock(verifier) || isSyntheticOrMock(method) ||
+            isSyntheticOrMock(expected) || isSyntheticOrMock(observed) ||
+            isSyntheticOrMock(subject) || isSyntheticOrMock(verifiedState)
+        ) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Synthetic or mock evidence rejected",
+                confidence = 1.0,
+                failureReason = "Synthetic or mock evidence detected",
+                structuredEvidence = evidence
+            )
+        }
+
+        // Generic claims rejected
+        val lowerExpected = expected.lowercase()
+        val lowerObserved = observed.lowercase()
+        val genericPlaceholders = setOf("true", "success", "ok", "passed", "done", "http_200", "http 200", "200 ok")
+        if (genericPlaceholders.contains(lowerExpected) || genericPlaceholders.contains(lowerObserved)) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Generic placeholder postconditions cannot certify verification",
+                confidence = 1.0,
+                failureReason = "Generic placeholder postconditions rejected",
+                structuredEvidence = evidence
+            )
+        }
+
+        // Confidence check
+        if (evidence.confidence < MIN_VERIFIED_CONFIDENCE) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Confidence ${evidence.confidence} below threshold $MIN_VERIFIED_CONFIDENCE",
+                confidence = evidence.confidence,
+                failureReason = "Confidence score below verification threshold",
+                structuredEvidence = evidence
+            )
+        }
+
+        // Real comparison of expected postcondition vs observed result
+        val matches = expected == observed ||
+            observed.equals(expected, ignoreCase = true) ||
+            (observed.length >= 8 && expected.length >= 8 && (observed.contains(expected, ignoreCase = true) || expected.contains(observed, ignoreCase = true)))
+
+        if (!matches) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.FAILED,
+                evidence = "Verification Failed: Expected postcondition does not match observed result [expected=$expected, observed=$observed]",
+                confidence = 1.0,
+                failureReason = "Postcondition mismatch",
+                structuredEvidence = evidence
+            )
+        }
+
+        return VerificationResult(
+            taskId = taskId,
+            actionId = actionId,
+            capabilityId = capabilityId,
+            status = ActionVerificationStatus.VERIFIED,
+            evidence = "Verified by WastiVerificationEngine: ${evidence.evidenceSource} [$subject -> $observed] via $method",
+            confidence = evidence.confidence,
+            structuredEvidence = evidence
+        )
     }
 
     fun verify(

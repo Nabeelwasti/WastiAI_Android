@@ -64,9 +64,8 @@ object ExecutionProvenanceLedger {
     @Volatile
     private var isLedgerCompromised = false
 
-    private val anchorKeyBytes: ByteArray by lazy {
-        getOrGenerateKeystoreAnchorKey()
-    }
+    private var keystoreSecretKey: javax.crypto.SecretKey? = null
+    private var fallbackAnchorKey: ByteArray? = null
 
     init {
         loadPersistedLedger()
@@ -79,7 +78,7 @@ object ExecutionProvenanceLedger {
         return dir
     }
 
-    private fun getOrGenerateKeystoreAnchorKey(): ByteArray {
+    private fun getOrInitKeystoreAnchor(): javax.crypto.SecretKey? {
         try {
             val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
             keyStore.load(null)
@@ -100,13 +99,14 @@ object ExecutionProvenanceLedger {
                 } catch (_: Throwable) {}
             }
             val secretKey = keyStore.getKey(alias, null) as? javax.crypto.SecretKey
-            if (secretKey != null && secretKey.encoded != null) {
-                return secretKey.encoded
+            if (secretKey != null) {
+                keystoreSecretKey = secretKey
+                return secretKey
             }
         } catch (_: Throwable) {
             // AndroidKeyStore unavailable in JVM unit test environment; use protected storage anchor
         }
-        return loadOrCreateAnchorKey()
+        return null
     }
 
     private fun loadOrCreateAnchorKey(): ByteArray {
@@ -300,7 +300,7 @@ object ExecutionProvenanceLedger {
         modelId: String? = null,
         inputContent: String,
         outputContent: String,
-        evidence: VerifiedExecutionEvidence?,
+        evidence: VerifiedExecutionEvidence? = null,
         modelHash: String? = null,
         architecture: String? = null,
         runtimeVersion: String? = null,
@@ -312,7 +312,8 @@ object ExecutionProvenanceLedger {
         evidenceLevel: EvidenceLadder = EvidenceLadder.IMPLEMENTED,
         expectedState: String = "",
         observedState: String = "",
-        howObserved: String = ""
+        howObserved: String = "",
+        verificationResult: VerificationResult? = null
     ): ProvenanceEntry {
         val currentList = _entries.value
         val prevHash = currentList.lastOrNull()?.entryHash ?: GENESIS_HASH
@@ -326,8 +327,12 @@ object ExecutionProvenanceLedger {
         val source = evidence?.evidenceSource ?: EvidenceSource.PROCESS_TELEMETRY
         val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
 
-        // Zero-Fabrication Invariant: status is VERIFIED only when genuine independent verification succeeded
-        val status = if (evidence != null && evidence.isVerifiedState()) {
+        // Zero-Fabrication Invariant: status is VERIFIED only when authoritative WastiVerificationEngine succeeded
+        val isAuthoritativeVerified = verificationResult != null &&
+            verificationResult.status == ActionVerificationStatus.VERIFIED &&
+            verificationResult.isVerified
+
+        val status = if (isAuthoritativeVerified) {
             "VERIFIED"
         } else if (evidence != null) {
             "OBSERVED"
@@ -344,8 +349,8 @@ object ExecutionProvenanceLedger {
 
         val resolvedEvidenceLevel = if (evidenceLevel != EvidenceLadder.IMPLEMENTED) {
             evidenceLevel
-        } else if (isVerified) {
-            EvidenceLadder.RUNTIME_VERIFIED
+        } else if (isAuthoritativeVerified) {
+            verificationResult?.evidenceLevel ?: EvidenceLadder.RUNTIME_VERIFIED
         } else if (evidence != null) {
             EvidenceLadder.INTEGRATION_TESTED
         } else {
@@ -370,7 +375,7 @@ object ExecutionProvenanceLedger {
             timestamp = timestamp,
             previousEntryHash = prevHash,
             entryHash = entryHash,
-            confidence = evidence?.confidence ?: 0.0,
+            confidence = verificationResult?.confidence ?: evidence?.confidence ?: 0.0,
             operationId = actionId,
             executorResult = outputHash,
             observationSource = source.name,
@@ -517,8 +522,15 @@ object ExecutionProvenanceLedger {
     fun computeHmacIntegrityAnchor(content: String): String {
         return try {
             val mac = Mac.getInstance("HmacSHA256")
-            val key = SecretKeySpec(anchorKeyBytes, "HmacSHA256")
-            mac.init(key)
+            val key = keystoreSecretKey ?: getOrInitKeystoreAnchor()
+            if (key != null) {
+                mac.init(key)
+            } else {
+                if (fallbackAnchorKey == null) {
+                    fallbackAnchorKey = loadOrCreateAnchorKey()
+                }
+                mac.init(SecretKeySpec(fallbackAnchorKey!!, "HmacSHA256"))
+            }
             val bytes = mac.doFinal(content.toByteArray(Charsets.UTF_8))
             bytes.joinToString("") { "%02x".format(it) }
         } catch (_: Exception) {

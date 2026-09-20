@@ -189,12 +189,10 @@ class WastiPolyglotTerminalEngine(
                     evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                     subject = "polyglot_${outcome.language.name.lowercase()}",
                     verifiedState = "PROCESS_EXIT_${outcome.exitCode}",
-                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.85 else 0.0,
+                    confidence = if (outcome.isSuccess) 0.85 else 0.0,
                     checksumOrHash = proofHash,
-                    expectedPostcondition = if (isExplicitlyVerified) outcome.verificationEvidence else null,
-                    observedResult = if (isExplicitlyVerified) outcome.verificationEvidence else null,
-                    declaredVerifier = if (isExplicitlyVerified) "WastiVerificationEngine" else null,
-                    verificationMethod = if (isExplicitlyVerified) "polyglot_process_exit_verification" else null
+                    expectedPostcondition = outcome.verificationEvidence,
+                    observedResult = outcome.verificationEvidence
                 )
             } else null
             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
@@ -208,10 +206,12 @@ class WastiPolyglotTerminalEngine(
                 runtimeVersion = outcome.runtimeIdentity,
                 executionEnvironment = "wasti_polyglot_terminal",
                 executor = "WastiPolyglotTerminalEngine",
-                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> ${if (isExplicitlyVerified) "VERIFIED" else "OBSERVED"}",
-                evidenceLevel = if (isExplicitlyVerified) com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED else com.example.data.agent.runtime.EvidenceLadder.IMPLEMENTED
+                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED",
+                evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.INTEGRATION_TESTED
             )
-        } catch (_: Throwable) {}
+        } catch (t: Throwable) {
+            android.util.Log.w("WastiPolyglotTerminalEngine", "Provenance recording notice: ${t.message}")
+        }
 
         ExecutionResult(
             executionId = request.executionId,
@@ -221,7 +221,7 @@ class WastiPolyglotTerminalEngine(
             stderr = outcome.stderr,
             durationMs = duration,
             status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
-            verified = isExplicitlyVerified,
+            verified = false,
             verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
         )
     }
@@ -233,8 +233,8 @@ class WastiPolyglotTerminalEngine(
             isSuccess = true,
             language = PolyglotLanguage.SYSTEM_DIAGNOSTIC,
             stdout = markdown,
-            verificationEvidence = "Hardware silicon verified: ${profile.cpu.primaryArchitecture} (${profile.cpu.availableCores} cores)",
-            verificationState = "VERIFIED"
+            verificationEvidence = "Hardware silicon inspected: ${profile.cpu.primaryArchitecture} (${profile.cpu.availableCores} cores)",
+            verificationState = "OBSERVED"
         )
     }
 

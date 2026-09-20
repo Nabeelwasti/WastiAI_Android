@@ -144,18 +144,21 @@ class AutonomousSkillEvolutionEngine(
     }
 
     /**
-     * Overload supporting verified execution evidence while strictly rejecting synthetic/mock evidence.
+     * Overload supporting verified execution evidence by verifying it through WastiVerificationEngine.
      */
     suspend fun recordExecutionOutcome(skillId: String, verifiedEvidence: VerifiedExecutionEvidence?) {
         val skill = learnedSkillDao.getSkillById(skillId) ?: return
-        val isTrulyVerified = verifiedEvidence != null &&
-            verifiedEvidence.isVerifiedState() &&
-            verifiedEvidence.confidence >= 0.85 &&
-            verifiedEvidence.subject.isNotBlank() &&
-            verifiedEvidence.verifiedState.isNotBlank() &&
-            !isSyntheticOrMock(verifiedEvidence.subject) &&
-            !isSyntheticOrMock(verifiedEvidence.verifiedState)
-        applyExecutionOutcome(skill, isTrulyVerified)
+        if (verifiedEvidence == null) {
+            applyExecutionOutcome(skill, false)
+            return
+        }
+        val verResult = WastiVerificationEngine().verifyStructuredEvidence(
+            taskId = "skill_eval_${skillId}",
+            actionId = "eval_${System.currentTimeMillis()}",
+            capabilityId = skill.skillName,
+            evidence = verifiedEvidence
+        )
+        recordExecutionOutcome(skillId, verResult)
     }
 
     private suspend fun applyExecutionOutcome(skill: LearnedSkillEntity, wasVerified: Boolean) {

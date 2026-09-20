@@ -231,17 +231,16 @@ class WastiEmergencyStopController : EmergencyStopController {
                     confidence = 1.0,
                     evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
                     expectedPostcondition = "EMERGENCY_STOP_ACTIVE",
-                    observedResult = "EMERGENCY_STOP_ACTIVE",
-                    declaredVerifier = "WastiVerificationEngine",
-                    verificationMethod = "process_cancellation_latch"
+                    observedResult = "EMERGENCY_STOP_ACTIVE"
                 ),
                 executionEnvironment = "local_android_runtime",
                 executor = "WastiEmergencyStopController",
-                verifier = "WastiVerificationEngine",
-                verificationMethod = "process_cancellation_latch",
-                evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
+                stateTransition = "ACTIVE -> STOP_TRIGGERED -> OBSERVED",
+                evidenceLevel = EvidenceLadder.INTEGRATION_TESTED
             )
-        } catch (_: Throwable) {}
+        } catch (t: Throwable) {
+            Log.w(TAG, "Emergency stop provenance recording notice: ${t.message}")
+        }
     }
 
     /**

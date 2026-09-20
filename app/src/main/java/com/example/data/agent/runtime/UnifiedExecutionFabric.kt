@@ -536,7 +536,7 @@ class UnifiedExecutionFabric(
                 error = execResult.error ?: verResult.failureReason
             )
 
-            emitEventAndAudit(request, finalResult)
+            emitEventAndAudit(request, finalResult, verResult)
             return finalResult
         } finally {
             activeExecutionHashes.remove(reqHash)
@@ -655,11 +655,11 @@ class UnifiedExecutionFabric(
                     val info = res.getOrNull()!!
                     createResult(
                         request = request,
-                        status = UnifiedExecutionStatus.VERIFIED,
+                        status = UnifiedExecutionStatus.COMPLETED,
                         output = "Local server started on port ${info.port} (${info.host})",
                         executor = "WastiLocalServerManager",
                         startedAt = startedAt,
-                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                         verificationEvidence = "Server bound to http://${info.host}:${info.port}"
                     )
                 } else {
@@ -683,7 +683,7 @@ class UnifiedExecutionFabric(
                         output = "Local server stopped successfully",
                         executor = "WastiLocalServerManager",
                         startedAt = startedAt,
-                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                         verificationEvidence = "Server port released"
                     )
                 } else {
@@ -702,11 +702,11 @@ class UnifiedExecutionFabric(
                 val info = serverManager.serverInfo.value
                 createResult(
                     request = request,
-                    status = UnifiedExecutionStatus.VERIFIED,
+                    status = UnifiedExecutionStatus.COMPLETED,
                     output = "Local Server Status: state=${info.state}, port=${info.port}, requests=${info.requestsHandled}",
                     executor = "WastiLocalServerManager",
                     startedAt = startedAt,
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                     verificationEvidence = "State: ${info.state}"
                 )
             }
@@ -751,24 +751,24 @@ class UnifiedExecutionFabric(
             val res = bridgeManager.executePythonScript(script)
             createResult(
                 request = request,
-                status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                status = if (res.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                 output = res.stdout.ifBlank { res.stderr },
                 error = if (res.isSuccess) null else res.stderr,
                 executor = "WastiNativeBridgeManager:Python",
                 startedAt = startedAt,
-                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                 verificationEvidence = res.verificationEvidence ?: "Exit code: ${res.exitCode}"
             )
         } else {
             val res = bridgeManager.executeTermuxCommand(command)
             createResult(
                 request = request,
-                status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                status = if (res.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                 output = res.stdout.ifBlank { res.stderr },
                 error = if (res.isSuccess) null else res.stderr,
                 executor = "WastiNativeBridgeManager:Termux",
                 startedAt = startedAt,
-                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                 verificationEvidence = res.verificationEvidence ?: "Exit code: ${res.exitCode}"
             )
         }
@@ -812,7 +812,7 @@ class UnifiedExecutionFabric(
                     )
                 }
                 val res = WastiDeviceController.openApp(ctx, target)
-                val vStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                val vStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED
                 return createResult(
                     request = request,
                     status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
@@ -884,7 +884,7 @@ class UnifiedExecutionFabric(
                     )
                 }
                 val res = WastiDeviceController.sendEmail(ctx, target, subject, content)
-                val emailStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                val emailStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED
                 return createResult(
                     request = request,
                     status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
@@ -920,7 +920,7 @@ class UnifiedExecutionFabric(
                     )
                 }
                 val res = WastiDeviceController.sendSMS(ctx, target, content)
-                val smsStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                val smsStatus: UnifiedVerificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED
                 return createResult(
                     request = request,
                     status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
@@ -937,12 +937,12 @@ class UnifiedExecutionFabric(
                 val isInactive = resText.contains("Accessibility Service Inactive") || resText.isBlank()
                 return createResult(
                     request = request,
-                    status = if (isInactive) UnifiedExecutionStatus.UNAVAILABLE else UnifiedExecutionStatus.VERIFIED,
+                    status = if (isInactive) UnifiedExecutionStatus.UNAVAILABLE else UnifiedExecutionStatus.COMPLETED,
                     output = resText,
                     error = if (isInactive) "Wasti Accessibility Service is inactive" else null,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (isInactive) UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE else UnifiedVerificationStatus.VERIFIED,
+                    verificationStatus = if (isInactive) UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE else UnifiedVerificationStatus.UNVERIFIED,
                     verificationEvidence = if (isInactive) "Accessibility Service inactive" else "Screen node layout scraped"
                 )
             }
@@ -962,12 +962,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.simulateTap(ctx, elementId)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -988,12 +988,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.simulateTapAt(ctx, x, y)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1006,12 +1006,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.simulateSwipe(ctx, startX, startY, endX, endY, duration)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1021,12 +1021,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.typeText(ctx, text, targetElement)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1034,12 +1034,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performBack(ctx)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1047,12 +1047,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performHome(ctx)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1060,12 +1060,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performRecents(ctx)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1073,12 +1073,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performNotifications(ctx)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1086,12 +1086,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performQuickSettings(ctx)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1100,12 +1100,12 @@ class UnifiedExecutionFabric(
                 val res = WastiDeviceController.performScroll(ctx, direction)
                 return createResult(
                     request = request,
-                    status = if (res.success) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (res.success) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = res.userFeedback,
                     error = if (res.success) null else res.userFeedback,
                     executor = "WastiDeviceController",
                     startedAt = startedAt,
-                    verificationStatus = if (res.success) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (res.success) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = res.userFeedback
                 )
             }
@@ -1149,11 +1149,11 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
+            status = UnifiedExecutionStatus.COMPLETED,
             output = outputText,
             executor = "MemoryManager",
             startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
             verificationEvidence = "Found ${results.size} memory items"
         )
     }
@@ -1171,11 +1171,11 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
+            status = UnifiedExecutionStatus.COMPLETED,
             output = output,
             executor = "WastiEnvironmentInspector",
             startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
             verificationEvidence = "Environment reality verified via UnifiedExecutionFabric $tierTag"
         )
     }
@@ -1362,12 +1362,12 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = if (isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+            status = if (isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
             output = if (isSuccess) resultStr else (errorMsg ?: "File operation failed"),
             error = errorMsg,
             executor = "WorkspaceManager",
             startedAt = startedAt,
-            verificationStatus = if (isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = if (isSuccess) "Workspace operation verified" else (errorMsg ?: "Failed"),
             details = mapOf("path" to path, "action" to action)
         )
@@ -1413,12 +1413,12 @@ class UnifiedExecutionFabric(
                 )
                 createResult(
                     request = request,
-                    status = if (createRes.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (createRes.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = createRes.message,
                     error = if (createRes.isSuccess) null else createRes.message,
                     executor = "WastiLanguagePlatform",
                     startedAt = startedAt,
-                    verificationStatus = if (createRes.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+                    verificationStatus = if (createRes.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
                     verificationEvidence = "Project files created: ${createRes.createdFiles.size}"
                 )
             }
@@ -1433,11 +1433,11 @@ class UnifiedExecutionFabric(
                     val meta = createRes.getOrThrow()
                     createResult(
                         request = request,
-                        status = UnifiedExecutionStatus.VERIFIED,
+                        status = UnifiedExecutionStatus.COMPLETED,
                         output = "Managed project '${meta.name}' created at ${meta.relativePath}",
                         executor = "WastiProjectManager",
                         startedAt = startedAt,
-                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                         verificationEvidence = "Project created: ${meta.projectId}"
                     )
                 } else {
@@ -1459,11 +1459,11 @@ class UnifiedExecutionFabric(
                     val insp = inspRes.getOrThrow()
                     createResult(
                         request = request,
-                        status = UnifiedExecutionStatus.VERIFIED,
+                        status = UnifiedExecutionStatus.COMPLETED,
                         output = "Project '${projName}': Language=${insp.detectedLanguage}, Files=${insp.totalFiles}, BuildTool=${insp.detectedBuildTool}",
                         executor = "WastiProjectManager",
                         startedAt = startedAt,
-                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                         verificationEvidence = "Files inspected: ${insp.totalFiles}"
                     )
                 } else {
@@ -1483,11 +1483,11 @@ class UnifiedExecutionFabric(
                 val projects = pm.listProjects()
                 createResult(
                     request = request,
-                    status = UnifiedExecutionStatus.VERIFIED,
+                    status = UnifiedExecutionStatus.COMPLETED,
                     output = if (projects.isEmpty()) "No projects found in workspace." else "Projects (${projects.size}): ${projects.joinToString(", ")}",
                     executor = "WastiProjectManager",
                     startedAt = startedAt,
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                     verificationEvidence = "Projects listed: ${projects.size}"
                 )
             }
@@ -1496,11 +1496,11 @@ class UnifiedExecutionFabric(
                 val deleted = pm.deleteProject(projName)
                 createResult(
                     request = request,
-                    status = if (deleted) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+                    status = if (deleted) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
                     output = if (deleted) "Project '$projName' deleted from workspace." else "Project '$projName' not found or could not be deleted.",
                     executor = "WastiProjectManager",
                     startedAt = startedAt,
-                    verificationStatus = if (deleted) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED
+                    verificationStatus = if (deleted) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED
                 )
             }
             "get_language_profile", "scan_languages" -> {
@@ -1508,11 +1508,11 @@ class UnifiedExecutionFabric(
                 if (profile != null) {
                     createResult(
                         request = request,
-                        status = UnifiedExecutionStatus.VERIFIED,
+                        status = UnifiedExecutionStatus.COMPLETED,
                         output = "Language Profile [${profile.displayName}]: Runtime=${profile.runtimeState}, Compiler=${profile.compilerState}, Execution=${profile.executionState}, Reality=${profile.realityState}",
                         executor = "WastiLanguagePlatform",
                         startedAt = startedAt,
-                        verificationStatus = UnifiedVerificationStatus.VERIFIED,
+                        verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
                         verificationEvidence = "Language profile retrieved"
                     )
                 } else {
@@ -1572,7 +1572,7 @@ class UnifiedExecutionFabric(
         )
 
         val status = when (buildRes.status) {
-            BuildStatus.SUCCESS -> UnifiedExecutionStatus.VERIFIED
+            BuildStatus.SUCCESS -> UnifiedExecutionStatus.COMPLETED
             BuildStatus.TOOLCHAIN_MISSING, BuildStatus.DEPENDENCY_MISSING -> UnifiedExecutionStatus.UNAVAILABLE
             else -> UnifiedExecutionStatus.FAILED
         }
@@ -1584,7 +1584,7 @@ class UnifiedExecutionFabric(
             error = if (buildRes.status == BuildStatus.SUCCESS) null else buildRes.stderr,
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
-            verificationStatus = if (buildRes.status == BuildStatus.SUCCESS) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (buildRes.status == BuildStatus.SUCCESS) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = buildRes.verificationState,
             exitCode = buildRes.exitCode,
             details = mapOf(
@@ -1625,12 +1625,12 @@ class UnifiedExecutionFabric(
 
         return createResult(
             request = request,
-            status = if (isPass) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED,
+            status = if (isPass) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,
             output = "Tests Run: ${report.totalTests}, Passed: ${report.passedTests}, Failed: ${report.failedTests}. ${report.stdout}",
             error = if (isPass) null else report.stderr,
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
-            verificationStatus = if (isPass) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (isPass) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = "PassedTests: ${report.passedTests}/${report.totalTests}",
             exitCode = if (isPass) 0 else 1,
             details = mapOf(
@@ -1669,11 +1669,11 @@ class UnifiedExecutionFabric(
         val diag = btm.analyzeDiagnostics(projId, rawLogs)
         return createResult(
             request = request,
-            status = UnifiedExecutionStatus.VERIFIED,
+            status = UnifiedExecutionStatus.COMPLETED,
             output = "Diagnostics for '$projId': Errors=${diag.totalErrors}, Warnings=${diag.totalWarnings}. ${diag.rootCauseSummary}",
             executor = "WastiBuildAndTestManager",
             startedAt = startedAt,
-            verificationStatus = UnifiedVerificationStatus.VERIFIED,
+            verificationStatus = UnifiedVerificationStatus.UNVERIFIED,
             verificationEvidence = "Findings: ${diag.findings.size}",
             exitCode = 0,
             details = mapOf(
@@ -1708,7 +1708,7 @@ class UnifiedExecutionFabric(
 
         val res = rm.resolvePackage(language, pkgName)
         val status = when (res.status) {
-            RuntimeRealityStatus.AVAILABLE -> UnifiedExecutionStatus.VERIFIED
+            RuntimeRealityStatus.AVAILABLE -> UnifiedExecutionStatus.COMPLETED
             RuntimeRealityStatus.NOT_INSTALLED, RuntimeRealityStatus.TOOLCHAIN_MISSING, RuntimeRealityStatus.UNAVAILABLE -> UnifiedExecutionStatus.UNAVAILABLE
             else -> UnifiedExecutionStatus.FAILED
         }
@@ -1721,7 +1721,7 @@ class UnifiedExecutionFabric(
             error = if (res.isSuccess) null else res.message,
             executor = "WastiRuntimeManager",
             startedAt = startedAt,
-            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = "Package ${res.packageName} state: ${res.status}",
             exitCode = if (isPass) 0 else 1,
             details = mapOf(
@@ -1764,7 +1764,7 @@ class UnifiedExecutionFabric(
 
         val isNotInstalled = res.stderr.contains("NOT_INSTALLED") || res.verificationState.contains("NOT_INSTALLED")
         val status = when {
-            res.isSuccess -> UnifiedExecutionStatus.VERIFIED
+            res.isSuccess -> UnifiedExecutionStatus.COMPLETED
             res.isPolicyBlocked -> UnifiedExecutionStatus.FAILED
             isNotInstalled -> UnifiedExecutionStatus.UNAVAILABLE
             else -> UnifiedExecutionStatus.FAILED
@@ -1777,7 +1777,7 @@ class UnifiedExecutionFabric(
             error = if (res.isSuccess) null else res.stderr,
             executor = "WastiSandbox",
             startedAt = startedAt,
-            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = res.verificationState
         )
     }
@@ -1795,7 +1795,7 @@ class UnifiedExecutionFabric(
             .mapValues { it.value.toString() }
 
         val res = wasmRuntime.runSandboxedScript(toolName, expression, pMap)
-        val status = if (res.isSuccess) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.FAILED
+        val status = if (res.isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED
         val output = res.stringOutput ?: (if (res.isSuccess) "WASM sandboxed tool executed successfully. Fuel: ${res.fuelConsumed}" else res.diagnosticMessage.ifBlank { "WASM execution failed" })
 
         return createResult(
@@ -1805,7 +1805,7 @@ class UnifiedExecutionFabric(
             error = if (res.isSuccess) null else res.diagnosticMessage,
             executor = "WastiWasmRuntime",
             startedAt = startedAt,
-            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (res.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = if (res.isSuccess) "WASM Execution verified [${wasmRuntime.engineType.name}], fuel: ${res.fuelConsumed}" else "WASM Execution failed: ${res.diagnosticMessage}"
         )
     }
@@ -1944,13 +1944,13 @@ class UnifiedExecutionFabric(
             !wreResult.verified
         
         val finalStatus = when {
-            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> if (wreResult.verified) UnifiedExecutionStatus.VERIFIED else UnifiedExecutionStatus.COMPLETED
+            wreResult.status == com.example.data.wre.ExecutionStatus.SUCCESS -> UnifiedExecutionStatus.COMPLETED
             wreResult.status == com.example.data.wre.ExecutionStatus.UNAVAILABLE || (isPythonOrNode && isUnavailableOutput) -> UnifiedExecutionStatus.UNAVAILABLE
             wreResult.status == com.example.data.wre.ExecutionStatus.DENIED -> UnifiedExecutionStatus.FAILED
             else -> UnifiedExecutionStatus.FAILED
         }
         val finalVerStatus = when {
-            finalStatus == UnifiedExecutionStatus.VERIFIED -> UnifiedVerificationStatus.VERIFIED
+            finalStatus == UnifiedExecutionStatus.COMPLETED -> UnifiedVerificationStatus.UNVERIFIED
             finalStatus == UnifiedExecutionStatus.COMPLETED -> UnifiedVerificationStatus.UNVERIFIED
             finalStatus == UnifiedExecutionStatus.UNAVAILABLE -> UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE
             else -> UnifiedVerificationStatus.FAILED
@@ -2056,7 +2056,11 @@ class UnifiedExecutionFabric(
         )
     }
 
-    private suspend fun emitEventAndAudit(request: UnifiedExecutionRequest, result: UnifiedExecutionResult) {
+    private suspend fun emitEventAndAudit(
+        request: UnifiedExecutionRequest,
+        result: UnifiedExecutionResult,
+        verResult: VerificationResult? = null
+    ) {
         val taskId = TaskId(request.taskId)
         try {
             _telemetryStream.value = (listOf(result) + _telemetryStream.value).take(100)
@@ -2081,18 +2085,19 @@ class UnifiedExecutionFabric(
                 else -> EvidenceSource.PROCESS_TELEMETRY
             }
 
-            val structuredEvidence = if (result.status == UnifiedExecutionStatus.VERIFIED || result.verificationStatus == UnifiedVerificationStatus.VERIFIED) {
-                val stateText = result.verificationEvidence ?: "Execution verified via canonical fabric"
+            val isVerified = result.verificationStatus == UnifiedVerificationStatus.VERIFIED && verResult?.status == ActionVerificationStatus.VERIFIED
+            val structuredEvidence = if (isVerified) {
+                val stateText = verResult?.evidence ?: result.verificationEvidence ?: "Execution verified by WastiVerificationEngine"
                 VerifiedExecutionEvidence(
                     evidenceSource = evidenceSource,
                     subject = request.capabilityId,
                     verifiedState = stateText,
-                    confidence = 0.95,
+                    confidence = verResult?.confidence ?: 0.95,
                     observedAt = result.completedAt,
                     expectedPostcondition = stateText,
                     observedResult = stateText,
-                    declaredVerifier = "UnifiedExecutionFabric",
-                    verificationMethod = "canonical_execution_verification"
+                    declaredVerifier = "WastiVerificationEngine",
+                    verificationMethod = "canonical_postcondition_verification"
                 )
             } else null
 
@@ -2104,7 +2109,8 @@ class UnifiedExecutionFabric(
                 modelId = result.providerOrModel,
                 inputContent = request.parameters.toString(),
                 outputContent = result.output,
-                evidence = structuredEvidence
+                evidence = structuredEvidence,
+                verificationResult = if (isVerified) verResult else null
             )
         } catch (e: Exception) {
             android.util.Log.w("UnifiedExecutionFabric", "Provenance record warning: ${e.message}")
