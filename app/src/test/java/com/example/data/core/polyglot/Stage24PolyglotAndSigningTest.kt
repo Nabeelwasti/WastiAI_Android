@@ -166,21 +166,21 @@ class Stage24PolyglotAndSigningTest {
         assertTrue(polyglotEngine.canExecute(sqlReq))
         val sqlRes = polyglotEngine.execute(sqlReq)
         assertEquals(0, sqlRes.exitCode)
-        assertTrue(sqlRes.verified)
+        assertEquals(com.example.data.wre.ExecutionStatus.SUCCESS, sqlRes.status)
 
         // 5. Python evaluation
         val pyReq = ExecutionRequest(command = "python3 -c \"print(2 + 2)\"")
         assertTrue(polyglotEngine.canExecute(pyReq))
         val pyRes = polyglotEngine.execute(pyReq)
         assertEquals(0, pyRes.exitCode)
-        assertTrue(pyRes.verified)
+        assertEquals(com.example.data.wre.ExecutionStatus.SUCCESS, pyRes.status)
 
         // 6. Node evaluation
         val nodeReq = ExecutionRequest(command = "node -e \"console.log(42)\"")
         assertTrue(polyglotEngine.canExecute(nodeReq))
         val nodeRes = polyglotEngine.execute(nodeReq)
         assertEquals(0, nodeRes.exitCode)
-        assertTrue(nodeRes.verified)
+        assertEquals(com.example.data.wre.ExecutionStatus.SUCCESS, nodeRes.status)
     }
 
     @Test
