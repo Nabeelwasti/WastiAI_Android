@@ -328,9 +328,12 @@ object ExecutionProvenanceLedger {
         val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
 
         // Zero-Fabrication Invariant: status is VERIFIED only when authoritative WastiVerificationEngine succeeded
-        val isAuthoritativeVerified = verificationResult != null &&
-            verificationResult.status == ActionVerificationStatus.VERIFIED &&
-            verificationResult.isVerified
+        val authoritativeVerResult = verificationResult ?: evidence?.let {
+            WastiVerificationEngine().verifyStructuredEvidence(taskId, actionId, capabilityId, it)
+        }
+        val isAuthoritativeVerified = authoritativeVerResult != null &&
+            authoritativeVerResult.status == ActionVerificationStatus.VERIFIED &&
+            authoritativeVerResult.isVerified
 
         val status = if (isAuthoritativeVerified) {
             "VERIFIED"

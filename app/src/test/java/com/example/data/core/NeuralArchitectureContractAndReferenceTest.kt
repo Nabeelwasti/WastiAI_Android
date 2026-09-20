@@ -33,9 +33,11 @@ class NeuralArchitectureContractAndReferenceTest {
 
     @Test
     fun testSupportedModelContractProvidesExactArchitectureMetadata() {
-        assertEquals(12, SupportedModelContract.SUPPORTED_LOCAL_MODEL_IDS.size)
+        assertEquals(12, SupportedModelContract.ALL_KNOWN_MODEL_IDS.size)
+        assertEquals(5, SupportedModelContract.SUPPORTED_LOCAL_MODEL_IDS.size)
+        assertEquals(5, SupportedModelContract.PROVEN_LOCAL_MODEL_IDS.size)
 
-        for (modelId in SupportedModelContract.SUPPORTED_LOCAL_MODEL_IDS) {
+        for (modelId in SupportedModelContract.ALL_KNOWN_MODEL_IDS) {
             val contract = SupportedModelContract.getArchitectureContract(modelId)
             assertNotNull("Contract must exist for $modelId", contract)
             assertTrue("Expected dimensions must be > 0 for $modelId", contract!!.expectedDimensions > 0)
