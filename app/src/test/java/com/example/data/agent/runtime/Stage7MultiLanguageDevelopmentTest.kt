@@ -146,7 +146,7 @@ class Stage7MultiLanguageDevelopmentTest {
         assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertEquals("WastiLanguagePlatform", result.executor)
         assertTrue(result.output.contains("WebDemo"))
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, result.verificationStatus)
 
         val readHtml = workspaceManager.readFile("projects/WebDemo/index.html")
         assertTrue(readHtml.isSuccess)
