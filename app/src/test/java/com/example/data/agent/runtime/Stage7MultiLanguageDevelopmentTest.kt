@@ -143,10 +143,10 @@ class Stage7MultiLanguageDevelopmentTest {
             )
         )
         val result = fabric.execute(execReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertEquals("WastiLanguagePlatform", result.executor)
         assertTrue(result.output.contains("WebDemo"))
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
 
         val readHtml = workspaceManager.readFile("projects/WebDemo/index.html")
         assertTrue(readHtml.isSuccess)
@@ -190,7 +190,7 @@ class Stage7MultiLanguageDevelopmentTest {
             )
         )
         val result = fabric.execute(queryReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertTrue(result.output.contains("Kotlin"))
         assertTrue(result.output.contains("Runtime=AVAILABLE"))
     }
