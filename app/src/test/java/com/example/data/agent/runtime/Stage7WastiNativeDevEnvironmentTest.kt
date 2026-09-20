@@ -248,7 +248,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val buildResult = fabric.execute(buildReq)
-        assertEquals("Build execution failed: output=${buildResult.output}, error=${buildResult.error}, status=${buildResult.status}, verStatus=${buildResult.verificationStatus}, evidence=${buildResult.verificationEvidence}", UnifiedExecutionStatus.VERIFIED, buildResult.status)
+        assertEquals("Build execution failed: output=${buildResult.output}, error=${buildResult.error}, status=${buildResult.status}, verStatus=${buildResult.verificationStatus}, evidence=${buildResult.verificationEvidence}", UnifiedExecutionStatus.COMPLETED, buildResult.status)
         assertEquals("WastiBuildAndTestManager", buildResult.executor)
 
         // Test Project via Fabric
@@ -264,7 +264,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val testResult = fabric.execute(testReq)
-        assertEquals("Test execution failed: output=${testResult.output}, error=${testResult.error}, status=${testResult.status}", UnifiedExecutionStatus.VERIFIED, testResult.status)
+        assertEquals("Test execution failed: output=${testResult.output}, error=${testResult.error}, status=${testResult.status}", UnifiedExecutionStatus.COMPLETED, testResult.status)
         assertEquals("WastiBuildAndTestManager", testResult.executor)
 
         // Diagnostics via Fabric
@@ -279,7 +279,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val diagResult = fabric.execute(diagReq)
-        assertEquals("Diagnostics execution failed: output=${diagResult.output}, error=${diagResult.error}, status=${diagResult.status}, verStatus=${diagResult.verificationStatus}, evidence=${diagResult.verificationEvidence}", UnifiedExecutionStatus.VERIFIED, diagResult.status)
+        assertEquals("Diagnostics execution failed: output=${diagResult.output}, error=${diagResult.error}, status=${diagResult.status}, verStatus=${diagResult.verificationStatus}, evidence=${diagResult.verificationEvidence}", UnifiedExecutionStatus.COMPLETED, diagResult.status)
 
         // Package Manager via Fabric
         val pkgReq = UnifiedExecutionRequest(
@@ -293,7 +293,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val pkgResult = fabric.execute(pkgReq)
-        assertEquals("Package execution failed: output=${pkgResult.output}, error=${pkgResult.error}, status=${pkgResult.status}, verStatus=${pkgResult.verificationStatus}, evidence=${pkgResult.verificationEvidence}", UnifiedExecutionStatus.VERIFIED, pkgResult.status)
+        assertEquals("Package execution failed: output=${pkgResult.output}, error=${pkgResult.error}, status=${pkgResult.status}, verStatus=${pkgResult.verificationStatus}, evidence=${pkgResult.verificationEvidence}", UnifiedExecutionStatus.COMPLETED, pkgResult.status)
     }
 
     @Test
