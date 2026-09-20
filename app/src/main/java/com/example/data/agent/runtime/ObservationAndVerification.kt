@@ -69,7 +69,8 @@ data class VerificationResult(
     val failureReason: String? = null,
     val timestamp: Long = System.currentTimeMillis(),
     val structuredEvidence: VerifiedExecutionEvidence? = null,
-    val capabilitySpecificEvidence: CapabilitySpecificEvidence? = null
+    val capabilitySpecificEvidence: CapabilitySpecificEvidence? = null,
+    val evidenceLevel: EvidenceLadder = if (status == ActionVerificationStatus.VERIFIED) EvidenceLadder.RUNTIME_VERIFIED else EvidenceLadder.IMPLEMENTED
 ) {
     val isVerified: Boolean get() = status == ActionVerificationStatus.VERIFIED
     val explanation: String get() = failureReason ?: evidence
@@ -166,3 +167,33 @@ data class TrustedKnowledge(
     val isFactuallyVerified: Boolean = false,
     val registeredAtEpochMs: Long = System.currentTimeMillis()
 )
+
+/**
+ * Canonical Wasti Evidence Ladder:
+ * IMPLEMENTED -> STATICALLY_VALIDATED -> UNIT_TESTED -> INTEGRATION_TESTED -> RUNTIME_VERIFIED -> DEVICE_VERIFIED -> REFERENCE_VERIFIED -> PRODUCTION_VERIFIED
+ */
+enum class EvidenceLadder {
+    IMPLEMENTED,
+    STATICALLY_VALIDATED,
+    UNIT_TESTED,
+    INTEGRATION_TESTED,
+    RUNTIME_VERIFIED,
+    DEVICE_VERIFIED,
+    REFERENCE_VERIFIED,
+    PRODUCTION_VERIFIED;
+
+    fun satisfies(required: EvidenceLadder): Boolean = this.ordinal >= required.ordinal
+}
+
+/**
+ * Explicit Polyglot Lifecycle States for WRE / Multi-Language Runtimes:
+ * CONFIGURED -> AVAILABLE -> EXECUTED -> OBSERVED -> INDEPENDENTLY_VERIFIED
+ */
+enum class PolyglotLifecycleState {
+    CONFIGURED,
+    AVAILABLE,
+    EXECUTED,
+    OBSERVED,
+    INDEPENDENTLY_VERIFIED
+}
+

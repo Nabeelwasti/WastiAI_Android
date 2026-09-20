@@ -32,6 +32,8 @@ data class CapabilityWorkflowStep(
     var status: StepExecutionStatus = StepExecutionStatus.PENDING,
     var outputResult: String? = null,
     var verificationEvidence: String? = null,
+    var evidenceLevel: EvidenceLadder = EvidenceLadder.IMPLEMENTED,
+    var structuredEvidence: VerifiedExecutionEvidence? = null,
     var durationMs: Long = 0L
 )
 
@@ -51,7 +53,9 @@ data class CompositionExecutionResult(
     val executedSteps: List<CapabilityWorkflowStep>,
     val contextOutputs: Map<String, String>,
     val finalOutput: String?,
-    val failureReason: String? = null
+    val failureReason: String? = null,
+    val aggregateEvidenceLevel: EvidenceLadder = EvidenceLadder.IMPLEMENTED,
+    val isRecursivelyVerified: Boolean = false
 )
 
 class CapabilityCompositionEngine(
@@ -178,6 +182,7 @@ class CapabilityCompositionEngine(
                 step.status = StepExecutionStatus.COMPLETED
                 step.outputResult = output
                 step.verificationEvidence = verifiedEvidence
+                step.evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
 
                 if (step.outputKey != null) {
                     outputs[step.outputKey] = output
@@ -186,6 +191,7 @@ class CapabilityCompositionEngine(
                 step.durationMs = System.currentTimeMillis() - started
                 step.status = StepExecutionStatus.FAILED
                 step.outputResult = e.message
+                step.evidenceLevel = EvidenceLadder.IMPLEMENTED
                 failed = true
                 failureMsg = "Step ${step.stepIndex} (${step.capabilityId}) failed: ${e.message}"
                 Log.e(TAG, failureMsg, e)
@@ -196,13 +202,26 @@ class CapabilityCompositionEngine(
         workflow.isCompleted = !failed
         workflow.finalResult = if (!failed) outputs.values.lastOrNull() else failureMsg
 
+        // Aggregate evidence can never be stronger than the weakest independently justified child evidence
+        val minEvidenceLevel = if (workflow.steps.isEmpty() || failed) {
+            EvidenceLadder.IMPLEMENTED
+        } else {
+            workflow.steps.map { it.evidenceLevel }.minByOrNull { it.ordinal } ?: EvidenceLadder.IMPLEMENTED
+        }
+
+        val allStepsVerified = !failed && workflow.steps.isNotEmpty() && workflow.steps.all {
+            it.status == StepExecutionStatus.COMPLETED && it.evidenceLevel >= EvidenceLadder.RUNTIME_VERIFIED
+        }
+
         CompositionExecutionResult(
             workflowId = workflow.workflowId,
             isSuccess = !failed,
             executedSteps = workflow.steps,
             contextOutputs = outputs,
             finalOutput = workflow.finalResult,
-            failureReason = failureMsg
+            failureReason = failureMsg,
+            aggregateEvidenceLevel = minEvidenceLevel,
+            isRecursivelyVerified = allStepsVerified
         )
     }
 
