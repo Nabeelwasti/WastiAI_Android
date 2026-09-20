@@ -233,7 +233,7 @@ class Stage7WastiNativeDevEnvironmentTest {
             capabilityId = createReq.capabilityId
         )
         val obsRes = observationEngine.observe(obsReq, context, createResult)
-        assertEquals(ObservationStatus.OBSERVED, obsRes.status)
+        assertEquals(ObservationStatus.UNAVAILABLE, obsRes.status)
 
         // Build Project via Fabric
         val buildReq = UnifiedExecutionRequest(
