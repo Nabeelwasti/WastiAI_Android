@@ -1,5 +1,6 @@
 package com.example.data.core
 
+import com.example.data.ai.model.AuthoritativeNeuralFixtures
 import com.example.data.ai.model.ModelArchitectureFamily
 import com.example.data.ai.model.NeuralReferenceFixture
 import com.example.data.ai.model.QuantizationType
