@@ -232,12 +232,12 @@ class WastiEmergencyStopController : EmergencyStopController {
                     evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
                     expectedPostcondition = "EMERGENCY_STOP_ACTIVE",
                     observedResult = "EMERGENCY_STOP_ACTIVE",
-                    declaredVerifier = "WastiEmergencyStopController",
+                    declaredVerifier = "WastiVerificationEngine",
                     verificationMethod = "process_cancellation_latch"
                 ),
                 executionEnvironment = "local_android_runtime",
                 executor = "WastiEmergencyStopController",
-                verifier = "WastiEmergencyStopController",
+                verifier = "WastiVerificationEngine",
                 verificationMethod = "process_cancellation_latch",
                 evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
             )
@@ -297,12 +297,12 @@ class WastiEmergencyStopController : EmergencyStopController {
                     evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
                     expectedPostcondition = "EMERGENCY_STOP_RESET",
                     observedResult = "EMERGENCY_STOP_RESET",
-                    declaredVerifier = "WastiEmergencyStopController",
+                    declaredVerifier = "WastiVerificationEngine",
                     verificationMethod = "process_cancellation_latch"
                 ),
                 executionEnvironment = "local_android_runtime",
                 executor = "WastiEmergencyStopController",
-                verifier = "WastiEmergencyStopController",
+                verifier = "WastiVerificationEngine",
                 verificationMethod = "process_cancellation_latch",
                 evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
             )

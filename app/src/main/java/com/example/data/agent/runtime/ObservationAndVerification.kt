@@ -137,13 +137,19 @@ data class VerifiedExecutionEvidence(
             return false
         }
 
+        // Sole Verification Authority: Only WastiVerificationEngine or its canonical sub-verifiers can issue verified state
+        val isAuthoritativeVerifier = verifier == "WastiVerificationEngine" || verifier.startsWith("WastiVerificationEngine")
+        if (!isAuthoritativeVerifier) {
+            return false
+        }
+
         val lowerVerifier = verifier.lowercase()
         val lowerMethod = method.lowercase()
         val lowerExpected = expected.lowercase()
         val lowerObserved = observed.lowercase()
 
         val mockOrSyntheticTerms = listOf(
-            "mock", "synthetic", "fake", "dummy", "stub", "placeholder", "unverified", "fabricated", "simulated"
+            "mock", "synthetic", "fake", "dummy", "stub", "placeholder", "unverified", "fabricated", "simulated", "unknown"
         )
         if (mockOrSyntheticTerms.any {
             lowerVerifier.contains(it) || lowerMethod.contains(it) || lowerExpected.contains(it) || lowerObserved.contains(it)
@@ -151,10 +157,14 @@ data class VerifiedExecutionEvidence(
             return false
         }
 
+        val genericPlaceholders = listOf("true", "success", "ok", "passed", "done", "http_200", "http 200", "200 ok")
+        if (genericPlaceholders.contains(lowerExpected) || genericPlaceholders.contains(lowerObserved)) {
+            return false
+        }
+
         return expected == observed ||
             observed.equals(expected, ignoreCase = true) ||
-            observed.contains(expected, ignoreCase = true) ||
-            expected.contains(observed, ignoreCase = true)
+            (observed.length >= 8 && expected.length >= 8 && (observed.contains(expected, ignoreCase = true) || expected.contains(observed, ignoreCase = true)))
     }
 }
 

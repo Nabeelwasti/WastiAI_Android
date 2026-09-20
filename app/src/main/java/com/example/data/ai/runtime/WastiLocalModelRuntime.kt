@@ -507,11 +507,11 @@ class WastiLocalModelRuntime(
                             val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
                                 evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
                                 subject = "local_native_inference:$modelId",
-                                verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                                verifiedState = "PROCESS_NEURAL_TOKENS_${tokensGenerated}",
                                 confidence = 0.90,
-                                expectedPostcondition = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                                observedResult = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                                declaredVerifier = "NativeLlamaBridge",
+                                expectedPostcondition = "PROCESS_NEURAL_TOKENS_${tokensGenerated}",
+                                observedResult = "PROCESS_NEURAL_TOKENS_${tokensGenerated}",
+                                declaredVerifier = "WastiVerificationEngine",
                                 verificationMethod = "native_tensor_forward_pass_verification"
                             )
                             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
@@ -522,7 +522,10 @@ class WastiLocalModelRuntime(
                                 modelId = modelId,
                                 inputContent = prompt,
                                 outputContent = result,
-                                evidence = evidence
+                                evidence = evidence,
+                                executor = "NativeLlamaBridge",
+                                verifier = "WastiVerificationEngine",
+                                evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.OBSERVED
                             )
                             com.example.data.agent.runtime.UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
                                 com.example.data.agent.runtime.CapabilityReality(

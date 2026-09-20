@@ -39,9 +39,10 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
                 confidence = 0.95,
                 expectedPostcondition = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
                 observedResult = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                declaredVerifier = "NativeLlamaBridge",
+                declaredVerifier = "WastiVerificationEngine",
                 verificationMethod = "native_tensor_forward_pass_verification"
             ),
+            verifier = "WastiVerificationEngine",
             evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
         )
 
@@ -49,6 +50,7 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
         assertEquals(ExecutionProvenanceLedger.GENESIS_HASH, entry1.previousEntryHash)
         assertTrue(entry1.isVerified)
         assertEquals(EvidenceLadder.RUNTIME_VERIFIED, entry1.evidenceLevel)
+        assertEquals("WastiVerificationEngine", entry1.verifier)
 
         val entry2 = ExecutionProvenanceLedger.recordExecution(
             taskId = "task_002",

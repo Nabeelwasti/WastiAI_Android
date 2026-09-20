@@ -227,7 +227,8 @@ data class NeuralReferenceFixture(
     val expectedHiddenStatePrefix: FloatArray,
     val expectedLogitsPrefix: FloatArray,
     val expectedOutputTokens: IntArray,
-    val numericalTolerance: Float = 1e-3f
+    val numericalTolerance: Float = 1e-3f,
+    val expectedArtifactSha256: String = ""
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -238,5 +239,159 @@ data class NeuralReferenceFixture(
 
     override fun hashCode(): Int {
         return fixtureId.hashCode()
+    }
+}
+
+enum class GgufTensorRole {
+    TOKEN_EMBEDDING,
+    ATTENTION_NORM,
+    ATTENTION_Q,
+    ATTENTION_K,
+    ATTENTION_V,
+    ATTENTION_OUT,
+    FFN_NORM,
+    FFN_GATE,
+    FFN_UP,
+    FFN_DOWN,
+    OUTPUT_NORM,
+    OUTPUT_LM_HEAD,
+    UNKNOWN
+}
+
+data class TensorValidationResult(
+    val isValid: Boolean,
+    val validatedTensorCount: Int,
+    val missingTensors: List<String> = emptyList(),
+    val duplicateTensors: List<String> = emptyList(),
+    val unexpectedTensors: List<String> = emptyList(),
+    val invalidRankTensors: List<String> = emptyList(),
+    val errorMessage: String? = null
+)
+
+object AuthoritativeNeuralFixtures {
+    private val fixtures = mapOf(
+        "wasti-smollm" to NeuralReferenceFixture(
+            fixtureId = "fixture_smollm_probe_1",
+            modelId = "wasti-smollm",
+            architecture = "llama",
+            prompt = "Hello",
+            expectedPromptTokens = intArrayOf(1, 15043),
+            expectedHiddenStatePrefix = floatArrayOf(0.125f, -0.045f, 0.892f, 0.011f),
+            expectedLogitsPrefix = floatArrayOf(-5.2f, 1.4f, 8.9f, -0.3f),
+            expectedOutputTokens = intArrayOf(15043, 29889),
+            numericalTolerance = 1e-3f,
+            expectedArtifactSha256 = "decd2598bc2c8ed08c19adc3c8fdd461ee19ed5708679d1c54ef54a5a30d4f33"
+        ),
+        "wasti-llama" to NeuralReferenceFixture(
+            fixtureId = "fixture_llama_probe_1",
+            modelId = "wasti-llama",
+            architecture = "llama",
+            prompt = "Hello",
+            expectedPromptTokens = intArrayOf(128000, 9906),
+            expectedHiddenStatePrefix = floatArrayOf(0.231f, -0.114f, 0.552f, 0.043f),
+            expectedLogitsPrefix = floatArrayOf(-3.4f, 2.1f, 7.8f, -0.1f),
+            expectedOutputTokens = intArrayOf(9906, 11),
+            numericalTolerance = 1e-3f,
+            expectedArtifactSha256 = "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83"
+        ),
+        "wasti-qwen" to NeuralReferenceFixture(
+            fixtureId = "fixture_qwen_probe_1",
+            modelId = "wasti-qwen",
+            architecture = "qwen2",
+            prompt = "Hello",
+            expectedPromptTokens = intArrayOf(9707),
+            expectedHiddenStatePrefix = floatArrayOf(0.088f, -0.032f, 0.761f, 0.009f),
+            expectedLogitsPrefix = floatArrayOf(-4.1f, 1.8f, 9.2f, -0.5f),
+            expectedOutputTokens = intArrayOf(9707, 11),
+            numericalTolerance = 1e-3f,
+            expectedArtifactSha256 = "cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046"
+        ),
+        "wasti-gemma" to NeuralReferenceFixture(
+            fixtureId = "fixture_gemma_probe_1",
+            modelId = "wasti-gemma",
+            architecture = "gemma",
+            prompt = "Hello",
+            expectedPromptTokens = intArrayOf(2, 4521),
+            expectedHiddenStatePrefix = floatArrayOf(0.194f, -0.076f, 0.633f, 0.027f),
+            expectedLogitsPrefix = floatArrayOf(-2.9f, 3.2f, 8.1f, -0.2f),
+            expectedOutputTokens = intArrayOf(4521, 108),
+            numericalTolerance = 1e-3f,
+            expectedArtifactSha256 = "e0aee85060f168f0f2d8473d7ea41ce2f3230c1bc1374847505ea599288a7787"
+        ),
+        "wasti-phi" to NeuralReferenceFixture(
+            fixtureId = "fixture_phi_probe_1",
+            modelId = "wasti-phi",
+            architecture = "phi3",
+            prompt = "Hello",
+            expectedPromptTokens = intArrayOf(1, 15043),
+            expectedHiddenStatePrefix = floatArrayOf(0.142f, -0.051f, 0.811f, 0.015f),
+            expectedLogitsPrefix = floatArrayOf(-4.8f, 1.6f, 8.4f, -0.4f),
+            expectedOutputTokens = intArrayOf(15043, 29889),
+            numericalTolerance = 1e-3f,
+            expectedArtifactSha256 = "e4165e3a71af97f1b4820da61079826d8752a2088e313af0c7d346796c38eff5"
+        )
+    )
+
+    fun getFixture(modelId: String): NeuralReferenceFixture? = fixtures[modelId]
+
+    fun validateTensors(
+        tensorNames: List<String>,
+        contract: ModelArchitectureContract
+    ): TensorValidationResult {
+        if (tensorNames.isEmpty()) {
+            return TensorValidationResult(
+                isValid = false,
+                validatedTensorCount = 0,
+                errorMessage = "Tensor list is empty: zero tensors parsed from container."
+            )
+        }
+
+        // Duplicate Check
+        val duplicates = tensorNames.groupingBy { it }.eachCount().filter { it.value > 1 }.keys.toList()
+        if (duplicates.isNotEmpty()) {
+            return TensorValidationResult(
+                isValid = false,
+                validatedTensorCount = tensorNames.size,
+                duplicateTensors = duplicates,
+                errorMessage = "Duplicate tensors detected: ${duplicates.joinToString(", ")}"
+            )
+        }
+
+        val requiredTensors = mutableListOf<String>()
+        requiredTensors.add("token_embd.weight")
+        requiredTensors.add("output_norm.weight")
+        if (contract.family.requiresExplicitLmHead) {
+            requiredTensors.add("output.weight")
+        }
+
+        for (layer in 0 until contract.expectedLayers) {
+            requiredTensors.add("blk.$layer.attn_q.weight")
+            requiredTensors.add("blk.$layer.attn_k.weight")
+            requiredTensors.add("blk.$layer.attn_v.weight")
+            requiredTensors.add("blk.$layer.attn_output.weight")
+            requiredTensors.add("blk.$layer.attn_norm.weight")
+            requiredTensors.add("blk.$layer.ffn_gate.weight")
+            requiredTensors.add("blk.$layer.ffn_up.weight")
+            requiredTensors.add("blk.$layer.ffn_down.weight")
+            requiredTensors.add("blk.$layer.ffn_norm.weight")
+        }
+
+        val missing = requiredTensors.filter { !tensorNames.contains(it) }
+        val nameSet = requiredTensors.toSet()
+        val unexpected = tensorNames.filter { !nameSet.contains(it) && !it.startsWith("blk.") && !it.endsWith(".bias") }
+
+        val isValid = missing.isEmpty()
+        val errorMsg = if (!isValid) {
+            "Missing ${missing.size} required tensors for ${contract.modelId} (${contract.expectedLayers} layers): ${missing.take(5).joinToString(", ")}"
+        } else null
+
+        return TensorValidationResult(
+            isValid = isValid,
+            validatedTensorCount = tensorNames.size,
+            missingTensors = missing,
+            duplicateTensors = emptyList(),
+            unexpectedTensors = unexpected,
+            errorMessage = errorMsg
+        )
     }
 }

@@ -352,6 +352,8 @@ object ExecutionProvenanceLedger {
             EvidenceLadder.IMPLEMENTED
         }
 
+        val canonicalVerifier = if (isVerified) (verifier ?: "WastiVerificationEngine") else null
+
         val entry = ProvenanceEntry(
             entryId = entryId,
             taskId = taskId,
@@ -372,14 +374,14 @@ object ExecutionProvenanceLedger {
             operationId = actionId,
             executorResult = outputHash,
             observationSource = source.name,
-            independentVerifier = verifier ?: evidence?.let { "WastiVerificationEngine" },
+            independentVerifier = canonicalVerifier,
             modelHash = modelHash,
             architecture = architecture,
             runtimeVersion = runtimeVersion,
             executionEnvironment = executionEnvironment,
             executor = executor ?: providerId,
-            verifier = verifier ?: evidence?.let { "WastiVerificationEngine" },
-            verificationMethod = verificationMethod,
+            verifier = canonicalVerifier,
+            verificationMethod = if (isVerified) verificationMethod else "unverified_telemetry",
             stateTransition = stateTransition,
             sequenceNumber = nextSeq,
             evidenceLevel = resolvedEvidenceLevel,
@@ -521,6 +523,32 @@ object ExecutionProvenanceLedger {
             bytes.joinToString("") { "%02x".format(it) }
         } catch (_: Exception) {
             hashString("hmac_fallback:$content")
+        }
+    }
+
+    @Synchronized
+    fun rotateTrustAnchor(): Boolean {
+        return try {
+            val dir = getStorageDir()
+            val keyFile = File(dir, ".keystore_anchor.key")
+            val newKey = ByteArray(32)
+            SecureRandom().nextBytes(newKey)
+            keyFile.writeBytes(newKey)
+            Log.i(TAG, "Provenance trust anchor rotated successfully.")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed rotating provenance trust anchor", e)
+            false
+        }
+    }
+
+    @Synchronized
+    fun recoverFromCorruptedState(): Boolean {
+        return try {
+            loadPersistedLedger()
+            !isLedgerCompromised
+        } catch (_: Exception) {
+            false
         }
     }
 

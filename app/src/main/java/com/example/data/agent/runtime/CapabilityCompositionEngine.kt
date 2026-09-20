@@ -178,11 +178,43 @@ class CapabilityCompositionEngine(
                     }
                 }
 
+                val verificationEngine = WastiVerificationEngine()
+                val stepObs = ObservationResult(
+                    taskId = workflow.workflowId,
+                    actionId = step.stepId,
+                    capabilityId = step.capabilityId,
+                    status = ObservationStatus.OBSERVED,
+                    observedState = output,
+                    evidence = verifiedEvidence,
+                    confidence = 0.90
+                )
+                val stepExecResult = UnifiedExecutionResult(
+                    taskId = workflow.workflowId,
+                    actionId = step.stepId,
+                    capabilityId = step.capabilityId,
+                    status = UnifiedExecutionStatus.COMPLETED,
+                    output = output,
+                    executor = "CapabilityCompositionEngine",
+                    startedAt = started,
+                    completedAt = System.currentTimeMillis(),
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED
+                )
+                val verReq = VerificationRequest(
+                    taskId = workflow.workflowId,
+                    actionId = step.stepId,
+                    capabilityId = step.capabilityId,
+                    expectedOutcome = step.description,
+                    executionResult = stepExecResult,
+                    observationResult = stepObs
+                )
+                val verRes = verificationEngine.verify(verReq)
+
                 step.durationMs = System.currentTimeMillis() - started
                 step.status = StepExecutionStatus.COMPLETED
                 step.outputResult = output
-                step.verificationEvidence = verifiedEvidence
-                step.evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
+                step.verificationEvidence = verRes.evidence
+                step.evidenceLevel = verRes.evidenceLevel
+                step.structuredEvidence = verRes.structuredEvidence
 
                 if (step.outputKey != null) {
                     outputs[step.outputKey] = output

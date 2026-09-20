@@ -149,6 +149,7 @@ class AutonomousSkillEvolutionEngine(
     suspend fun recordExecutionOutcome(skillId: String, verifiedEvidence: VerifiedExecutionEvidence?) {
         val skill = learnedSkillDao.getSkillById(skillId) ?: return
         val isTrulyVerified = verifiedEvidence != null &&
+            verifiedEvidence.isVerifiedState() &&
             verifiedEvidence.confidence >= 0.85 &&
             verifiedEvidence.subject.isNotBlank() &&
             verifiedEvidence.verifiedState.isNotBlank() &&

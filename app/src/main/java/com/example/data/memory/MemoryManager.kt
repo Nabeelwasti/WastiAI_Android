@@ -112,6 +112,11 @@ object MemoryManager {
      * merely due to high confidence without independent empirical verification.
      */
     fun canPromoteMemory(memory: MemoryItem, targetTier: MemoryTier): Boolean {
+        if (memory.provenanceCategory != MemoryProvenanceCategory.VERIFIED && memory.provenanceCategory != MemoryProvenanceCategory.USER_STATED) {
+            if (targetTier == MemoryTier.VERIFIED_KNOWLEDGE || targetTier == MemoryTier.GLOBAL_SKILL) {
+                return false
+            }
+        }
         if (memory.provenanceCategory == MemoryProvenanceCategory.INFERRED) {
             if (targetTier == MemoryTier.VERIFIED_KNOWLEDGE || targetTier == MemoryTier.USER_MEMORY) {
                 return false
@@ -125,8 +130,12 @@ object MemoryManager {
      * INFERRED memories can NEVER be promoted to VERIFIED or USER_STATED merely due to high confidence.
      */
     fun canPromoteProvenance(currentCategory: MemoryProvenanceCategory, targetCategory: MemoryProvenanceCategory): Boolean {
-        if (currentCategory == MemoryProvenanceCategory.INFERRED) {
-            if (targetCategory == MemoryProvenanceCategory.VERIFIED || targetCategory == MemoryProvenanceCategory.USER_STATED) {
+        if (currentCategory == MemoryProvenanceCategory.INFERRED || currentCategory == MemoryProvenanceCategory.OBSERVED) {
+            if (targetCategory == MemoryProvenanceCategory.VERIFIED) {
+                // Must have authoritative verification proof to become VERIFIED
+                return false
+            }
+            if (currentCategory == MemoryProvenanceCategory.INFERRED && targetCategory == MemoryProvenanceCategory.USER_STATED) {
                 return false
             }
         }
@@ -191,6 +200,16 @@ object MemoryManager {
         tier: MemoryTier = resolveTierForCategory(category, key),
         provenanceCategory: MemoryProvenanceCategory = MemoryProvenanceCategory.OBSERVED
     ): MemoryItem = withContext(Dispatchers.IO) {
+        // Zero-Fabrication Memory Invariant: Unverified observations cannot become VERIFIED_KNOWLEDGE or GLOBAL_SKILL
+        val effectiveTier = if ((tier == MemoryTier.VERIFIED_KNOWLEDGE || tier == MemoryTier.GLOBAL_SKILL) &&
+            provenanceCategory != MemoryProvenanceCategory.VERIFIED &&
+            provenanceCategory != MemoryProvenanceCategory.USER_STATED
+        ) {
+            MemoryTier.SYSTEM_MEMORY
+        } else {
+            tier
+        }
+
         val existingDuplicate = activeMemoriesMap.values.find {
             policyEngine.isDuplicate(it.value, value)
         }
@@ -221,7 +240,7 @@ object MemoryManager {
             timestamp = System.currentTimeMillis(),
             sourceMessageId = sourceMessageId,
             embedding = embedding,
-            tier = tier,
+            tier = effectiveTier,
             provenanceCategory = provenanceCategory
         )
 

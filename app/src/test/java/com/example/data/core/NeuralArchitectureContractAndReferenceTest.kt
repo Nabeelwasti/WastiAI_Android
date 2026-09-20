@@ -102,26 +102,54 @@ class NeuralArchitectureContractAndReferenceTest {
 
     @Test
     fun testReferenceFixtureComparisonWithTolerances() {
-        val fixture = NeuralReferenceFixture(
-            fixtureId = "fixture_smollm_probe_1",
-            modelId = "wasti-smollm",
-            architecture = "llama",
-            prompt = "Hello",
-            expectedPromptTokens = intArrayOf(1, 15043),
-            expectedHiddenStatePrefix = floatArrayOf(0.125f, -0.045f, 0.892f, 0.011f),
-            expectedLogitsPrefix = floatArrayOf(-5.2f, 1.4f, 8.9f, -0.3f),
-            expectedOutputTokens = intArrayOf(15043, 29889),
-            numericalTolerance = 1e-3f
-        )
+        val fixture = AuthoritativeNeuralFixtures.getFixture("wasti-smollm")
+        assertNotNull("SmolLM fixture must be present in AuthoritativeNeuralFixtures", fixture)
 
-        assertEquals("wasti-smollm", fixture.modelId)
+        assertEquals("wasti-smollm", fixture!!.modelId)
+        assertEquals("llama", fixture.architecture)
         assertEquals(2, fixture.expectedPromptTokens.size)
         assertEquals(4, fixture.expectedHiddenStatePrefix.size)
         assertEquals(4, fixture.expectedLogitsPrefix.size)
         assertTrue("Tolerance must be strict", fixture.numericalTolerance <= 1e-3f)
+        assertEquals("decd2598bc2c8ed08c19adc3c8fdd461ee19ed5708679d1c54ef54a5a30d4f33", fixture.expectedArtifactSha256)
 
         // Without live model handle, reference verification correctly reports false (fail-closed)
         val verified = NativeLlamaBridge.isReferenceVerified(0L, fixture)
         assertFalse("Null model handle must fail-closed on reference verification", verified)
+    }
+
+    @Test
+    fun testGgufTensorContractValidation() {
+        val contract = SupportedModelContract.getArchitectureContract("wasti-smollm")!!
+
+        // Synthesize valid tensor name list for 24 layers of SmolLM
+        val validTensors = mutableListOf("token_embd.weight", "output_norm.weight")
+        for (i in 0 until 24) {
+            validTensors.add("blk.$i.attn_q.weight")
+            validTensors.add("blk.$i.attn_k.weight")
+            validTensors.add("blk.$i.attn_v.weight")
+            validTensors.add("blk.$i.attn_output.weight")
+            validTensors.add("blk.$i.attn_norm.weight")
+            validTensors.add("blk.$i.ffn_gate.weight")
+            validTensors.add("blk.$i.ffn_up.weight")
+            validTensors.add("blk.$i.ffn_down.weight")
+            validTensors.add("blk.$i.ffn_norm.weight")
+        }
+
+        val validRes = AuthoritativeNeuralFixtures.validateTensors(validTensors, contract)
+        assertTrue("Valid tensor set must pass validation", validRes.isValid)
+        assertEquals(validTensors.size, validRes.validatedTensorCount)
+
+        // Missing tensor detection
+        val missingTensors = validTensors.filter { it != "blk.5.attn_q.weight" }
+        val missingRes = AuthoritativeNeuralFixtures.validateTensors(missingTensors, contract)
+        assertFalse("Missing required tensor must fail validation", missingRes.isValid)
+        assertTrue(missingRes.missingTensors.contains("blk.5.attn_q.weight"))
+
+        // Duplicate tensor detection
+        val duplicateTensors = validTensors + listOf("token_embd.weight")
+        val dupRes = AuthoritativeNeuralFixtures.validateTensors(duplicateTensors, contract)
+        assertFalse("Duplicate tensor must fail validation", dupRes.isValid)
+        assertTrue(dupRes.duplicateTensors.contains("token_embd.weight"))
     }
 }
