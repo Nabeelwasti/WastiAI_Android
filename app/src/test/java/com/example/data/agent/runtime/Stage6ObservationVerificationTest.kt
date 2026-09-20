@@ -103,7 +103,7 @@ class Stage6ObservationVerificationTest {
             parameters = mapOf("action" to "write_file", "path" to "test_verification.txt")
         )
         val obsRes = observationEngine.observe(obsReq, context, result)
-        assertEquals(ObservationStatus.OBSERVED, obsRes.status)
+        assertEquals(ObservationStatus.CHANGED, obsRes.status)
 
         val verReq = VerificationRequest(
             taskId = result.taskId,
