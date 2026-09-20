@@ -533,7 +533,7 @@ class UnifiedExecutionFabric(
                 status = finalStatus,
                 verificationStatus = finalVerStatus,
                 verificationEvidence = verResult.evidence,
-                error = execResult.error ?: verResult.failureReason
+                error = execResult.error ?: if (finalStatus == UnifiedExecutionStatus.VERIFICATION_FAILED) verResult.failureReason else null
             )
 
             emitEventAndAudit(request, finalResult, verResult)
