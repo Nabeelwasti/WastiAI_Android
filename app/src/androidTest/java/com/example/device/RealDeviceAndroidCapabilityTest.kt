@@ -142,7 +142,7 @@ class RealDeviceAndroidCapabilityTest {
                 evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
                 expectedPostcondition = "SUCCESS",
                 observedResult = "SUCCESS",
-                declaredVerifier = "RealDeviceAndroidCapabilityTest",
+                declaredVerifier = "WastiVerificationEngine",
                 verificationMethod = "real_device_execution_verification"
             )
         )

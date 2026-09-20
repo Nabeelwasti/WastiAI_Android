@@ -155,7 +155,7 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             confidence = 1.0,
             expectedPostcondition = "DIR_EXISTS",
             observedResult = "DIR_EXISTS",
-            declaredVerifier = "WastiSandbox",
+            declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "filesystem_directory_check"
         )
 
@@ -177,7 +177,7 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             confidence = 0.95,
             expectedPostcondition = "RECORD_INSERTED",
             observedResult = "RECORD_INSERTED",
-            declaredVerifier = "MemoryManager",
+            declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "database_query_verification"
         )
 

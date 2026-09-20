@@ -117,7 +117,7 @@ class UnifiedBrainAndSelfTrainingTest {
             confidence = 0.95,
             expectedPostcondition = "CONFIG_APPLIED",
             observedResult = "CONFIG_APPLIED",
-            declaredVerifier = "UnifiedBrainEngine",
+            declaredVerifier = "WastiVerificationEngine",
             verificationMethod = "filesystem_config_applied"
         )
 

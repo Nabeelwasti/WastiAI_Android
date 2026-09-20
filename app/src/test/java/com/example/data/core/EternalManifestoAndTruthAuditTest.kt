@@ -2487,7 +2487,7 @@ class EternalManifestoAndTruthAuditTest {
                 confidence = 0.95,
                 expectedPostcondition = "Passed",
                 observedResult = "Passed",
-                declaredVerifier = "SecurityAuditEngine",
+                declaredVerifier = "WastiVerificationEngine",
                 verificationMethod = "process_audit_verification"
             )
         )

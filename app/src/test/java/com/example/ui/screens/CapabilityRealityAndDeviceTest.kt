@@ -343,7 +343,7 @@ class CapabilityRealityAndDeviceTest {
                 observedAt = System.currentTimeMillis(),
                 expectedPostcondition = "VERIFIED",
                 observedResult = "VERIFIED",
-                declaredVerifier = "AutonomousSkillEvolutionEngine",
+                declaredVerifier = "WastiVerificationEngine",
                 verificationMethod = "filesystem_execution_proof"
             )
             evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
