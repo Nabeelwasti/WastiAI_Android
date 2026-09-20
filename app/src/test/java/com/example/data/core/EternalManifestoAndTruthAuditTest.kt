@@ -1967,7 +1967,7 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue(missingProcessRes.stderr.contains("Missing required permission 'PROCESS_EXECUTION'"))
         assertFalse(missingProcessRes.verified)
 
-        // 6. Execution, Observation, and Verification Truth: Valid commands succeed and verify
+        // 6. Execution, Observation, and Verification Truth: Valid commands succeed honestly without self-certifying verification
         val validPwdReq = com.example.data.wre.ExecutionRequest(
             command = "pwd",
             initiatedBy = "AuditTest"
@@ -1975,8 +1975,7 @@ class EternalManifestoAndTruthAuditTest {
         val pwdRes = wreManager.execute(validPwdReq)
         assertEquals(com.example.data.wre.ExecutionStatus.SUCCESS, pwdRes.status)
         assertEquals(0, pwdRes.exitCode)
-        assertTrue("pwd execution must be verified", pwdRes.verified)
-        assertNotNull(pwdRes.verificationEvidence)
+        assertFalse("Read-only command without disk probe must not self-certify verification", pwdRes.verified)
 
         // 7. Filesystem Mutation Verification Truth: mkdir and touch create verifiable disk entries
         val mkdirReq = com.example.data.wre.ExecutionRequest(
