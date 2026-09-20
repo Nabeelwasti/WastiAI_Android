@@ -105,6 +105,7 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
         )
 
         // Inject out-of-order sequence entry (sequenceNumber 1 <= last seen 1)
+        val testTimestamp = System.currentTimeMillis()
         val illegalSequenceEntry = ProvenanceEntry(
             entryId = "illegal_seq_entry",
             taskId = "task_2",
@@ -118,9 +119,9 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
             evidenceSummary = "Illegal sequence test",
             verificationStatus = "EXECUTOR_COMPLETED",
             isVerified = false,
-            timestamp = System.currentTimeMillis(),
+            timestamp = testTimestamp,
             previousEntryHash = entry1.entryHash,
-            entryHash = ExecutionProvenanceLedger.hashString("${entry1.entryHash}|task_2|action_2|cap_2|prov_2|${ExecutionProvenanceLedger.hashString("in_2")}|${ExecutionProvenanceLedger.hashString("out_2")}|EXECUTOR_COMPLETED|${System.currentTimeMillis()}|1"),
+            entryHash = ExecutionProvenanceLedger.hashString("${entry1.entryHash}|task_2|action_2|cap_2|prov_2|${ExecutionProvenanceLedger.hashString("in_2")}|${ExecutionProvenanceLedger.hashString("out_2")}|EXECUTOR_COMPLETED|$testTimestamp|1"),
             sequenceNumber = 1L // Non-monotonic sequence
         )
 

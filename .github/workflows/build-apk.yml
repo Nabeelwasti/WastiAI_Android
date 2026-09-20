@@ -138,8 +138,17 @@ jobs:
       run: |
         ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace --warning-mode all || {
           echo "==================== TEST FAILURE SUMMARY ===================="
-          find app/build/test-results -name "*.xml" -exec grep -H -n -C 5 "<failure" {} + 2>/dev/null || true
-          find app/build/reports/tests -name "*.html" -exec grep -H -n -C 5 "failures" {} + 2>/dev/null || true
+          echo "### ❌ Unit Test Failures" >> $GITHUB_STEP_SUMMARY
+          for f in $(find app/build -name "*.xml" 2>/dev/null); do
+            if grep -qi "failure" "$f" 2>/dev/null; then
+              echo "--- FAILURE IN $f ---"
+              cat "$f"
+              echo "#### $f" >> $GITHUB_STEP_SUMMARY
+              echo '```xml' >> $GITHUB_STEP_SUMMARY
+              cat "$f" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+          done
           echo "=============================================================="
           exit 1
         }
