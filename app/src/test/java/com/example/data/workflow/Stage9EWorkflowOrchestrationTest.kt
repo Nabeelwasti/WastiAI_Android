@@ -157,7 +157,7 @@ class Stage9EWorkflowOrchestrationTest {
             parameters = emptyMap()
         )
         val execRes = UnifiedExecutionFabric.instance.execute(execReq, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, execRes.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, execRes.status)
         assertTrue(execRes.output.contains("DYNAMIC_CALC_OK: 999"))
     }
 
@@ -274,7 +274,7 @@ class Stage9EWorkflowOrchestrationTest {
 
         assertTrue(result.isSuccess)
         assertNotNull(result.verificationEvidence)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, step.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, step.verificationStatus)
         assertNotNull(step.verificationEvidence)
         assertTrue(step.verificationEvidence!!.isNotBlank())
     }
@@ -305,7 +305,7 @@ class Stage9EWorkflowOrchestrationTest {
         assertTrue(result.isSuccess)
         assertNotNull(step.executionResult)
         assertEquals("WastiNativeExecutionProvider", step.executionResult?.executor)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, step.executionResult?.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, step.executionResult?.status)
     }
 
     @Test

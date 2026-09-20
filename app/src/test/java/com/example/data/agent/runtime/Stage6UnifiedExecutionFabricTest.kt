@@ -50,10 +50,10 @@ class Stage6UnifiedExecutionFabricTest {
         )
 
         val result = fabric.execute(request, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
         assertEquals("MemoryManager", result.executor)
         assertNull(result.error)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
     }
 
     // 2. Executor failure path (e.g. open_app with non-existent package)
@@ -193,7 +193,7 @@ class Stage6UnifiedExecutionFabricTest {
                     executor = name,
                     startedAt = System.currentTimeMillis(),
                     completedAt = System.currentTimeMillis(),
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED
                 )
             }
         })
@@ -245,7 +245,7 @@ class Stage6UnifiedExecutionFabricTest {
                     executor = name,
                     startedAt = System.currentTimeMillis(),
                     completedAt = System.currentTimeMillis(),
-                    verificationStatus = UnifiedVerificationStatus.VERIFIED
+                    verificationStatus = UnifiedVerificationStatus.UNVERIFIED
                 )
             }
         })
@@ -290,7 +290,7 @@ class Stage6UnifiedExecutionFabricTest {
         )
 
         val result = fabric.execute(request, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
 
         val eventsList = mutableListOf<AgentEvent>()
         val collectorJob = launch {

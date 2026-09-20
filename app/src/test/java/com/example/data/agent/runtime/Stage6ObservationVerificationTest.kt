@@ -88,9 +88,23 @@ class Stage6ObservationVerificationTest {
         )
 
         val result = fabric.execute(request, context)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, result.status)
-        assertEquals(UnifiedVerificationStatus.VERIFIED, result.verificationStatus)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, result.status)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, result.verificationStatus)
         assertNotNull(result.verificationEvidence)
+
+        val obsReq = ObservationRequest(taskId = result.taskId, actionId = result.actionId, capabilityId = "memory_search")
+        val obsRes = observationEngine.observe(obsReq, context, result)
+        assertEquals(ObservationStatus.OBSERVED, obsRes.status)
+
+        val verReq = VerificationRequest(
+            taskId = result.taskId,
+            actionId = result.actionId,
+            capabilityId = "memory_search",
+            executionResult = result,
+            observationResult = obsRes
+        )
+        val verRes = verificationEngine.verify(verReq)
+        assertEquals(ActionVerificationStatus.VERIFIED, verRes.status)
     }
 
     // 3. Failed verification scenario

@@ -165,7 +165,7 @@ class Stage7MultiLanguageDevelopmentTest {
             )
         )
         val writeResult = fabric.execute(writeReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, writeResult.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, writeResult.status)
 
         val readReq = UnifiedExecutionRequest(
             capabilityId = "files",
@@ -175,7 +175,7 @@ class Stage7MultiLanguageDevelopmentTest {
             )
         )
         val readResult = fabric.execute(readReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, readResult.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, readResult.status)
         assertEquals("Stage 7 Native Environment", readResult.output)
     }
 
