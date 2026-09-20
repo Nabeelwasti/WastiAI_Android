@@ -239,7 +239,7 @@ class WastiEmergencyStopController : EmergencyStopController {
                 executor = "WastiEmergencyStopController",
                 verifier = "WastiEmergencyStopController",
                 verificationMethod = "process_cancellation_latch",
-                verificationLevel = VerificationLevel.RUNTIME_VERIFIED
+                evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
             )
         } catch (_: Throwable) {}
     }
@@ -304,7 +304,7 @@ class WastiEmergencyStopController : EmergencyStopController {
                 executor = "WastiEmergencyStopController",
                 verifier = "WastiEmergencyStopController",
                 verificationMethod = "process_cancellation_latch",
-                verificationLevel = VerificationLevel.RUNTIME_VERIFIED
+                evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
             )
         } catch (_: Throwable) {}
     }
