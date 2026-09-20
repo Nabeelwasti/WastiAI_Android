@@ -252,12 +252,13 @@ class Stage16PersistentAutonomousMemoryTest {
             intervalMs = intervalMs
         )
         task.scheduledAt = System.currentTimeMillis() - 100
+        proactiveEngine.persistTaskSync(task)
         delay(50)
 
         proactiveEngine.evaluateAndRunDueTasks()
         var persisted = taskDao.getTaskById(task.taskId)
         val start = System.currentTimeMillis()
-        while ((persisted == null || persisted.state != ProactiveTaskState.SCHEDULED.name) && System.currentTimeMillis() - start < 4000L) {
+        while ((persisted == null || persisted.scheduledAt <= System.currentTimeMillis() || persisted.state != ProactiveTaskState.SCHEDULED.name) && System.currentTimeMillis() - start < 4000L) {
             delay(100)
             persisted = taskDao.getTaskById(task.taskId)
         }
