@@ -171,7 +171,7 @@ class WastiNativeBridgeManager(
             output = bridgeRes.stdout,
             error = bridgeRes.stderr.ifBlank { null },
             executor = bridgeRes.bridgeType,
-            verificationStatus = if (bridgeRes.isSuccess) UnifiedVerificationStatus.VERIFIED else UnifiedVerificationStatus.FAILED,
+            verificationStatus = if (bridgeRes.isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,
             verificationEvidence = bridgeRes.verificationEvidence,
             exitCode = bridgeRes.exitCode
         )

@@ -66,7 +66,9 @@ data class ProposalAuditEntry(
     val contentHash: String,
     val authorizingEntity: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val details: String = ""
+    val details: String = "",
+    val previousAuditHash: String = ExecutionProvenanceLedger.GENESIS_HASH,
+    val entryHash: String = ""
 )
 
 data class ModificationOutcome(
@@ -123,32 +125,57 @@ object SelfModificationSafetyEngine {
             if (!auditFile.exists()) return
 
             val loaded = mutableListOf<ProposalAuditEntry>()
+            var expectedPrevHash = ExecutionProvenanceLedger.GENESIS_HASH
+
             auditFile.forEachLine { line ->
                 if (line.isNotBlank()) {
                     try {
                         val obj = org.json.JSONObject(line)
                         val actionName = obj.getString("action")
                         val action = try { ProposalAuditAction.valueOf(actionName) } catch (_: Exception) { ProposalAuditAction.PROPOSED }
-                        loaded.add(
-                            ProposalAuditEntry(
-                                id = obj.optString("id", UUID.randomUUID().toString()),
-                                proposalId = obj.getString("proposalId"),
-                                filePath = obj.getString("filePath"),
-                                action = action,
-                                reason = obj.optString("reason", ""),
-                                contentHash = obj.optString("contentHash", ""),
-                                authorizingEntity = obj.optString("authorizingEntity", "UNKNOWN"),
-                                timestamp = obj.optLong("timestamp", System.currentTimeMillis()),
-                                details = obj.optString("details", "")
-                            )
+                        val id = obj.optString("id", UUID.randomUUID().toString())
+                        val proposalId = obj.getString("proposalId")
+                        val filePath = obj.getString("filePath")
+                        val reason = obj.optString("reason", "")
+                        val contentHash = obj.optString("contentHash", "")
+                        val authorizingEntity = obj.optString("authorizingEntity", "UNKNOWN")
+                        val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                        val details = obj.optString("details", "")
+                        val prevHash = obj.optString("previousAuditHash", expectedPrevHash)
+                        val entryHash = obj.optString("entryHash", "")
+
+                        val computedHash = computeHash("$prevHash|$id|$proposalId|$filePath|${action.name}|$contentHash|$authorizingEntity|$timestamp")
+                        val entry = ProposalAuditEntry(
+                            id = id,
+                            proposalId = proposalId,
+                            filePath = filePath,
+                            action = action,
+                            reason = reason,
+                            contentHash = contentHash,
+                            authorizingEntity = authorizingEntity,
+                            timestamp = timestamp,
+                            details = details,
+                            previousAuditHash = prevHash,
+                            entryHash = if (entryHash.isNotBlank()) entryHash else computedHash
                         )
-                    } catch (_: Exception) {}
+
+                        if (entryHash.isBlank() || entryHash == computedHash) {
+                            loaded.add(entry)
+                            expectedPrevHash = entry.entryHash
+                        } else {
+                            Log.w(TAG, "Tampered proposal audit record detected: $id")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Malformed proposal audit record skipped", e)
+                    }
                 }
             }
             if (loaded.isNotEmpty()) {
                 _proposalAuditLog.value = loaded.takeLast(100).reversed()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed reading persisted proposal audit log", e)
+        }
     }
 
     private fun persistAuditEntry(entry: ProposalAuditEntry) {
@@ -165,6 +192,8 @@ object SelfModificationSafetyEngine {
                 put("authorizingEntity", entry.authorizingEntity)
                 put("timestamp", entry.timestamp)
                 put("details", entry.details)
+                put("previousAuditHash", entry.previousAuditHash)
+                put("entryHash", entry.entryHash)
             }
             synchronized(this) {
                 auditFile.appendText(obj.toString() + "\n")
@@ -181,14 +210,24 @@ object SelfModificationSafetyEngine {
         authorizingEntity: String,
         details: String = ""
     ): ProposalAuditEntry {
+        val lastEntry = _proposalAuditLog.value.firstOrNull()
+        val prevHash = lastEntry?.entryHash ?: ExecutionProvenanceLedger.GENESIS_HASH
+        val id = UUID.randomUUID().toString()
+        val timestamp = System.currentTimeMillis()
+        val entryHash = computeHash("$prevHash|$id|$proposalId|$filePath|${action.name}|$contentHash|$authorizingEntity|$timestamp")
+
         val entry = ProposalAuditEntry(
+            id = id,
             proposalId = proposalId,
             filePath = filePath,
             action = action,
             reason = reason,
             contentHash = contentHash,
             authorizingEntity = authorizingEntity,
-            details = details
+            timestamp = timestamp,
+            details = details,
+            previousAuditHash = prevHash,
+            entryHash = entryHash
         )
         val current = _proposalAuditLog.value.toMutableList()
         current.add(0, entry)
@@ -577,7 +616,8 @@ object SelfModificationSafetyEngine {
      * Reverts a file from an existing rollback snapshot.
      * Recovers from in-memory vault or durable disk journal.
      * Protected targets require the same explicit admin authority boundary as mutation.
-     * Snapshot integrity is checked before any filesystem write/delete occurs.
+     * Snapshot integrity is checked before any filesystem write/delete occurs,
+     * and restoration is validated after write.
      */
     fun rollback(snapshotId: String, adminAuthToken: String? = null): Boolean {
         var snapshot = rollbackVault[snapshotId]
@@ -630,6 +670,11 @@ object SelfModificationSafetyEngine {
                     tempFile.copyTo(file, overwrite = true)
                     tempFile.delete()
                 }
+                // Post-restoration validation check
+                if (!file.exists() || computeHash(file.readText()) != snapshot.contentHash) {
+                    Log.e(TAG, "Post-restoration validation failed for: ${snapshot.filePath}")
+                    return false
+                }
             } else if (file.exists()) {
                 if (!file.delete()) {
                     Log.e(TAG, "Failed deleting newly-created file during rollback: ${snapshot.filePath}")
@@ -645,7 +690,7 @@ object SelfModificationSafetyEngine {
                 reason = "Rolled back to snapshot $snapshotId (generation ${snapshot.generation})",
                 contentHash = snapshot.contentHash,
                 authorizingEntity = if (adminAuthToken != null) "ADMIN_TOKEN_HOLDER" else "HUMAN_OPERATOR",
-                details = "Restored previous state successfully"
+                details = "Restored previous state successfully (validated)"
             )
             true
         } catch (e: Exception) {

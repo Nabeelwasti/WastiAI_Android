@@ -193,6 +193,10 @@ class WastiEmergencyStopController : EmergencyStopController {
         } catch (_: Throwable) {}
 
         // 5. Actively invoke custom cancellation hooks (native runtime, mesh, etc.)
+        try {
+            com.example.data.ai.runtime.NativeLlamaBridge.setEmergencyStop(true)
+        } catch (_: Throwable) {}
+
         var cancelledHooks = 0
         for ((_, hook) in registeredHooks) {
             try {
@@ -219,6 +223,10 @@ class WastiEmergencyStopController : EmergencyStopController {
      */
     override fun resetEmergencyStop() {
         val now = System.currentTimeMillis()
+
+        try {
+            com.example.data.ai.runtime.NativeLlamaBridge.setEmergencyStop(false)
+        } catch (_: Throwable) {}
 
         var updatedSnapshot: EmergencyStopSnapshot? = null
         updateState { current ->

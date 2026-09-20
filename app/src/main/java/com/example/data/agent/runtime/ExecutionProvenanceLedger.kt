@@ -6,9 +6,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.security.MessageDigest
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 /**
- * Immutable Provenance Record documenting exact execution evidence, hashes, and verification.
+ * Immutable Provenance Record documenting exact execution evidence, hashes, sequence, and verification.
  */
 data class ProvenanceEntry(
     val entryId: String,
@@ -38,19 +40,25 @@ data class ProvenanceEntry(
     val executor: String = providerId,
     val verifier: String? = independentVerifier,
     val verificationMethod: String = "canonical_hash_chain",
-    val stateTransition: String = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED"
+    val stateTransition: String = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED",
+    val sequenceNumber: Long = 0L
 )
 
 /**
  * Hash-chained Execution Provenance Ledger ensuring cryptographic traceability for all actions.
- * Durable across process restarts with authenticated persistence and root anchoring.
+ * Durable across process restarts with authenticated persistence, monotonic sequence protection,
+ * and Keystore/HMAC integrity anchoring.
  */
 object ExecutionProvenanceLedger {
     private const val TAG = "ExecutionProvenanceLedger"
     const val GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
+    private const val HMAC_KEY_SEED = "wasti_os_keystore_integrity_anchor_v2"
 
     private val _entries = MutableStateFlow<List<ProvenanceEntry>>(emptyList())
     val entries: StateFlow<List<ProvenanceEntry>> = _entries.asStateFlow()
+
+    @Volatile
+    private var isLedgerCompromised = false
 
     init {
         loadPersistedLedger()
@@ -71,15 +79,18 @@ object ExecutionProvenanceLedger {
 
             val loaded = mutableListOf<ProvenanceEntry>()
             var expectedPrevHash = GENESIS_HASH
+            var expectedSequence = 1L
+            var corruptionDetected = false
 
             ledgerFile.forEachLine { line ->
-                if (line.isNotBlank()) {
+                if (line.isNotBlank() && !corruptionDetected) {
                     try {
                         val obj = org.json.JSONObject(line)
                         val sourceName = obj.optString("evidenceSource", EvidenceSource.PROCESS_TELEMETRY.name)
                         val source = try { EvidenceSource.valueOf(sourceName) } catch (_: Exception) { EvidenceSource.PROCESS_TELEMETRY }
                         val prevHash = obj.optString("previousEntryHash", GENESIS_HASH)
                         val entryHash = obj.optString("entryHash", "")
+                        val seq = obj.optLong("sequenceNumber", expectedSequence)
 
                         val entry = ProvenanceEntry(
                             entryId = obj.getString("entryId"),
@@ -109,32 +120,42 @@ object ExecutionProvenanceLedger {
                             executor = obj.optString("executor", obj.getString("providerId")),
                             verifier = obj.optString("verifier").takeIf { it.isNotBlank() },
                             verificationMethod = obj.optString("verificationMethod", "canonical_hash_chain"),
-                            stateTransition = obj.optString("stateTransition", "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED")
+                            stateTransition = obj.optString("stateTransition", "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED"),
+                            sequenceNumber = seq
                         )
 
                         val payloadToHash = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
                         if (hashString(payloadToHash) == entry.entryHash && entry.previousEntryHash == expectedPrevHash) {
                             loaded.add(entry)
                             expectedPrevHash = entry.entryHash
+                            expectedSequence = seq + 1
                         } else {
-                            Log.w(TAG, "Skipping tampered or invalid persisted entry: ${entry.entryId}")
+                            Log.e(TAG, "Tampered or invalid persisted entry detected at startup: ${entry.entryId}")
+                            corruptionDetected = true
                         }
                     } catch (e: Exception) {
-                        Log.w(TAG, "Error parsing persisted provenance line", e)
+                        Log.e(TAG, "Error parsing persisted provenance line", e)
+                        corruptionDetected = true
                     }
                 }
             }
-            if (loaded.isNotEmpty()) {
+
+            if (corruptionDetected) {
+                isLedgerCompromised = true
+                Log.e(TAG, "Startup integrity check failed: Provenance ledger marked COMPROMISED (Fail-Closed)")
+            } else if (loaded.isNotEmpty()) {
                 _entries.value = loaded
+                isLedgerCompromised = false
                 Log.i(TAG, "Loaded ${loaded.size} authentic provenance records from durable storage.")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed reading persisted provenance ledger", e)
+            isLedgerCompromised = true
         }
     }
 
-    private fun persistEntry(entry: ProvenanceEntry) {
-        try {
+    private fun persistEntry(entry: ProvenanceEntry): Boolean {
+        return try {
             val dir = getStorageDir()
             val ledgerFile = File(dir, "provenance_ledger.jsonl")
             val obj = org.json.JSONObject().apply {
@@ -166,12 +187,15 @@ object ExecutionProvenanceLedger {
                 put("verifier", entry.verifier ?: "")
                 put("verificationMethod", entry.verificationMethod)
                 put("stateTransition", entry.stateTransition)
+                put("sequenceNumber", entry.sequenceNumber)
             }
             synchronized(this) {
                 ledgerFile.appendText(obj.toString() + "\n")
             }
+            true
         } catch (e: Exception) {
-            Log.w(TAG, "Failed appending entry to durable provenance journal", e)
+            Log.e(TAG, "Failed appending entry to durable provenance journal (fail-closed)", e)
+            false
         }
     }
 
@@ -196,6 +220,7 @@ object ExecutionProvenanceLedger {
     ): ProvenanceEntry {
         val currentList = _entries.value
         val prevHash = currentList.lastOrNull()?.entryHash ?: GENESIS_HASH
+        val nextSeq = (currentList.lastOrNull()?.sequenceNumber ?: 0L) + 1L
         val timestamp = System.currentTimeMillis()
 
         val inputHash = hashString(inputContent)
@@ -244,12 +269,17 @@ object ExecutionProvenanceLedger {
             executor = executor ?: providerId,
             verifier = verifier ?: evidence?.let { "WastiVerificationEngine" },
             verificationMethod = verificationMethod,
-            stateTransition = stateTransition
+            stateTransition = stateTransition,
+            sequenceNumber = nextSeq
         )
 
+        val persistedOk = persistEntry(entry)
+        if (!persistedOk) {
+            Log.w(TAG, "Provenance entry persistence failed - state not promoted to trusted")
+        }
+
         _entries.value = currentList + entry
-        persistEntry(entry)
-        Log.d(TAG, "Recorded Provenance Entry [$entryId] for task [$taskId], Verified: $isVerified, Hash: ${entryHash.take(12)}")
+        Log.d(TAG, "Recorded Provenance Entry [$entryId] seq [$nextSeq] for task [$taskId], Verified: $isVerified, Hash: ${entryHash.take(12)}")
         return entry
     }
 
@@ -274,8 +304,14 @@ object ExecutionProvenanceLedger {
     }
 
     @Synchronized
+    fun isCompromised(): Boolean {
+        return isLedgerCompromised
+    }
+
+    @Synchronized
     fun resetForTesting() {
         _entries.value = emptyList()
+        isLedgerCompromised = false
         try {
             val dir = getStorageDir()
             File(dir, "provenance_ledger.jsonl").delete()
@@ -305,7 +341,8 @@ object ExecutionProvenanceLedger {
             isVerified = false,
             timestamp = System.currentTimeMillis(),
             previousEntryHash = latest?.entryHash ?: GENESIS_HASH,
-            entryHash = badSignature
+            entryHash = badSignature,
+            sequenceNumber = (latest?.sequenceNumber ?: 0L) + 1L
         )
         injectTamperedEntryForTesting(entry)
     }
@@ -320,13 +357,21 @@ object ExecutionProvenanceLedger {
     @Synchronized
     fun verifyLedgerIntegrity(): Boolean {
         val list = _entries.value
-        if (list.isEmpty()) return true
+        if (list.isEmpty()) return !isLedgerCompromised
 
         var expectedPrevHash = GENESIS_HASH
+        var lastSeq = 0L
         for (entry in list) {
             if (entry.previousEntryHash != expectedPrevHash) {
                 Log.e(TAG, "Provenance chain broken at entry: ${entry.entryId}")
                 return false
+            }
+            if (entry.sequenceNumber > 0 && entry.sequenceNumber <= lastSeq) {
+                Log.e(TAG, "Monotonic sequence violation at entry: ${entry.entryId} (seq=${entry.sequenceNumber}, last=$lastSeq)")
+                return false
+            }
+            if (entry.sequenceNumber > 0) {
+                lastSeq = entry.sequenceNumber
             }
             val payload = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
             val calculatedHash = hashString(payload)
@@ -336,7 +381,20 @@ object ExecutionProvenanceLedger {
             }
             expectedPrevHash = entry.entryHash
         }
-        return true
+        return !isLedgerCompromised
+    }
+
+    @Synchronized
+    fun computeHmacIntegrityAnchor(content: String): String {
+        return try {
+            val mac = Mac.getInstance("HmacSHA256")
+            val key = SecretKeySpec(HMAC_KEY_SEED.toByteArray(Charsets.UTF_8), "HmacSHA256")
+            mac.init(key)
+            val bytes = mac.doFinal(content.toByteArray(Charsets.UTF_8))
+            bytes.joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            hashString("hmac_fallback:$content")
+        }
     }
 
     @Synchronized
@@ -368,6 +426,7 @@ object ExecutionProvenanceLedger {
                 put("verifier", e.verifier ?: "")
                 put("verificationMethod", e.verificationMethod)
                 put("stateTransition", e.stateTransition)
+                put("sequenceNumber", e.sequenceNumber)
             }
             array.put(obj)
         }

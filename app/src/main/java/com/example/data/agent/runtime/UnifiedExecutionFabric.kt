@@ -2003,13 +2003,13 @@ class UnifiedExecutionFabric(
 
             createResult(
                 request = request,
-                status = if (isError) UnifiedExecutionStatus.FAILED else UnifiedExecutionStatus.VERIFIED,
+                status = if (isError) UnifiedExecutionStatus.FAILED else UnifiedExecutionStatus.COMPLETED,
                 output = output,
                 error = if (isError) output else null,
                 executor = "ToolRegistry:${tool.definition.id}",
                 startedAt = startedAt,
-                verificationStatus = if (isError) UnifiedVerificationStatus.FAILED else UnifiedVerificationStatus.VERIFIED,
-                verificationEvidence = if (!isError) "Tool execution verified with non-error response" else null
+                verificationStatus = if (isError) UnifiedVerificationStatus.FAILED else UnifiedVerificationStatus.UNVERIFIED,
+                verificationEvidence = if (!isError) "Tool execution completed" else null
             )
         } catch (e: Exception) {
             createResult(

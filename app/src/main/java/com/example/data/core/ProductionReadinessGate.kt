@@ -207,25 +207,41 @@ object ProductionReadinessGate {
             )
         )
 
-        // 7. Local Neural Inference Runtime Check
+        // 7. Local Neural Inference Runtime Check across Supported Models Contract
         val nativeLlamaAvailable = try {
             com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
         } catch (_: Throwable) {
             false
         }
-        val smolLmPresent = try {
-            com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, "wasti-smollm")
-        } catch (_: Throwable) {
-            false
+        val supportedCandidateModelIds = listOf("wasti-smollm", "smollm", "llama-3.2-1b", "qwen2.5-0.5b", "mistral-7b", "gemma-2b", "phi-3-mini")
+        val anyModelWeightsPresent = supportedCandidateModelIds.any { modelId ->
+            try {
+                com.example.data.ai.engine.ModelArtifactManager.isWeightsPresent(context, modelId)
+            } catch (_: Throwable) {
+                false
+            }
         }
         val runtime = try {
             com.example.data.ai.runtime.WastiLocalModelRuntime(context)
         } catch (_: Throwable) {
             null
         }
-        val progressiveState = runtime?.getProgressiveState("wasti-smollm")
-            ?: com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
-        val isProvenNeural = runtime?.isGenuineNeuralExecutionProven("wasti-smollm") ?: false
+        
+        var highestProgressiveState = com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+        var isAnyProvenNeural = false
+        var verifiedModelId: String? = null
+
+        for (modelId in supportedCandidateModelIds) {
+            val state = runtime?.getProgressiveState(modelId) ?: com.example.data.ai.runtime.LocalNeuralProgressiveState.UNAVAILABLE
+            if (state.ordinal > highestProgressiveState.ordinal) {
+                highestProgressiveState = state
+            }
+            if (runtime?.isGenuineNeuralExecutionProven(modelId) == true) {
+                isAnyProvenNeural = true
+                verifiedModelId = modelId
+                break
+            }
+        }
 
         // Check if there is valid provenance evidence recorded in the ledger for local neural inference
         val provenanceEvidenceOk = try {
@@ -241,14 +257,14 @@ object ProductionReadinessGate {
             false
         }
 
-        val isVerifiedNeural = progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED && isProvenNeural && provenanceEvidenceOk
-        val isExecutableNeural = (progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE || progressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED) && isProvenNeural
-        val isOperationalNeural = nativeLlamaAvailable && smolLmPresent && isExecutableNeural
+        val isVerifiedNeural = highestProgressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED && isAnyProvenNeural && provenanceEvidenceOk
+        val isExecutableNeural = (highestProgressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.EXECUTABLE || highestProgressiveState == com.example.data.ai.runtime.LocalNeuralProgressiveState.VERIFIED) && isAnyProvenNeural
+        val isOperationalNeural = nativeLlamaAvailable && anyModelWeightsPresent && isExecutableNeural
 
         val localNeuralState = when {
             isVerifiedNeural -> ProductionReadinessState.RELEASE_VERIFIED
             isExecutableNeural -> ProductionReadinessState.TEST_VERIFIED
-            nativeLlamaAvailable && smolLmPresent -> ProductionReadinessState.DEVELOPMENT_READY
+            nativeLlamaAvailable && anyModelWeightsPresent -> ProductionReadinessState.DEVELOPMENT_READY
             else -> ProductionReadinessState.NOT_READY
         }
         checks.add(
@@ -257,7 +273,7 @@ object ProductionReadinessGate {
                 isOperational = isOperationalNeural,
                 isLiveVerified = isVerifiedNeural,
                 state = localNeuralState,
-                notes = "State: $progressiveState (nativeLib=$nativeLlamaAvailable, weightsPresent=$smolLmPresent, provenNeural=$isProvenNeural, provenanceOk=$provenanceEvidenceOk)"
+                notes = "State: $highestProgressiveState (nativeLib=$nativeLlamaAvailable, weightsPresent=$anyModelWeightsPresent, provenNeural=$isAnyProvenNeural, model=${verifiedModelId ?: "contract"}, provenanceOk=$provenanceEvidenceOk)"
             )
         )
 

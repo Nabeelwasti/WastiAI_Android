@@ -235,8 +235,17 @@ object NativeLlamaBridge {
         }
     }
 
+    fun setEmergencyStop(stopActive: Boolean) {
+        if (isNativeLibraryLoaded) {
+            try {
+                setEmergencyStopNative(stopActive)
+            } catch (_: Throwable) {}
+        }
+    }
+
     // Native external declarations (bound when native .so is bundled)
     external fun getNativeRuntimeVersion(): String
+    external fun setEmergencyStopNative(stopActive: Boolean)
     external fun initModel(modelPath: String, nThreads: Int, contextLength: Int): Long
     external fun evalPrompt(modelHandle: Long, prompt: String, maxTokens: Int, temperature: Float): String
     external fun freeModel(modelHandle: Long)

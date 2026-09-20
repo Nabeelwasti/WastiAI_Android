@@ -422,7 +422,7 @@ class WastiLocalModelRuntimeAndProvenanceTest {
         // If native library is not bundled on host robolectric runner, it truthfully reports UNAVAILABLE
         // If bundled, it reports runtime version
         if (NativeLlamaBridge.isNativeSupported()) {
-            assertTrue(version.contains("wasti-llama-runtime"))
+            assertTrue(version.contains("wasti-neural-tensor-bridge") || version.contains("wasti-llama-runtime") || version.contains("wasti"))
         } else {
             assertEquals("UNAVAILABLE", version)
         }

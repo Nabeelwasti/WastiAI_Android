@@ -8,6 +8,12 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.assistant.PermissionManager
+import com.example.data.agent.runtime.EvidenceSource
+import com.example.data.agent.runtime.ExecutionProvenanceLedger
+import com.example.data.agent.runtime.VerifiedExecutionEvidence
+import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.ai.runtime.NativeLlamaBridge
+import com.example.data.ai.runtime.WastiLocalTokenizer
 import com.example.data.core.DeviceExecutionRecord
 import com.example.data.core.DeviceVerificationEvidenceTracker
 import com.example.data.core.TestCategory
@@ -16,6 +22,7 @@ import com.example.data.notification.WastiNotificationManager
 import com.example.service.WastiAccessibilityService
 import com.example.service.WastiForegroundExecutionService
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -42,6 +49,8 @@ class RealDeviceAndroidCapabilityTest {
     @Before
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext ?: ApplicationProvider.getApplicationContext()
+        ExecutionProvenanceLedger.resetForTesting()
+        WastiEmergencyStopController.resetEmergencyStop()
     }
 
     @Test
@@ -78,19 +87,66 @@ class RealDeviceAndroidCapabilityTest {
 
     @Test
     fun testRealDevicePermissionTruth() {
-        // Enforce truthful reporting of runtime permissions on device
-        val hasMic = PermissionManager.isAudioPermissionGranted(context)
-        val hasOverlay = PermissionManager.canDrawOverlays(context)
-        // Values must be genuine booleans reflecting actual OS security state
-        assertTrue(hasMic == true || hasMic == false)
-        assertTrue(hasOverlay == true || hasOverlay == false)
+        val auditMap = PermissionManager.getPermissionAuditMap(context)
+        assertNotNull(auditMap)
+        assertTrue("Permission audit map must contain standard OS permission keys", auditMap.isNotEmpty())
     }
 
     @Test
-    fun testRealDeviceNativeBridgeAndHardwareAccelerationCheck() {
-        val isNativeSupported = com.example.data.ai.runtime.NativeLlamaBridge.isNativeSupported()
-        // On physical device or emulator, native library check returns true or false based on .so presence
-        assertTrue(isNativeSupported == true || isNativeSupported == false)
+    fun testRealDeviceNativeBridgeAndTokenizerBehavior() {
+        // Objective test of tokenizer behavior on device
+        val tokenizer = WastiLocalTokenizer(
+            vocab = mapOf("hello" to 100, "world" to 101, "wasti" to 102),
+            invVocab = mapOf(100 to "hello", 101 to "world", 102 to "wasti")
+        )
+        val encoded = tokenizer.encode("hello world")
+        assertEquals(listOf(100, 101), encoded)
+        val decoded = tokenizer.decode(encoded)
+        assertEquals("helloworld", decoded)
+
+        // Native bridge version check
+        val version = NativeLlamaBridge.getNativeVersion()
+        assertNotNull(version)
+        if (NativeLlamaBridge.isNativeSupported()) {
+            assertTrue("Native runtime version must contain wasti bridge identifier", version.contains("wasti-neural-tensor-bridge"))
+        } else {
+            assertEquals("UNAVAILABLE", version)
+        }
+    }
+
+    @Test
+    fun testRealDeviceEmergencyStopPropagation() {
+        assertFalse(WastiEmergencyStopController.isEmergencyStopped)
+
+        WastiEmergencyStopController.triggerEmergencyStop("Device test emergency stop")
+        assertTrue(WastiEmergencyStopController.isEmergencyStopped)
+        assertEquals("Device test emergency stop", WastiEmergencyStopController.getReason())
+
+        WastiEmergencyStopController.resetEmergencyStop()
+        assertFalse(WastiEmergencyStopController.isEmergencyStopped)
+    }
+
+    @Test
+    fun testRealDeviceProvenanceIntegrity() {
+        val entry = ExecutionProvenanceLedger.recordExecution(
+            taskId = "device_task_001",
+            actionId = "device_action_001",
+            capabilityId = "DEVICE_TEST",
+            providerId = "RealDeviceAndroidCapabilityTest",
+            inputContent = "test_input",
+            outputContent = "test_output",
+            evidence = VerifiedExecutionEvidence(
+                subject = "device_execution",
+                verifiedState = "SUCCESS",
+                confidence = 1.0,
+                evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+            )
+        )
+
+        assertNotNull(entry)
+        assertTrue(entry.isVerified)
+        assertTrue(ExecutionProvenanceLedger.verifyLedgerIntegrity())
+        assertTrue(ExecutionProvenanceLedger.verifyEntry(entry.entryId))
     }
 
     @Test
@@ -115,7 +171,10 @@ class RealDeviceAndroidCapabilityTest {
                 "NOTIFICATIONS",
                 "ACCESSIBILITY_REGISTERED",
                 "PACKAGE_IDENTITY_VERIFIED",
-                "RUNTIME_PERMISSIONS_CHECKED"
+                "RUNTIME_PERMISSIONS_CHECKED",
+                "TOKENIZER_VERIFIED",
+                "EMERGENCY_STOP_VERIFIED",
+                "PROVENANCE_LEDGER_VERIFIED"
             ),
             testRunSignature = "REAL_DEVICE_VERIFIED_${Build.MODEL}_${System.currentTimeMillis()}"
         )

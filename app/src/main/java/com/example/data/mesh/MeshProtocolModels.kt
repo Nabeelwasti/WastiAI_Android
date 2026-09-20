@@ -277,3 +277,65 @@ object MeshProtocolNegotiator {
         data class Incompatible(val reason: String) : NegotiationResult()
     }
 }
+
+/**
+ * Stage 16: Cryptographic Node Identity & Signature Infrastructure.
+ */
+data class NodeCryptoIdentity(
+    val nodeId: String,
+    val publicKeyHex: String,
+    val signatureAlgorithm: String = "SHA256withECDSA",
+    val createdAtMs: Long = System.currentTimeMillis()
+)
+
+/**
+ * Stage 16: Signed Capability Advertisement with lease terms and verifiable signature.
+ */
+data class SignedCapabilityAdvertisement(
+    val capabilityInfo: AdvertisedCapabilityInfo,
+    val publisherNodeId: String,
+    val signature: String,
+    val timestamp: Long = System.currentTimeMillis(),
+    val leaseDurationMs: Long = 60_000L,
+    val isRevoked: Boolean = false
+) {
+    fun isExpired(): Boolean = System.currentTimeMillis() > (timestamp + leaseDurationMs)
+    fun isValid(): Boolean = !isRevoked && !isExpired() && signature.isNotBlank()
+}
+
+/**
+ * Stage 16: Time-bounded Capability Lease with explicit revocation.
+ */
+data class CapabilityLease(
+    val leaseId: String = java.util.UUID.randomUUID().toString(),
+    val capabilityId: String,
+    val granterNodeId: String,
+    val granteeNodeId: String,
+    val grantedAtMs: Long = System.currentTimeMillis(),
+    val expiresAtMs: Long = System.currentTimeMillis() + 300_000L,
+    val maxOperationsAllowed: Int = 100,
+    val signature: String = "",
+    val isRevoked: Boolean = false
+) {
+    fun isExpired(): Boolean = System.currentTimeMillis() > expiresAtMs
+    fun isAuthorized(): Boolean = !isRevoked && !isExpired()
+}
+
+/**
+ * Stage 16: Cryptographic Challenge-Response Handshake for Authenticated Node Pairing.
+ */
+data class MeshHandshakeChallenge(
+    val challengeId: String = java.util.UUID.randomUUID().toString(),
+    val challengerNodeId: String,
+    val nonce: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+data class MeshHandshakeResponse(
+    val challengeId: String,
+    val responderNodeId: String,
+    val signedNonce: String,
+    val responderPublicKey: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
