@@ -45,22 +45,7 @@ data class ModelArchitectureContract(
 
 object SupportedModelContract {
 
-    val SUPPORTED_LOCAL_MODEL_IDS: List<String> = listOf(
-        "wasti-smollm",
-        "wasti-llama",
-        "wasti-qwen",
-        "wasti-gemma",
-        "wasti-phi",
-        "wasti-deepseek",
-        "wasti-mistral",
-        "wasti-granite",
-        "wasti-glm",
-        "wasti-commandr",
-        "wasti-falcon",
-        "wasti-stablelm"
-    )
-
-    private val contracts: Map<String, ModelArchitectureContract> = mapOf(
+    val KNOWN_MODEL_CONTRACTS: Map<String, ModelArchitectureContract> = mapOf(
         "wasti-smollm" to ModelArchitectureContract(
             modelId = "wasti-smollm",
             family = ModelArchitectureFamily.SMOLLM,
@@ -207,12 +192,30 @@ object SupportedModelContract {
         )
     )
 
+    val ALL_KNOWN_MODEL_IDS: List<String> = KNOWN_MODEL_CONTRACTS.keys.toList()
+
+    val SUPPORTED_LOCAL_MODEL_IDS: List<String> = KNOWN_MODEL_CONTRACTS
+        .filterValues { it.isLocalExecutionSupported }
+        .keys.toList()
+
+    val PROVEN_LOCAL_MODEL_IDS: List<String> = KNOWN_MODEL_CONTRACTS
+        .filterValues { it.isLocalExecutionSupported && AuthoritativeNeuralFixtures.hasProvenBinding(it.modelId) }
+        .keys.toList()
+
+    fun isKnownModel(modelId: String): Boolean = KNOWN_MODEL_CONTRACTS.containsKey(modelId)
+
     fun isSupportedLocalModel(modelId: String): Boolean {
-        return SUPPORTED_LOCAL_MODEL_IDS.contains(modelId) || contracts.containsKey(modelId)
+        val contract = KNOWN_MODEL_CONTRACTS[modelId] ?: return false
+        return contract.isLocalExecutionSupported
+    }
+
+    fun isProvenLocalModel(modelId: String): Boolean {
+        val contract = KNOWN_MODEL_CONTRACTS[modelId] ?: return false
+        return contract.isLocalExecutionSupported && AuthoritativeNeuralFixtures.hasProvenBinding(modelId)
     }
 
     fun getArchitectureContract(modelId: String): ModelArchitectureContract? {
-        return contracts[modelId]
+        return KNOWN_MODEL_CONTRACTS[modelId]
     }
 
     fun getAllLocalCandidateModelIds(): List<String> = SUPPORTED_LOCAL_MODEL_IDS
