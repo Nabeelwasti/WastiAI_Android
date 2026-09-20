@@ -155,7 +155,7 @@ class AutonomousSkillEvolutionEngine(
         val verResult = WastiVerificationEngine().verifyStructuredEvidence(
             taskId = "skill_eval_${skillId}",
             actionId = "eval_${System.currentTimeMillis()}",
-            capabilityId = skill.skillName,
+            capabilityId = skill.name,
             evidence = verifiedEvidence
         )
         recordExecutionOutcome(skillId, verResult)
