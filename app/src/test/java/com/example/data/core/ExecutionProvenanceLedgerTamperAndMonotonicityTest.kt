@@ -36,7 +36,11 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
                 evidenceSource = EvidenceSource.LOCAL_MODEL_INFERENCE,
                 subject = "local_native_inference:wasti-smollm",
                 verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                confidence = 0.95
+                confidence = 0.95,
+                expectedPostcondition = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                observedResult = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                declaredVerifier = "NativeLlamaBridge",
+                verificationMethod = "native_tensor_forward_pass_verification"
             ),
             evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
         )

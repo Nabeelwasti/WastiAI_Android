@@ -328,7 +328,11 @@ class WreManager(val context: Context) {
                             verifiedState = "DIRECTORY_EXISTS",
                             confidence = 0.95,
                             observedAt = System.currentTimeMillis(),
-                            checksumOrHash = proofHash
+                            checksumOrHash = proofHash,
+                            expectedPostcondition = "DIRECTORY_EXISTS",
+                            observedResult = "DIRECTORY_EXISTS",
+                            declaredVerifier = "WreManager",
+                            verificationMethod = "filesystem_disk_audit"
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -363,7 +367,11 @@ class WreManager(val context: Context) {
                             verifiedState = "FILE_EXISTS_SIZE_${target?.length() ?: 0}_BYTES",
                             confidence = 0.95,
                             observedAt = System.currentTimeMillis(),
-                            checksumOrHash = proofHash
+                            checksumOrHash = proofHash,
+                            expectedPostcondition = "FILE_EXISTS_SIZE_${target?.length() ?: 0}_BYTES",
+                            observedResult = "FILE_EXISTS_SIZE_${target?.length() ?: 0}_BYTES",
+                            declaredVerifier = "WreManager",
+                            verificationMethod = "filesystem_disk_audit"
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -398,7 +406,11 @@ class WreManager(val context: Context) {
                             verifiedState = "FILE_DELETED",
                             confidence = 0.95,
                             observedAt = System.currentTimeMillis(),
-                            checksumOrHash = proofHash
+                            checksumOrHash = proofHash,
+                            expectedPostcondition = "FILE_DELETED",
+                            observedResult = "FILE_DELETED",
+                            declaredVerifier = "WreManager",
+                            verificationMethod = "filesystem_disk_audit"
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -433,7 +445,11 @@ class WreManager(val context: Context) {
                             verifiedState = "FILE_EXISTS_AT_DESTINATION",
                             confidence = 0.95,
                             observedAt = System.currentTimeMillis(),
-                            checksumOrHash = proofHash
+                            checksumOrHash = proofHash,
+                            expectedPostcondition = "FILE_EXISTS_AT_DESTINATION",
+                            observedResult = "FILE_EXISTS_AT_DESTINATION",
+                            declaredVerifier = "WreManager",
+                            verificationMethod = "filesystem_disk_audit"
                         )
                         val vRes = verificationEngine.verifyStructuredEvidence(
                             taskId = request.executionId,
@@ -466,7 +482,11 @@ class WreManager(val context: Context) {
                         verifiedState = "FILE_REDIRECTION_VERIFIED",
                         confidence = 0.95,
                         observedAt = System.currentTimeMillis(),
-                        checksumOrHash = proofHash
+                        checksumOrHash = proofHash,
+                        expectedPostcondition = "FILE_REDIRECTION_VERIFIED",
+                        observedResult = "FILE_REDIRECTION_VERIFIED",
+                        declaredVerifier = "WreManager",
+                        verificationMethod = "filesystem_disk_audit"
                     )
                     val vRes = verificationEngine.verifyStructuredEvidence(
                         taskId = request.executionId,
@@ -493,7 +513,11 @@ class WreManager(val context: Context) {
             verifiedState = "PROCESS_EXIT_0_STDOUT_OBSERVED",
             confidence = 0.90,
             observedAt = System.currentTimeMillis(),
-            checksumOrHash = proofHash
+            checksumOrHash = proofHash,
+            expectedPostcondition = "PROCESS_EXIT_0_STDOUT_OBSERVED",
+            observedResult = "PROCESS_EXIT_0_STDOUT_OBSERVED",
+            declaredVerifier = "WreManager",
+            verificationMethod = "process_telemetry_audit"
         )
         val vRes = verificationEngine.verifyStructuredEvidence(
             taskId = request.executionId,

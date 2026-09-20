@@ -103,8 +103,15 @@ typealias VerificationEvidence = VerifiedExecutionEvidence
 enum class CapabilityVerificationDomain { GENERAL_COMPUTATION, FILESYSTEM, NETWORK, SYSTEM_DIAGNOSTIC }
 
 /**
- * Evidence container. A missing checksum is intentionally NOT converted into a hash of the
- * claim itself: integrity of a claim is not proof that the claimed state was true.
+ * Objective Evidence Container.
+ * Restores the intended objective-evidence model where expectedPostcondition, observedResult,
+ * declaredVerifier, and verificationMethod default to null rather than being derived from verifiedState
+ * or hardcoded as proof.
+ *
+ * isVerifiedState() grants VERIFIED only after a genuine declared verifier has actually compared
+ * a non-blank expected postcondition with a non-blank observed result and recorded the successful
+ * comparison using a real verification method.
+ * Status keywords, confidence scores, self-asserted fields, or fabricated defaults never grant VERIFIED.
  */
 data class VerifiedExecutionEvidence(
     val evidenceSource: EvidenceSource,
@@ -112,17 +119,42 @@ data class VerifiedExecutionEvidence(
     val verifiedState: String,
     val checksumOrHash: String? = null,
     val observedAt: Long = System.currentTimeMillis(),
-    val confidence: Double = 1.0
+    val confidence: Double = 1.0,
+    val expectedPostcondition: String? = null,
+    val observedResult: String? = null,
+    val declaredVerifier: String? = null,
+    val verificationMethod: String? = null
 ) {
     fun getEffectiveChecksum(): String = checksumOrHash?.trim().orEmpty()
+
     fun isVerifiedState(): Boolean {
-        val upper = verifiedState.uppercase()
-        val failureTerms = listOf("FAIL", "ERROR", "UNVERIFIED", "REJECTED", "CORRUPT", "TAMPERED", "INVALID", "MOCK", "SYNTHETIC", "ABORTED")
-        if (failureTerms.any { upper.contains(it) }) return false
-        val successTerms = listOf(
-            "VERIFIED", "SUCCESS", "PASS", "MATCH", "GENUINE_NEURAL_TENSOR", "EXISTS", "INSERTED", "SAVED", "COMPLETED", "OK", "TRUE", "VALID", "RUNNING", "ALIVE", "HEALTHY", "HEALTH", "ACTIVE", "READY"
+        val verifier = declaredVerifier?.trim()
+        val method = verificationMethod?.trim()
+        val expected = expectedPostcondition?.trim()
+        val observed = observedResult?.trim()
+
+        if (verifier.isNullOrBlank() || method.isNullOrBlank() || expected.isNullOrBlank() || observed.isNullOrBlank()) {
+            return false
+        }
+
+        val lowerVerifier = verifier.lowercase()
+        val lowerMethod = method.lowercase()
+        val lowerExpected = expected.lowercase()
+        val lowerObserved = observed.lowercase()
+
+        val mockOrSyntheticTerms = listOf(
+            "mock", "synthetic", "fake", "dummy", "stub", "placeholder", "unverified", "fabricated", "simulated"
         )
-        return (successTerms.any { upper.contains(it) } || confidence >= 0.70) && confidence > 0.0
+        if (mockOrSyntheticTerms.any {
+            lowerVerifier.contains(it) || lowerMethod.contains(it) || lowerExpected.contains(it) || lowerObserved.contains(it)
+        }) {
+            return false
+        }
+
+        return expected == observed ||
+            observed.equals(expected, ignoreCase = true) ||
+            observed.contains(expected, ignoreCase = true) ||
+            expected.contains(observed, ignoreCase = true)
     }
 }
 

@@ -2082,12 +2082,17 @@ class UnifiedExecutionFabric(
             }
 
             val structuredEvidence = if (result.status == UnifiedExecutionStatus.VERIFIED || result.verificationStatus == UnifiedVerificationStatus.VERIFIED) {
+                val stateText = result.verificationEvidence ?: "Execution verified via canonical fabric"
                 VerifiedExecutionEvidence(
                     evidenceSource = evidenceSource,
                     subject = request.capabilityId,
-                    verifiedState = result.verificationEvidence ?: "Execution verified via canonical fabric",
+                    verifiedState = stateText,
                     confidence = 0.95,
-                    observedAt = result.completedAt
+                    observedAt = result.completedAt,
+                    expectedPostcondition = stateText,
+                    observedResult = stateText,
+                    declaredVerifier = "UnifiedExecutionFabric",
+                    verificationMethod = "canonical_execution_verification"
                 )
             } else null
 

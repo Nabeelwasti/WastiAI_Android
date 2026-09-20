@@ -456,7 +456,11 @@ class Stage6ObservationVerificationTest {
             subject = "workspace/manifest.json",
             verifiedState = "FILE_EXISTS_SHA256_VALID",
             checksumOrHash = "sha256:3b5d5c3712955042212316173ccf37be80000000000000000000000000000000",
-            confidence = 0.98
+            confidence = 0.98,
+            expectedPostcondition = "FILE_EXISTS_SHA256_VALID",
+            observedResult = "FILE_EXISTS_SHA256_VALID",
+            declaredVerifier = "WastiVerificationEngine",
+            verificationMethod = "filesystem_sha256_checksum"
         )
 
         val validRes = verificationEngine.verifyStructuredEvidence(
@@ -496,6 +500,50 @@ class Stage6ObservationVerificationTest {
             evidence = lowConfidenceEvidence
         )
         assertEquals(ActionVerificationStatus.FAILED, lowConfRes.status)
+    }
+
+    @Test
+    fun testObjectiveEvidenceModelAndIsVerifiedStateRules() {
+        // 1. Defaults must be null
+        val defaultEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+            subject = "test_subject",
+            verifiedState = "VERIFIED_SUCCESS_OK",
+            confidence = 1.0
+        )
+        assertNull(defaultEvidence.expectedPostcondition)
+        assertNull(defaultEvidence.observedResult)
+        assertNull(defaultEvidence.declaredVerifier)
+        assertNull(defaultEvidence.verificationMethod)
+        // 2. Status keywords, confidence, or self-asserted fields must NEVER grant VERIFIED alone
+        assertFalse(defaultEvidence.isVerifiedState())
+
+        // 3. Mock/synthetic verifier or method must be rejected
+        val mockVerifierEvidence = defaultEvidence.copy(
+            expectedPostcondition = "OK",
+            observedResult = "OK",
+            declaredVerifier = "mock_verifier",
+            verificationMethod = "synthetic_method"
+        )
+        assertFalse(mockVerifierEvidence.isVerifiedState())
+
+        // 4. Mismatched expected and observed must be rejected
+        val mismatchEvidence = defaultEvidence.copy(
+            expectedPostcondition = "FILE_CREATED",
+            observedResult = "FILE_NOT_FOUND",
+            declaredVerifier = "FilesystemAuditor",
+            verificationMethod = "direct_stat_probe"
+        )
+        assertFalse(mismatchEvidence.isVerifiedState())
+
+        // 5. Genuine verifier comparing expected and observed results via verification method must succeed
+        val genuineEvidence = defaultEvidence.copy(
+            expectedPostcondition = "FILE_EXISTS_SHA256_VALID",
+            observedResult = "FILE_EXISTS_SHA256_VALID",
+            declaredVerifier = "WastiVerificationEngine",
+            verificationMethod = "canonical_sha256_audit"
+        )
+        assertTrue(genuineEvidence.isVerifiedState())
     }
 
     // 17. [P0-02 Adversarial Test]: Stale and forward-dated evidence rejection

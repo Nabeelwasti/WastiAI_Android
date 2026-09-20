@@ -139,7 +139,11 @@ class RealDeviceAndroidCapabilityTest {
                 subject = "device_execution",
                 verifiedState = "SUCCESS",
                 confidence = 1.0,
-                evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+                evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+                expectedPostcondition = "SUCCESS",
+                observedResult = "SUCCESS",
+                declaredVerifier = "RealDeviceAndroidCapabilityTest",
+                verificationMethod = "real_device_execution_verification"
             )
         )
 

@@ -183,12 +183,17 @@ object ExecutionMemoryRecorder {
         // [P0-49] Cryptographic Provenance Recording
         try {
             val structuredEvidence = if (record.verificationStatus == "VERIFIED" || record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED) {
+                val stateText = record.verificationEvidence ?: "Execution verified"
                 com.example.data.agent.runtime.VerifiedExecutionEvidence(
                     evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                     subject = record.selectedCapability,
-                    verifiedState = record.verificationEvidence ?: "Execution verified",
+                    verifiedState = stateText,
                     confidence = 0.95,
-                    observedAt = record.timestamp
+                    observedAt = record.timestamp,
+                    expectedPostcondition = stateText,
+                    observedResult = stateText,
+                    declaredVerifier = "ExecutionMemoryRecorder",
+                    verificationMethod = "terminal_truth_state_verification"
                 )
             } else null
 

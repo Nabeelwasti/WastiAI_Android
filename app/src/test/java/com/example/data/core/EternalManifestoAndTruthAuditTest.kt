@@ -2484,7 +2484,11 @@ class EternalManifestoAndTruthAuditTest {
                 evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                 subject = "AUDIT",
                 verifiedState = "Passed",
-                confidence = 0.95
+                confidence = 0.95,
+                expectedPostcondition = "Passed",
+                observedResult = "Passed",
+                declaredVerifier = "SecurityAuditEngine",
+                verificationMethod = "process_audit_verification"
             )
         )
         assertEquals(1, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())

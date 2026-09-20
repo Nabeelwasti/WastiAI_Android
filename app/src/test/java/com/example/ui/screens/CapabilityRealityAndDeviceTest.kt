@@ -340,7 +340,11 @@ class CapabilityRealityAndDeviceTest {
                 subject = "test_execution",
                 verifiedState = "VERIFIED",
                 confidence = 1.0,
-                observedAt = System.currentTimeMillis()
+                observedAt = System.currentTimeMillis(),
+                expectedPostcondition = "VERIFIED",
+                observedResult = "VERIFIED",
+                declaredVerifier = "AutonomousSkillEvolutionEngine",
+                verificationMethod = "filesystem_execution_proof"
             )
             evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)
             evolutionEngine.recordExecutionOutcome(learnedSkill.skillId, verifiedEvidence = evidence)

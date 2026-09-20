@@ -185,7 +185,11 @@ class WastiPolyglotTerminalEngine(
                     evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                     subject = "polyglot_${outcome.language.name.lowercase()}",
                     verifiedState = if (isExplicitlyVerified) "VERIFIED" else "OBSERVED",
-                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.80 else 0.0
+                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.80 else 0.0,
+                    expectedPostcondition = if (isExplicitlyVerified) "VERIFIED" else null,
+                    observedResult = if (isExplicitlyVerified) "VERIFIED" else null,
+                    declaredVerifier = if (isExplicitlyVerified) "WastiPolyglotTerminalEngine" else null,
+                    verificationMethod = if (isExplicitlyVerified) "polyglot_process_exit_verification" else null
                 )
             } else null
             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(

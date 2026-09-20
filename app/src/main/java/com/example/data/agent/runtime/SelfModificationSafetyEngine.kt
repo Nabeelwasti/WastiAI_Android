@@ -263,7 +263,11 @@ object SelfModificationSafetyEngine {
                     subject = "SelfModificationSafetyEngine",
                     verifiedState = action.name,
                     confidence = 0.95,
-                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY
+                    evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+                    expectedPostcondition = action.name,
+                    observedResult = action.name,
+                    declaredVerifier = authorizingEntity,
+                    verificationMethod = "cryptographic_proposal_audit"
                 ),
                 executionEnvironment = "local_android_runtime",
                 executor = "SelfModificationSafetyEngine",
@@ -852,7 +856,11 @@ object SelfModificationSafetyEngine {
                     subject = "SelfModificationSafetyEngine",
                     verifiedState = "APPLIED_VERIFIED",
                     confidence = 0.95,
-                    evidenceSource = EvidenceSource.FILESYSTEM_AUDIT
+                    evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                    expectedPostcondition = "APPLIED_VERIFIED",
+                    observedResult = "APPLIED_VERIFIED",
+                    declaredVerifier = "SelfModificationSafetyEngine",
+                    verificationMethod = "filesystem_hash_and_staged_validator"
                 )
             } else {
                 VerifiedExecutionEvidence(

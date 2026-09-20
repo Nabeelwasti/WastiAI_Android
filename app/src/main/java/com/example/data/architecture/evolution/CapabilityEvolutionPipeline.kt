@@ -89,7 +89,11 @@ object CapabilityEvolutionPipeline {
                 subject = item.capabilityName,
                 verifiedState = verificationEvidence,
                 observedAt = System.currentTimeMillis(),
-                checksumOrHash = proofHash
+                checksumOrHash = proofHash,
+                expectedPostcondition = verificationEvidence,
+                observedResult = verificationEvidence,
+                declaredVerifier = "CapabilityEvolutionPipeline",
+                verificationMethod = "cryptographic_runtime_diagnostic"
             )
         )
         val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED

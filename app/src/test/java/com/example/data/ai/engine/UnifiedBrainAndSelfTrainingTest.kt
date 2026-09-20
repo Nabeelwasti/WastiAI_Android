@@ -114,7 +114,11 @@ class UnifiedBrainAndSelfTrainingTest {
             evidenceSource = EvidenceSource.FILESYSTEM,
             subject = "service_worker_config",
             verifiedState = "CONFIG_APPLIED",
-            confidence = 0.95
+            confidence = 0.95,
+            expectedPostcondition = "CONFIG_APPLIED",
+            observedResult = "CONFIG_APPLIED",
+            declaredVerifier = "UnifiedBrainEngine",
+            verificationMethod = "filesystem_config_applied"
         )
 
         val artifact = SelfTrainingKnowledgeDistillationEngine.recordVerifiedInteractionAndDistill(

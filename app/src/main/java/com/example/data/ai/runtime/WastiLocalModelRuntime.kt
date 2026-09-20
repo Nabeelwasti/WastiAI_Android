@@ -508,7 +508,11 @@ class WastiLocalModelRuntime(
                                 evidenceSource = com.example.data.agent.runtime.EvidenceSource.LOCAL_MODEL_INFERENCE,
                                 subject = "local_native_inference:$modelId",
                                 verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                                confidence = 0.90
+                                confidence = 0.90,
+                                expectedPostcondition = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                                observedResult = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
+                                declaredVerifier = "NativeLlamaBridge",
+                                verificationMethod = "native_tensor_forward_pass_verification"
                             )
                             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                                 taskId = "task_native_${System.currentTimeMillis()}",

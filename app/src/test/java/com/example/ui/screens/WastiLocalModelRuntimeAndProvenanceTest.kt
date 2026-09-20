@@ -152,7 +152,11 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             evidenceSource = EvidenceSource.FILESYSTEM,
             subject = "workspace_create",
             verifiedState = "DIR_EXISTS",
-            confidence = 1.0
+            confidence = 1.0,
+            expectedPostcondition = "DIR_EXISTS",
+            observedResult = "DIR_EXISTS",
+            declaredVerifier = "WastiSandbox",
+            verificationMethod = "filesystem_directory_check"
         )
 
         val e1 = ExecutionProvenanceLedger.recordExecution(
@@ -170,7 +174,11 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             evidenceSource = EvidenceSource.DATABASE_QUERY,
             subject = "memory_write",
             verifiedState = "RECORD_INSERTED",
-            confidence = 0.95
+            confidence = 0.95,
+            expectedPostcondition = "RECORD_INSERTED",
+            observedResult = "RECORD_INSERTED",
+            declaredVerifier = "MemoryManager",
+            verificationMethod = "database_query_verification"
         )
 
         val e2 = ExecutionProvenanceLedger.recordExecution(
