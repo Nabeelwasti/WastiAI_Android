@@ -71,7 +71,7 @@ object CapabilityInventionEngine {
             override val supportedCapabilities: List<String> = listOf(def.capabilityId)
             override suspend fun execute(request: UnifiedExecutionRequest,context: Context?): UnifiedExecutionResult {
                 val startedAt = System.currentTimeMillis(); val output = executeSandboxTransform(def.executionLogicType,def.transformScript,request.parameters.mapValues { it.value.toString() }); val isSuccess = output.isNotBlank() && !output.startsWith("Error:")
-                return UnifiedExecutionResult(taskId = request.taskId,actionId = request.actionId,capabilityId = request.capabilityId,status = if (isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,output = output,executor = executorId,startedAt = startedAt,completedAt = System.currentTimeMillis(),verificationStatus = if (isSuccess) UnifiedVerificationStatus.UNVERIFIED else UnifiedVerificationStatus.FAILED,verificationEvidence = "Invention sandbox execution with provenance hash: ${def.provenanceHash}")
+                return UnifiedExecutionResult(taskId = request.taskId,actionId = request.actionId,capabilityId = request.capabilityId,status = if (isSuccess) UnifiedExecutionStatus.COMPLETED else UnifiedExecutionStatus.FAILED,output = output,executor = executorId,startedAt = startedAt,completedAt = System.currentTimeMillis(),verificationStatus = if (isSuccess) UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE else UnifiedVerificationStatus.FAILED,verificationEvidence = "Invention sandbox execution with provenance hash: ${def.provenanceHash}")
             }
         }
         UnifiedExecutionFabric.instance.registerExecutor(dynamicExecutor)
