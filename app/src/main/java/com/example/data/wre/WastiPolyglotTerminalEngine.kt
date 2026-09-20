@@ -177,18 +177,23 @@ class WastiPolyglotTerminalEngine(
         }
 
         val duration = System.currentTimeMillis() - startTime
-        val isExplicitlyVerified = outcome.verificationState == "VERIFIED" || (outcome.isSuccess && outcome.exitCode == 0)
+        val isExplicitlyVerified = outcome.verificationState == "VERIFIED"
 
         try {
+            val proofHash = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("${request.executionId}:${request.command}:${outcome.exitCode}:${outcome.stdout.hashCode()}".toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+
             val evidence = if (outcome.verificationEvidence != null) {
                 com.example.data.agent.runtime.VerifiedExecutionEvidence(
                     evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                     subject = "polyglot_${outcome.language.name.lowercase()}",
-                    verifiedState = if (isExplicitlyVerified) "VERIFIED" else "OBSERVED",
-                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.80 else 0.0,
-                    expectedPostcondition = if (isExplicitlyVerified) "VERIFIED" else null,
-                    observedResult = if (isExplicitlyVerified) "VERIFIED" else null,
-                    declaredVerifier = if (isExplicitlyVerified) "WastiPolyglotTerminalEngine" else null,
+                    verifiedState = "PROCESS_EXIT_${outcome.exitCode}",
+                    confidence = if (isExplicitlyVerified) 0.95 else if (outcome.isSuccess) 0.85 else 0.0,
+                    checksumOrHash = proofHash,
+                    expectedPostcondition = if (isExplicitlyVerified) outcome.verificationEvidence else null,
+                    observedResult = if (isExplicitlyVerified) outcome.verificationEvidence else null,
+                    declaredVerifier = if (isExplicitlyVerified) "WastiVerificationEngine" else null,
                     verificationMethod = if (isExplicitlyVerified) "polyglot_process_exit_verification" else null
                 )
             } else null
@@ -203,7 +208,8 @@ class WastiPolyglotTerminalEngine(
                 runtimeVersion = outcome.runtimeIdentity,
                 executionEnvironment = "wasti_polyglot_terminal",
                 executor = "WastiPolyglotTerminalEngine",
-                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> ${if (isExplicitlyVerified) "VERIFIED" else "OBSERVED"}"
+                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> ${if (isExplicitlyVerified) "VERIFIED" else "OBSERVED"}",
+                evidenceLevel = if (isExplicitlyVerified) com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED else com.example.data.agent.runtime.EvidenceLadder.IMPLEMENTED
             )
         } catch (_: Throwable) {}
 

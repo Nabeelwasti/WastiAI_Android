@@ -65,7 +65,7 @@ object ExecutionProvenanceLedger {
     private var isLedgerCompromised = false
 
     private val anchorKeyBytes: ByteArray by lazy {
-        loadOrCreateAnchorKey()
+        getOrGenerateKeystoreAnchorKey()
     }
 
     init {
@@ -77,6 +77,36 @@ object ExecutionProvenanceLedger {
         val dir = File(userHome, ".wasti_ai/provenance")
         if (!dir.exists()) dir.mkdirs()
         return dir
+    }
+
+    private fun getOrGenerateKeystoreAnchorKey(): ByteArray {
+        try {
+            val keyStore = java.security.KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            val alias = "wasti_provenance_anchor_key"
+            if (!keyStore.containsAlias(alias)) {
+                try {
+                    val keyGenerator = javax.crypto.KeyGenerator.getInstance(
+                        "HmacSHA256", "AndroidKeyStore"
+                    )
+                    val specClass = Class.forName("android.security.keystore.KeyGenParameterSpec\$Builder")
+                    val purposes = 4 // KeyProperties.PURPOSE_SIGN
+                    val builder = specClass.getConstructor(String::class.java, Int::class.javaPrimitiveType).newInstance(alias, purposes)
+                    val buildMethod = specClass.getMethod("build")
+                    val spec = buildMethod.invoke(builder)
+                    val initMethod = keyGenerator.javaClass.getMethod("init", java.security.spec.AlgorithmParameterSpec::class.java)
+                    initMethod.invoke(keyGenerator, spec)
+                    keyGenerator.generateKey()
+                } catch (_: Throwable) {}
+            }
+            val secretKey = keyStore.getKey(alias, null) as? javax.crypto.SecretKey
+            if (secretKey != null && secretKey.encoded != null) {
+                return secretKey.encoded
+            }
+        } catch (_: Throwable) {
+            // AndroidKeyStore unavailable in JVM unit test environment; use protected storage anchor
+        }
+        return loadOrCreateAnchorKey()
     }
 
     private fun loadOrCreateAnchorKey(): ByteArray {
