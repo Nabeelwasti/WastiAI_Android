@@ -525,7 +525,7 @@ class WastiLocalModelRuntime(
                                 evidence = evidence,
                                 executor = "NativeLlamaBridge",
                                 verifier = "WastiVerificationEngine",
-                                evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.OBSERVED
+                                evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.INTEGRATION_TESTED
                             )
                             com.example.data.agent.runtime.UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
                                 com.example.data.agent.runtime.CapabilityReality(
