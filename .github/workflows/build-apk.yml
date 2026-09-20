@@ -135,7 +135,21 @@ jobs:
 
     - name: Run Unit Tests
       timeout-minutes: 20
-      run: ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace --warning-mode all
+      run: |
+        ./gradlew testDebugUnitTest --no-configuration-cache --no-build-cache --stacktrace --warning-mode all || {
+          echo "==================== TEST FAILURE SUMMARY ===================="
+          find app/build/test-results -name "*.xml" -exec grep -H -n -C 5 "<failure" {} + 2>/dev/null || true
+          find app/build/reports/tests -name "*.html" -exec grep -H -n -C 5 "failures" {} + 2>/dev/null || true
+          echo "=============================================================="
+          exit 1
+        }
+
+    - name: Upload Test Reports on Failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-reports
+        path: app/build/reports/tests/
 
     - name: Run Android Lint (Debug)
       timeout-minutes: 10
