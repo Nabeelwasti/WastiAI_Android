@@ -319,7 +319,6 @@ class WastiObservationEngine(
         capabilityId: String
     ): ObservationResult {
         val hasIndependentProof = executorResult.details.containsKey("artifact_path") ||
-            (executorResult.details["exit_code"]?.toIntOrNull() == 0) ||
             (executorResult.details["probe_verified"] == "true") ||
             (isExecutionSuccessful(executorResult) && isVerified(executorResult))
 

@@ -503,32 +503,12 @@ class WreManager(val context: Context) {
             }
         }
 
-        // Canonical verification for successful process execution (e.g. pwd, whoami, python, etc.)
-        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("${request.executionId}:${request.command}:${result.exitCode}:${result.stdout.hashCode()}".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        val structured = VerifiedExecutionEvidence(
-            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
-            subject = "wre_process:${request.command.take(64)}",
-            verifiedState = "PROCESS_EXIT_0_STDOUT_OBSERVED",
-            confidence = 0.90,
-            observedAt = System.currentTimeMillis(),
-            checksumOrHash = proofHash,
-            expectedPostcondition = "PROCESS_EXIT_0_STDOUT_OBSERVED",
-            observedResult = "PROCESS_EXIT_0_STDOUT_OBSERVED",
-            declaredVerifier = "WastiVerificationEngine",
-            verificationMethod = "process_telemetry_audit"
-        )
-        val vRes = verificationEngine.verifyStructuredEvidence(
-            taskId = request.executionId,
-            actionId = request.command.take(32),
-            capabilityId = "terminal_execution",
-            evidence = structured
-        )
+        // Generic process execution without independent postcondition verification (e.g. echo, pwd, cat, ls):
+        // Execution succeeded, but no independent external post-state probe is available.
         return result.copy(
-            verified = vRes.status == ActionVerificationStatus.VERIFIED,
-            verificationEvidence = result.verificationEvidence ?: "Execution verified with exit code 0",
-            verifiedExecutionEvidence = if (vRes.status == ActionVerificationStatus.VERIFIED) structured else null
+            verified = false,
+            verificationEvidence = null,
+            verifiedExecutionEvidence = null
         )
     }
 
