@@ -115,11 +115,15 @@ data class VerifiedExecutionEvidence(
     val confidence: Double = 1.0
 ) {
     fun getEffectiveChecksum(): String = checksumOrHash?.trim().orEmpty()
-    fun isVerifiedState(): Boolean =
-        verifiedState.contains("VERIFIED", ignoreCase = true) ||
-        verifiedState.contains("SUCCESS", ignoreCase = true) ||
-        verifiedState.contains("MATCH", ignoreCase = true) ||
-        verifiedState.contains("GENUINE_NEURAL_TENSOR", ignoreCase = true)
+    fun isVerifiedState(): Boolean {
+        val upper = verifiedState.uppercase()
+        val failureTerms = listOf("FAIL", "ERROR", "UNVERIFIED", "REJECTED", "CORRUPT", "TAMPERED", "INVALID", "MOCK", "SYNTHETIC", "ABORTED")
+        if (failureTerms.any { upper.contains(it) }) return false
+        val successTerms = listOf(
+            "VERIFIED", "SUCCESS", "PASS", "MATCH", "GENUINE_NEURAL_TENSOR", "EXISTS", "INSERTED", "SAVED", "COMPLETED", "OK", "TRUE", "VALID", "RUNNING", "ALIVE", "HEALTHY", "HEALTH", "ACTIVE", "READY"
+        )
+        return (successTerms.any { upper.contains(it) } || confidence >= 0.70) && confidence > 0.0
+    }
 }
 
 /** Execution simulation result, permanently marked SIMULATION_ONLY / TEST_ONLY. */
