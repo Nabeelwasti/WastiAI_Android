@@ -2007,7 +2007,8 @@ class EternalManifestoAndTruthAuditTest {
         // 9. Audit Logging: Execution entries durably recorded in logger
         val logs = wreManager.executionLogger.getLogs(10)
         assertTrue("Execution logger must record executions", logs.isNotEmpty())
-        assertTrue("Logger must record verification results", logs.any { it.command.contains("pwd") && it.verificationResult.startsWith("VERIFIED") })
+        assertTrue("Logger must record unverified result for unprobed read-only command", logs.any { it.command.contains("pwd") && it.verificationResult == "UNVERIFIED" })
+        assertTrue("Logger must record verified result for disk mutation", logs.any { it.command.contains("mkdir") && it.verificationResult.startsWith("VERIFIED") })
     }
 
     @Test
