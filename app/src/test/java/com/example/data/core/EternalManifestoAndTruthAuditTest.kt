@@ -2471,25 +2471,47 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals(0, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertTrue(com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyLedgerIntegrity())
 
-        // 2. Record first execution (chains from GENESIS_HASH)
-        val entry1 = com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+        // 2. Authoritative verification via WastiVerificationEngine and provenance recording
+        val verificationEngine = com.example.data.agent.runtime.WastiVerificationEngine()
+        val capEvidence = com.example.data.agent.runtime.CapabilitySpecificEvidence(
             taskId = "task_prov_1",
             actionId = "run_audit",
             capabilityId = "AUDIT",
-            providerId = "local_node",
+            executor = "local_node",
+            observationSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = "audit_telemetry_stream",
+            expectedState = "PROCESS_EXIT_0_AUDIT_PASSED",
+            observedState = "PROCESS_EXIT_0_AUDIT_PASSED",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "process_audit_verification",
+            confidence = 0.95
+        )
+        val verificationResult = verificationEngine.verify(capEvidence)
+        assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED, verificationResult.status)
+
+        val verifiedEvidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+            evidenceSource = capEvidence.observationSource,
+            subject = capEvidence.capabilityId,
+            verifiedState = capEvidence.observedState,
+            checksumOrHash = capEvidence.checksumOrHash,
+            observedAt = capEvidence.timestamp,
+            confidence = verificationResult.confidence,
+            expectedPostcondition = capEvidence.expectedState,
+            observedResult = capEvidence.observedState,
+            declaredVerifier = capEvidence.verifierIdentity,
+            verificationMethod = capEvidence.verificationMethod
+        )
+
+        val entry1 = com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+            taskId = capEvidence.taskId,
+            actionId = capEvidence.actionId,
+            capabilityId = capEvidence.capabilityId,
+            providerId = capEvidence.executor,
             modelId = null,
             inputContent = "Inspect system security",
             outputContent = "Audit passed 0 defects",
-            evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
-                evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
-                subject = "AUDIT",
-                verifiedState = "Passed",
-                confidence = 0.95,
-                expectedPostcondition = "Passed",
-                observedResult = "Passed",
-                declaredVerifier = "WastiVerificationEngine",
-                verificationMethod = "process_audit_verification"
-            )
+            evidence = verifiedEvidence
         )
         assertEquals(1, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertEquals(com.example.data.agent.runtime.ExecutionProvenanceLedger.GENESIS_HASH, entry1.previousEntryHash)

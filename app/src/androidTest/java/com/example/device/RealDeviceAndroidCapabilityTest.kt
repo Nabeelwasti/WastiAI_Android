@@ -128,23 +128,45 @@ class RealDeviceAndroidCapabilityTest {
 
     @Test
     fun testRealDeviceProvenanceIntegrity() {
-        val entry = ExecutionProvenanceLedger.recordExecution(
+        val verificationEngine = com.example.data.agent.runtime.WastiVerificationEngine()
+        val capEvidence = com.example.data.agent.runtime.CapabilitySpecificEvidence(
             taskId = "device_task_001",
             actionId = "device_action_001",
-            capabilityId = "DEVICE_TEST",
-            providerId = "RealDeviceAndroidCapabilityTest",
+            capabilityId = "device_hardware_audit",
+            executor = "RealDeviceAndroidCapabilityTest",
+            observationSource = EvidenceSource.PROCESS_TELEMETRY,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = "device_hardware_telemetry",
+            expectedState = "DEVICE_HARDWARE_TELEMETRY_VERIFIED",
+            observedState = "DEVICE_HARDWARE_TELEMETRY_VERIFIED",
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "real_device_execution_verification",
+            confidence = 1.0
+        )
+        val verificationResult = verificationEngine.verify(capEvidence)
+        org.junit.Assert.assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED, verificationResult.status)
+
+        val verifiedEvidence = VerifiedExecutionEvidence(
+            evidenceSource = capEvidence.observationSource,
+            subject = capEvidence.capabilityId,
+            verifiedState = capEvidence.observedState,
+            checksumOrHash = capEvidence.checksumOrHash,
+            observedAt = capEvidence.timestamp,
+            confidence = verificationResult.confidence,
+            expectedPostcondition = capEvidence.expectedState,
+            observedResult = capEvidence.observedState,
+            declaredVerifier = capEvidence.verifierIdentity,
+            verificationMethod = capEvidence.verificationMethod
+        )
+
+        val entry = ExecutionProvenanceLedger.recordExecution(
+            taskId = capEvidence.taskId,
+            actionId = capEvidence.actionId,
+            capabilityId = capEvidence.capabilityId,
+            providerId = capEvidence.executor,
             inputContent = "test_input",
             outputContent = "test_output",
-            evidence = VerifiedExecutionEvidence(
-                subject = "device_execution",
-                verifiedState = "SUCCESS",
-                confidence = 1.0,
-                evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
-                expectedPostcondition = "SUCCESS",
-                observedResult = "SUCCESS",
-                declaredVerifier = "WastiVerificationEngine",
-                verificationMethod = "real_device_execution_verification"
-            )
+            evidence = verifiedEvidence
         )
 
         assertNotNull(entry)
