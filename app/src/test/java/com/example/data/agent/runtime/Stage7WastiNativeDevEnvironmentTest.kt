@@ -223,7 +223,7 @@ class Stage7WastiNativeDevEnvironmentTest {
         )
 
         val createResult = fabric.execute(createReq)
-        assertEquals(UnifiedExecutionStatus.VERIFIED, createResult.status)
+        assertEquals(UnifiedExecutionStatus.COMPLETED, createResult.status)
         assertEquals("WastiProjectManager", createResult.executor)
 
         // Observation of project creation
