@@ -177,7 +177,7 @@ class WastiPolyglotTerminalEngine(
         }
 
         val duration = System.currentTimeMillis() - startTime
-        val isExplicitlyVerified = outcome.verificationState == "VERIFIED"
+        var isExplicitlyVerified = false
 
         try {
             val proofHash = java.security.MessageDigest.getInstance("SHA-256")
@@ -206,7 +206,7 @@ class WastiPolyglotTerminalEngine(
                     evidence = evidence
                 )
             } else null
-            val isExplicitlyVerified = verResult?.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
+            isExplicitlyVerified = verResult?.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
 
             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                 taskId = "polyglot_${System.currentTimeMillis()}",
@@ -223,23 +223,11 @@ class WastiPolyglotTerminalEngine(
                 evidenceLevel = if (isExplicitlyVerified) com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED else com.example.data.agent.runtime.EvidenceLadder.INTEGRATION_TESTED,
                 verificationResult = verResult
             )
-
-            return ExecutionResult(
-                executionId = request.executionId,
-                command = request.command,
-                exitCode = outcome.exitCode,
-                stdout = outcome.stdout,
-                stderr = outcome.stderr,
-                durationMs = duration,
-                status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
-                verified = isExplicitlyVerified,
-                verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
-            )
         } catch (t: Throwable) {
             android.util.Log.w("WastiPolyglotTerminalEngine", "Provenance recording notice: ${t.message}")
         }
 
-        return ExecutionResult(
+        ExecutionResult(
             executionId = request.executionId,
             command = request.command,
             exitCode = outcome.exitCode,
@@ -247,7 +235,7 @@ class WastiPolyglotTerminalEngine(
             stderr = outcome.stderr,
             durationMs = duration,
             status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
-            verified = false,
+            verified = isExplicitlyVerified,
             verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
         )
     }
