@@ -378,7 +378,7 @@ class UnifiedWorkflowEngine(
                 parameters = node.inputParameters,
                 dependsOnStepIds = node.dependencies.mapNotNull { nodeToStepMap[it]?.stepId },
                 description = node.description,
-                requiresVerification = true
+                requiresVerification = classifyEvidenceRequirement(node.expectedEvidenceType)
             )
             nodeToStepMap[node.nodeId] = step
             steps.add(step)
@@ -390,7 +390,7 @@ class UnifiedWorkflowEngine(
                     name = "Inspect System Environment",
                     capabilityId = "system_info",
                     description = "Retrieve system diagnostics and status",
-                    requiresVerification = true
+                    requiresVerification = false // system_info is genuinely read-only telemetry
                 )
             )
         }
@@ -401,6 +401,40 @@ class UnifiedWorkflowEngine(
             steps = steps,
             requiredCapabilities = steps.map { it.capabilityId }.distinct()
         )
+    }
+
+    /**
+     * Canonical classification of expected evidence types:
+     * - Genuinely read-only / informational / unprobed execution queries do not require postcondition verification.
+     * - State-mutating operations with verifiable postconditions strictly require verification.
+     * - Unknown or unclassified evidence types fail closed by requiring verification.
+     */
+    private fun classifyEvidenceRequirement(expectedEvidenceType: String): Boolean {
+        return when (expectedEvidenceType.trim().uppercase(java.util.Locale.ROOT)) {
+            // Genuinely read-only / informational / query / execution-only operations
+            "SYSTEM_TELEMETRY",
+            "FILE_LIST",
+            "FILE_CONTENT",
+            "SCREEN_HIERARCHY",
+            "STRUCTURED_FINDINGS",
+            "SYNTHESIS_REPORT",
+            "KNOWLEDGE_GRAPH",
+            "COMPUTE_OUTPUT",
+            "DRAFT_ENTITY",
+            "EXECUTION_REPORT",
+            "EXECUTION_COMPLETION" -> false
+
+            // State-mutating operations with verifiable postconditions
+            "FILE_WRITTEN",
+            "BUILD_ARTIFACT",
+            "TEST_REPORT",
+            "UI_STATE_CHANGE",
+            "PROJECT_STRUCTURE",
+            "FILE_OPERATION_RESULT" -> true
+
+            // Fail closed for any unknown, unclassified, or omitted evidence types
+            else -> true
+        }
     }
 
     private fun buildFinalResult(

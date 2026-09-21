@@ -86,14 +86,16 @@ class Stage9EWorkflowOrchestrationTest {
         val step1 = WorkflowStep(
             name = "Step 1 - Initialize Environment",
             capabilityId = "system_info",
-            description = "Get device details"
+            description = "Get device details",
+            requiresVerification = false
         )
         val step2 = WorkflowStep(
             name = "Step 2 - Execute Post-Init Command",
             capabilityId = "terminal",
             parameters = mapOf("command" to "echo 'STEP_2_PROCESSED'"),
             dependsOnStepIds = listOf(step1.stepId),
-            description = "Dependent terminal execution"
+            description = "Dependent terminal execution",
+            requiresVerification = false
         )
 
         val task = WorkflowTask(
@@ -111,8 +113,8 @@ class Stage9EWorkflowOrchestrationTest {
 
         assertTrue(result.isSuccess)
         assertEquals(2, result.stepsExecuted)
-        assertEquals(WorkflowStepState.VERIFIED, step1.state)
-        assertEquals(WorkflowStepState.VERIFIED, step2.state)
+        assertEquals(WorkflowStepState.COMPLETED, step1.state)
+        assertEquals(WorkflowStepState.COMPLETED, step2.state)
         assertTrue(step2.executionResult?.output?.contains("STEP_2_PROCESSED") == true)
     }
 
@@ -256,7 +258,8 @@ class Stage9EWorkflowOrchestrationTest {
             name = "Truthful Verification Step",
             capabilityId = "terminal",
             parameters = mapOf("command" to "echo 'TRUTHFUL_VERIFICATION_EVIDENCE'"),
-            description = "Verify real evidence"
+            description = "Verify real evidence",
+            requiresVerification = false
         )
 
         val task = WorkflowTask(
@@ -286,7 +289,8 @@ class Stage9EWorkflowOrchestrationTest {
             name = "WRE Native Step",
             capabilityId = "terminal",
             parameters = mapOf("command" to "pwd"),
-            description = "Check WRE workspace"
+            description = "Check WRE workspace",
+            requiresVerification = false
         )
 
         val task = WorkflowTask(
@@ -318,5 +322,37 @@ class Stage9EWorkflowOrchestrationTest {
         assertEquals("echo 'WRE Test'", req.command)
         val status = ExecutionStatus.SUCCESS
         assertEquals("SUCCESS", status.name)
+    }
+
+    @Test
+    fun testL_ExplicitVerificationRequirementFailsWhenUnverified() = runBlocking {
+        // When a step explicitly requires verification (requiresVerification = true),
+        // but the underlying execution only produces UNVERIFIED status,
+        // the step must not be treated as successfully verified.
+        val strictStep = WorkflowStep(
+            name = "Strict Verification Required Step",
+            capabilityId = "terminal",
+            parameters = mapOf("command" to "pwd"),
+            description = "Requires independent postcondition verification",
+            requiresVerification = true
+        )
+
+        val task = WorkflowTask(
+            originalRequest = "Execute unverified command under strict verification contract",
+            steps = mutableListOf(strictStep),
+            plan = WorkflowPlan(
+                goal = "Strict verification test",
+                interpretedIntent = "STRICT_VERIFICATION",
+                steps = listOf(strictStep),
+                requiredCapabilities = listOf("terminal")
+            )
+        )
+
+        val result = workflowEngine.executeWorkflow(task, context)
+
+        assertFalse("Step requiring verification must fail if unverified", result.isSuccess)
+        assertEquals(AutonomousWorkflowState.FAILED, result.finalState)
+        assertEquals(WorkflowStepState.FAILED, strictStep.state)
+        assertEquals(UnifiedVerificationStatus.UNVERIFIED, strictStep.verificationStatus)
     }
 }
