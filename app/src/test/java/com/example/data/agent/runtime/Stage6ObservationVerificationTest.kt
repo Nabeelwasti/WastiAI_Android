@@ -585,7 +585,11 @@ class Stage6ObservationVerificationTest {
         assertFalse(mismatchRes.status == ActionVerificationStatus.VERIFIED)
 
         // 5. Genuine verifier comparing expected and observed results via verification method must succeed
-        val genuineEvidence = defaultEvidence.copy(
+        val genuineEvidence = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.FILESYSTEM,
+            subject = "workspace/manifest.json",
+            verifiedState = "FILE_EXISTS_SHA256_VALID",
+            confidence = 0.98,
             expectedPostcondition = "FILE_EXISTS_SHA256_VALID",
             observedResult = "FILE_EXISTS_SHA256_VALID",
             declaredVerifier = "WastiVerificationEngine",
@@ -593,6 +597,20 @@ class Stage6ObservationVerificationTest {
         )
         val genuineRes = engine.verifyStructuredEvidence("t", "a", "c", genuineEvidence)
         assertTrue(genuineRes.status == ActionVerificationStatus.VERIFIED)
+
+        // 6. Adversarial anti-self-certification: raw process telemetry cannot certify verification even with matching strings
+        val processTelemetrySelfCertified = VerifiedExecutionEvidence(
+            evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+            subject = "polyglot_process",
+            verifiedState = "PROCESS_EXIT_0",
+            confidence = 0.95,
+            expectedPostcondition = "PROCESS_EXIT_0",
+            observedResult = "PROCESS_EXIT_0",
+            declaredVerifier = "WastiVerificationEngine",
+            verificationMethod = "polyglot_process_exit_verification"
+        )
+        val teleRes = engine.verifyStructuredEvidence("t", "a", "c", processTelemetrySelfCertified)
+        assertFalse("Process telemetry alone cannot certify postcondition verification", teleRes.status == ActionVerificationStatus.VERIFIED)
     }
 
     // 17. [P0-02 Adversarial Test]: Stale and forward-dated evidence rejection

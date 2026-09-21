@@ -250,7 +250,7 @@ class WastiNativeExecutionProvider(
             isSuccess = res.status.isSuccess,
             isTimeout = res.errorType == ExecutionErrorType.TIMEOUT,
             isCancelled = false,
-            verificationState = if (res.status.isSuccess) "VERIFIED_NATIVE_EXECUTION" else "FAILED_EXECUTION"
+            verificationState = if (res.status.isSuccess) "COMPLETED_NATIVE_EXECUTION" else "FAILED_EXECUTION"
         )
     }
 

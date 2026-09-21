@@ -80,22 +80,24 @@ object CapabilityEvolutionPipeline {
         val proofHash = java.security.MessageDigest.getInstance("SHA-256")
             .digest("$gapId:${item.capabilityName}:$verificationEvidence".toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
-        val vRes = engine.verifyStructuredEvidence(
+
+        val now = System.currentTimeMillis()
+        val capEvidence = com.example.data.agent.runtime.CapabilitySpecificEvidence(
             taskId = gapId,
             actionId = "evolve_capability",
             capabilityId = item.capabilityName,
-            evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
-                evidenceSource = com.example.data.agent.runtime.EvidenceSource.RUNTIME_DIAGNOSTIC,
-                subject = item.capabilityName,
-                verifiedState = verificationEvidence,
-                observedAt = System.currentTimeMillis(),
-                checksumOrHash = proofHash,
-                expectedPostcondition = verificationEvidence,
-                observedResult = verificationEvidence,
-                declaredVerifier = "WastiVerificationEngine",
-                verificationMethod = "cryptographic_runtime_diagnostic"
-            )
+            executor = "CapabilityEvolutionPipeline",
+            observationSource = com.example.data.agent.runtime.EvidenceSource.RUNTIME_DIAGNOSTIC,
+            timestamp = now,
+            artifactOrStateReference = item.capabilityName,
+            checksumOrHash = proofHash,
+            expectedState = verificationEvidence,
+            observedState = verificationEvidence,
+            verifierIdentity = "WastiVerificationEngine",
+            verificationMethod = "cryptographic_runtime_diagnostic",
+            confidence = 0.95
         )
+        val vRes = engine.verify(capEvidence, com.example.data.agent.runtime.CapabilityVerificationDomain.GENERAL_COMPUTATION)
         val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
         if (!isCanonicallyVerified) {
             return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence verified by canonical WastiVerificationEngine required."))

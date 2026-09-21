@@ -255,10 +255,24 @@ class WastiVerificationEngine {
             )
         }
 
+        // Process telemetry alone without an independent domain probe cannot certify postcondition verification
+        if (evidence.evidenceSource == EvidenceSource.PROCESS_TELEMETRY) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                evidence = "Verification Unavailable: Process telemetry alone without an independent external domain probe cannot certify postcondition verification",
+                confidence = 0.0,
+                failureReason = "Process telemetry unprobed",
+                structuredEvidence = evidence
+            )
+        }
+
         // Generic claims rejected
         val lowerExpected = expected.lowercase()
         val lowerObserved = observed.lowercase()
-        val genericPlaceholders = setOf("true", "success", "ok", "passed", "done", "http_200", "http 200", "200 ok")
+        val genericPlaceholders = setOf("true", "success", "ok", "passed", "done", "http_200", "http 200", "200 ok", "process_exit_0", "process_exit_0_stdout_observed", "verified_state")
         if (genericPlaceholders.contains(lowerExpected) || genericPlaceholders.contains(lowerObserved)) {
             return VerificationResult(
                 taskId = taskId,

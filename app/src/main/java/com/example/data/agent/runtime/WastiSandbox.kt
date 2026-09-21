@@ -256,7 +256,7 @@ class WastiSandbox(
                 },
                 verificationState = when {
                     emergencyStopTriggeredDuringExecution -> "STOPPED_DURING_EXECUTION"
-                    executionResult.status.isSuccess -> "VERIFIED_SANDBOX_EXECUTION"
+                    executionResult.status.isSuccess -> "COMPLETED_SANDBOX_EXECUTION"
                     executionResult.errorType == ExecutionErrorType.TIMEOUT -> "FAILED_TIMEOUT"
                     else -> "FAILED_EXECUTION"
                 },

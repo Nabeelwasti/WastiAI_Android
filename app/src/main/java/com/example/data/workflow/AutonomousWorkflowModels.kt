@@ -30,8 +30,7 @@ enum class AutonomousWorkflowState {
 
 fun AutonomousWorkflowState.toUnifiedExecutionStatus(): UnifiedExecutionStatus = when (this) {
     AutonomousWorkflowState.SUCCESS, AutonomousWorkflowState.COMPLETED -> UnifiedExecutionStatus.COMPLETED
-    AutonomousWorkflowState.VERIFYING -> UnifiedExecutionStatus.VERIFIED
-    AutonomousWorkflowState.EXECUTING, AutonomousWorkflowState.OBSERVING -> UnifiedExecutionStatus.RUNNING
+    AutonomousWorkflowState.VERIFYING, AutonomousWorkflowState.EXECUTING, AutonomousWorkflowState.OBSERVING -> UnifiedExecutionStatus.RUNNING
     AutonomousWorkflowState.FAILED, AutonomousWorkflowState.BLOCKED -> UnifiedExecutionStatus.FAILED
     else -> UnifiedExecutionStatus.PENDING
 }

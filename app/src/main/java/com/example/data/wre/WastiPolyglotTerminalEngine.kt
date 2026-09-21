@@ -177,37 +177,8 @@ class WastiPolyglotTerminalEngine(
         }
 
         val duration = System.currentTimeMillis() - startTime
-        var isExplicitlyVerified = false
 
         try {
-            val proofHash = java.security.MessageDigest.getInstance("SHA-256")
-                .digest("${request.executionId}:${request.command}:${outcome.exitCode}:${outcome.stdout.hashCode()}".toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
-
-            val evidence = if (outcome.verificationEvidence != null) {
-                com.example.data.agent.runtime.VerifiedExecutionEvidence(
-                    evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
-                    subject = "polyglot_${outcome.language.name.lowercase()}",
-                    verifiedState = "PROCESS_EXIT_${outcome.exitCode}",
-                    confidence = if (outcome.isSuccess) 0.90 else 0.0,
-                    checksumOrHash = proofHash,
-                    expectedPostcondition = outcome.verificationEvidence,
-                    observedResult = outcome.verificationEvidence,
-                    declaredVerifier = "WastiVerificationEngine",
-                    verificationMethod = "polyglot_process_exit_verification"
-                )
-            } else null
-
-            val verResult = if (evidence != null && outcome.isSuccess) {
-                com.example.data.agent.runtime.WastiVerificationEngine().verifyStructuredEvidence(
-                    taskId = request.executionId.ifBlank { "polyglot_${System.currentTimeMillis()}" },
-                    actionId = request.command.take(32),
-                    capabilityId = "POLYGLOT_${outcome.language.name}",
-                    evidence = evidence
-                )
-            } else null
-            isExplicitlyVerified = verResult?.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
-
             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                 taskId = "polyglot_${System.currentTimeMillis()}",
                 actionId = request.executionId.ifBlank { "exec_${System.currentTimeMillis()}" },
@@ -215,13 +186,13 @@ class WastiPolyglotTerminalEngine(
                 providerId = "WastiPolyglotTerminalEngine",
                 inputContent = request.command,
                 outputContent = outcome.stdout.ifBlank { outcome.stderr },
-                evidence = evidence,
+                evidence = null,
                 runtimeVersion = outcome.runtimeIdentity,
                 executionEnvironment = "wasti_polyglot_terminal",
                 executor = "WastiPolyglotTerminalEngine",
-                stateTransition = if (isExplicitlyVerified) "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED -> VERIFIED" else "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED",
-                evidenceLevel = if (isExplicitlyVerified) com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED else com.example.data.agent.runtime.EvidenceLadder.INTEGRATION_TESTED,
-                verificationResult = verResult
+                stateTransition = "DISPATCHED -> EXECUTOR_COMPLETED -> OBSERVED",
+                evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.INTEGRATION_TESTED,
+                verificationResult = null
             )
         } catch (t: Throwable) {
             android.util.Log.w("WastiPolyglotTerminalEngine", "Provenance recording notice: ${t.message}")
@@ -235,8 +206,8 @@ class WastiPolyglotTerminalEngine(
             stderr = outcome.stderr,
             durationMs = duration,
             status = if (outcome.isSuccess) ExecutionStatus.SUCCESS else ExecutionStatus.FAILED,
-            verified = isExplicitlyVerified,
-            verificationEvidence = outcome.verificationEvidence ?: "Executed via Polyglot Engine (${outcome.language})"
+            verified = false,
+            verificationEvidence = null
         )
     }
 

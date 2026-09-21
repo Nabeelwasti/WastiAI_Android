@@ -119,11 +119,12 @@ object ExecutionMemoryRecorder {
             }
         }
 
-        // Truthful state mapping: Do NOT claim VERIFIED_FAILED if task succeeded unverified
+        // Truthful state mapping: Do NOT claim VERIFIED_SUCCESS unless verificationStatus is authentically VERIFIED
         try {
             val outcomeStr = when {
                 record.terminalTruthState != null -> record.terminalTruthState.name
-                record.isSuccess == true -> "VERIFIED_SUCCESS"
+                record.verificationStatus == "VERIFIED" && record.isSuccess == true -> "VERIFIED_SUCCESS"
+                record.isSuccess == true -> "COMPLETED_EXECUTION"
                 record.verificationStatus == "VERIFICATION_FAILED" -> "VERIFICATION_FAILED"
                 record.isSuccess == false -> "EXECUTION_FAILED"
                 else -> "COMPLETED_UNVERIFIED"
@@ -147,7 +148,7 @@ object ExecutionMemoryRecorder {
 
             // High importance for verified success or explicit failures needing debugging
             val importance = when {
-                record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED || record.isSuccess == true -> 0.8f
+                record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED || (record.verificationStatus == "VERIFIED" && record.isSuccess == true) -> 0.8f
                 record.terminalTruthState == TerminalTruthState.VERIFICATION_FAILED || record.isSuccess == false -> 0.7f
                 else -> 0.4f
             }
@@ -182,21 +183,6 @@ object ExecutionMemoryRecorder {
 
         // [P0-49] Cryptographic Provenance Recording
         try {
-            val structuredEvidence = if (record.verificationStatus == "VERIFIED" || record.terminalTruthState == TerminalTruthState.COMPLETED_VERIFIED) {
-                val stateText = record.verificationEvidence ?: "Execution verified"
-                com.example.data.agent.runtime.VerifiedExecutionEvidence(
-                    evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
-                    subject = record.selectedCapability,
-                    verifiedState = stateText,
-                    confidence = 0.95,
-                    observedAt = record.timestamp,
-                    expectedPostcondition = stateText,
-                    observedResult = stateText,
-                    declaredVerifier = "ExecutionMemoryRecorder",
-                    verificationMethod = "terminal_truth_state_verification"
-                )
-            } else null
-
             com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
                 taskId = record.taskId,
                 actionId = record.interpretedIntent,
@@ -205,7 +191,7 @@ object ExecutionMemoryRecorder {
                 modelId = null,
                 inputContent = record.goal,
                 outputContent = record.verificationEvidence ?: record.error ?: "Outcome: ${record.terminalTruthState?.name ?: record.isSuccess}",
-                evidence = structuredEvidence
+                evidence = null
             )
         } catch (provErr: Exception) {
             Log.w(TAG, "Provenance recording warning: ${provErr.message}")

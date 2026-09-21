@@ -116,7 +116,7 @@ class Stage7CapabilityDiscoveryAndTerminalTest {
         assertTrue(result.isSuccess)
         assertEquals(0, result.exitCode)
         assertTrue(result.stdout.contains("WastiNativeRuntime"))
-        assertEquals("VERIFIED_NATIVE_EXECUTION", result.verificationState)
+        assertEquals("COMPLETED_NATIVE_EXECUTION", result.verificationState)
     }
 
     // 7. Native Command Execution - Missing Binary Truth Reporting
