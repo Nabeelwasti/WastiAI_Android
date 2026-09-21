@@ -277,7 +277,7 @@ class Stage9EWorkflowOrchestrationTest {
 
         assertTrue(result.isSuccess)
         assertNotNull(result.verificationEvidence)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, step.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, step.verificationStatus)
         assertNotNull(step.verificationEvidence)
         assertTrue(step.verificationEvidence!!.isNotBlank())
     }
@@ -327,7 +327,7 @@ class Stage9EWorkflowOrchestrationTest {
     @Test
     fun testL_ExplicitVerificationRequirementFailsWhenUnverified() = runBlocking {
         // When a step explicitly requires verification (requiresVerification = true),
-        // but the underlying execution only produces UNVERIFIED status,
+        // but the underlying execution only produces VERIFICATION_UNAVAILABLE status,
         // the step must not be treated as successfully verified.
         val strictStep = WorkflowStep(
             name = "Strict Verification Required Step",
@@ -353,6 +353,6 @@ class Stage9EWorkflowOrchestrationTest {
         assertFalse("Step requiring verification must fail if unverified", result.isSuccess)
         assertEquals(AutonomousWorkflowState.FAILED, result.finalState)
         assertEquals(WorkflowStepState.FAILED, strictStep.state)
-        assertEquals(UnifiedVerificationStatus.UNVERIFIED, strictStep.verificationStatus)
+        assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, strictStep.verificationStatus)
     }
 }
