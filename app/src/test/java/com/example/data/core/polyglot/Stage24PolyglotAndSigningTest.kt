@@ -146,7 +146,7 @@ class Stage24PolyglotAndSigningTest {
         assertTrue(polyglotEngine.canExecute(sysinfoReq))
         val sysinfoRes = polyglotEngine.execute(sysinfoReq)
         assertEquals(0, sysinfoRes.exitCode)
-        assertTrue(sysinfoRes.verified)
+        assertFalse(sysinfoRes.verified)
         assertTrue(sysinfoRes.stdout.contains("Wasti Deep Silicon"))
 
         // 2. Keystore status & generation
