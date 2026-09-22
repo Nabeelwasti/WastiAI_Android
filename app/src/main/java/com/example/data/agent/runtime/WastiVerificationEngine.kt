@@ -131,6 +131,15 @@ class WastiVerificationEngine {
             )
         }
 
+        // Process telemetry alone without an independent domain probe cannot certify postcondition verification
+        checkProcessTelemetryUnprobed(
+            source = evidence.observationSource,
+            taskId = request.taskId,
+            actionId = request.actionId,
+            capabilityId = request.capabilityId,
+            capabilitySpecificEvidence = evidence
+        )?.let { return it }
+
         // 5. Confidence Threshold
         if (evidence.confidence < MIN_VERIFIED_CONFIDENCE) {
             return VerificationResult(
@@ -256,18 +265,13 @@ class WastiVerificationEngine {
         }
 
         // Process telemetry alone without an independent domain probe cannot certify postcondition verification
-        if (evidence.evidenceSource == EvidenceSource.PROCESS_TELEMETRY) {
-            return VerificationResult(
-                taskId = taskId,
-                actionId = actionId,
-                capabilityId = capabilityId,
-                status = ActionVerificationStatus.NOT_VERIFIABLE,
-                evidence = "Verification Unavailable: Process telemetry alone without an independent external domain probe cannot certify postcondition verification",
-                confidence = 0.0,
-                failureReason = "Process telemetry unprobed",
-                structuredEvidence = evidence
-            )
-        }
+        checkProcessTelemetryUnprobed(
+            source = evidence.evidenceSource,
+            taskId = taskId,
+            actionId = actionId,
+            capabilityId = capabilityId,
+            structuredEvidence = evidence
+        )?.let { return it }
 
         // Generic claims rejected
         val lowerExpected = expected.lowercase()
@@ -576,6 +580,30 @@ class WastiVerificationEngine {
             }
             else -> true to "OK"
         }
+    }
+
+    private fun checkProcessTelemetryUnprobed(
+        source: EvidenceSource,
+        taskId: String,
+        actionId: String,
+        capabilityId: String,
+        structuredEvidence: VerifiedExecutionEvidence? = null,
+        capabilitySpecificEvidence: CapabilitySpecificEvidence? = null
+    ): VerificationResult? {
+        if (source == EvidenceSource.PROCESS_TELEMETRY) {
+            return VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                evidence = "Verification Unavailable: Process telemetry alone without an independent external domain probe cannot certify postcondition verification",
+                confidence = 0.0,
+                failureReason = "Process telemetry unprobed",
+                structuredEvidence = structuredEvidence,
+                capabilitySpecificEvidence = capabilitySpecificEvidence
+            )
+        }
+        return null
     }
 
     private fun normalizeCapability(id: String): String =

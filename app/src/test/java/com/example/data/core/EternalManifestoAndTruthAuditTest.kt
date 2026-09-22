@@ -2488,7 +2488,7 @@ class EternalManifestoAndTruthAuditTest {
             confidence = 0.95
         )
         val verificationResult = verificationEngine.verify(capEvidence)
-        assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED, verificationResult.status)
+        assertEquals(com.example.data.agent.runtime.ActionVerificationStatus.NOT_VERIFIABLE, verificationResult.status)
 
         val verifiedEvidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
             evidenceSource = capEvidence.observationSource,
@@ -2515,7 +2515,8 @@ class EternalManifestoAndTruthAuditTest {
         )
         assertEquals(1, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertEquals(com.example.data.agent.runtime.ExecutionProvenanceLedger.GENESIS_HASH, entry1.previousEntryHash)
-        assertTrue("Entry 1 must be verified", entry1.isVerified)
+        assertFalse("Entry 1 with unprobed process telemetry must be isVerified == false", entry1.isVerified)
+        assertEquals("OBSERVED", entry1.verificationStatus)
         assertTrue("Entry 1 cryptographic signature must verify", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(entry1.entryId))
         assertTrue("Ledger with 1 entry must maintain integrity", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyLedgerIntegrity())
 

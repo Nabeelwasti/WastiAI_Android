@@ -328,8 +328,41 @@ object ExecutionProvenanceLedger {
         val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
 
         // Zero-Fabrication Invariant: status is VERIFIED only when authoritative WastiVerificationEngine succeeded
-        val authoritativeVerResult = verificationResult ?: evidence?.let {
-            WastiVerificationEngine().verifyStructuredEvidence(taskId, actionId, capabilityId, it)
+        val authoritativeVerResult = when {
+            verificationResult?.capabilitySpecificEvidence != null -> {
+                val req = VerificationRequest(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    executionResult = UnifiedExecutionResult(
+                        taskId = taskId,
+                        actionId = actionId,
+                        capabilityId = capabilityId,
+                        status = UnifiedExecutionStatus.COMPLETED,
+                        output = outputContent,
+                        executor = providerId
+                    ),
+                    observationResult = ObservationResult(
+                        taskId = taskId,
+                        actionId = actionId,
+                        capabilityId = capabilityId,
+                        status = ObservationStatus.OBSERVED,
+                        observedState = outputContent,
+                        evidence = outputContent
+                    ),
+                    capabilitySpecificEvidence = verificationResult.capabilitySpecificEvidence
+                )
+                WastiVerificationEngine().verify(req)
+            }
+            verificationResult?.structuredEvidence != null -> {
+                WastiVerificationEngine().verifyStructuredEvidence(
+                    taskId, actionId, capabilityId, verificationResult.structuredEvidence!!
+                )
+            }
+            evidence != null -> {
+                WastiVerificationEngine().verifyStructuredEvidence(taskId, actionId, capabilityId, evidence)
+            }
+            else -> null
         }
         val isAuthoritativeVerified = authoritativeVerResult != null &&
             authoritativeVerResult.status == ActionVerificationStatus.VERIFIED &&
