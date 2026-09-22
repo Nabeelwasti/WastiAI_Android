@@ -97,8 +97,9 @@ object CapabilityEvolutionPipeline {
             verificationMethod = "cryptographic_runtime_diagnostic",
             confidence = 0.95
         )
-        val vRes = engine.verify(capEvidence, com.example.data.agent.runtime.CapabilityVerificationDomain.GENERAL_COMPUTATION)
-        val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
+        val (vRes, receipt) = com.example.data.agent.runtime.WastiTruthGate.verifyCapability(capEvidence)
+        val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED &&
+            receipt != null && com.example.data.agent.runtime.WastiTruthGate.validateReceipt(receipt)
         if (!isCanonicallyVerified) {
             return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence verified by canonical WastiVerificationEngine required."))
         }

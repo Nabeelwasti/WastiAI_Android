@@ -2516,7 +2516,7 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals(1, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertEquals(com.example.data.agent.runtime.ExecutionProvenanceLedger.GENESIS_HASH, entry1.previousEntryHash)
         assertFalse("Entry 1 with unprobed process telemetry must be isVerified == false", entry1.isVerified)
-        assertEquals("OBSERVED", entry1.verificationStatus)
+        assertEquals("NOT_VERIFIABLE", entry1.verificationStatus)
         assertTrue("Entry 1 cryptographic signature must verify", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(entry1.entryId))
         assertTrue("Ledger with 1 entry must maintain integrity", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyLedgerIntegrity())
 
@@ -2534,7 +2534,7 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals(2, com.example.data.agent.runtime.ExecutionProvenanceLedger.count())
         assertEquals(entry1.entryHash, entry2.previousEntryHash)
         assertFalse("Unverified entry must report isVerified == false", entry2.isVerified)
-        assertEquals("EXECUTOR_COMPLETED", entry2.verificationStatus)
+        assertEquals("UNVERIFIED", entry2.verificationStatus)
         assertTrue(com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(entry2.entryId))
         assertTrue("Ledger with 2 chained entries must maintain integrity", com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyLedgerIntegrity())
 

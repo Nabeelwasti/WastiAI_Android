@@ -313,7 +313,8 @@ object ExecutionProvenanceLedger {
         expectedState: String = "",
         observedState: String = "",
         howObserved: String = "",
-        verificationResult: VerificationResult? = null
+        verificationResult: VerificationResult? = null,
+        verificationReceipt: WastiVerificationReceipt? = null
     ): ProvenanceEntry {
         val currentList = _entries.value
         val prevHash = currentList.lastOrNull()?.entryHash ?: GENESIS_HASH
@@ -327,46 +328,42 @@ object ExecutionProvenanceLedger {
         val source = evidence?.evidenceSource ?: EvidenceSource.PROCESS_TELEMETRY
         val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
 
-        // Zero-Fabrication Invariant: status is VERIFIED only when authoritative WastiVerificationEngine succeeded
-        val authoritativeVerResult = when {
-            verificationResult?.capabilitySpecificEvidence != null -> {
-                val req = VerificationRequest(
+        // Canonical Gate Invariant: status is VERIFIED only when WastiTruthGate / WastiTruthAuthority validated
+        val (authoritativeVerResult, receipt) = when {
+            verificationReceipt != null && WastiTruthGate.validateReceipt(verificationReceipt) -> {
+                val res = VerificationResult(
                     taskId = taskId,
                     actionId = actionId,
                     capabilityId = capabilityId,
-                    executionResult = UnifiedExecutionResult(
-                        taskId = taskId,
-                        actionId = actionId,
-                        capabilityId = capabilityId,
-                        status = UnifiedExecutionStatus.COMPLETED,
-                        output = outputContent,
-                        executor = providerId
-                    ),
-                    observationResult = ObservationResult(
-                        taskId = taskId,
-                        actionId = actionId,
-                        capabilityId = capabilityId,
-                        status = ObservationStatus.OBSERVED,
-                        observedState = outputContent,
-                        evidence = outputContent
-                    ),
-                    capabilitySpecificEvidence = verificationResult.capabilitySpecificEvidence
+                    status = ActionVerificationStatus.VERIFIED,
+                    evidence = "Verified by WastiTruthAuthority receipt ${verificationReceipt.receiptId}",
+                    confidence = 1.0,
+                    evidenceLevel = verificationReceipt.evidenceLevel
                 )
-                WastiVerificationEngine().verify(req)
+                res to verificationReceipt
+            }
+            verificationResult?.capabilitySpecificEvidence != null -> {
+                WastiTruthGate.verifyCapability(verificationResult.capabilitySpecificEvidence!!)
             }
             verificationResult?.structuredEvidence != null -> {
-                WastiVerificationEngine().verifyStructuredEvidence(
-                    taskId, actionId, capabilityId, verificationResult.structuredEvidence!!
-                )
+                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, verificationResult.structuredEvidence!!)
             }
             evidence != null -> {
-                WastiVerificationEngine().verifyStructuredEvidence(taskId, actionId, capabilityId, evidence)
+                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, evidence)
             }
-            else -> null
+            else -> null to null
         }
+
         val isAuthoritativeVerified = authoritativeVerResult != null &&
             authoritativeVerResult.status == ActionVerificationStatus.VERIFIED &&
             authoritativeVerResult.isVerified
+
+        if (verificationResult?.status == ActionVerificationStatus.VERIFIED) {
+            val hasValidReceipt = verificationReceipt != null && WastiTruthGate.validateReceipt(verificationReceipt)
+            if (!hasValidReceipt && !isAuthoritativeVerified) {
+                throw IllegalStateException("Execution provenance entry claiming VERIFIED requires a valid WastiVerificationReceipt issued by WastiTruthAuthority.")
+            }
+        }
 
         val status = if (isAuthoritativeVerified) {
             "VERIFIED"

@@ -3,6 +3,8 @@ package com.example.data.ai.engine
 import com.example.data.agent.runtime.ActionVerificationStatus
 import com.example.data.agent.runtime.VerificationResult
 import com.example.data.agent.runtime.VerifiedExecutionEvidence
+import com.example.data.agent.runtime.WastiVerificationReceipt
+import com.example.data.agent.runtime.WastiTruthGate
 import com.example.data.ai.model.ModelSpecialization
 import com.example.data.ai.model.OpenSourceModelCatalog
 import com.example.data.memory.MemoryManager
@@ -51,9 +53,13 @@ object SelfTrainingKnowledgeDistillationEngine {
     suspend fun recordVerifiedInteractionAndDistill(
         taskPrompt: String,
         verificationResult: VerificationResult,
-        winningModelId: String
+        winningModelId: String,
+        receipt: WastiVerificationReceipt? = null
     ): DistilledKnowledgeArtifact? {
+        val isReceiptValid = receipt != null && WastiTruthGate.validateReceipt(receipt)
         if (verificationResult.status != ActionVerificationStatus.VERIFIED ||
+            !verificationResult.isVerified ||
+            !isReceiptValid ||
             verificationResult.confidence < 0.85 ||
             verificationResult.evidence.isBlank() ||
             isSyntheticOrMock(verificationResult.evidence)

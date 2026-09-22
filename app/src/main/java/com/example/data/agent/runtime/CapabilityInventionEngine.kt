@@ -43,7 +43,7 @@ object CapabilityInventionEngine {
             val passed = simulatedOutput.contains(test.expectedOutputPattern) || Regex(test.expectedOutputPattern).containsMatchIn(simulatedOutput)
             if (!passed) return@withContext CapabilityInventionResult(false, cleanId, "VERIFICATION_TEST_FAILED", null, "Test '${test.testName}' failed. Expected pattern '${test.expectedOutputPattern}', got: '$simulatedOutput'", "Sandbox verification rejected capability synthesis")
             val evidence = CapabilitySpecificEvidence(taskId = "invention_task_${UUID.randomUUID().toString().take(8)}",actionId = "verify_test_${test.testName}",capabilityId = cleanId,executor = "CapabilityInventionEngine",observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,timestamp = testStart,artifactOrStateReference = "script_hash:$scriptHash",expectedState = test.expectedOutputPattern,observedState = simulatedOutput.take(128),checksumOrHash = computeSha256(simulatedOutput),verifierIdentity = "WastiVerificationEngine_InventionGate",verificationMethod = "SANDBOX_UNIT_TEST")
-            val evaluation = verificationEngine.verify(evidence, test.verificationDomain, 60_000L)
+            val (evaluation, receipt) = WastiTruthGate.verifyCapability(evidence)
             if (!evaluation.isVerified) return@withContext CapabilityInventionResult(false, cleanId, "EVIDENCE_EVALUATION_FAILED", evidence, "Verification rejected: ${evaluation.explanation}", evaluation.explanation)
             lastEvidence = evidence
         }

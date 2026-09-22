@@ -843,8 +843,32 @@ object SelfModificationSafetyEngine {
             list.add(Pair(System.currentTimeMillis(), computeHash(newContent)))
         }
 
-        val contentIntegrityOk = targetFile.exists() && computeHash(targetFile.readText()) == computeHash(newContent)
-        val outcomeStatus = if (validatorVerified && contentIntegrityOk) {
+        val expectedHash = computeHash(newContent)
+        val actualHash = if (targetFile.exists()) computeHash(targetFile.readText()) else ""
+        val contentIntegrityOk = targetFile.exists() && actualHash == expectedHash
+
+        // Independent postcondition evaluation through WastiTruthGate
+        val postApplyEvidence = CapabilitySpecificEvidence(
+            taskId = "task_selfmod_${snapshot.snapshotId.take(8)}",
+            actionId = "self_modify_${targetFile.name}",
+            capabilityId = "SELF_MODIFICATION_SAFETY",
+            executor = "SelfModificationSafetyEngine",
+            observationSource = EvidenceSource.FILESYSTEM,
+            artifactOrStateReference = targetFile.absolutePath,
+            checksumOrHash = actualHash,
+            expectedState = expectedHash,
+            observedState = actualHash,
+            verifierIdentity = "WastiTruthAuthority",
+            verificationMethod = "post_apply_filesystem_hash_probe"
+        )
+
+        val (verResult, receipt) = WastiTruthGate.verifyCapability(postApplyEvidence)
+
+        val isCanonicallyVerified = verResult.status == ActionVerificationStatus.VERIFIED &&
+            receipt != null && WastiTruthGate.validateReceipt(receipt) &&
+            (stagedValidator == null || validatorVerified) && contentIntegrityOk
+
+        val outcomeStatus = if (isCanonicallyVerified) {
             ModificationOutcomeStatus.APPLIED_VERIFIED
         } else {
             ModificationOutcomeStatus.APPLIED_UNVERIFIED

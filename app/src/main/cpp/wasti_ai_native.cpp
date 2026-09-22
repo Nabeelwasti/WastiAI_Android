@@ -30,6 +30,7 @@ constexpr uint32_t GGML_TYPE_F16  = 1;
 constexpr uint32_t GGML_TYPE_Q4_0 = 2;
 constexpr uint32_t GGML_TYPE_Q4_1 = 3;
 constexpr uint32_t GGML_TYPE_Q8_0 = 8;
+constexpr uint32_t GGML_TYPE_Q4_K = 12;
 
 // Global atomic emergency stop flag for immediate native cancellation
 static std::atomic<bool> g_emergencyStopActive{false};
@@ -570,6 +571,11 @@ static bool calculateTensorByteSize(uint32_t type, uint64_t numElements, uint64_
             uint64_t nBlocks = numElements / 32;
             return safeMultiply(nBlocks, 34, outBytes);
         }
+        case GGML_TYPE_Q4_K: {
+            if (numElements % 256 != 0) return false;
+            uint64_t nBlocks = numElements / 256;
+            return safeMultiply(nBlocks, 144, outBytes);
+        }
         default:
             return false; // Explicitly reject unsupported quantized types
     }
@@ -660,6 +666,49 @@ static bool loadAndDecodeTensor(
                 targetBuf[b * 32 + i] = static_cast<float>(qs[i]) * d;
             }
             ptr += 34;
+        }
+        return true;
+    } else if (type == GGML_TYPE_Q4_K) {
+        if (numElements % 256 != 0) return false;
+        uint64_t nBlocks = numElements / 256;
+        std::vector<uint8_t> blockBuf(nBlocks * 144);
+        file.read(reinterpret_cast<char*>(blockBuf.data()), blockBuf.size());
+        if (!file || static_cast<size_t>(file.gcount()) != blockBuf.size()) return false;
+
+        const uint8_t* ptr = blockBuf.data();
+        for (uint64_t b = 0; b < nBlocks; ++b) {
+            uint16_t d_raw = *reinterpret_cast<const uint16_t*>(ptr);
+            uint16_t dmin_raw = *reinterpret_cast<const uint16_t*>(ptr + 2);
+            float d = halfToFloat(d_raw);
+            float dmin = halfToFloat(dmin_raw);
+            const uint8_t* scales = ptr + 4;
+            const uint8_t* qs = ptr + 16;
+
+            uint8_t sc[8];
+            uint8_t m[8];
+            for (int i = 0; i < 4; ++i) {
+                sc[i] = scales[i] & 63;
+                m[i] = scales[i + 4] & 63;
+            }
+            for (int i = 4; i < 8; ++i) {
+                sc[i] = (scales[i + 4] & 0x0F) | ((scales[i - 4] >> 6) << 4);
+                m[i] = ((scales[i + 4] >> 4) & 0x0F) | ((scales[i] >> 6) << 4);
+            }
+
+            for (int sb = 0; sb < 8; ++sb) {
+                float d_sc = d * static_cast<float>(sc[sb]);
+                float dmin_m = dmin * static_cast<float>(m[sb]);
+                int sb_offset = sb * 32;
+                int qs_offset = (sb / 2) * 32;
+                bool is_high_subblock = (sb % 2 != 0);
+
+                for (int i = 0; i < 32; ++i) {
+                    uint8_t q_byte = qs[qs_offset + i];
+                    uint8_t q = is_high_subblock ? (q_byte >> 4) : (q_byte & 0x0F);
+                    targetBuf[b * 256 + sb_offset + i] = (d_sc * static_cast<float>(q)) - dmin_m;
+                }
+            }
+            ptr += 144;
         }
         return true;
     }

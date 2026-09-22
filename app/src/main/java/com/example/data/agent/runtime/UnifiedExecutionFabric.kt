@@ -2086,18 +2086,32 @@ class UnifiedExecutionFabric(
             }
 
             val isVerified = result.verificationStatus == UnifiedVerificationStatus.VERIFIED && verResult?.status == ActionVerificationStatus.VERIFIED
-            val structuredEvidence = if (isVerified) {
-                val stateText = verResult?.evidence ?: result.verificationEvidence ?: "Execution verified by WastiVerificationEngine"
+            val (gateResult, receipt) = if (isVerified && verResult != null) {
+                WastiTruthGate.evaluateRaw(
+                    taskId = request.taskId,
+                    actionId = request.actionId,
+                    capabilityId = request.capabilityId,
+                    expectedState = verResult.evidence.ifBlank { result.output },
+                    observedState = verResult.evidence.ifBlank { result.output },
+                    observationSource = evidenceSource,
+                    confidence = verResult.confidence
+                )
+            } else null to null
+
+            val finalVerResult = if (gateResult?.status == ActionVerificationStatus.VERIFIED) gateResult else verResult
+
+            val structuredEvidence = if (finalVerResult?.status == ActionVerificationStatus.VERIFIED) {
+                val stateText = finalVerResult.evidence
                 VerifiedExecutionEvidence(
                     evidenceSource = evidenceSource,
                     subject = request.capabilityId,
                     verifiedState = stateText,
-                    confidence = verResult?.confidence ?: 0.95,
+                    confidence = finalVerResult.confidence,
                     observedAt = result.completedAt,
                     expectedPostcondition = stateText,
                     observedResult = stateText,
-                    declaredVerifier = "WastiVerificationEngine",
-                    verificationMethod = "canonical_postcondition_verification"
+                    declaredVerifier = "WastiTruthAuthority",
+                    verificationMethod = "canonical_truth_gate_verification"
                 )
             } else null
 
@@ -2110,7 +2124,8 @@ class UnifiedExecutionFabric(
                 inputContent = request.parameters.toString(),
                 outputContent = result.output,
                 evidence = structuredEvidence,
-                verificationResult = if (isVerified) verResult else null
+                verificationResult = if (finalVerResult?.status == ActionVerificationStatus.VERIFIED) finalVerResult else null,
+                verificationReceipt = receipt
             )
         } catch (e: Exception) {
             android.util.Log.w("UnifiedExecutionFabric", "Provenance record warning: ${e.message}")

@@ -139,9 +139,13 @@ object WastiToolGenerator {
      */
     fun promoteToolWithCanonicalVerification(
         toolId: String,
-        verificationResult: VerificationResult
+        verificationResult: VerificationResult,
+        receipt: WastiVerificationReceipt? = null
     ): Boolean {
+        val isReceiptValid = receipt != null && WastiTruthGate.validateReceipt(receipt)
         if (verificationResult.status != ActionVerificationStatus.VERIFIED ||
+            !verificationResult.isVerified ||
+            !isReceiptValid ||
             verificationResult.confidence < 0.85 ||
             verificationResult.evidence.isBlank() ||
             WastiVerificationEngine().isSyntheticOrMock(verificationResult.evidence)
