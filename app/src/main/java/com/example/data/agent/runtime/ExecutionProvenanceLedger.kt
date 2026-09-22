@@ -330,7 +330,14 @@ object ExecutionProvenanceLedger {
 
         // Canonical Gate Invariant: status is VERIFIED only when WastiTruthGate / WastiTruthAuthority validated
         val (authoritativeVerResult, receipt) = when {
-            verificationReceipt != null && WastiTruthGate.validateReceipt(verificationReceipt) -> {
+            verificationReceipt != null && WastiTruthGate.validateReceiptApplicability(
+                verificationReceipt,
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                inputHash = inputHash,
+                outputHash = outputHash
+            ) -> {
                 val res = VerificationResult(
                     taskId = taskId,
                     actionId = actionId,
@@ -359,7 +366,14 @@ object ExecutionProvenanceLedger {
             authoritativeVerResult.isVerified
 
         if (verificationResult?.status == ActionVerificationStatus.VERIFIED) {
-            val hasValidReceipt = verificationReceipt != null && WastiTruthGate.validateReceipt(verificationReceipt)
+            val hasValidReceipt = verificationReceipt != null && WastiTruthGate.validateReceiptApplicability(
+                verificationReceipt,
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                inputHash = inputHash,
+                outputHash = outputHash
+            )
             if (!hasValidReceipt && !isAuthoritativeVerified) {
                 throw IllegalStateException("Execution provenance entry claiming VERIFIED requires a valid WastiVerificationReceipt issued by WastiTruthAuthority.")
             }

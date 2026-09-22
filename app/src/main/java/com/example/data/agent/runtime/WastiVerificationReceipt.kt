@@ -1,6 +1,5 @@
 package com.example.data.agent.runtime
 
-import java.security.MessageDigest
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -18,13 +17,14 @@ data class WastiVerificationReceipt internal constructor(
     val timestamp: Long = System.currentTimeMillis(),
     val evidenceLevel: EvidenceLadder = EvidenceLadder.RUNTIME_VERIFIED,
     val postconditionHash: String,
+    val executionBindingHash: String = "",
     val signatureToken: String
 ) {
     /**
      * Compute the exact canonical payload bound to this receipt for signature verification.
      */
     fun computeCanonicalPayload(): String {
-        return "$receiptId|$taskId|$actionId|$capabilityId|$verifierIdentity|$timestamp|${evidenceLevel.name}|$postconditionHash"
+        return "$receiptId|$taskId|$actionId|$capabilityId|$verifierIdentity|$timestamp|${evidenceLevel.name}|$postconditionHash|$executionBindingHash"
     }
 
     companion object {

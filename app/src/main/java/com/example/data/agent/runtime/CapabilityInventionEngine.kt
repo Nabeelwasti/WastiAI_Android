@@ -35,16 +35,15 @@ object CapabilityInventionEngine {
         val cleanId = capabilityId.trim().lowercase().replace(" ", "_")
         if (SelfModificationSafetyEngine.isProtectedPath(cleanId)) return@withContext CapabilityInventionResult(false, cleanId, "BLOCKED_PROTECTED_PATH", null, "Cannot invent capability with protected system identifier: $cleanId", "Protected capability name violation")
         val scriptHash = computeSha256("$cleanId:$transformScript:${System.currentTimeMillis()}")
-        val verificationEngine = WastiVerificationEngine()
         var lastEvidence: CapabilitySpecificEvidence? = null
         for (test in testSpecifications) {
             val testStart = System.currentTimeMillis()
             val simulatedOutput = executeSandboxTransform(executionLogicType, transformScript, test.inputParameters)
             val passed = simulatedOutput.contains(test.expectedOutputPattern) || Regex(test.expectedOutputPattern).containsMatchIn(simulatedOutput)
             if (!passed) return@withContext CapabilityInventionResult(false, cleanId, "VERIFICATION_TEST_FAILED", null, "Test '${test.testName}' failed. Expected pattern '${test.expectedOutputPattern}', got: '$simulatedOutput'", "Sandbox verification rejected capability synthesis")
-            val evidence = CapabilitySpecificEvidence(taskId = "invention_task_${UUID.randomUUID().toString().take(8)}",actionId = "verify_test_${test.testName}",capabilityId = cleanId,executor = "CapabilityInventionEngine",observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,timestamp = testStart,artifactOrStateReference = "script_hash:$scriptHash",expectedState = test.expectedOutputPattern,observedState = simulatedOutput.take(128),checksumOrHash = computeSha256(simulatedOutput),verifierIdentity = "WastiVerificationEngine_InventionGate",verificationMethod = "SANDBOX_UNIT_TEST")
-            val (evaluation, receipt) = WastiTruthGate.verifyCapability(evidence)
-            if (!evaluation.isVerified) return@withContext CapabilityInventionResult(false, cleanId, "EVIDENCE_EVALUATION_FAILED", evidence, "Verification rejected: ${evaluation.explanation}", evaluation.explanation)
+            val evidence = CapabilitySpecificEvidence(taskId = "invention_task_${UUID.randomUUID().toString().take(8)}",actionId = "verify_test_${test.testName}",capabilityId = cleanId,executor = "CapabilityInventionEngine",observationSource = ObservationSource.RUNTIME_DIAGNOSTIC,timestamp = testStart,artifactOrStateReference = "script_hash:$scriptHash",expectedState = test.expectedOutputPattern,observedState = simulatedOutput.take(128),checksumOrHash = computeSha256(simulatedOutput),verifierIdentity = "CapabilityInventionEngine_InventionGate",verificationMethod = "SANDBOX_UNIT_TEST")
+            val (gateResult, _) = WastiTruthGate.verifyCapability(evidence)
+            if (gateResult.status == ActionVerificationStatus.FAILED) return@withContext CapabilityInventionResult(false, cleanId, "EVIDENCE_EVALUATION_FAILED", evidence, "Verification rejected: ${gateResult.evidence}", gateResult.evidence)
             lastEvidence = evidence
         }
         val definition = AcquiredCapabilityDefinition(capabilityId = cleanId,displayName = displayName,description = description,parameterSchema = parameterSchema,executionLogicType = executionLogicType,transformScript = transformScript,testSpecifications = testSpecifications,provenanceHash = scriptHash,verificationEvidenceId = lastEvidence?.actionId ?: "evidence_${UUID.randomUUID()}")

@@ -82,4 +82,27 @@ object WastiTruthGate {
     fun validateReceipt(receipt: WastiVerificationReceipt?): Boolean {
         return WastiTruthAuthority.validateReceipt(receipt)
     }
+
+    /**
+     * Validates cryptographic authenticity AND exact execution context binding.
+     */
+    fun validateReceiptApplicability(
+        receipt: WastiVerificationReceipt?,
+        taskId: String,
+        actionId: String,
+        capabilityId: String,
+        inputHash: String? = null,
+        outputHash: String? = null,
+        postconditionHash: String? = null
+    ): Boolean {
+        return WastiTruthAuthority.validateReceiptApplicability(
+            receipt = receipt,
+            taskId = taskId,
+            actionId = actionId,
+            capabilityId = capabilityId,
+            inputHash = inputHash,
+            outputHash = outputHash,
+            postconditionHash = postconditionHash
+        )
+    }
 }
