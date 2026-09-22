@@ -605,43 +605,19 @@ object UnifiedBrainStrategy {
         _liveConsensusStatus.value = ConsensusStatusUpdate(
             activeModels = listOf("strategic-planner", "code-generator", "invariant-verifier"),
             currentPhase = "completed",
-            displayText = "task consensus complete • $taskTitle verified"
+            displayText = "task consensus complete • $taskTitle deliverable synthesized"
         )
         WastiOmniBrain.setThoughtStream("task consensus completed for $taskTitle")
-
-        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("$taskId:$taskTitle:${steps.size}".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
-        val evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
-            evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
-            subject = "task_consensus:$taskId",
-            verifiedState = "STEPS_${steps.size}_INVARIANTS_PASSED",
-            confidence = 0.90,
-            observedAt = System.currentTimeMillis(),
-            checksumOrHash = proofHash,
-            expectedPostcondition = "STEPS_${steps.size}_INVARIANTS_PASSED",
-            observedResult = "STEPS_${steps.size}_INVARIANTS_PASSED",
-            declaredVerifier = "WastiVerificationEngine",
-            verificationMethod = "invariant_consensus_hash"
-        )
-        val vRes = com.example.data.agent.runtime.WastiVerificationEngine().verifyStructuredEvidence(
-            taskId = taskId,
-            actionId = "UNIFIED_TASK_CONSENSUS",
-            capabilityId = "terminal_execution",
-            evidence = evidence
-        )
-        val isVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED
 
         UnifiedTaskConsensusResult(
             taskId = taskId,
             taskTitle = taskTitle,
             decomposedSteps = steps,
             synthesizedExecutionPlan = plan,
-            codeOrArtifactOutput = "Execution artifact verified for $taskTitle",
+            codeOrArtifactOutput = "Execution artifact prepared for $taskTitle",
             invariantVerification = invariantsCheck,
             finalMergedDeliverable = deliverable,
-            isVerified = isVerified
+            isVerified = false
         )
     }
 

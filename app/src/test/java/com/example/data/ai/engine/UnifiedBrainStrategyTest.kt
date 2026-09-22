@@ -87,7 +87,7 @@ class UnifiedBrainStrategyTest {
     }
 
     @Test
-    fun testExecuteTaskConsensusProducesVerifiedDeliverable() = runBlocking {
+    fun testExecuteTaskConsensusProducesStructuredDeliverable() = runBlocking {
         val taskTitle = "Optimize SQLite Room DB Indices"
         val taskDesc = "Analyze slow queries and create compound indices"
         val taskResult = UnifiedBrainStrategy.executeTaskConsensus(
@@ -104,7 +104,7 @@ class UnifiedBrainStrategyTest {
         assertTrue(taskResult.synthesizedExecutionPlan.contains("Multi-Brain", ignoreCase = true))
         assertTrue(taskResult.invariantVerification.contains("Passed", ignoreCase = true))
         assertTrue(taskResult.finalMergedDeliverable.contains("SUCCEEDED", ignoreCase = true))
-        assertTrue(taskResult.isVerified)
+        assertFalse("Task consensus reasoning without external domain probe cannot claim canonical verified", taskResult.isVerified)
     }
 
     @Test
