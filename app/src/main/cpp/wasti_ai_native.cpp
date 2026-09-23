@@ -1669,5 +1669,60 @@ Java_com_example_data_ai_runtime_NativeLlamaBridge_verifyNeuralReferenceFixture(
     return forwardOk ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jfloatArray JNICALL
+Java_com_example_data_ai_runtime_NativeLlamaBridge_dequantizeQ4KBlock(
+    JNIEnv *env,
+    jobject /* thiz */,
+    jbyteArray blockBytes
+) {
+    if (!blockBytes) return nullptr;
+    jsize len = env->GetArrayLength(blockBytes);
+    if (len != 144) return nullptr;
+
+    jbyte* bytes = env->GetByteArrayElements(blockBytes, nullptr);
+    if (!bytes) return nullptr;
+
+    const uint8_t* ptr = reinterpret_cast<const uint8_t*>(bytes);
+    uint16_t d_raw = *reinterpret_cast<const uint16_t*>(ptr);
+    uint16_t dmin_raw = *reinterpret_cast<const uint16_t*>(ptr + 2);
+    float d = wasti::halfToFloat(d_raw);
+    float dmin = wasti::halfToFloat(dmin_raw);
+    const uint8_t* scales = ptr + 4;
+    const uint8_t* qs = ptr + 16;
+
+    uint8_t sc[8];
+    uint8_t m[8];
+    for (int i = 0; i < 4; ++i) {
+        sc[i] = scales[i] & 63;
+        m[i] = scales[i + 4] & 63;
+    }
+    for (int i = 4; i < 8; ++i) {
+        sc[i] = (scales[i + 4] & 0x0F) | ((scales[i - 4] >> 6) << 4);
+        m[i] = ((scales[i + 4] >> 4) & 0x0F) | ((scales[i] >> 6) << 4);
+    }
+
+    std::vector<float> result(256);
+    for (int sb = 0; sb < 8; ++sb) {
+        float d_sc = d * static_cast<float>(sc[sb]);
+        float dmin_m = dmin * static_cast<float>(m[sb]);
+        int sb_offset = sb * 32;
+        int qs_offset = (sb / 2) * 32;
+        bool is_high_subblock = (sb % 2 != 0);
+
+        for (int i = 0; i < 32; ++i) {
+            uint8_t q_byte = qs[qs_offset + i];
+            uint8_t q = is_high_subblock ? (q_byte >> 4) : (q_byte & 0x0F);
+            result[sb_offset + i] = (d_sc * static_cast<float>(q)) - dmin_m;
+        }
+    }
+
+    env->ReleaseByteArrayElements(blockBytes, bytes, JNI_ABORT);
+
+    jfloatArray outArray = env->NewFloatArray(256);
+    if (!outArray) return nullptr;
+    env->SetFloatArrayRegion(outArray, 0, 256, result.data());
+    return outArray;
+}
+
 } // extern "C"
 

@@ -83,35 +83,171 @@ object WastiTruthAuthority {
             return res to null
         }
 
-        // 3. Reject unprobed process telemetry
-        if (observationSource == EvidenceSource.PROCESS_TELEMETRY) {
+        // 3. Reject external caller forging WastiTruthAuthority identity
+        if (verifierIdentity == "WastiTruthAuthority" && executorIdentity != null && executorIdentity != "WastiTruthAuthority") {
+            val res = VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                confidence = 0.0,
+                evidence = "External caller cannot forge WastiTruthAuthority identity",
+                failureReason = "FORGED_VERIFIER_IDENTITY"
+            )
+            return res to null
+        }
+
+        // 4. Reject sandbox evidence from claiming runtime/production VERIFIED
+        if (verificationMethod.contains("SANDBOX", ignoreCase = true) ||
+            expectedState.contains("SANDBOX", ignoreCase = true) ||
+            observedState.contains("SANDBOX", ignoreCase = true)
+        ) {
             val res = VerificationResult(
                 taskId = taskId,
                 actionId = actionId,
                 capabilityId = capabilityId,
                 status = ActionVerificationStatus.NOT_VERIFIABLE,
                 confidence = confidence,
-                evidence = "Unprobed process telemetry cannot establish VERIFIED status",
+                evidence = "Sandbox test execution cannot issue canonical runtime VERIFIED receipt",
+                failureReason = "SANDBOX_EVIDENCE_NOT_CANONICAL"
+            )
+            return res to null
+        }
+
+        // 5. Reject unprobed process telemetry
+        if (observationSource == EvidenceSource.PROCESS_TELEMETRY ||
+            verificationMethod.contains("process_telemetry", ignoreCase = true) ||
+            verificationMethod.contains("exit_code", ignoreCase = true)
+        ) {
+            val res = VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                confidence = confidence,
+                evidence = "Unprobed process telemetry or exit code cannot establish VERIFIED status",
                 failureReason = "UNPROBED_PROCESS_TELEMETRY"
             )
             return res to null
         }
 
-        // 4. Postcondition match check
-        if (expectedState.isBlank() || observedState.isBlank() || expectedState != observedState) {
+        // 6. Reject generic or circular assertions without independent artifact/probe
+        val trivialClaims = setOf("ok", "success", "completed", "executor_completed", "verified", "true", "done", "process_completed_success")
+        if (trivialClaims.contains(expectedState.trim().lowercase()) && checksum.isNullOrBlank() && artifactRef.isNullOrBlank()) {
+            val res = VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                confidence = 0.0,
+                evidence = "Generic assertion without independent artifact or checksum probe cannot establish VERIFIED receipt",
+                failureReason = "CIRCULAR_OR_ASSERTION_ONLY_EVIDENCE"
+            )
+            return res to null
+        }
+
+        // 7. Objective filesystem observation verification probe
+        var effectiveObservedState = observedState
+        if (observationSource == EvidenceSource.FILESYSTEM || observationSource == EvidenceSource.FILESYSTEM_AUDIT ||
+            (!artifactRef.isNullOrBlank() && (artifactRef.startsWith("/") || artifactRef.startsWith(".")))
+        ) {
+            if (artifactRef.isNullOrBlank()) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.NOT_VERIFIABLE,
+                    confidence = 0.0,
+                    evidence = "Filesystem observation requires artifactRef pointing to target file",
+                    failureReason = "MISSING_ARTIFACT_REF"
+                )
+                return res to null
+            }
+            val file = java.io.File(artifactRef)
+            if (!file.exists()) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.FAILED,
+                    confidence = 0.0,
+                    evidence = "Target file does not exist on disk: $artifactRef",
+                    failureReason = "FILE_NOT_FOUND"
+                )
+                return res to null
+            }
+            val actualDiskContent = try { file.readText(Charsets.UTF_8) } catch (_: Exception) { null }
+            if (actualDiskContent == null) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.VERIFICATION_UNAVAILABLE,
+                    confidence = 0.0,
+                    evidence = "Trusted filesystem probe could not read target file: $artifactRef",
+                    failureReason = "PROBE_UNAVAILABLE"
+                )
+                return res to null
+            }
+            val actualDiskHash = hashString(actualDiskContent)
+            
+            // Check against pre-authorized expected state / checksum
+            if (expectedState.isNotBlank() && actualDiskHash != expectedState) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.FAILED,
+                    confidence = 0.0,
+                    evidence = "Disk content hash mismatch: disk=$actualDiskHash, expected=$expectedState",
+                    failureReason = "DISK_HASH_MISMATCH"
+                )
+                return res to null
+            }
+            if (!checksum.isNullOrBlank() && actualDiskHash != checksum) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.FAILED,
+                    confidence = 0.0,
+                    evidence = "Disk content hash mismatch: disk=$actualDiskHash, expectedChecksum=$checksum",
+                    failureReason = "DISK_HASH_MISMATCH"
+                )
+                return res to null
+            }
+            if (observedState.isNotBlank() && observedState != actualDiskHash) {
+                val res = VerificationResult(
+                    taskId = taskId,
+                    actionId = actionId,
+                    capabilityId = capabilityId,
+                    status = ActionVerificationStatus.FAILED,
+                    confidence = 0.0,
+                    evidence = "Caller provided observedState '$observedState' does not match trusted probe disk hash '$actualDiskHash'",
+                    failureReason = "PRODUCER_OBSERVATION_DISCREPANCY"
+                )
+                return res to null
+            }
+            
+            // Probe independently establishes effective observed state
+            effectiveObservedState = actualDiskHash
+        }
+
+        // 8. Postcondition match check
+        if (expectedState.isBlank() || effectiveObservedState.isBlank() || expectedState != effectiveObservedState) {
             val res = VerificationResult(
                 taskId = taskId,
                 actionId = actionId,
                 capabilityId = capabilityId,
                 status = ActionVerificationStatus.FAILED,
                 confidence = confidence,
-                evidence = "Observed state '$observedState' does not match expected postcondition '$expectedState'",
+                evidence = "Observed state '$effectiveObservedState' does not match expected postcondition '$expectedState'",
                 failureReason = "POSTCONDITION_MISMATCH"
             )
             return res to null
         }
 
-        // 5. Confidence threshold check
+        // 9. Confidence threshold check
         if (confidence < MIN_VERIFIED_CONFIDENCE) {
             val res = VerificationResult(
                 taskId = taskId,
@@ -126,7 +262,7 @@ object WastiTruthAuthority {
         }
 
         // 6. Compute deterministic postcondition and execution binding hashes
-        val postconditionRaw = "$taskId|$actionId|$capabilityId|$expectedState|$observedState|${checksum ?: ""}|${artifactRef ?: ""}"
+        val postconditionRaw = "$taskId|$actionId|$capabilityId|$expectedState|$effectiveObservedState|${checksum ?: ""}|${artifactRef ?: ""}"
         val postconditionHash = hashString(postconditionRaw)
         val bindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|$postconditionHash"
         val executionBindingHash = hashString(bindingRaw)
@@ -192,21 +328,49 @@ object WastiTruthAuthority {
         capabilityId: String,
         inputHash: String? = null,
         outputHash: String? = null,
-        postconditionHash: String? = null
+        postconditionHash: String? = null,
+        maxAgeMs: Long? = null
     ): Boolean {
         if (!validateReceipt(receipt)) return false
         val r = receipt!!
+        if (r.executionBindingHash.isBlank()) return false
         if (r.taskId != taskId || r.actionId != actionId || r.capabilityId != capabilityId) return false
+        if (maxAgeMs != null && (System.currentTimeMillis() - r.timestamp) > maxAgeMs) return false
         if (postconditionHash != null && r.postconditionHash.isNotBlank() && r.postconditionHash != postconditionHash) return false
-        if (r.executionBindingHash.isNotBlank()) {
-            val expectedBindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|${r.postconditionHash}"
-            val expectedBindingHash = hashString(expectedBindingRaw)
-            if (r.executionBindingHash != expectedBindingHash) return false
-        }
+
+        val expectedBindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|${r.postconditionHash}"
+        val expectedBindingHash = hashString(expectedBindingRaw)
+        if (r.executionBindingHash != expectedBindingHash) return false
+
         return true
     }
 
-    private fun hashString(input: String): String {
+    fun computePostconditionHash(
+        taskId: String,
+        actionId: String,
+        capabilityId: String,
+        expectedState: String,
+        observedState: String,
+        checksum: String? = null,
+        artifactRef: String? = null
+    ): String {
+        val postconditionRaw = "$taskId|$actionId|$capabilityId|$expectedState|$observedState|${checksum ?: ""}|${artifactRef ?: ""}"
+        return hashString(postconditionRaw)
+    }
+
+    fun computeExecutionBindingHash(
+        taskId: String,
+        actionId: String,
+        capabilityId: String,
+        inputHash: String? = null,
+        outputHash: String? = null,
+        postconditionHash: String
+    ): String {
+        val bindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|$postconditionHash"
+        return hashString(bindingRaw)
+    }
+
+    fun hashString(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }

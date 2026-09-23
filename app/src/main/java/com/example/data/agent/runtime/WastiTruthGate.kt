@@ -93,7 +93,8 @@ object WastiTruthGate {
         capabilityId: String,
         inputHash: String? = null,
         outputHash: String? = null,
-        postconditionHash: String? = null
+        postconditionHash: String? = null,
+        maxAgeMs: Long? = null
     ): Boolean {
         return WastiTruthAuthority.validateReceiptApplicability(
             receipt = receipt,
@@ -102,7 +103,8 @@ object WastiTruthGate {
             capabilityId = capabilityId,
             inputHash = inputHash,
             outputHash = outputHash,
-            postconditionHash = postconditionHash
+            postconditionHash = postconditionHash,
+            maxAgeMs = maxAgeMs
         )
     }
 }

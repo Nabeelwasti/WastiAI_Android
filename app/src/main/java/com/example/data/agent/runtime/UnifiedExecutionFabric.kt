@@ -74,7 +74,8 @@ data class UnifiedExecutionResult(
     val verificationEvidence: String? = null,
     val verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,
     val exitCode: Int? = null,
-    val details: Map<String, String> = emptyMap()
+    val details: Map<String, String> = emptyMap(),
+    val verificationReceipt: WastiVerificationReceipt? = null
 )
 
 interface UnifiedExecutor {
@@ -2035,7 +2036,8 @@ class UnifiedExecutionFabric(
         verificationEvidence: String? = null,
         verifiedExecutionEvidence: VerifiedExecutionEvidence? = null,
         exitCode: Int? = null,
-        details: Map<String, String> = emptyMap()
+        details: Map<String, String> = emptyMap(),
+        verificationReceipt: WastiVerificationReceipt? = null
     ): UnifiedExecutionResult {
         return UnifiedExecutionResult(
             taskId = request.taskId,
@@ -2052,7 +2054,8 @@ class UnifiedExecutionFabric(
             verificationEvidence = verificationEvidence,
             verifiedExecutionEvidence = verifiedExecutionEvidence,
             exitCode = exitCode,
-            details = details
+            details = details,
+            verificationReceipt = verificationReceipt
         )
     }
 
@@ -2085,33 +2088,28 @@ class UnifiedExecutionFabric(
                 else -> EvidenceSource.PROCESS_TELEMETRY
             }
 
-            val isVerified = result.verificationStatus == UnifiedVerificationStatus.VERIFIED && verResult?.status == ActionVerificationStatus.VERIFIED
-            val (gateResult, receipt) = if (isVerified && verResult != null) {
-                WastiTruthGate.evaluateRaw(
+            // Only preserve and record an authoritative receipt if legitimately issued and valid
+            val validReceipt = result.verificationReceipt?.takeIf {
+                WastiTruthGate.validateReceiptApplicability(
+                    receipt = it,
                     taskId = request.taskId,
                     actionId = request.actionId,
-                    capabilityId = request.capabilityId,
-                    expectedState = verResult.evidence.ifBlank { result.output },
-                    observedState = verResult.evidence.ifBlank { result.output },
-                    observationSource = evidenceSource,
-                    confidence = verResult.confidence
+                    capabilityId = request.capabilityId
                 )
-            } else null to null
+            }
 
-            val finalVerResult = if (gateResult?.status == ActionVerificationStatus.VERIFIED) gateResult else verResult
-
-            val structuredEvidence = if (finalVerResult?.status == ActionVerificationStatus.VERIFIED) {
-                val stateText = finalVerResult.evidence
+            val structuredEvidence = result.verifiedExecutionEvidence ?: if (validReceipt != null) {
+                val stateText = verResult?.evidence?.ifBlank { result.output } ?: result.output
                 VerifiedExecutionEvidence(
                     evidenceSource = evidenceSource,
                     subject = request.capabilityId,
                     verifiedState = stateText,
-                    confidence = finalVerResult.confidence,
+                    confidence = 1.0,
                     observedAt = result.completedAt,
                     expectedPostcondition = stateText,
                     observedResult = stateText,
                     declaredVerifier = "WastiTruthAuthority",
-                    verificationMethod = "canonical_truth_gate_verification"
+                    verificationMethod = "authoritative_receipt_preservation"
                 )
             } else null
 
@@ -2124,8 +2122,8 @@ class UnifiedExecutionFabric(
                 inputContent = request.parameters.toString(),
                 outputContent = result.output,
                 evidence = structuredEvidence,
-                verificationResult = if (finalVerResult?.status == ActionVerificationStatus.VERIFIED) finalVerResult else null,
-                verificationReceipt = receipt
+                verificationResult = if (validReceipt != null) verResult else null,
+                verificationReceipt = validReceipt
             )
         } catch (e: Exception) {
             android.util.Log.w("UnifiedExecutionFabric", "Provenance record warning: ${e.message}")

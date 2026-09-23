@@ -857,15 +857,20 @@ object SelfModificationSafetyEngine {
             artifactOrStateReference = targetFile.absolutePath,
             checksumOrHash = actualHash,
             expectedState = expectedHash,
-            observedState = actualHash,
-            verifierIdentity = "WastiTruthAuthority",
+            observedState = "",
+            verifierIdentity = "FilesystemObservationProbe",
             verificationMethod = "post_apply_filesystem_hash_probe"
         )
 
         val (verResult, receipt) = WastiTruthGate.verifyCapability(postApplyEvidence)
 
         val isCanonicallyVerified = verResult.status == ActionVerificationStatus.VERIFIED &&
-            receipt != null && WastiTruthGate.validateReceipt(receipt) &&
+            receipt != null && WastiTruthGate.validateReceiptApplicability(
+                receipt = receipt,
+                taskId = postApplyEvidence.taskId,
+                actionId = postApplyEvidence.actionId,
+                capabilityId = postApplyEvidence.capabilityId
+            ) &&
             (stagedValidator == null || validatorVerified) && contentIntegrityOk
 
         val outcomeStatus = if (isCanonicallyVerified) {

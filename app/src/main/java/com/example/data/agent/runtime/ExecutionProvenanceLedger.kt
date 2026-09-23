@@ -46,7 +46,8 @@ data class ProvenanceEntry(
     val evidenceLevel: EvidenceLadder = EvidenceLadder.IMPLEMENTED,
     val expectedState: String = "",
     val observedState: String = "",
-    val howObserved: String = ""
+    val howObserved: String = "",
+    val receiptId: String? = null
 )
 
 /**
@@ -199,7 +200,8 @@ object ExecutionProvenanceLedger {
                             evidenceLevel = eLevel,
                             expectedState = obj.optString("expectedState", ""),
                             observedState = obj.optString("observedState", ""),
-                            howObserved = obj.optString("howObserved", "")
+                            howObserved = obj.optString("howObserved", ""),
+                            receiptId = obj.optString("receiptId").takeIf { it.isNotBlank() }
                         )
 
                         val payloadLegacy = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
@@ -280,6 +282,7 @@ object ExecutionProvenanceLedger {
                 put("expectedState", entry.expectedState)
                 put("observedState", entry.observedState)
                 put("howObserved", entry.howObserved)
+                put("receiptId", entry.receiptId ?: "")
             }
             synchronized(this) {
                 ledgerFile.appendText(obj.toString() + "\n")
@@ -325,6 +328,11 @@ object ExecutionProvenanceLedger {
         val outputHash = hashString(outputContent)
         val entryId = "prov_${System.currentTimeMillis()}_${(Math.random() * 10000).toInt()}"
 
+        // Reject receipt replay across multiple provenance records
+        if (verificationReceipt != null && currentList.any { it.receiptId == verificationReceipt.receiptId }) {
+            throw IllegalStateException("Receipt replay detected: ${verificationReceipt.receiptId} has already been recorded in provenance ledger.")
+        }
+
         val source = evidence?.evidenceSource ?: EvidenceSource.PROCESS_TELEMETRY
         val summary = evidence?.let { "${it.subject} -> ${it.verifiedState} (conf=${it.confidence})" } ?: "Unverified telemetry"
 
@@ -361,30 +369,39 @@ object ExecutionProvenanceLedger {
             else -> null to null
         }
 
+        // Secondary check if a receipt was newly issued by WastiTruthGate
+        val finalReceipt = receipt ?: verificationReceipt
+        if (finalReceipt != null && currentList.any { it.receiptId == finalReceipt.receiptId }) {
+            throw IllegalStateException("Receipt replay detected: ${finalReceipt.receiptId} has already been recorded in provenance ledger.")
+        }
+
         val isAuthoritativeVerified = authoritativeVerResult != null &&
             authoritativeVerResult.status == ActionVerificationStatus.VERIFIED &&
-            authoritativeVerResult.isVerified
-
-        if (verificationResult?.status == ActionVerificationStatus.VERIFIED) {
-            val hasValidReceipt = verificationReceipt != null && WastiTruthGate.validateReceiptApplicability(
-                verificationReceipt,
+            authoritativeVerResult.isVerified &&
+            finalReceipt != null &&
+            WastiTruthGate.validateReceiptApplicability(
+                finalReceipt,
                 taskId = taskId,
                 actionId = actionId,
                 capabilityId = capabilityId,
                 inputHash = inputHash,
                 outputHash = outputHash
             )
-            if (!hasValidReceipt && !isAuthoritativeVerified) {
-                throw IllegalStateException("Execution provenance entry claiming VERIFIED requires a valid WastiVerificationReceipt issued by WastiTruthAuthority.")
+
+        if (verificationResult?.status == ActionVerificationStatus.VERIFIED) {
+            if (!isAuthoritativeVerified) {
+                throw IllegalStateException("Execution provenance entry claiming VERIFIED requires a valid, applicable WastiVerificationReceipt issued by WastiTruthAuthority.")
             }
         }
 
-        val status = if (isAuthoritativeVerified) {
-            "VERIFIED"
-        } else if (evidence != null) {
-            "OBSERVED"
-        } else {
-            "EXECUTOR_COMPLETED"
+        val status = when {
+            isAuthoritativeVerified -> "VERIFIED"
+            authoritativeVerResult?.status == ActionVerificationStatus.FAILED || verificationResult?.status == ActionVerificationStatus.FAILED -> "FAILED"
+            authoritativeVerResult?.status == ActionVerificationStatus.NOT_VERIFIABLE || verificationResult?.status == ActionVerificationStatus.NOT_VERIFIABLE -> "NOT_VERIFIABLE"
+            authoritativeVerResult?.status == ActionVerificationStatus.VERIFICATION_UNAVAILABLE || verificationResult?.status == ActionVerificationStatus.VERIFICATION_UNAVAILABLE -> "VERIFICATION_UNAVAILABLE"
+            authoritativeVerResult?.status == ActionVerificationStatus.UNKNOWN || verificationResult?.status == ActionVerificationStatus.UNKNOWN -> "UNVERIFIED"
+            evidence != null -> "OBSERVED"
+            else -> "EXECUTOR_COMPLETED"
         }
         val isVerified = (status == "VERIFIED")
 
@@ -439,7 +456,8 @@ object ExecutionProvenanceLedger {
             evidenceLevel = resolvedEvidenceLevel,
             expectedState = expectedState,
             observedState = observedState.ifBlank { summary },
-            howObserved = howObserved.ifBlank { source.name }
+            howObserved = howObserved.ifBlank { source.name },
+            receiptId = if (isVerified) finalReceipt?.receiptId else null
         )
 
         val persistedOk = persistEntry(entry)
@@ -540,13 +558,15 @@ object ExecutionProvenanceLedger {
                 Log.e(TAG, "Provenance chain broken at entry: ${entry.entryId}")
                 return false
             }
-            if (entry.sequenceNumber > 0 && entry.sequenceNumber <= lastSeq) {
-                Log.e(TAG, "Monotonic sequence violation at entry: ${entry.entryId} (seq=${entry.sequenceNumber}, last=$lastSeq)")
+            if (lastSeq == 0L && entry.sequenceNumber != 1L) {
+                Log.e(TAG, "First entry sequence number must be 1 (got ${entry.sequenceNumber})")
                 return false
             }
-            if (entry.sequenceNumber > 0) {
-                lastSeq = entry.sequenceNumber
+            if (lastSeq > 0L && entry.sequenceNumber != lastSeq + 1L) {
+                Log.e(TAG, "Monotonic sequence violation or gap at entry: ${entry.entryId} (seq=${entry.sequenceNumber}, expected=${lastSeq + 1L})")
+                return false
             }
+            lastSeq = entry.sequenceNumber
             val payloadCanonical = computeCanonicalPayload(
                 entry.previousEntryHash, entry.taskId, entry.actionId, entry.capabilityId,
                 entry.providerId, entry.inputHash, entry.outputHash, entry.verificationStatus,
@@ -645,6 +665,7 @@ object ExecutionProvenanceLedger {
                 put("expectedState", e.expectedState)
                 put("observedState", e.observedState)
                 put("howObserved", e.howObserved)
+                put("receiptId", e.receiptId ?: "")
             }
             array.put(obj)
         }
