@@ -2,7 +2,6 @@ package com.example.data.agent.runtime
 
 import java.util.UUID
 import javax.crypto.Mac
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Unforgeable, immutable verification receipt issued strictly by [WastiTruthAuthority]
@@ -28,10 +27,9 @@ data class WastiVerificationReceipt internal constructor(
     }
 
     companion object {
-        internal fun computeSignature(payload: String, secretKeyBytes: ByteArray): String {
+        internal fun computeSignature(payload: String, secretKey: javax.crypto.SecretKey): String {
             val mac = Mac.getInstance("HmacSHA256")
-            val keySpec = SecretKeySpec(secretKeyBytes, "HmacSHA256")
-            mac.init(keySpec)
+            mac.init(secretKey)
             val hmacBytes = mac.doFinal(payload.toByteArray(Charsets.UTF_8))
             return hmacBytes.joinToString("") { "%02x".format(it) }
         }

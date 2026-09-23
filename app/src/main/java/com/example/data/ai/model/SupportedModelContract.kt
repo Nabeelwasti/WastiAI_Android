@@ -341,6 +341,71 @@ object AuthoritativeNeuralFixtures {
 
     fun getAllProvenModelIds(): List<String> = fixtures.keys.toList()
 
+    fun dequantizeQ4KBlockReference(blockBytes: ByteArray): FloatArray {
+        require(blockBytes.size == 144) { "Q4_K block requires exactly 144 bytes" }
+        val result = FloatArray(256)
+
+        fun readUint16(offset: Int): Int {
+            return (blockBytes[offset].toInt() and 0xFF) or ((blockBytes[offset + 1].toInt() and 0xFF) shl 8)
+        }
+        fun halfToFloat(h: Int): Float {
+            val s = (h ushr 15) and 0x0001
+            val e = (h ushr 10) and 0x001f
+            var m = h and 0x03ff
+            if (e == 0) {
+                if (m == 0) return if (s != 0) -0.0f else 0.0f
+                var tempM = m
+                var tempE = 0
+                while ((tempM and 0x0400) == 0) {
+                    tempM = tempM shl 1
+                    tempE--
+                }
+                tempM = tempM and 0x03ff
+                val exp = 1 + tempE + (127 - 15)
+                val bits = (s shl 31) or (exp shl 23) or (tempM shl 13)
+                return Float.fromBits(bits)
+            } else if (e == 31) {
+                return if (m == 0) (if (s != 0) Float.NEGATIVE_INFINITY else Float.POSITIVE_INFINITY) else Float.NaN
+            }
+            val exp = e + (127 - 15)
+            val bits = (s shl 31) or (exp shl 23) or (m shl 13)
+            return Float.fromBits(bits)
+        }
+
+        val d = halfToFloat(readUint16(0))
+        val dmin = halfToFloat(readUint16(2))
+
+        val scales = ByteArray(12)
+        System.arraycopy(blockBytes, 4, scales, 0, 12)
+
+        val sc = IntArray(8)
+        val m = IntArray(8)
+
+        for (i in 0 until 4) {
+            sc[i] = (scales[i].toInt() and 0xFF) and 63
+            m[i] = (scales[i + 4].toInt() and 0xFF) and 63
+        }
+        for (i in 4 until 8) {
+            sc[i] = ((scales[i + 4].toInt() and 0xFF) and 0x0F) or (((scales[i - 4].toInt() and 0xFF) ushr 6) shl 4)
+            m[i] = (((scales[i + 4].toInt() and 0xFF) ushr 4) and 0x0F) or (((scales[i].toInt() and 0xFF) ushr 6) shl 4)
+        }
+
+        for (sb in 0 until 8) {
+            val dSc = d * sc[sb].toFloat()
+            val dminM = dmin * m[sb].toFloat()
+            val sbOffset = sb * 32
+            val qsOffset = 16 + (sb / 2) * 32
+            val isHighSubblock = (sb % 2 != 0)
+
+            for (i in 0 until 32) {
+                val qByte = blockBytes[qsOffset + i].toInt() and 0xFF
+                val q = if (isHighSubblock) (qByte ushr 4) else (qByte and 0x0F)
+                result[sbOffset + i] = (dSc * q.toFloat()) - dminM
+            }
+        }
+        return result
+    }
+
     fun validateTensors(
         tensorNames: List<String>,
         contract: ModelArchitectureContract

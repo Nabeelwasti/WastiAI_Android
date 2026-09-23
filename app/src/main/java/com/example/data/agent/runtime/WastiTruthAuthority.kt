@@ -14,23 +14,34 @@ import java.util.UUID
  */
 object WastiTruthAuthority {
 
-    private val AUTHORITY_SECRET_KEY: ByteArray = try {
-        val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
-        ks.load(null)
-        if (!ks.containsAlias("WastiTruthAuthorityKey")) {
-            val kgen = javax.crypto.KeyGenerator.getInstance("HmacSHA256", "AndroidKeyStore")
-            kgen.init(
-                android.security.keystore.KeyGenParameterSpec.Builder(
-                    "WastiTruthAuthorityKey",
-                    android.security.keystore.KeyProperties.PURPOSE_SIGN or android.security.keystore.KeyProperties.PURPOSE_VERIFY
-                ).build()
-            )
-            kgen.generateKey()
+    private val AUTHORITY_SECRET_KEY: javax.crypto.SecretKey = try {
+        var key: javax.crypto.SecretKey? = null
+        try {
+            val ks = java.security.KeyStore.getInstance("AndroidKeyStore")
+            ks.load(null)
+            if (!ks.containsAlias("WastiTruthAuthorityKey")) {
+                val kgen = javax.crypto.KeyGenerator.getInstance("HmacSHA256", "AndroidKeyStore")
+                kgen.init(
+                    android.security.keystore.KeyGenParameterSpec.Builder(
+                        "WastiTruthAuthorityKey",
+                        android.security.keystore.KeyProperties.PURPOSE_SIGN or android.security.keystore.KeyProperties.PURPOSE_VERIFY
+                    ).build()
+                )
+                kgen.generateKey()
+            }
+            key = ks.getKey("WastiTruthAuthorityKey", null) as? javax.crypto.SecretKey
+        } catch (ke: Exception) {
+            // AndroidKeyStore is unavailable in non-Android JVM environments or unit tests
+            System.err.println("AndroidKeyStore initialization notice: ${ke.message}")
         }
-        val secretKey = ks.getKey("WastiTruthAuthorityKey", null) as? javax.crypto.SecretKey
-        secretKey?.encoded ?: ByteArray(32).apply { SecureRandom().nextBytes(this) }
-    } catch (e: Throwable) {
-        ByteArray(32).apply { SecureRandom().nextBytes(this) }
+        key ?: run {
+            val raw = ByteArray(32).apply { SecureRandom().nextBytes(this) }
+            javax.crypto.spec.SecretKeySpec(raw, "HmacSHA256")
+        }
+    } catch (e: Exception) {
+        System.err.println("WastiTruthAuthority secret key fallback notice: ${e.message}")
+        val raw = ByteArray(32).apply { SecureRandom().nextBytes(this) }
+        javax.crypto.spec.SecretKeySpec(raw, "HmacSHA256")
     }
 
     private const val MIN_VERIFIED_CONFIDENCE = 0.90

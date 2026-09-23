@@ -135,13 +135,19 @@ object ExecutionProvenanceLedger {
         actionId: String,
         capabilityId: String,
         providerId: String,
+        modelId: String?,
         inputHash: String,
         outputHash: String,
+        evidenceSource: String,
+        evidenceLevel: String,
+        expectedState: String,
+        observedState: String,
+        receiptId: String?,
         verificationStatus: String,
         timestamp: Long,
         sequenceNumber: Long
     ): String {
-        return "$previousEntryHash|$taskId|$actionId|$capabilityId|$providerId|$inputHash|$outputHash|$verificationStatus|$timestamp|$sequenceNumber"
+        return "$previousEntryHash|$sequenceNumber|$taskId|$actionId|$capabilityId|$providerId|${modelId ?: ""}|$inputHash|$outputHash|$evidenceSource|$evidenceLevel|$expectedState|$observedState|${receiptId ?: ""}|$verificationStatus|$timestamp"
     }
 
     private fun loadPersistedLedger() {
@@ -205,17 +211,21 @@ object ExecutionProvenanceLedger {
                         )
 
                         val payloadLegacy = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
+                        val payloadLegacy2 = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}|${entry.sequenceNumber}"
                         val payloadCanonical = computeCanonicalPayload(
                             entry.previousEntryHash, entry.taskId, entry.actionId, entry.capabilityId,
-                            entry.providerId, entry.inputHash, entry.outputHash, entry.verificationStatus,
+                            entry.providerId, entry.modelId, entry.inputHash, entry.outputHash,
+                            entry.evidenceSource.name, entry.evidenceLevel.name, entry.expectedState,
+                            entry.observedState, entry.receiptId, entry.verificationStatus,
                             entry.timestamp, entry.sequenceNumber
                         )
 
                         val calculatedHash = hashString(payloadCanonical)
                         val legacyHash = hashString(payloadLegacy)
+                        val legacyHash2 = hashString(payloadLegacy2)
 
-                        val hashValid = (entry.entryHash == calculatedHash || entry.entryHash == legacyHash)
-                        if (hashValid && entry.previousEntryHash == expectedPrevHash && seq >= expectedSequence) {
+                        val hashValid = (entry.entryHash == calculatedHash || entry.entryHash == legacyHash || entry.entryHash == legacyHash2)
+                        if (hashValid && entry.previousEntryHash == expectedPrevHash && seq == expectedSequence) {
                             loaded.add(entry)
                             expectedPrevHash = entry.entryHash
                             expectedSequence = seq + 1
@@ -405,12 +415,6 @@ object ExecutionProvenanceLedger {
         }
         val isVerified = (status == "VERIFIED")
 
-        val payloadCanonical = computeCanonicalPayload(
-            prevHash, taskId, actionId, capabilityId, providerId,
-            inputHash, outputHash, status, timestamp, nextSeq
-        )
-        val entryHash = hashString(payloadCanonical)
-
         val resolvedEvidenceLevel = if (evidenceLevel != EvidenceLadder.IMPLEMENTED) {
             evidenceLevel
         } else if (isAuthoritativeVerified) {
@@ -420,6 +424,17 @@ object ExecutionProvenanceLedger {
         } else {
             EvidenceLadder.IMPLEMENTED
         }
+
+        val resolvedReceiptId = if (isAuthoritativeVerified) finalReceipt?.receiptId else null
+        val resolvedExpectedState = expectedState
+        val resolvedObservedState = observedState.ifBlank { summary }
+
+        val payloadCanonical = computeCanonicalPayload(
+            prevHash, taskId, actionId, capabilityId, providerId,
+            modelId, inputHash, outputHash, source.name, resolvedEvidenceLevel.name,
+            resolvedExpectedState, resolvedObservedState, resolvedReceiptId, status, timestamp, nextSeq
+        )
+        val entryHash = hashString(payloadCanonical)
 
         val canonicalVerifier = if (isVerified) (verifier ?: "WastiVerificationEngine") else null
 
@@ -539,11 +554,17 @@ object ExecutionProvenanceLedger {
         val entry = _entries.value.find { it.entryId == entryId } ?: return false
         val payloadCanonical = computeCanonicalPayload(
             entry.previousEntryHash, entry.taskId, entry.actionId, entry.capabilityId,
-            entry.providerId, entry.inputHash, entry.outputHash, entry.verificationStatus,
+            entry.providerId, entry.modelId, entry.inputHash, entry.outputHash,
+            entry.evidenceSource.name, entry.evidenceLevel.name, entry.expectedState,
+            entry.observedState, entry.receiptId, entry.verificationStatus,
             entry.timestamp, entry.sequenceNumber
         )
         val payloadLegacy = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
-        return (hashString(payloadCanonical) == entry.entryHash || hashString(payloadLegacy) == entry.entryHash)
+        val payloadLegacy2 = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}|${entry.sequenceNumber}"
+        val calculated = hashString(payloadCanonical)
+        val legacy = hashString(payloadLegacy)
+        val legacy2 = hashString(payloadLegacy2)
+        return (entry.entryHash == calculated || entry.entryHash == legacy || entry.entryHash == legacy2)
     }
 
     @Synchronized
@@ -569,14 +590,18 @@ object ExecutionProvenanceLedger {
             lastSeq = entry.sequenceNumber
             val payloadCanonical = computeCanonicalPayload(
                 entry.previousEntryHash, entry.taskId, entry.actionId, entry.capabilityId,
-                entry.providerId, entry.inputHash, entry.outputHash, entry.verificationStatus,
+                entry.providerId, entry.modelId, entry.inputHash, entry.outputHash,
+                entry.evidenceSource.name, entry.evidenceLevel.name, entry.expectedState,
+                entry.observedState, entry.receiptId, entry.verificationStatus,
                 entry.timestamp, entry.sequenceNumber
             )
             val payloadLegacy = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}"
+            val payloadLegacy2 = "${entry.previousEntryHash}|${entry.taskId}|${entry.actionId}|${entry.capabilityId}|${entry.providerId}|${entry.inputHash}|${entry.outputHash}|${entry.verificationStatus}|${entry.timestamp}|${entry.sequenceNumber}"
 
             val calculatedHash = hashString(payloadCanonical)
             val legacyHash = hashString(payloadLegacy)
-            if (calculatedHash != entry.entryHash && legacyHash != entry.entryHash) {
+            val legacyHash2 = hashString(payloadLegacy2)
+            if (calculatedHash != entry.entryHash && legacyHash != entry.entryHash && legacyHash2 != entry.entryHash) {
                 Log.e(TAG, "Provenance entry hash mismatch at: ${entry.entryId}")
                 return false
             }

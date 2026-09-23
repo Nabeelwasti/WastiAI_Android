@@ -155,4 +155,30 @@ class NeuralArchitectureContractAndReferenceTest {
         assertFalse("Duplicate tensor must fail validation", dupRes.isValid)
         assertTrue(dupRes.duplicateTensors.contains("token_embd.weight"))
     }
+
+    @Test
+    fun testQ4K_DequantizationWithIndependentReferenceVector() {
+        val blockBytes = ByteArray(144)
+        // Set d = 1.0f in FP16 (0x3C00)
+        blockBytes[0] = 0x00.toByte()
+        blockBytes[1] = 0x3C.toByte()
+        // Set dmin = 0.5f in FP16 (0x3800)
+        blockBytes[2] = 0x00.toByte()
+        blockBytes[3] = 0x38.toByte()
+
+        // Set scales bytes for subblocks: sc[0]=1, m[0]=2
+        blockBytes[4] = 0x01.toByte() // scales[0]: sc[0] = 1
+        blockBytes[8] = 0x02.toByte() // scales[4]: m[0] = 2
+
+        // Set qs byte for index 0: low nibble = 5 -> q = 5
+        blockBytes[16] = 0x05.toByte()
+
+        val decoded = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes)
+        assertEquals(256, decoded.size)
+
+        // d_sc = d * sc[0] = 1.0 * 1 = 1.0
+        // dmin_m = dmin * m[0] = 0.5 * 2 = 1.0
+        // weight = (d_sc * q) - dmin_m = (1.0 * 5) - 1.0 = 4.0
+        assertEquals(4.0f, decoded[0], 1e-4f)
+    }
 }
