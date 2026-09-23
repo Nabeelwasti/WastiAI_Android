@@ -138,4 +138,55 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
         assertEquals(hmac1, hmac2)
         assertEquals(64, hmac1.length) // SHA-256 HMAC produces 64 hex characters
     }
+
+    @Test
+    fun testAdversarialFieldMutationFailsValidation() {
+        val entry = ExecutionProvenanceLedger.recordExecution(
+            taskId = "task_adv_1",
+            actionId = "action_adv_1",
+            capabilityId = "cap_adv_1",
+            providerId = "prov_adv_1",
+            modelId = "model_adv_1",
+            inputContent = "input_adv",
+            outputContent = "output_adv",
+            evidence = VerifiedExecutionEvidence(
+                evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
+                subject = "adv_test",
+                verifiedState = "STATE_OK",
+                confidence = 0.90
+            ),
+            expectedState = "EXPECTED_VAL",
+            observedState = "OBSERVED_VAL",
+            evidenceLevel = EvidenceLadder.INTEGRATION_TESTED
+        )
+
+        assertTrue("Original recorded entry must verify valid", ExecutionProvenanceLedger.verifyEntry(entry.entryId))
+
+        fun assertMutationRejected(mutator: (ProvenanceEntry) -> ProvenanceEntry, fieldName: String) {
+            val mutated = mutator(entry)
+            ExecutionProvenanceLedger.resetForTesting()
+            ExecutionProvenanceLedger.injectTamperedEntryForTesting(mutated)
+            assertFalse(
+                "Mutating $fieldName must cause entry or ledger integrity verification to fail",
+                ExecutionProvenanceLedger.verifyEntry(mutated.entryId) && ExecutionProvenanceLedger.verifyLedgerIntegrity()
+            )
+        }
+
+        assertMutationRejected({ it.copy(previousEntryHash = "bad_prev_hash") }, "previousEntryHash")
+        assertMutationRejected({ it.copy(sequenceNumber = 999L) }, "sequenceNumber")
+        assertMutationRejected({ it.copy(taskId = "tampered_task") }, "taskId")
+        assertMutationRejected({ it.copy(actionId = "tampered_action") }, "actionId")
+        assertMutationRejected({ it.copy(capabilityId = "tampered_capability") }, "capabilityId")
+        assertMutationRejected({ it.copy(providerId = "tampered_provider") }, "providerId")
+        assertMutationRejected({ it.copy(modelId = "tampered_model") }, "modelId")
+        assertMutationRejected({ it.copy(inputHash = "bad_input_hash") }, "inputHash")
+        assertMutationRejected({ it.copy(outputHash = "bad_output_hash") }, "outputHash")
+        assertMutationRejected({ it.copy(evidenceSource = EvidenceSource.LOCAL_MODEL_INFERENCE) }, "evidenceSource")
+        assertMutationRejected({ it.copy(evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED) }, "evidenceLevel")
+        assertMutationRejected({ it.copy(expectedState = "tampered_expected") }, "expectedState")
+        assertMutationRejected({ it.copy(observedState = "tampered_observed") }, "observedState")
+        assertMutationRejected({ it.copy(receiptId = "receipt_fake_123") }, "receiptId")
+        assertMutationRejected({ it.copy(verificationStatus = "FAILED") }, "verificationStatus")
+        assertMutationRejected({ it.copy(timestamp = 1000000L) }, "timestamp")
+    }
 }

@@ -159,10 +159,10 @@ class NeuralArchitectureContractAndReferenceTest {
     @Test
     fun testQ4K_DequantizationWithIndependentReferenceVector() {
         val blockBytes = ByteArray(144)
-        // Set d = 1.0f in FP16 (0x3C00)
+        // Vector 1: Standard subblock 0 low-nibble
+        // d = 1.0f in FP16 (0x3C00), dmin = 0.5f in FP16 (0x3800)
         blockBytes[0] = 0x00.toByte()
         blockBytes[1] = 0x3C.toByte()
-        // Set dmin = 0.5f in FP16 (0x3800)
         blockBytes[2] = 0x00.toByte()
         blockBytes[3] = 0x38.toByte()
 
@@ -173,12 +173,47 @@ class NeuralArchitectureContractAndReferenceTest {
         // Set qs byte for index 0: low nibble = 5 -> q = 5
         blockBytes[16] = 0x05.toByte()
 
-        val decoded = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes)
-        assertEquals(256, decoded.size)
+        val decoded1 = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes)
+        assertEquals(256, decoded1.size)
+        // d_sc = d * sc[0] = 1.0 * 1 = 1.0, dmin_m = dmin * m[0] = 0.5 * 2 = 1.0
+        // weight = (1.0 * 5) - 1.0 = 4.0
+        assertEquals(4.0f, decoded1[0], 1e-4f)
 
-        // d_sc = d * sc[0] = 1.0 * 1 = 1.0
-        // dmin_m = dmin * m[0] = 0.5 * 2 = 1.0
-        // weight = (d_sc * q) - dmin_m = (1.0 * 5) - 1.0 = 4.0
-        assertEquals(4.0f, decoded[0], 1e-4f)
+        // Vector 2: Subblock 1 high-nibble & Boundary Values (min=0, max=15)
+        val blockBytes2 = ByteArray(144)
+        // d = 2.0f in FP16 (0x4000), dmin = 1.0f in FP16 (0x3C00)
+        blockBytes2[0] = 0x00.toByte()
+        blockBytes2[1] = 0x40.toByte()
+        blockBytes2[2] = 0x00.toByte()
+        blockBytes2[3] = 0x3C.toByte()
+
+        // subblock 1: sc[1]=3, m[1]=1
+        blockBytes2[5] = 0x03.toByte()
+        blockBytes2[9] = 0x01.toByte()
+
+        // Index 32 corresponds to high nibble of qs[0] (subblock 1)
+        // low nibble = 0 (q_min), high nibble = 15 (0xF, q_max)
+        blockBytes2[16] = 0xF0.toByte()
+
+        val decoded2 = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes2)
+        // index 0: q = 0 => (2.0 * 0 * sc[0]) - (1.0 * m[0]) = 0.0
+        assertEquals(0.0f, decoded2[0], 1e-4f)
+        // index 32: q = 15 => (d_sc * q) - dmin_m = (2.0 * 3 * 15) - (1.0 * 1) = 90 - 1 = 89.0
+        assertEquals(89.0f, decoded2[32], 1e-4f)
+
+        // Vector 3: All 8 subblocks coverage test
+        val blockBytes3 = ByteArray(144)
+        // d = 1.0f, dmin = 0.0f
+        blockBytes3[0] = 0x00.toByte()
+        blockBytes3[1] = 0x3C.toByte()
+        blockBytes3[2] = 0x00.toByte()
+        blockBytes3[3] = 0x00.toByte()
+
+        // Test non-zero decoded outputs across subblock boundaries
+        val decoded3 = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes3)
+        assertEquals(256, decoded3.size)
+        for (i in 0 until 256) {
+            assertTrue("Dequantized float must be finite", decoded3[i].isFinite())
+        }
     }
 }

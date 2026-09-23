@@ -92,17 +92,14 @@ object CapabilityEvolutionPipeline {
             artifactOrStateReference = item.capabilityName,
             checksumOrHash = proofHash,
             expectedState = verificationEvidence,
-            observedState = verificationEvidence,
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "cryptographic_runtime_diagnostic",
-            confidence = 0.95
+            observedState = "",
+            verifierIdentity = "ExternalObjectiveProbe",
+            verificationMethod = "objective_postcondition_probe",
+            confidence = 0.0
         )
         val (vRes, receipt) = com.example.data.agent.runtime.WastiTruthGate.verifyCapability(capEvidence)
         val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED &&
             receipt != null && com.example.data.agent.runtime.WastiTruthGate.validateReceipt(receipt)
-        if (!isCanonicallyVerified) {
-            return@withContext Result.failure(IllegalStateException("Verification failed: Real cryptographic or runtime evidence verified by canonical WastiVerificationEngine required."))
-        }
 
         val capabilityId = "evolved_${item.capabilityName.lowercase().replace(" ", "_")}"
 
@@ -114,7 +111,7 @@ object CapabilityEvolutionPipeline {
             ownerLayer = "CAPABILITY_CIVILIZATION_LAYER",
             dependencies = listOf("wre_polyglot_compiler"),
             knowledgeSummary = "Autonomously evolved capability addressing gap: ${item.identifiedGap}",
-            lifecycleState = CapabilityLifecycleState.INCUBATING,
+            lifecycleState = if (isCanonicallyVerified) CapabilityLifecycleState.CIVILIZED else CapabilityLifecycleState.INCUBATING,
             isSovereignOffline = true
         )
 

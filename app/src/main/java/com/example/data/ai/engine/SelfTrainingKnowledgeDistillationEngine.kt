@@ -81,7 +81,8 @@ object SelfTrainingKnowledgeDistillationEngine {
     suspend fun recordVerifiedInteractionAndDistill(
         taskPrompt: String,
         verifiedEvidence: VerifiedExecutionEvidence,
-        winningModelId: String
+        winningModelId: String,
+        receipt: WastiVerificationReceipt? = null
     ): DistilledKnowledgeArtifact? {
         if (verifiedEvidence.confidence < 0.85 ||
             verifiedEvidence.subject.isBlank() ||
@@ -91,6 +92,7 @@ object SelfTrainingKnowledgeDistillationEngine {
         ) {
             return null
         }
+        val isReceiptValid = receipt != null && WastiTruthGate.validateReceipt(receipt)
         val evidenceStr = "${verifiedEvidence.subject} -> ${verifiedEvidence.verifiedState}"
         return recordVerifiedInteractionAndDistill(
             taskPrompt = taskPrompt,
@@ -98,8 +100,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             winningModelId = winningModelId,
             provenanceEntryId = null,
             evidenceConfidence = verifiedEvidence.confidence.toFloat(),
-            isVerified = true,
-            isFactuallyVerified = false
+            isVerified = isReceiptValid,
+            isFactuallyVerified = isReceiptValid
         )
     }
 
@@ -108,8 +110,9 @@ object SelfTrainingKnowledgeDistillationEngine {
         provenanceEntry: com.example.data.agent.runtime.ProvenanceEntry,
         winningModelId: String
     ): DistilledKnowledgeArtifact? {
-        if (!provenanceEntry.isVerified ||
-            provenanceEntry.evidenceSummary.isBlank() ||
+        val isEntryAuthentic = com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(provenanceEntry.entryId)
+        val isCanonicalVerified = provenanceEntry.isVerified && isEntryAuthentic
+        if (provenanceEntry.evidenceSummary.isBlank() ||
             isSyntheticOrMock(provenanceEntry.evidenceSummary)
         ) {
             return null
@@ -121,8 +124,8 @@ object SelfTrainingKnowledgeDistillationEngine {
             winningModelId = winningModelId,
             provenanceEntryId = provenanceEntry.entryId,
             evidenceConfidence = derivedConfidence,
-            isVerified = true,
-            isFactuallyVerified = false
+            isVerified = isCanonicalVerified,
+            isFactuallyVerified = isCanonicalVerified
         )
     }
 
