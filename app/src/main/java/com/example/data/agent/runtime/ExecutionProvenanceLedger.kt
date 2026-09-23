@@ -472,7 +472,7 @@ object ExecutionProvenanceLedger {
             expectedState = expectedState,
             observedState = observedState.ifBlank { summary },
             howObserved = howObserved.ifBlank { source.name },
-            receiptId = if (isVerified) finalReceipt?.receiptId else null
+            receiptId = resolvedReceiptId
         )
 
         val persistedOk = persistEntry(entry)
