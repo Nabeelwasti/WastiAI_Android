@@ -99,12 +99,12 @@ fun wastiPublicValue(value: String): String =
 
 android {
   namespace = "com.example"
-  compileSdk = 37
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "com.aistudio.wastios.k9v2pz"
     minSdk = 24
-    targetSdk = 37
+    targetSdk = 35
     versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
     versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
     multiDexEnabled = true

@@ -89,6 +89,12 @@ jobs:
         test -s "$ANDROID_HOME/licenses/android-sdk-license" || { echo "ERROR: Failed to write android-sdk-license"; exit 1; }
         echo "Android SDK licenses accepted deterministically."
 
+    - name: Ensure Android SDK Platform 35 Installed
+      run: |
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
+        echo "Android SDK Platform 35 confirmed."
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
       with:
