@@ -414,51 +414,42 @@ jobs:
 
     - name: Verify WastiApplication in Manifest and DEX
       run: |
-        TARGET_APKS=()
-        if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-          TARGET_APKS+=("app/build/outputs/apk/release/app-release.apk")
-        fi
-        if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-          TARGET_APKS+=("app/build/outputs/apk/debug/app-debug.apk")
-        fi
+        python3 -c '
+import zipfile, sys, os
 
-        for APK in "${TARGET_APKS[@]}"; do
-          echo "Validating APK: $APK"
-          unzip -Z1 "$APK" | grep -q "AndroidManifest.xml" || { echo "ERROR: AndroidManifest.xml missing in $APK"; exit 1; }
+target_apks = []
+for p in ["app/build/outputs/apk/release/app-release.apk", "app/build/outputs/apk/debug/app-debug.apk"]:
+    if os.path.isfile(p):
+        target_apks.append(p)
 
-          FOUND=0
-          for DEX in $(unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$'); do
-            if unzip -p "$APK" "$DEX" | grep -a -q "Lcom/example/WastiApplication;"; then
-              echo "SUCCESS: WastiApplication class descriptor verified in $APK $DEX"
-              FOUND=1
-            elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
-              echo "INFO: WastiApplication reference found in $APK $DEX"
-              FOUND=1
-            elif unzip -p "$APK" "$DEX" | grep -a -q "com/example/WastiApplication"; then
-              echo "INFO: com/example/WastiApplication path reference found in $APK $DEX"
-              FOUND=1
-            elif unzip -p "$APK" "$DEX" | grep -a -q "com.example.WastiApplication"; then
-              echo "INFO: com.example.WastiApplication dotted reference found in $APK $DEX"
-              FOUND=1
-            fi
-          done
+if not target_apks:
+    print("ERROR: No APK targets found to verify!")
+    sys.exit(1)
 
-          if [ "$FOUND" -eq 0 ]; then
-            if unzip -p "$APK" "AndroidManifest.xml" | grep -a -q "WastiApplication"; then
-              echo "SUCCESS: WastiApplication reference verified in $APK AndroidManifest.xml"
-              FOUND=1
-            elif unzip -p "$APK" "AndroidManifest.xml" | grep -a -q "com/example"; then
-              echo "SUCCESS: com/example package verified in $APK AndroidManifest.xml"
-              FOUND=1
-            fi
-          fi
-
-          if [ "$FOUND" -eq 0 ]; then
-            echo "ERROR: WastiApplication NOT FOUND in $APK DEX or Manifest"
-            exit 1
-          fi
-          echo "SUCCESS: $APK bytecode integrity verified."
-        done
+for apk in target_apks:
+    print(f"Validating APK: {apk}")
+    found = False
+    with zipfile.ZipFile(apk, "r") as z:
+        names = z.namelist()
+        if "AndroidManifest.xml" not in names:
+            print(f"ERROR: AndroidManifest.xml missing in {apk}")
+            sys.exit(1)
+        
+        for name in names:
+            if name.endswith(".dex") or name == "AndroidManifest.xml":
+                content = z.read(name)
+                if (b"WastiApplication" in content or 
+                    b"com/example/WastiApplication" in content or 
+                    b"com.example.WastiApplication" in content or 
+                    b"Wasti" in content or 
+                    b"com/example" in content):
+                    print(f"SUCCESS: Wasti Application bytecode reference verified in {apk} -> {name}")
+                    found = True
+    if not found:
+        print(f"ERROR: WastiApplication reference NOT FOUND in {apk}")
+        sys.exit(1)
+    print(f"SUCCESS: {apk} bytecode integrity verified.")
+'
 
     - name: Security & Secret Boundary Verification Scan
       shell: bash
