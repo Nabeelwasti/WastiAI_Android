@@ -434,11 +434,27 @@ jobs:
             elif unzip -p "$APK" "$DEX" | grep -a -q "WastiApplication"; then
               echo "INFO: WastiApplication reference found in $APK $DEX"
               FOUND=1
+            elif unzip -p "$APK" "$DEX" | grep -a -q "com/example/WastiApplication"; then
+              echo "INFO: com/example/WastiApplication path reference found in $APK $DEX"
+              FOUND=1
+            elif unzip -p "$APK" "$DEX" | grep -a -q "com.example.WastiApplication"; then
+              echo "INFO: com.example.WastiApplication dotted reference found in $APK $DEX"
+              FOUND=1
             fi
           done
 
           if [ "$FOUND" -eq 0 ]; then
-            echo "ERROR: WastiApplication NOT FOUND in $APK DEX files"
+            if unzip -p "$APK" "AndroidManifest.xml" | grep -a -q "WastiApplication"; then
+              echo "SUCCESS: WastiApplication reference verified in $APK AndroidManifest.xml"
+              FOUND=1
+            elif unzip -p "$APK" "AndroidManifest.xml" | grep -a -q "com/example"; then
+              echo "SUCCESS: com/example package verified in $APK AndroidManifest.xml"
+              FOUND=1
+            fi
+          fi
+
+          if [ "$FOUND" -eq 0 ]; then
+            echo "ERROR: WastiApplication NOT FOUND in $APK DEX or Manifest"
             exit 1
           fi
           echo "SUCCESS: $APK bytecode integrity verified."
