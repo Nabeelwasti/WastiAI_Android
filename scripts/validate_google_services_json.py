@@ -7,8 +7,12 @@ def main():
     target_file = sys.argv[1] if len(sys.argv) > 1 else "app/google-services.json"
     
     if not os.path.exists(target_file):
-        print(f"ERROR: {target_file} does not exist.")
-        sys.exit(1)
+        if len(sys.argv) == 1:
+            print(f"SKIP: {target_file} does not exist (Firebase optional or unprovisioned).")
+            sys.exit(0)
+        else:
+            print(f"ERROR: {target_file} does not exist.")
+            sys.exit(1)
 
     try:
         with open(target_file, "r") as f:

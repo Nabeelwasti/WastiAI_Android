@@ -19,9 +19,9 @@ All contributions must strictly adhere to **The Eternal Manifesto**:
 
 ### Prerequisites
 - **JDK**: Java 21 or higher
-- **Android SDK**: Compile SDK 37, Target SDK 37, Min SDK 24
+- **Android SDK**: Compile SDK 35, Target SDK 35, Min SDK 24
 - **Node.js**: v18+ (for companion services in `/backend`)
-- **Gradle**: 8.4+ with Kotlin DSL (`build.gradle.kts`), AGP 9.3.1
+- **Gradle**: 9.7+ with Kotlin DSL (`build.gradle.kts`), AGP 8.7.3
 
 ### Building the Android App
 ```bash

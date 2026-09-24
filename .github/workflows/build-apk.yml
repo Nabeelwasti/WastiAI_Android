@@ -89,13 +89,13 @@ jobs:
         test -s "$ANDROID_HOME/licenses/android-sdk-license" || { echo "ERROR: Failed to write android-sdk-license"; exit 1; }
         echo "Android SDK licenses accepted deterministically."
 
-    - name: Ensure Android SDK Platforms Installed
+    - name: Ensure Android SDK Platform Installed
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "platforms;android-37" "build-tools;35.0.0" "build-tools;37.0.0"
+        (yes 2>/dev/null || true) | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
         test -d "$ANDROID_HOME/platforms/android-35" || { echo "ERROR: platforms;android-35 directory missing!"; exit 1; }
         test -d "$ANDROID_HOME/build-tools/35.0.0" || { echo "ERROR: build-tools;35.0.0 directory missing!"; exit 1; }
-        echo "Android SDK Platforms confirmed."
+        echo "Android SDK Platform 35 confirmed."
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2
@@ -461,30 +461,8 @@ jobs:
           mkdir -p /tmp/apk_inspect
           unzip -q "$TARGET_APK" -d /tmp/apk_inspect
 
-          # 3a. Verify canonical package ID in APK manifest
-          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt 2>/dev/null | sort -V | tail -n 1)
-          if [ -n "$AAPT" ] && [ -x "$AAPT" ] && "$AAPT" dump badging "$TARGET_APK" 2>/dev/null | grep -q "com.aistudio.wastios.k9v2pz"; then
-            echo "SUCCESS: Canonical package ID verified via aapt in $TARGET_APK"
-          else
-            python3 -c "import zipfile, sys; apk = sys.argv[1]; b = zipfile.ZipFile(apk).read('AndroidManifest.xml'); sys.exit(0 if (b'com.aistudio.wastios.k9v2pz' in b or 'com.aistudio.wastios.k9v2pz'.encode('utf-16le') in b) else 1)" "$TARGET_APK" || {
-              echo "ERROR: Canonical package ID 'com.aistudio.wastios.k9v2pz' not found in $TARGET_APK AndroidManifest.xml!"
-              exit 1
-            }
-            echo "SUCCESS: Canonical package ID verified via binary AXML in $TARGET_APK"
-          fi
-
-          # 3b. Verify WastiApplication bytecode integrity
-          FOUND_APP=0
-          for DEX in $(unzip -Z1 "$TARGET_APK" | grep -E '^classes[0-9]*\.dex$'); do
-            if unzip -p "$TARGET_APK" "$DEX" | grep -a -q "WastiApplication"; then
-              FOUND_APP=1
-              break
-            fi
-          done
-          if [ "$FOUND_APP" -eq 0 ]; then
-            echo "ERROR: WastiApplication class missing in $TARGET_APK DEX files!"
-            exit 1
-          fi
+          # 3a & 3b. Canonical bytecode, manifest, and DEX class_def verification
+          python3 scripts/verify_apk_bytecode.py
 
           # 3c. Verify signing certificate on release APK
           if [[ "$TARGET_APK" == *"release"* ]]; then

@@ -225,8 +225,8 @@ class TruthAuthorityArchitectureTest {
         val gradleFile = java.io.File("app/build.gradle.kts")
         assertTrue("app/build.gradle.kts must exist", gradleFile.exists())
         val content = gradleFile.readText()
-        assertTrue("compileSdk must be strictly set to canonical 37", content.contains("compileSdk = 37"))
-        assertTrue("targetSdk must be strictly set to canonical 37", content.contains("targetSdk = 37"))
+        assertTrue("compileSdk must be strictly set to canonical 35", content.contains("compileSdk = 35"))
+        assertTrue("targetSdk must be strictly set to canonical 35", content.contains("targetSdk = 35"))
     }
 
     @Test

@@ -128,7 +128,7 @@ def is_class_defined_in_dex(dex_bytes, target_descriptor):
     if not (magic.startswith(b"dex\n") and magic.endswith(b"\x00")):
         return False
 
-    header = struct.unpack("<8sI20sIIIIIIIIIIIIIIII", dex_bytes[:112])
+    header = struct.unpack("<8sI20sIIIIIIIIIIIIIIIIIIII", dex_bytes[:112])
     string_ids_size, string_ids_off = header[9], header[10]
     type_ids_size, type_ids_off = header[11], header[12]
     class_defs_size, class_defs_off = header[19], header[20]

@@ -79,8 +79,12 @@ fi
 # 3. Cryptographic Signature Verification
 echo "--- Step 3: Cryptographic Signature Audit ---"
 APKSIGNER=""
-if [ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME/build-tools" ]; then
-  APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner 2>/dev/null | sort -V | tail -n 1)
+SEARCH_PATHS=""
+[ -n "${ANDROID_HOME:-}" ] && [ -d "$ANDROID_HOME/build-tools" ] && SEARCH_PATHS="$SEARCH_PATHS $ANDROID_HOME/build-tools"
+[ -d "/opt/android/sdk/build-tools" ] && SEARCH_PATHS="$SEARCH_PATHS /opt/android/sdk/build-tools"
+
+if [ -n "$SEARCH_PATHS" ]; then
+  APKSIGNER=$(find $SEARCH_PATHS -name apksigner 2>/dev/null | sort -V | tail -n 1)
 fi
 
 if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
