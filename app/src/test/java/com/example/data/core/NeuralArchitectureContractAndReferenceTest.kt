@@ -201,19 +201,41 @@ class NeuralArchitectureContractAndReferenceTest {
         // index 32: q = 15 => (d_sc * q) - dmin_m = (2.0 * 3 * 15) - (1.0 * 1) = 90 - 1 = 89.0
         assertEquals(89.0f, decoded2[32], 1e-4f)
 
-        // Vector 3: All 8 subblocks coverage test
+        // Vector 3: Comprehensive 8-subblock & boundary value verification
         val blockBytes3 = ByteArray(144)
-        // d = 1.0f, dmin = 0.0f
+        // d = 2.0f in FP16 (0x4000), dmin = 0.5f in FP16 (0x3800)
         blockBytes3[0] = 0x00.toByte()
-        blockBytes3[1] = 0x3C.toByte()
+        blockBytes3[1] = 0x40.toByte()
         blockBytes3[2] = 0x00.toByte()
-        blockBytes3[3] = 0x00.toByte()
+        blockBytes3[3] = 0x38.toByte()
 
-        // Test non-zero decoded outputs across subblock boundaries
+        // Set distinct scales and mins for subblocks 0..7
+        // For sb 0..3:
+        // sb 0: sc[0]=1, m[0]=1 => dSc=2.0, dminM=0.5
+        blockBytes3[4] = 0x01.toByte()
+        blockBytes3[8] = 0x01.toByte()
+        // sb 1: sc[1]=2, m[1]=2 => dSc=4.0, dminM=1.0
+        blockBytes3[5] = 0x02.toByte()
+        blockBytes3[9] = 0x02.toByte()
+        // sb 2: sc[2]=3, m[2]=3 => dSc=6.0, dminM=1.5
+        blockBytes3[6] = 0x03.toByte()
+        blockBytes3[10] = 0x03.toByte()
+        // sb 3: sc[3]=4, m[3]=4 => dSc=8.0, dminM=2.0
+        blockBytes3[7] = 0x04.toByte()
+        blockBytes3[11] = 0x04.toByte()
+
+        // Set nibble values for qs
+        // sb 0 (idx 0): low nibble = 10 => weight = (2.0 * 10) - 0.5 = 19.5
+        // sb 1 (idx 32): high nibble = 5 => weight = (4.0 * 5) - 1.0 = 19.0
+        blockBytes3[16] = 0x5A.toByte() // low = 10 (0xA), high = 5 (0x5)
+
         val decoded3 = AuthoritativeNeuralFixtures.dequantizeQ4KBlockReference(blockBytes3)
         assertEquals(256, decoded3.size)
+        assertEquals(19.5f, decoded3[0], 1e-4f)
+        assertEquals(19.0f, decoded3[32], 1e-4f)
+
         for (i in 0 until 256) {
-            assertTrue("Dequantized float must be finite", decoded3[i].isFinite())
+            assertTrue("Dequantized float $i must be finite", decoded3[i].isFinite())
         }
     }
 }

@@ -25,6 +25,12 @@ import java.util.UUID
  */
 class TruthAuthorityArchitectureTest {
 
+    @org.junit.Before
+    fun setUp() {
+        WastiTruthAuthority.setTestAuthorityKeyForTesting()
+        ExecutionProvenanceLedger.resetForTesting()
+    }
+
     @Test
     fun testTruthAuthorityIssuesValidSignedReceipt() {
         val now = System.currentTimeMillis()
@@ -33,14 +39,14 @@ class TruthAuthorityArchitectureTest {
             actionId = "action_test_101",
             capabilityId = "capability_test",
             executor = "TestExecutor",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
+            observationSource = EvidenceSource.DATABASE_QUERY,
             timestamp = now,
-            artifactOrStateReference = "ref_101",
+            artifactOrStateReference = "db_table_record_101",
             checksumOrHash = "abcd1234efgh5678",
-            expectedState = "state_ok",
-            observedState = "state_ok",
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_diagnostic_probe",
+            expectedState = "record_inserted",
+            observedState = "record_inserted",
+            verifierIdentity = "DatabaseObjectiveProbe",
+            verificationMethod = "objective_postcondition_probe",
             confidence = 0.95
         )
 
@@ -74,14 +80,14 @@ class TruthAuthorityArchitectureTest {
             actionId = "action_test_102",
             capabilityId = "capability_test",
             executor = "TestExecutor",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
+            observationSource = EvidenceSource.DATABASE_QUERY,
             timestamp = now,
             artifactOrStateReference = "ref_102",
             checksumOrHash = "1234abcd5678efgh",
             expectedState = "state_ok",
             observedState = "state_ok",
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_diagnostic_probe",
+            verifierIdentity = "ObjectiveProbe_DB",
+            verificationMethod = "objective_db_probe",
             confidence = 0.95
         )
 
@@ -183,14 +189,14 @@ class TruthAuthorityArchitectureTest {
             actionId = actionId,
             capabilityId = "valid_cap",
             executor = "TestExecutor",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
+            observationSource = EvidenceSource.DATABASE_QUERY,
             timestamp = System.currentTimeMillis(),
             artifactOrStateReference = "ref_valid",
             checksumOrHash = "valid_hash_12345678",
             expectedState = "state_ok",
             observedState = "state_ok",
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_diagnostic_probe",
+            verifierIdentity = "DatabaseObjectiveProbe",
+            verificationMethod = "objective_db_probe",
             confidence = 0.95
         )
 
@@ -233,31 +239,15 @@ class TruthAuthorityArchitectureTest {
         val inputA = WastiTruthAuthority.hashString("input_payload_A")
         val outputA = WastiTruthAuthority.hashString("output_payload_A")
 
-        val evidenceA = CapabilitySpecificEvidence(
-            taskId = taskIdA,
-            actionId = actionId,
-            capabilityId = capabilityId,
-            executor = "TestExecutor",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
-            timestamp = System.currentTimeMillis(),
-            artifactOrStateReference = "ref_A",
-            checksumOrHash = "hash_A",
-            expectedState = "state_A",
-            observedState = "state_A",
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_diagnostic_probe",
-            confidence = 0.95
-        )
-
         val (verResult, receiptA) = WastiTruthAuthority.evaluate(
             taskId = taskIdA,
             actionId = actionId,
             capabilityId = capabilityId,
             expectedState = "state_A",
             observedState = "state_A",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_diagnostic_probe",
+            observationSource = EvidenceSource.DATABASE_QUERY,
+            verifierIdentity = "ObjectiveProbe_DB",
+            verificationMethod = "objective_db_probe",
             confidence = 0.95,
             inputHash = inputA,
             outputHash = outputA
@@ -304,9 +294,9 @@ class TruthAuthorityArchitectureTest {
             capabilityId = capabilityId,
             expectedState = "state_ok",
             observedState = "state_ok",
-            observationSource = EvidenceSource.RUNTIME_DIAGNOSTIC,
-            verifierIdentity = "WastiVerificationEngine",
-            verificationMethod = "runtime_probe",
+            observationSource = EvidenceSource.DATABASE_QUERY,
+            verifierIdentity = "ObjectiveProbe_DB",
+            verificationMethod = "objective_db_probe",
             confidence = 0.95,
             inputHash = inHash,
             outputHash = outHash

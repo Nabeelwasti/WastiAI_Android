@@ -77,30 +77,7 @@ object CapabilityEvolutionPipeline {
             return@withContext Result.failure(IllegalStateException("Honest Failure: Test evidence invalid or synthetic."))
         }
 
-        val proofHash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest("$gapId:${item.capabilityName}:$verificationEvidence".toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-
-        val now = System.currentTimeMillis()
-        val capEvidence = com.example.data.agent.runtime.CapabilitySpecificEvidence(
-            taskId = gapId,
-            actionId = "evolve_capability",
-            capabilityId = item.capabilityName,
-            executor = "CapabilityEvolutionPipeline",
-            observationSource = com.example.data.agent.runtime.EvidenceSource.RUNTIME_DIAGNOSTIC,
-            timestamp = now,
-            artifactOrStateReference = item.capabilityName,
-            checksumOrHash = proofHash,
-            expectedState = verificationEvidence,
-            observedState = "",
-            verifierIdentity = "ExternalObjectiveProbe",
-            verificationMethod = "objective_postcondition_probe",
-            confidence = 0.0
-        )
-        val (vRes, receipt) = com.example.data.agent.runtime.WastiTruthGate.verifyCapability(capEvidence)
-        val isCanonicallyVerified = vRes.status == com.example.data.agent.runtime.ActionVerificationStatus.VERIFIED &&
-            receipt != null && com.example.data.agent.runtime.WastiTruthGate.validateReceipt(receipt)
-
+        val isCanonicallyVerified = false
         val capabilityId = "evolved_${item.capabilityName.lowercase().replace(" ", "_")}"
 
         // Stage: REGISTER
@@ -111,7 +88,7 @@ object CapabilityEvolutionPipeline {
             ownerLayer = "CAPABILITY_CIVILIZATION_LAYER",
             dependencies = listOf("wre_polyglot_compiler"),
             knowledgeSummary = "Autonomously evolved capability addressing gap: ${item.identifiedGap}",
-            lifecycleState = if (isCanonicallyVerified) CapabilityLifecycleState.CIVILIZED else CapabilityLifecycleState.INCUBATING,
+            lifecycleState = if (isCanonicallyVerified) CapabilityLifecycleState.STABLE else CapabilityLifecycleState.INCUBATING,
             isSovereignOffline = true
         )
 

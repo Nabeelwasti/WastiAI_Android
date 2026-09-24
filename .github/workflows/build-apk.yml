@@ -92,7 +92,9 @@ jobs:
     - name: Ensure Android SDK Platform 37 Installed
       run: |
         yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;37.0.0" || true
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;37.0.0"
+        test -d "$ANDROID_HOME/platforms/android-37" || { echo "ERROR: platforms;android-37 directory missing!"; exit 1; }
+        test -d "$ANDROID_HOME/build-tools/37.0.0" || { echo "ERROR: build-tools;37.0.0 directory missing!"; exit 1; }
         echo "Android SDK Platform 37 confirmed."
 
     - name: Setup Gradle

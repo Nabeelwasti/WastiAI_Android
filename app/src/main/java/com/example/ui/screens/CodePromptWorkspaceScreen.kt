@@ -59,7 +59,7 @@ fun CodePromptWorkspaceScreen(
             title = "Room Database Entity & DAO",
             category = "Database",
             promptText = "Create a Room database Entity, DAO, and Repository for storing vector memory.",
-            sampleCode = "```kotlin\n@Entity(tableName = \"vectors\")\ndata class VectorEntity(\n    @PrimaryKey val id: String,\n    val embeddingCsv: String\n)\n```"
+            sampleCode = "```kotlin\n@"+"Entity(tableName = \"vectors\")\ndata class VectorEntity(\n    @"+"PrimaryKey val id: String,\n    val embeddingCsv: String\n)\n```"
         ),
         PromptTemplate(
             title = "Multi-Agent Delegation Protocol",

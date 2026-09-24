@@ -4,6 +4,7 @@ import java.time.Duration
 
 plugins {
   alias(libs.plugins.android.application)
+  alias(libs.plugins.kotlin.android)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
@@ -99,12 +100,12 @@ fun wastiPublicValue(value: String): String =
 
 android {
   namespace = "com.example"
-  compileSdk = 37
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "com.aistudio.wastios.k9v2pz"
     minSdk = 24
-    targetSdk = 37
+    targetSdk = 35
     versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
     versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
     multiDexEnabled = true

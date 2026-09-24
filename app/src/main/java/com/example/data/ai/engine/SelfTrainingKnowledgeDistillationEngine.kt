@@ -145,9 +145,14 @@ object SelfTrainingKnowledgeDistillationEngine {
             return null
         }
 
-        // Truth Doctrine: Only bind canonical provenance if explicitly provided for this interaction.
-        // Never attach an unrelated "last verified" entry from the global ledger.
+        // Truth Doctrine: Only bind canonical provenance if explicitly provided and verified in ExecutionProvenanceLedger.
         val canonicalEntryId = provenanceEntryId
+        val verifiedLedgerEntry = canonicalEntryId?.let { id ->
+            if (com.example.data.agent.runtime.ExecutionProvenanceLedger.verifyEntry(id)) {
+                com.example.data.agent.runtime.ExecutionProvenanceLedger.getEntry(id)
+            } else null
+        }
+        val hasCanonicalProof = verifiedLedgerEntry != null && verifiedLedgerEntry.isVerified
 
         val model = OpenSourceModelCatalog.getModelById(winningModelId)
         val spec = model?.primarySpecialization ?: ModelSpecialization.GENERAL_REASONING
@@ -158,18 +163,17 @@ object SelfTrainingKnowledgeDistillationEngine {
 
         val artifact = if (existingIndex >= 0) {
             val existing = _distilledArtifacts.value[existingIndex]
-            // Factual verification and confidence are evidence-derived, NEVER incremented merely by repetition.
-            val derivedConfidence = if (isVerified) {
+            val derivedConfidence = if (hasCanonicalProof) {
                 maxOf(existing.confidenceScore, evidenceConfidence)
             } else {
-                existing.confidenceScore
+                existing.confidenceScore.coerceAtMost(0.84f)
             }
             existing.copy(
                 reinforcementCount = existing.reinforcementCount + 1,
                 confidenceScore = derivedConfidence,
                 executionEvidence = successfulExecutionEvidence,
                 generatedAtMs = System.currentTimeMillis(),
-                isFactuallyVerified = existing.isFactuallyVerified || isFactuallyVerified,
+                isFactuallyVerified = existing.isFactuallyVerified || hasCanonicalProof,
                 canonicalProvenanceEntryId = canonicalEntryId ?: existing.canonicalProvenanceEntryId
             )
         } else {
@@ -180,10 +184,10 @@ object SelfTrainingKnowledgeDistillationEngine {
                 taskPattern = taskPrompt.take(100),
                 verifiedSkillSignature = "skill_verified_${taskPrompt.hashCode()}",
                 executionEvidence = successfulExecutionEvidence,
-                confidenceScore = if (isVerified) evidenceConfidence else evidenceConfidence.coerceAtMost(0.85f),
+                confidenceScore = if (hasCanonicalProof) evidenceConfidence.coerceIn(0.85f, 1.0f) else evidenceConfidence.coerceAtMost(0.84f),
                 reinforcementCount = 1,
-                isFactuallyVerified = isVerified && canonicalEntryId != null && isFactuallyVerified,
-                canonicalProvenanceEntryId = canonicalEntryId
+                isFactuallyVerified = hasCanonicalProof,
+                canonicalProvenanceEntryId = if (hasCanonicalProof) canonicalEntryId else null
             )
         }
 

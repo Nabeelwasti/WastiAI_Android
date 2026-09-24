@@ -568,6 +568,11 @@ object ExecutionProvenanceLedger {
     }
 
     @Synchronized
+    fun getEntry(entryId: String): ProvenanceEntry? {
+        return _entries.value.find { it.entryId == entryId }
+    }
+
+    @Synchronized
     fun verifyLedgerIntegrity(): Boolean {
         val list = _entries.value
         if (list.isEmpty()) return !isLedgerCompromised

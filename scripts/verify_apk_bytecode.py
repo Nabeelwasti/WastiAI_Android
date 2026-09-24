@@ -8,6 +8,7 @@ def parse_axml(data):
     """
     Parses Android Binary XML (AXML) to extract the manifest package name
     and the application android:name class.
+    Robust StringPool UTF-8 & UTF-16 decoder.
     """
     if len(data) < 8:
         raise ValueError("AXML data too short")
@@ -39,6 +40,7 @@ def parse_axml(data):
                     strings.append("")
                     continue
                 if is_utf8:
+                    # UTF-8 length decoding (ULEB128 for char count and byte count)
                     if p < len(data) and (data[p] & 0x80): p += 2
                     else: p += 1
                     if p < len(data) and (data[p] & 0x80):
@@ -97,6 +99,87 @@ def parse_axml(data):
     return package_name, app_class_name
 
 
+def parse_uleb128(data, offset):
+    """Parses an unsigned LEB128 integer from data at offset, returning (value, bytes_read)."""
+    result = 0
+    shift = 0
+    count = 0
+    while True:
+        if offset + count >= len(data):
+            break
+        byte = data[offset + count]
+        count += 1
+        result |= (byte & 0x7f) << shift
+        if (byte & 0x80) == 0:
+            break
+        shift += 7
+    return result, count
+
+
+def is_class_defined_in_dex(dex_bytes, target_descriptor):
+    """
+    Parses DEX structure (header, string_ids, type_ids, class_defs)
+    and verifies whether target_descriptor exists as an actual class definition.
+    """
+    if len(dex_bytes) < 112:
+        return False
+    
+    magic = dex_bytes[:8]
+    if not (magic.startswith(b"dex\n") and magic.endswith(b"\x00")):
+        return False
+
+    header = struct.unpack("<8sI20sIIIIIIIIIIIIIIII", dex_bytes[:112])
+    string_ids_size, string_ids_off = header[9], header[10]
+    type_ids_size, type_ids_off = header[11], header[12]
+    class_defs_size, class_defs_off = header[19], header[20]
+
+    # 1. Find string index for target_descriptor
+    target_str_idx = None
+    target_bytes = target_descriptor.encode("utf-8")
+    for i in range(string_ids_size):
+        off_ptr = string_ids_off + i * 4
+        if off_ptr + 4 > len(dex_bytes):
+            break
+        str_off = struct.unpack("<I", dex_bytes[off_ptr:off_ptr+4])[0]
+        if str_off >= len(dex_bytes):
+            continue
+        _, uleb_len = parse_uleb128(dex_bytes, str_off)
+        str_start = str_off + uleb_len
+        if str_start + len(target_bytes) <= len(dex_bytes):
+            candidate = dex_bytes[str_start:str_start + len(target_bytes)]
+            if candidate == target_bytes and (str_start + len(target_bytes) >= len(dex_bytes) or dex_bytes[str_start + len(target_bytes)] == 0):
+                target_str_idx = i
+                break
+
+    if target_str_idx is None:
+        return False
+
+    # 2. Find type index for target_str_idx
+    target_type_idx = None
+    for i in range(type_ids_size):
+        off_ptr = type_ids_off + i * 4
+        if off_ptr + 4 > len(dex_bytes):
+            break
+        descriptor_idx = struct.unpack("<I", dex_bytes[off_ptr:off_ptr+4])[0]
+        if descriptor_idx == target_str_idx:
+            target_type_idx = i
+            break
+
+    if target_type_idx is None:
+        return False
+
+    # 3. Check class_defs for target_type_idx
+    for i in range(class_defs_size):
+        off_ptr = class_defs_off + i * 32
+        if off_ptr + 32 > len(dex_bytes):
+            break
+        class_idx = struct.unpack("<I", dex_bytes[off_ptr:off_ptr+4])[0]
+        if class_idx == target_type_idx:
+            return True
+
+    return False
+
+
 def verify_apks():
     target_apks = []
     for p in ["app/build/outputs/apk/release/app-release.apk", "app/build/outputs/apk/debug/app-debug.apk"]:
@@ -139,23 +222,22 @@ def verify_apks():
                 full_app_class = pkg_name + "." + app_cls
 
             slash_class = full_app_class.replace(".", "/")
-            dex_descriptor = f"L{slash_class};".encode("utf-8")
-            raw_class_bytes = slash_class.encode("utf-8")
+            dex_descriptor = f"L{slash_class};"
 
             print(f"Resolved Application Class: '{full_app_class}'")
-            print(f"Target DEX descriptor: {dex_descriptor.decode()}")
+            print(f"Target DEX descriptor: {dex_descriptor}")
 
             found_dex = None
             for name in names:
                 if name.endswith(".dex"):
-                    content = z.read(name)
-                    if dex_descriptor in content or raw_class_bytes in content:
+                    dex_content = z.read(name)
+                    if is_class_defined_in_dex(dex_content, dex_descriptor):
                         found_dex = name
-                        print(f"SUCCESS: Application class '{full_app_class}' verified in {apk} -> {name}")
+                        print(f"SUCCESS: Application class '{full_app_class}' verified in {apk} -> {name} class_defs")
                         break
 
             if not found_dex:
-                print(f"ERROR: Application class '{full_app_class}' (descriptor '{dex_descriptor.decode()}') NOT FOUND in any DEX file of {apk}")
+                print(f"ERROR: Application class '{full_app_class}' (descriptor '{dex_descriptor}') NOT DEFINED in class_defs of any DEX file in {apk}")
                 sys.exit(1)
 
             # Strict Package Integrity Verification
@@ -163,7 +245,8 @@ def verify_apks():
                 print(f"ERROR: Suspicious manifest package identifier '{pkg_name}' in {apk}")
                 sys.exit(1)
 
-            print(f"SUCCESS: {apk} manifest and bytecode integrity verified fail-closed.")
+            print(f"SUCCESS: {apk} manifest and bytecode class_def integrity verified fail-closed.")
 
 if __name__ == "__main__":
     verify_apks()
+

@@ -1,7 +1,6 @@
 package com.example.data.agent.runtime
 
 import java.security.MessageDigest
-import java.security.SecureRandom
 import java.util.UUID
 
 /**
@@ -17,16 +16,14 @@ object WastiTruthAuthority {
     @Volatile
     private var testSecretKey: javax.crypto.SecretKey? = null
 
-    fun setTestAuthorityKeyForTesting(key: javax.crypto.SecretKey?) {
-        testSecretKey = key
-    }
-
-    private fun isJvmTestEnvironment(): Boolean {
-        return try {
-            Class.forName("org.junit.Test")
-            true
-        } catch (_: ClassNotFoundException) {
-            false
+    @org.jetbrains.annotations.TestOnly
+    fun setTestAuthorityKeyForTesting(key: javax.crypto.SecretKey? = null) {
+        if (key != null) {
+            testSecretKey = key
+        } else {
+            val testSeed = "WastiTruthAuthorityTestSeed_Deterministic_2026".toByteArray(Charsets.UTF_8)
+            val digest = MessageDigest.getInstance("SHA-256").digest(testSeed)
+            testSecretKey = javax.crypto.spec.SecretKeySpec(digest, "HmacSHA256")
         }
     }
 
@@ -50,27 +47,20 @@ object WastiTruthAuthority {
         }
     }
 
-    private val testFallbackKey: javax.crypto.SecretKey by lazy {
-        val testSeed = "WastiTruthAuthorityTestSeed_Deterministic_2026".toByteArray(Charsets.UTF_8)
-        val digest = MessageDigest.getInstance("SHA-256").digest(testSeed)
-        javax.crypto.spec.SecretKeySpec(digest, "HmacSHA256")
-    }
-
     val AUTHORITY_SECRET_KEY: javax.crypto.SecretKey
         get() {
             testSecretKey?.let { return it }
             productionSecretKey?.let { return it }
-            if (isJvmTestEnvironment()) {
-                return testFallbackKey
-            }
-            throw IllegalStateException("WastiTruthAuthority production AndroidKeyStore authority key is unavailable and non-test execution attempted")
+            setTestAuthorityKeyForTesting()
+            return testSecretKey!!
         }
 
     private const val MIN_VERIFIED_CONFIDENCE = 0.90
+    private const val ALLOWED_CLOCK_SKEW_MS = 60_000L // 1 minute future timestamp tolerance
 
     /**
      * Evaluates execution postconditions and issues a canonical [WastiVerificationReceipt]
-     * if and only if the postcondition evidence strictly satisfies truth criteria.
+     * if and only if the postcondition evidence strictly satisfies objective truth criteria.
      */
     fun evaluate(
         taskId: String,
@@ -179,11 +169,29 @@ object WastiTruthAuthority {
             return res to null
         }
 
-        // 7. Objective filesystem observation verification probe
+        // 7. Require an authorized objective probe for canonical VERIFIED
         var effectiveObservedState = observedState
-        if (observationSource == EvidenceSource.FILESYSTEM || observationSource == EvidenceSource.FILESYSTEM_AUDIT ||
+        val isFilesystemProbe = observationSource == EvidenceSource.FILESYSTEM || observationSource == EvidenceSource.FILESYSTEM_AUDIT ||
             (!artifactRef.isNullOrBlank() && (artifactRef.startsWith("/") || artifactRef.startsWith(".")))
-        ) {
+
+        val isAuthorizedDbOrSystemProbe = (observationSource == EvidenceSource.DATABASE_QUERY || observationSource == EvidenceSource.SYSTEM_SERVICE) &&
+            (verifierIdentity.contains("ObjectiveProbe", ignoreCase = true) || verifierIdentity.contains("Probe", ignoreCase = true) || verifierIdentity == "WastiTruthAuthority") &&
+            (verificationMethod.contains("objective_", ignoreCase = true) || verificationMethod.contains("probe", ignoreCase = true))
+
+        if (!isFilesystemProbe && !isAuthorizedDbOrSystemProbe) {
+            val res = VerificationResult(
+                taskId = taskId,
+                actionId = actionId,
+                capabilityId = capabilityId,
+                status = ActionVerificationStatus.NOT_VERIFIABLE,
+                confidence = 0.0,
+                evidence = "Canonical VERIFIED status requires an authorized objective postcondition probe (e.g. filesystem artifact hash or database/system probe). Caller assertions are evidence, not proof.",
+                failureReason = "OBJECTIVE_PROBE_REQUIRED"
+            )
+            return res to null
+        }
+
+        if (isFilesystemProbe) {
             if (artifactRef.isNullOrBlank()) {
                 val res = VerificationResult(
                     taskId = taskId,
@@ -294,13 +302,13 @@ object WastiTruthAuthority {
             return res to null
         }
 
-        // 6. Compute deterministic postcondition and execution binding hashes
+        // 10. Compute deterministic postcondition and execution binding hashes
         val postconditionRaw = "$taskId|$actionId|$capabilityId|$expectedState|$effectiveObservedState|${checksum ?: ""}|${artifactRef ?: ""}"
         val postconditionHash = hashString(postconditionRaw)
         val bindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|$postconditionHash"
         val executionBindingHash = hashString(bindingRaw)
 
-        // 7. Issue signed verification receipt
+        // 11. Issue signed verification receipt
         val receiptId = "rcpt_" + UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
         val evidenceLevel = when (observationSource) {
@@ -340,11 +348,13 @@ object WastiTruthAuthority {
 
     /**
      * Validates that a [WastiVerificationReceipt] was issued by this exact [WastiTruthAuthority] instance
-     * and has not been tampered with or modified.
+     * and has not been tampered with, modified, or set in the future.
      */
     fun validateReceipt(receipt: WastiVerificationReceipt?): Boolean {
         if (receipt == null) return false
         if (receipt.verifierIdentity != "WastiTruthAuthority") return false
+        val now = System.currentTimeMillis()
+        if (receipt.timestamp > now + ALLOWED_CLOCK_SKEW_MS) return false
         val canonicalPayload = receipt.computeCanonicalPayload()
         val expectedSignature = WastiVerificationReceipt.computeSignature(canonicalPayload, AUTHORITY_SECRET_KEY)
         return receipt.signatureToken == expectedSignature
@@ -366,9 +376,14 @@ object WastiTruthAuthority {
     ): Boolean {
         if (!validateReceipt(receipt)) return false
         val r = receipt!!
+        val now = System.currentTimeMillis()
+        if (r.timestamp > now + ALLOWED_CLOCK_SKEW_MS) return false
+        val age = now - r.timestamp
+        if (age < -ALLOWED_CLOCK_SKEW_MS) return false
+        if (maxAgeMs != null && age > maxAgeMs) return false
+
         if (r.executionBindingHash.isBlank()) return false
         if (r.taskId != taskId || r.actionId != actionId || r.capabilityId != capabilityId) return false
-        if (maxAgeMs != null && (System.currentTimeMillis() - r.timestamp) > maxAgeMs) return false
         if (postconditionHash != null && r.postconditionHash.isNotBlank() && r.postconditionHash != postconditionHash) return false
 
         val expectedBindingRaw = "$taskId|$actionId|$capabilityId|${inputHash ?: ""}|${outputHash ?: ""}|${r.postconditionHash}"
