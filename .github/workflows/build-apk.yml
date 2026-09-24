@@ -89,13 +89,13 @@ jobs:
         test -s "$ANDROID_HOME/licenses/android-sdk-license" || { echo "ERROR: Failed to write android-sdk-license"; exit 1; }
         echo "Android SDK licenses accepted deterministically."
 
-    - name: Ensure Android SDK Platform 37 Installed
+    - name: Ensure Android SDK Platforms Installed
       run: |
-        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
-        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-37" "build-tools;37.0.0"
-        test -d "$ANDROID_HOME/platforms/android-37" || { echo "ERROR: platforms;android-37 directory missing!"; exit 1; }
-        test -d "$ANDROID_HOME/build-tools/37.0.0" || { echo "ERROR: build-tools;37.0.0 directory missing!"; exit 1; }
-        echo "Android SDK Platform 37 confirmed."
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
+        $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "platforms;android-37" "build-tools;35.0.0" "build-tools;37.0.0"
+        test -d "$ANDROID_HOME/platforms/android-35" || { echo "ERROR: platforms;android-35 directory missing!"; exit 1; }
+        test -d "$ANDROID_HOME/build-tools/35.0.0" || { echo "ERROR: build-tools;35.0.0 directory missing!"; exit 1; }
+        echo "Android SDK Platforms confirmed."
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2

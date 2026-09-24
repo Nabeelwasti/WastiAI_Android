@@ -12,7 +12,7 @@ const brevo = require('./brevo');
 const stripeHelper = require('./stripe_helper');
 const firebaseHelper = require('./firebase_helper');
 const wakewordQueue = require('./wakeword_queue');
-const { isValidAdminCredential } = require('./auth_helper');
+const { SCOPES, getAuthorizedScopes, requireScope, requireAuth, isValidAdminCredential } = require('./auth_helper');
 
 const app = express();
 app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : false);
@@ -86,97 +86,6 @@ app.use(bodyParser.json({ limit: '2mb' }));
 const PORT = process.env.PORT || 8080;
 const GITHUB_PAT = process.env.BACKEND_GITHUB_PAT || process.env.BACKEND_GITHUB_CLASSIC || process.env.GITHUB_PAT || null;
 const octokit = GITHUB_PAT ? new Octokit({ auth: GITHUB_PAT }) : null;
-
-// Scopes definition for fine-grained principle of least privilege
-const SCOPES = {
-  DEV: 'dev',
-  EMAIL: 'email',
-  COMPUTE: 'compute',
-  LLM: 'llm',
-  WAKEWORD: 'wakeword',
-  ADMIN: 'admin'
-};
-
-function getAuthorizedScopes(providedToken) {
-  if (!providedToken) return [];
-  const masterSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
-  if (masterSecret && providedToken === masterSecret) {
-    return [SCOPES.ADMIN, SCOPES.DEV, SCOPES.EMAIL, SCOPES.COMPUTE, SCOPES.LLM, SCOPES.WAKEWORD];
-  }
-
-  const scopes = [];
-  if (process.env.WASTI_DEV_TOKEN && providedToken === process.env.WASTI_DEV_TOKEN) scopes.push(SCOPES.DEV);
-  if (process.env.WASTI_EMAIL_TOKEN && providedToken === process.env.WASTI_EMAIL_TOKEN) scopes.push(SCOPES.EMAIL);
-  if (process.env.WASTI_COMPUTE_TOKEN && providedToken === process.env.WASTI_COMPUTE_TOKEN) scopes.push(SCOPES.COMPUTE);
-  if (process.env.WASTI_LLM_TOKEN && providedToken === process.env.WASTI_LLM_TOKEN) scopes.push(SCOPES.LLM);
-  if (process.env.WASTI_WAKEWORD_TOKEN && providedToken === process.env.WASTI_WAKEWORD_TOKEN) scopes.push(SCOPES.WAKEWORD);
-
-  if (process.env.WASTI_SCOPED_TOKENS) {
-    try {
-      const parsed = JSON.parse(process.env.WASTI_SCOPED_TOKENS);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        const tokenMap = new Map(Object.entries(parsed));
-        if (tokenMap.has(providedToken)) {
-          const rawScopes = tokenMap.get(providedToken);
-          const tokenScopes = Array.isArray(rawScopes) ? rawScopes : [rawScopes];
-          scopes.push(...tokenScopes.filter(s => typeof s === 'string'));
-        }
-      }
-    } catch (_) {}
-  }
-
-  return scopes;
-}
-
-function requireScope(requiredScope) {
-  return function (req, res, next) {
-    const authHeader = req.headers['authorization'];
-    const tokenHeader = req.headers['x-wasti-auth-token'] || req.headers['x-api-key'];
-    const masterSecret = process.env.WASTI_BACKEND_AUTH_SECRET || process.env.BACKEND_API_SECRET;
-
-    const hasAnySecret = Boolean(
-      masterSecret ||
-      process.env.WASTI_COMPUTE_TOKEN ||
-      process.env.WASTI_DEV_TOKEN ||
-      process.env.WASTI_EMAIL_TOKEN ||
-      process.env.WASTI_LLM_TOKEN ||
-      process.env.WASTI_WAKEWORD_TOKEN ||
-      process.env.WASTI_SCOPED_TOKENS
-    );
-
-    if (!hasAnySecret) {
-      console.error('CRITICAL: Backend authentication secret not configured. Failing closed.');
-      return res.status(503).json({ error: 'Backend authentication secret not configured on server. Access blocked.' });
-    }
-
-    let providedToken = tokenHeader;
-    if (!providedToken && authHeader && authHeader.startsWith('Bearer ')) {
-      providedToken = authHeader.substring(7).trim();
-    }
-
-    if (!providedToken) {
-      return res.status(401).json({ error: 'Unauthorized: Valid Wasti authentication token required' });
-    }
-
-    const authorizedScopes = getAuthorizedScopes(providedToken);
-    if (authorizedScopes.length === 0) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid Wasti authentication token' });
-    }
-
-    if (requiredScope && !authorizedScopes.includes(SCOPES.ADMIN) && !authorizedScopes.includes(requiredScope)) {
-      return res.status(403).json({
-        error: `Forbidden: Token lacks required scope '${requiredScope}'. Authorized scopes: ${authorizedScopes.join(', ')}`
-      });
-    }
-
-    req.authScopes = authorizedScopes;
-    next();
-  };
-}
-
-function requireAuth(req, res, next) {
-  return requireScope(null)(req, res, next);
-}
 
 // Health check endpoint with subsystem status
 app.get('/health', (req, res) => {

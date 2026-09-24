@@ -47,12 +47,28 @@ object WastiTruthAuthority {
         }
     }
 
+    private fun isTestEnvironment(): Boolean {
+        return System.getProperty("WASTI_TEST_MODE") == "true" ||
+            System.getProperty("ENVIRONMENT") == "test" ||
+            System.getenv("WASTI_TEST_MODE") == "true" ||
+            System.getenv("ENVIRONMENT") == "test" ||
+            try {
+                Class.forName("org.junit.Test")
+                true
+            } catch (_: ClassNotFoundException) {
+                false
+            }
+    }
+
     val AUTHORITY_SECRET_KEY: javax.crypto.SecretKey
         get() {
             testSecretKey?.let { return it }
             productionSecretKey?.let { return it }
-            setTestAuthorityKeyForTesting()
-            return testSecretKey!!
+            if (isTestEnvironment()) {
+                setTestAuthorityKeyForTesting()
+                return testSecretKey!!
+            }
+            throw IllegalStateException("WastiTruthAuthority production AndroidKeyStore authority key is unavailable and no test authority key was registered.")
         }
 
     private const val MIN_VERIFIED_CONFIDENCE = 0.90
