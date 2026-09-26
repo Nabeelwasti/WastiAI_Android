@@ -597,6 +597,14 @@ jobs:
         echo "title=${TITLE}" >> $GITHUB_OUTPUT
         echo "SUCCESS: Derived release tag: ${TAG_NAME}"
 
+    - name: Upload Build Artifacts (APK, AAB & Evidence)
+      if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      uses: actions/upload-artifact@v4
+      with:
+        name: wasti-ai-release-artifacts-${{ steps.release_meta.outputs.tag_name || github.sha }}
+        path: build-release-artifacts/
+        if-no-files-found: error
+
     - name: Create or Update GitHub Release with APK and AAB
       if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && github.event_name != 'pull_request'
       env:
@@ -626,7 +634,8 @@ jobs:
             - \`release_verification_evidence.json\` (Runtime & DEX Verification)
           - Cryptographically signed with release keystore and verified by \`apksigner\`." \
             --latest || \
-          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber || \
+          echo "::notice::GitHub release publishing skipped (contents: read active). All staged artifacts are preserved in workflow artifact storage."
         else
           gh release create "$TAG_NAME" "${ASSETS[@]}" \
             --title "$TITLE (Pre-release / Debug)" \
@@ -639,9 +648,10 @@ jobs:
             - \`debug_verification_evidence.json\` (Runtime & DEX Verification Evidence)
           - Debug APK signed with debug keystore." \
             --prerelease || \
-          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber || \
+          echo "::notice::GitHub release publishing skipped (contents: read active). All staged artifacts are preserved in workflow artifact storage."
         fi
-        echo "SUCCESS: Wasti AI Release $TAG_NAME published to GitHub Releases!"
+        echo "SUCCESS: Wasti AI Release processing completed for $TAG_NAME!"
 
     - name: Cleanup Sensitive Build Files
       if: always()
