@@ -1,7 +1,6 @@
 package com.example.data.core
 
 import com.example.data.agent.runtime.ActionVerificationStatus
-import com.example.data.agent.runtime.CapabilitySpecificEvidence
 import com.example.data.agent.runtime.EvidenceLadder
 import com.example.data.agent.runtime.EvidenceSource
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
@@ -32,30 +31,36 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
     @Test
     fun testMonotonicSequenceAndHashChaining() {
         val testArtifact = File.createTempFile("wasti_provenance_probe_", ".dat")
-        testArtifact.writeText("genuine_neural_forward_pass_execution_output")
+        val executionOutput = "genuine_neural_forward_pass_execution_output"
+        testArtifact.writeText(executionOutput)
         testArtifact.deleteOnExit()
 
-        val artifactHash = WastiTruthAuthority.hashString("genuine_neural_forward_pass_execution_output")
         val inContent = "Hello Wasti"
         val outContent = "Hello from sovereign neural runtime"
+        val inHash = ExecutionProvenanceLedger.hashString(inContent)
+        val outHash = ExecutionProvenanceLedger.hashString(outContent)
+        val preDeclaredExpectedHash = WastiTruthAuthority.hashString(executionOutput)
 
-        val evidence1 = CapabilitySpecificEvidence(
+        // Independent post-execution probe reads and hashes the artifact directly from disk
+        val independentlyObservedContent = testArtifact.readText(Charsets.UTF_8)
+        val independentlyObservedHash = WastiTruthAuthority.hashString(independentlyObservedContent)
+
+        // TruthAuthority evaluates the independently observed typed evidence and verifies against physical disk state
+        val (verResult, receipt) = WastiTruthAuthority.evaluate(
             taskId = "task_001",
             actionId = "action_001",
             capabilityId = "native_neural_inference",
-            executor = "NativeLlamaBridge",
+            expectedState = preDeclaredExpectedHash,
+            observedState = independentlyObservedHash,
             observationSource = EvidenceSource.FILESYSTEM_AUDIT,
-            timestamp = System.currentTimeMillis(),
-            artifactOrStateReference = testArtifact.absolutePath,
-            checksumOrHash = artifactHash,
-            expectedState = artifactHash,
-            observedState = artifactHash,
             verifierIdentity = "FilesystemObservationProbe",
             verificationMethod = "objective_postcondition_disk_hash_probe",
-            confidence = 1.0
+            confidence = 1.0,
+            artifactRef = testArtifact.absolutePath,
+            checksum = independentlyObservedHash,
+            inputHash = inHash,
+            outputHash = outHash
         )
-
-        val (verResult, receipt) = WastiTruthGate.verifyCapability(evidence1)
         assertEquals(ActionVerificationStatus.VERIFIED, verResult.status)
         assertNotNull(receipt)
         assertTrue(WastiTruthGate.validateReceipt(receipt))
@@ -70,13 +75,13 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
             evidence = VerifiedExecutionEvidence(
                 evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
                 subject = testArtifact.absolutePath,
-                verifiedState = artifactHash,
+                verifiedState = independentlyObservedHash,
                 confidence = 1.0,
-                expectedPostcondition = artifactHash,
-                observedResult = artifactHash,
+                expectedPostcondition = preDeclaredExpectedHash,
+                observedResult = independentlyObservedHash,
                 declaredVerifier = "FilesystemObservationProbe",
                 verificationMethod = "objective_postcondition_disk_hash_probe",
-                checksumOrHash = artifactHash
+                checksumOrHash = independentlyObservedHash
             ),
             verifier = "FilesystemObservationProbe",
             evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED,
