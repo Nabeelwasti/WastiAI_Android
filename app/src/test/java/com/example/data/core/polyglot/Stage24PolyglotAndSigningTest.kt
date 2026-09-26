@@ -127,16 +127,52 @@ class Stage24PolyglotAndSigningTest {
 
     @Test
     fun testSovereignTunnelLifecycle() = runBlocking {
+        WastiSovereignTunnelEngine.resetForTesting()
         val initialState = WastiSovereignTunnelEngine.tunnelState.value
         assertFalse(initialState.isActive)
+        assertEquals(com.example.data.node.SovereignTunnelStatus.STOPPED, initialState.status)
 
-        val activeState = WastiSovereignTunnelEngine.establishTunnel(context)
-        assertTrue(activeState.isActive)
-        assertTrue(activeState.publicHttpsUrl.startsWith("https://"))
-        assertEquals(8080, activeState.localPort)
+        // 1. In default test environment without cloudflared binary, must fail-closed as UNAVAILABLE
+        val defaultState = WastiSovereignTunnelEngine.establishTunnel(context)
+        assertFalse(defaultState.isActive)
+        assertEquals(com.example.data.node.SovereignTunnelStatus.UNAVAILABLE, defaultState.status)
+        assertTrue(defaultState.failureReason!!.contains("cloudflared binary not found"))
+
+        // 2. When injected with genuine launcher and prober, lifecycle transitions to OPERATIONAL
+        val testEndpoint = "https://wasti-test-123.trycloudflare.com"
+        val mockLauncher = object : com.example.data.node.TunnelProcessLauncher {
+            override fun findExecutable(binaryName: String, context: Context): File? = File(context.filesDir, "bin/$binaryName")
+            override fun launchProcess(command: List<String>, environment: Map<String, String>): Process {
+                return object : Process() {
+                    private val stdoutStream = "$testEndpoint\n".byteInputStream()
+                    private val stderrStream = "".byteInputStream()
+                    override fun getOutputStream() = java.io.ByteArrayOutputStream()
+                    override fun getInputStream() = stdoutStream
+                    override fun getErrorStream() = stderrStream
+                    override fun waitFor() = 0
+                    override fun exitValue(): Int = throw IllegalThreadStateException("Process is alive")
+                    override fun destroy() {}
+                }
+            }
+        }
+        val mockProber = object : com.example.data.node.TunnelHealthProber {
+            override suspend fun probeHealth(endpointUrl: String, timeoutMs: Int): com.example.data.node.HealthProbeResult {
+                return com.example.data.node.HealthProbeResult(isHealthy = true, statusCode = 200, latencyMs = 12L)
+            }
+        }
+
+        WastiSovereignTunnelEngine.setProcessLauncherForTesting(mockLauncher)
+        WastiSovereignTunnelEngine.setHealthProberForTesting(mockProber)
+
+        val operationalState = WastiSovereignTunnelEngine.establishTunnel(context)
+        assertTrue(operationalState.isActive)
+        assertEquals(com.example.data.node.SovereignTunnelStatus.OPERATIONAL, operationalState.status)
+        assertEquals(testEndpoint, operationalState.publicHttpsUrl)
+        assertTrue(operationalState.isHealthVerified)
 
         WastiSovereignTunnelEngine.terminateTunnel(context)
         assertFalse(WastiSovereignTunnelEngine.tunnelState.value.isActive)
+        assertEquals(com.example.data.node.SovereignTunnelStatus.STOPPED, WastiSovereignTunnelEngine.tunnelState.value.status)
     }
 
     @Test

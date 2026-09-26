@@ -132,8 +132,12 @@ object PersonalizedOnboardingEngine {
 
         if (plan.autoDeployCloudTunnel) {
             try {
-                WastiSovereignTunnelEngine.establishTunnel(context)
-                Log.i(TAG, "Autonomous sovereign cloud tunnel established during first-run setup.")
+                val tunnelResult = WastiSovereignTunnelEngine.establishTunnel(context)
+                if (tunnelResult.isActive) {
+                    Log.i(TAG, "Autonomous sovereign cloud tunnel established during first-run setup at ${tunnelResult.publicHttpsUrl}")
+                } else {
+                    Log.i(TAG, "Sovereign cloud tunnel deferred during setup: ${tunnelResult.status} (${tunnelResult.failureReason})")
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Sovereign tunnel deferral: ${e.message}")
             }

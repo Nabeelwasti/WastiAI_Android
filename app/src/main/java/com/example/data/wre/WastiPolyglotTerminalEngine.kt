@@ -279,15 +279,43 @@ class WastiPolyglotTerminalEngine(
 
         return when (subAction) {
             "start" -> {
-                val state = WastiSovereignTunnelEngine.establishTunnel(context, TunnelProvider.CLOUDFLARE_QUICK_TUNNEL)
-                val out = """
+                val providerArg = tokens.getOrNull(2)?.lowercase()
+                val customUrlArg = if (providerArg == "custom") tokens.getOrNull(3) else null
+                val provider = when (providerArg) {
+                    "ssh" -> TunnelProvider.SSH_REMOTE_FORWARD
+                    "mesh", "p2p" -> TunnelProvider.WASTI_P2P_MESH_RELAY
+                    "custom" -> TunnelProvider.CUSTOM_PUBLIC_GATEWAY
+                    else -> TunnelProvider.CLOUDFLARE_QUICK_TUNNEL
+                }
+
+                val state = WastiSovereignTunnelEngine.establishTunnel(
+                    context = context,
+                    provider = provider,
+                    customGatewayUrl = customUrlArg
+                )
+
+                if (state.isActive) {
+                    val out = """
 ✓ Sovereign Cloud Ingress Tunnel Established!
+• Provider: ${state.provider.name}
+• Status: ${state.status.name}
 • Public HTTPS Endpoint: ${state.publicHttpsUrl}
 • Local Ingress: http://127.0.0.1:${state.localPort}
 • Health Verification: ${if (state.isHealthVerified) "VERIFIED" else "PENDING"}
+• Latency: ${state.latencyMs}ms
 • Public Hosting Gate: RESOLVED ON-DEVICE
-                """.trimIndent()
-                PolyglotExecutionOutcome(true, PolyglotLanguage.SOVEREIGN_TUNNEL, out, verificationEvidence = "Public URL: ${state.publicHttpsUrl}")
+                    """.trimIndent()
+                    PolyglotExecutionOutcome(true, PolyglotLanguage.SOVEREIGN_TUNNEL, out, verificationEvidence = "Public URL: ${state.publicHttpsUrl}")
+                } else {
+                    val out = """
+✗ Sovereign Cloud Ingress Tunnel Could Not Be Established
+• Provider: ${state.provider.name}
+• Status: ${state.status.name}
+• Reason: ${state.failureReason ?: "Unknown error"}
+• Troubleshooting: Run 'status' or check prerequisite binary/relay availability.
+                    """.trimIndent()
+                    PolyglotExecutionOutcome(false, PolyglotLanguage.SOVEREIGN_TUNNEL, out, stderr = state.failureReason)
+                }
             }
             "stop" -> {
                 WastiSovereignTunnelEngine.terminateTunnel(context)
@@ -296,9 +324,9 @@ class WastiPolyglotTerminalEngine(
             else -> {
                 val state = WastiSovereignTunnelEngine.tunnelState.value
                 val out = if (state.isActive) {
-                    "Tunnel Status: ACTIVE • Public URL: ${state.publicHttpsUrl} • Verified: ${state.isHealthVerified}"
+                    "Tunnel Status: ${state.status.name} • Provider: ${state.provider.name} • Public URL: ${state.publicHttpsUrl} • Verified: ${state.isHealthVerified}"
                 } else {
-                    "Tunnel Status: INACTIVE (Run 'tunnel start' to expose companion backend to public HTTPS)"
+                    "Tunnel Status: ${state.status.name} (Provider: ${state.provider.name}${state.failureReason?.let { " • Reason: $it" } ?: ""})"
                 }
                 PolyglotExecutionOutcome(true, PolyglotLanguage.SOVEREIGN_TUNNEL, out)
             }

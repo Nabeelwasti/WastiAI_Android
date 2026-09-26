@@ -383,10 +383,12 @@ object ProductionReadinessGate {
             SubsystemReadinessCheck(
                 subsystemName = "SovereignCloudCompanionIngress",
                 isOperational = tunnelOperational,
-                isLiveVerified = tunnelState.isHealthVerified || backendIsLiveVerified,
-                state = if (tunnelState.isHealthVerified || backendIsLiveVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
-                notes = if (tunnelState.isActive) "Active Public Ingress: ${tunnelState.publicHttpsUrl} (verified=${tunnelState.isHealthVerified})"
+                isLiveVerified = (tunnelState.isActive && tunnelState.isHealthVerified) || backendIsLiveVerified,
+                state = if ((tunnelState.isActive && tunnelState.isHealthVerified) || backendIsLiveVerified) ProductionReadinessState.RELEASE_VERIFIED else ProductionReadinessState.DEVELOPMENT_READY,
+                notes = if (tunnelState.isActive) "Active Public Ingress: ${tunnelState.publicHttpsUrl} (status=${tunnelState.status}, verified=${tunnelState.isHealthVerified})"
                         else if (backendIsLiveVerified) "Companion backend verified via local/direct endpoint"
+                        else if (tunnelState.status == com.example.data.node.SovereignTunnelStatus.UNAVAILABLE) "Tunnel Unavailable: ${tunnelState.failureReason}"
+                        else if (tunnelState.status == com.example.data.node.SovereignTunnelStatus.FAILED) "Tunnel Failed: ${tunnelState.failureReason}"
                         else "INACTIVE: Sovereign tunnel not started (run 'tunnel start' or sovereign onboarding)"
             )
         )
