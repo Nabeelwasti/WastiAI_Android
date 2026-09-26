@@ -1,16 +1,21 @@
 package com.example.data.core
 
+import com.example.data.agent.runtime.ActionVerificationStatus
+import com.example.data.agent.runtime.CapabilitySpecificEvidence
 import com.example.data.agent.runtime.EvidenceLadder
 import com.example.data.agent.runtime.EvidenceSource
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
 import com.example.data.agent.runtime.ProvenanceEntry
 import com.example.data.agent.runtime.VerifiedExecutionEvidence
+import com.example.data.agent.runtime.WastiTruthAuthority
+import com.example.data.agent.runtime.WastiTruthGate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.io.File
 
 /**
  * Unit test verifying ExecutionProvenanceLedger:
@@ -20,37 +25,70 @@ class ExecutionProvenanceLedgerTamperAndMonotonicityTest {
 
     @Before
     fun setUp() {
+        WastiTruthAuthority.setTestAuthorityKeyForTesting()
         ExecutionProvenanceLedger.resetForTesting()
     }
 
     @Test
     fun testMonotonicSequenceAndHashChaining() {
+        val testArtifact = File.createTempFile("wasti_provenance_probe_", ".dat")
+        testArtifact.writeText("genuine_neural_forward_pass_execution_output")
+        testArtifact.deleteOnExit()
+
+        val artifactHash = WastiTruthAuthority.hashString("genuine_neural_forward_pass_execution_output")
+        val inContent = "Hello Wasti"
+        val outContent = "Hello from sovereign neural runtime"
+
+        val evidence1 = CapabilitySpecificEvidence(
+            taskId = "task_001",
+            actionId = "action_001",
+            capabilityId = "native_neural_inference",
+            executor = "NativeLlamaBridge",
+            observationSource = EvidenceSource.FILESYSTEM_AUDIT,
+            timestamp = System.currentTimeMillis(),
+            artifactOrStateReference = testArtifact.absolutePath,
+            checksumOrHash = artifactHash,
+            expectedState = artifactHash,
+            observedState = artifactHash,
+            verifierIdentity = "FilesystemObservationProbe",
+            verificationMethod = "objective_postcondition_disk_hash_probe",
+            confidence = 1.0
+        )
+
+        val (verResult, receipt) = WastiTruthGate.verifyCapability(evidence1)
+        assertEquals(ActionVerificationStatus.VERIFIED, verResult.status)
+        assertNotNull(receipt)
+        assertTrue(WastiTruthGate.validateReceipt(receipt))
+
         val entry1 = ExecutionProvenanceLedger.recordExecution(
             taskId = "task_001",
             actionId = "action_001",
             capabilityId = "native_neural_inference",
             providerId = "NativeLlamaBridge",
-            inputContent = "Hello Wasti",
-            outputContent = "Hello from sovereign neural runtime",
+            inputContent = inContent,
+            outputContent = outContent,
             evidence = VerifiedExecutionEvidence(
-                evidenceSource = EvidenceSource.LOCAL_MODEL_INFERENCE,
-                subject = "local_native_inference:wasti-smollm",
-                verifiedState = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                confidence = 0.95,
-                expectedPostcondition = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                observedResult = "GENUINE_NEURAL_TENSOR_FORWARD_PASS",
-                declaredVerifier = "WastiVerificationEngine",
-                verificationMethod = "native_tensor_forward_pass_verification"
+                evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                subject = testArtifact.absolutePath,
+                verifiedState = artifactHash,
+                confidence = 1.0,
+                expectedPostcondition = artifactHash,
+                observedResult = artifactHash,
+                declaredVerifier = "FilesystemObservationProbe",
+                verificationMethod = "objective_postcondition_disk_hash_probe",
+                checksumOrHash = artifactHash
             ),
-            verifier = "WastiVerificationEngine",
-            evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
+            verifier = "FilesystemObservationProbe",
+            evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED,
+            verificationResult = verResult,
+            verificationReceipt = receipt
         )
 
         assertEquals(1L, entry1.sequenceNumber)
         assertEquals(ExecutionProvenanceLedger.GENESIS_HASH, entry1.previousEntryHash)
         assertTrue(entry1.isVerified)
         assertEquals(EvidenceLadder.RUNTIME_VERIFIED, entry1.evidenceLevel)
-        assertEquals("WastiVerificationEngine", entry1.verifier)
+        assertEquals("FilesystemObservationProbe", entry1.verifier)
 
         val entry2 = ExecutionProvenanceLedger.recordExecution(
             taskId = "task_002",
