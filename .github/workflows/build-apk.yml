@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
-      contents: read
+      contents: write
 
     steps:
     - name: Checkout Repository
@@ -612,6 +612,7 @@ jobs:
         TAG_NAME: ${{ steps.release_meta.outputs.tag_name }}
         TITLE: ${{ steps.release_meta.outputs.title }}
       run: |
+        set -euo pipefail
         echo "Preparing release assets for $TAG_NAME..."
         ASSETS=()
         for f in build-release-artifacts/*; do
@@ -620,38 +621,61 @@ jobs:
           fi
         done
 
+        if [ ${#ASSETS[@]} -eq 0 ]; then
+          echo "ERROR: No release assets found in build-release-artifacts/ to publish!"
+          exit 1
+        fi
+
         echo "Assets to publish: ${ASSETS[*]}"
         if [ -f "build-release-artifacts/app-release.apk" ]; then
-          gh release create "$TAG_NAME" "${ASSETS[@]}" \
-            --title "$TITLE" \
-            --notes "### 📱 Wasti AI Production & Debug Release
-          - **Tag:** \`$TAG_NAME\`
-          - **Commit:** \`${{ github.sha }}\`
-          - **Available Artifacts:**
-            - \`app-release.apk\` (Signed Production APK)
-            - \`app-debug.apk\` (Debug APK for immediate testing)
-            - \`app-release.aab\` (Signed Production Android App Bundle)
-            - \`release_verification_evidence.json\` (Runtime & DEX Verification)
-          - Cryptographically signed with release keystore and verified by \`apksigner\`." \
-            --latest || \
-          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber || \
-          echo "::notice::GitHub release publishing skipped (contents: read active). All staged artifacts are preserved in workflow artifact storage."
+          NOTES=$(cat << 'EOF'
+        ### 📱 Wasti AI Production & Debug Release
+        - **Tag:** `${{ steps.release_meta.outputs.tag_name }}`
+        - **Commit:** `${{ github.sha }}`
+        - **Available Artifacts:**
+          - `app-release.apk` (Signed Production APK)
+          - `app-debug.apk` (Debug APK for immediate testing)
+          - `app-release.aab` (Signed Production Android App Bundle)
+          - `release_verification_evidence.json` (Runtime & DEX Verification)
+        - Cryptographically signed with release keystore and verified by `apksigner`.
+        EOF
+        )
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Release $TAG_NAME already exists. Uploading updated assets..."
+            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          else
+            echo "Creating new release $TAG_NAME..."
+            gh release create "$TAG_NAME" "${ASSETS[@]}" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              --target "${{ github.sha }}" \
+              --latest
+          fi
         else
-          gh release create "$TAG_NAME" "${ASSETS[@]}" \
-            --title "$TITLE (Pre-release / Debug)" \
-            --notes "### 🧪 Wasti AI Pre-release (Debug / CI Build)
-          - **Tag:** \`$TAG_NAME\`
-          - **Commit:** \`${{ github.sha }}\`
-          - **Notice:** Production release keystore was not configured in this environment. Production release packaging is marked BLOCKED_EXTERNAL_DEPENDENCY per Zero-Fabrication Law.
-          - **Available Artifacts:**
-            - \`app-debug.apk\` (Debug APK for testing and verification)
-            - \`debug_verification_evidence.json\` (Runtime & DEX Verification Evidence)
-          - Debug APK signed with debug keystore." \
-            --prerelease || \
-          gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber || \
-          echo "::notice::GitHub release publishing skipped (contents: read active). All staged artifacts are preserved in workflow artifact storage."
+          NOTES=$(cat << 'EOF'
+        ### 🧪 Wasti AI Pre-release (Debug / CI Build)
+        - **Tag:** `${{ steps.release_meta.outputs.tag_name }}`
+        - **Commit:** `${{ github.sha }}`
+        - **Notice:** Production release keystore was not configured in this environment. Production release packaging is marked BLOCKED_EXTERNAL_DEPENDENCY per Zero-Fabrication Law.
+        - **Available Artifacts:**
+          - `app-debug.apk` (Debug APK for testing and verification)
+          - `debug_verification_evidence.json` (Runtime & DEX Verification Evidence)
+        - Debug APK signed with debug keystore.
+        EOF
+        )
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Pre-release $TAG_NAME already exists. Uploading updated assets..."
+            gh release upload "$TAG_NAME" "${ASSETS[@]}" --clobber
+          else
+            echo "Creating new pre-release $TAG_NAME..."
+            gh release create "$TAG_NAME" "${ASSETS[@]}" \
+              --title "$TITLE (Pre-release / Debug)" \
+              --notes "$NOTES" \
+              --target "${{ github.sha }}" \
+              --prerelease
+          fi
         fi
-        echo "SUCCESS: Wasti AI Release processing completed for $TAG_NAME!"
+        echo "SUCCESS: GitHub Release successfully published for $TAG_NAME with all assets verified!"
 
     - name: Cleanup Sensitive Build Files
       if: always()
