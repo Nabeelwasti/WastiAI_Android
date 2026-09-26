@@ -2,10 +2,40 @@ package com.example.data.security
 
 import android.app.KeyguardManager
 import android.content.Context
+import android.os.Build
 import java.util.UUID
 
 import com.example.security.BiometricSecurityManager
 import com.example.security.findFragmentActivity
+
+interface DeviceSecurityProvider {
+    fun isDeviceSecured(context: Context): Boolean
+}
+
+class DefaultDeviceSecurityProvider : DeviceSecurityProvider {
+    override fun isDeviceSecured(context: Context): Boolean {
+        return try {
+            val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+            if (keyguardManager == null) return false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                keyguardManager.isDeviceSecure
+            } else {
+                @Suppress("DEPRECATION")
+                keyguardManager.isKeyguardSecure
+            }
+        } catch (e: NoSuchMethodError) {
+            try {
+                val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+                @Suppress("DEPRECATION")
+                keyguardManager?.isKeyguardSecure == true
+            } catch (e2: Throwable) {
+                false
+            }
+        } catch (e: Throwable) {
+            false
+        }
+    }
+}
 
 data class AuditLogEntry(
     val id: String = UUID.randomUUID().toString(),
@@ -17,6 +47,9 @@ data class AuditLogEntry(
 )
 
 object WastiSecurityManager {
+
+    @Volatile
+    var deviceSecurityProvider: DeviceSecurityProvider = DefaultDeviceSecurityProvider()
 
     val protectedCoreFiles = listOf(
         "com/example/data/core/WastiCore.kt",
@@ -39,8 +72,11 @@ object WastiSecurityManager {
     }
 
     fun isDeviceSecured(context: Context): Boolean {
-        val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
-        return keyguardManager?.isDeviceSecure == true
+        return deviceSecurityProvider.isDeviceSecured(context)
+    }
+
+    fun resetDeviceSecurityProviderForTesting() {
+        deviceSecurityProvider = DefaultDeviceSecurityProvider()
     }
 
     /**

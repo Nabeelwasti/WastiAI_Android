@@ -91,7 +91,7 @@ jobs:
 
     - name: Ensure Android SDK Platform Installed
       run: |
-        (yes 2>/dev/null || true) | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1 || true
+        yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null 2>&1
         $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0"
         test -d "$ANDROID_HOME/platforms/android-35" || { echo "ERROR: platforms;android-35 directory missing!"; exit 1; }
         test -d "$ANDROID_HOME/build-tools/35.0.0" || { echo "ERROR: build-tools;35.0.0 directory missing!"; exit 1; }

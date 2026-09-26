@@ -411,7 +411,7 @@ object ExecutionProvenanceLedger {
             authoritativeVerResult?.status == ActionVerificationStatus.VERIFICATION_UNAVAILABLE || verificationResult?.status == ActionVerificationStatus.VERIFICATION_UNAVAILABLE -> "VERIFICATION_UNAVAILABLE"
             authoritativeVerResult?.status == ActionVerificationStatus.UNKNOWN || verificationResult?.status == ActionVerificationStatus.UNKNOWN -> "UNVERIFIED"
             evidence != null -> "OBSERVED"
-            else -> "EXECUTOR_COMPLETED"
+            else -> "UNVERIFIED"
         }
         val isVerified = (status == "VERIFIED")
 

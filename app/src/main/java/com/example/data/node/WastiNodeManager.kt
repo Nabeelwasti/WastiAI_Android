@@ -247,7 +247,8 @@ class WastiNodeManager(
                 capabilities = termuxCaps,
                 advertisedCapabilities = termuxAdvertised,
                 capabilityFingerprint = computeCapabilityFingerprint(termuxAdvertised.values),
-                connectionState = NodeConnectionState.CONNECTED,
+                connectionState = NodeConnectionState.DISCONNECTED,
+                healthState = NodeHealthState.OFFLINE,
                 isLocal = true,
                 endpointUrl = "termux://ipc",
                 dataLocality = NodeDataLocality.LOCAL_ONLY
@@ -275,7 +276,8 @@ class WastiNodeManager(
                 capabilities = cloudCaps,
                 advertisedCapabilities = cloudAdvertised,
                 capabilityFingerprint = computeCapabilityFingerprint(cloudAdvertised.values),
-                connectionState = NodeConnectionState.CONNECTED,
+                connectionState = NodeConnectionState.UNAVAILABLE,
+                healthState = NodeHealthState.OFFLINE,
                 isLocal = false,
                 endpointUrl = "https://api.wasti.ai/cloud",
                 dataLocality = NodeDataLocality.TRUSTED_REMOTE

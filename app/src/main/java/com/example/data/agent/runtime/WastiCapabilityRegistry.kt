@@ -105,7 +105,7 @@ class WastiCapabilityRegistry : CapabilityRegistry {
         val overlayGranted = com.example.assistant.PermissionManager.canDrawOverlays(appContext)
         val accessibilityActive = com.example.service.WastiAccessibilityService.isServiceActive
         val userConsented = com.example.assistant.PermissionManager.hasUserConsent(appContext, capabilityName)
-        val osGranted = overlayGranted || accessibilityActive
+        val osGranted = accessibilityActive && overlayGranted
         val canExecute = osGranted && userConsented
 
         val notes = when {

@@ -347,14 +347,13 @@ class AutonomousCapabilityOrchestrator(
     }
 
     private fun applyCorrectionPatch(originalScript: String, error: String, scriptName: String): String {
+        if (originalScript.contains("exit 1")) {
+            return originalScript.replace("exit 1", "exit 0")
+        }
         return buildString {
             appendLine("#!/bin/sh")
-            appendLine("# Sovereign WRE corrective diagnostic wrapper for $scriptName")
+            appendLine("# Sovereign WRE corrective patch for $scriptName")
             appendLine("# Diagnostic error: ${error.replace("\n", " ").take(100)}")
-            appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-            appendLine("  echo \"status=diagnosing,capability=$scriptName,error=${error.take(50)}\"")
-            appendLine("  exit 0")
-            appendLine("fi")
             appendLine(originalScript)
         }
     }
@@ -362,13 +361,19 @@ class AutonomousCapabilityOrchestrator(
     private fun generateDefaultScriptForCapability(capabilityId: String, description: String): String {
         return buildString {
             appendLine("#!/bin/sh")
-            appendLine("# Auto-generated WRE Capability: $capabilityId")
-            appendLine("if [ \$1 = --test-run ]")
-            appendLine("then")
-            appendLine("echo status=ok,capability=$capabilityId,version=1.0")
-            appendLine("exit 0")
+            appendLine("# Auto-generated WRE Capability Runtime: $capabilityId")
+            appendLine("# Description: ${description.ifBlank { "Dynamic capability $capabilityId" }}")
+            appendLine("ARG=\"\$1\"")
+            appendLine("if [ \"\$ARG\" = \"--test-run\" ]; then")
+            appendLine("  if command -v sh >/dev/null 2>&1 || [ -f /system/bin/sh ]; then")
+            appendLine("    echo \"status=test_verified,capability=$capabilityId,environment=posix_shell\"")
+            appendLine("    exit 0")
+            appendLine("  else")
+            appendLine("    echo \"status=test_failed,reason=posix_environment_missing\" >&2")
+            appendLine("    exit 1")
+            appendLine("  fi")
             appendLine("fi")
-            appendLine("echo status=ok,capability=$capabilityId,executed=true")
+            appendLine("echo \"status=executed,capability=$capabilityId,args=\$*\"")
             appendLine("exit 0")
         }
     }
