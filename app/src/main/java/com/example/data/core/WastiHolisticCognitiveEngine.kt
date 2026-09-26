@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Environment
 import android.util.Log
 import com.example.data.db.MemoryEntity
@@ -152,13 +153,31 @@ object WastiHolisticCognitiveEngine {
         val isThrottling = batteryPct < 15 && !isCharging
 
         // Connectivity
-        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val net = cm?.activeNetwork
-        val caps = cm?.getNetworkCapabilities(net)
-
-        val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-        val isCellular = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-        val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        val (isWifi, isCellular, hasInternet) = try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val net = cm.activeNetwork
+                val caps = cm.getNetworkCapabilities(net)
+                val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+                val cell = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+                val internet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+                Triple(wifi, cell, internet)
+            } else if (cm != null) {
+                @Suppress("DEPRECATION")
+                val activeInfo = cm.activeNetworkInfo
+                @Suppress("DEPRECATION")
+                val isConnected = activeInfo?.isConnectedOrConnecting == true
+                @Suppress("DEPRECATION")
+                val isTypeWifi = activeInfo?.type == ConnectivityManager.TYPE_WIFI
+                @Suppress("DEPRECATION")
+                val isTypeCell = activeInfo?.type == ConnectivityManager.TYPE_MOBILE
+                Triple(isTypeWifi && isConnected, isTypeCell && isConnected, isConnected)
+            } else {
+                Triple(false, false, false)
+            }
+        } catch (_: Exception) {
+            Triple(false, false, false)
+        }
 
         val swarmState = WastiNearbyHardwareEngine.swarmState.value
         val networkState = when {
