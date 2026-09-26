@@ -6,8 +6,8 @@ import com.example.assistant.backend.BackendClient
 import com.example.data.agent.runtime.ExecutionProvenanceLedger
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import com.example.data.agent.runtime.WastiTruthAuthority
-import com.example.test.TestCategory
-import com.example.test.TestTier
+import com.example.data.core.TestCategory
+import com.example.data.core.TestTier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
