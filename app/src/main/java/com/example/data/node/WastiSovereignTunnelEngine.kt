@@ -369,7 +369,7 @@ object WastiSovereignTunnelEngine {
             TunnelProvider.CUSTOM_PUBLIC_GATEWAY -> establishCustomGatewayTunnel(customGatewayUrl, localPort)
         }
 
-        val totalDuration = System.currentTimeMillis() - startTime
+        val establishmentDurationMs = System.currentTimeMillis() - startTime
         val finalState = resultState.copy(uptimeSeconds = 0L)
         _tunnelState.value = finalState
 
@@ -377,7 +377,7 @@ object WastiSovereignTunnelEngine {
             tunnelStartTime = System.currentTimeMillis()
             BackendClient.setBaseUrl(finalState.publicHttpsUrl)
             persistConfig(context, finalState)
-            Log.i(TAG, "Sovereign tunnel active at ${finalState.publicHttpsUrl} (Status=${finalState.status}, Verified=${finalState.isHealthVerified}, Latency=${finalState.latencyMs}ms)")
+            Log.i(TAG, "Sovereign tunnel active at ${finalState.publicHttpsUrl} (Status=${finalState.status}, Verified=${finalState.isHealthVerified}, Latency=${finalState.latencyMs}ms, HandshakeDuration=${establishmentDurationMs}ms)")
         } else {
             BackendClient.setBaseUrl("http://127.0.0.1:$localPort")
             Log.w(TAG, "Sovereign tunnel failed or unavailable: Status=${finalState.status}, Reason=${finalState.failureReason}")
@@ -390,6 +390,18 @@ object WastiSovereignTunnelEngine {
     /**
      * Terminates the active public tunnel and reverts companion routing to local loopback.
      */
+    
+    /**
+     * Returns the live uptime in seconds of the active tunnel session.
+     */
+    fun getUptimeSeconds(): Long {
+        return if (_tunnelState.value.isActive && tunnelStartTime > 0L) {
+            (System.currentTimeMillis() - tunnelStartTime) / 1000L
+        } else {
+            0L
+        }
+    }
+
     fun terminateTunnel(context: Context) {
         terminateTunnelInternal(reason = "Explicit termination requested", isEmergencyStop = false)
         try {
@@ -678,6 +690,7 @@ object WastiSovereignTunnelEngine {
         val discoveredNodes = try {
             WastiNearbyHardwareEngine.getDiscoveredNodes()
         } catch (e: Exception) {
+            Log.w(TAG, "Error discovering nearby nodes for mesh relay: ${e.message}", e)
             emptyList()
         }
 
