@@ -16,12 +16,13 @@ fun CodeStudioScreen(
     wreManager: WreManager,
     activeCodeContext: String = "fun main() {\n    println(\"Wasti OS Code Engine\")\n}",
     onCodeContextChange: (String) -> Unit = {},
-    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit = { _, _ -> }
+    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit = { _, _ -> },
+    onNavigateBack: () -> Unit = {}
 ) {
     TerminalWorkspaceScreen(
         wreManager = wreManager,
         viewModel = viewModel,
-        onNavigateBack = {},
+        onNavigateBack = onNavigateBack,
         initialMode = TerminalWorkspaceMode.CODE_STUDIO,
         activeCodeContext = activeCodeContext,
         onCodeContextChange = onCodeContextChange,

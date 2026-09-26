@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
@@ -49,7 +50,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrainSimulationScreen() {
+fun BrainSimulationScreen(
+    onNavigateBack: () -> Unit = {}
+) {
     val coroutineScope = rememberCoroutineScope()
     val consensusState by UnifiedBrain.activeBrainState.collectAsState()
     val modelStatuses by ModelArtifactManager.modelStatuses.collectAsState()
@@ -87,6 +90,14 @@ fun BrainSimulationScreen() {
                         Text(
                             text = "Unified Brain & BCI Interface",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
                         )
                     }
                 },

@@ -34,7 +34,8 @@ import kotlinx.coroutines.launch
 fun DevAssistantScreen(
     activeCodeContext: String = "fun main() {\n    println(\"Wasti OS Code Engine\")\n}",
     onCodeContextChange: (String) -> Unit = {},
-    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit = { _, _ -> }
+    onSendMessageToChat: (prompt: String, codeContext: String) -> Unit = { _, _ -> },
+    onNavigateBack: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -63,6 +64,14 @@ fun DevAssistantScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
                     Icon(
                         imageVector = Icons.Default.Terminal,
                         contentDescription = "Dev Assistant",

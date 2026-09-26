@@ -282,7 +282,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     viewModel.selectTab("chat")
                                 }
                             )
-                            "operations" -> OperationsDashboardScreen()
+                            "operations" -> OperationsDashboardScreen(onNavigateBack = { viewModel.selectTab("dashboard") })
                             "capabilities" -> CapabilityCenterScreen(onNavigateBack = { viewModel.selectTab("dashboard") })
                             "chat" -> ChatWorkspaceScreen(
                                 conversations = conversations,
@@ -373,14 +373,16 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     viewModel.setActiveCodeContext(codeCtx)
                                     viewModel.selectTab("chat")
                                     viewModel.sendMessage(prompt, codeCtx)
-                                }
+                                },
+                                onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
 
                             "integrations" -> IntegrationsLogsScreen(
                                 integrations = integrations,
                                 logs = logs,
                                 onClearLogs = { viewModel.clearLogs() },
-                                onToggleIntegration = { id, connected -> viewModel.toggleIntegration(id, connected) }
+                                onToggleIntegration = { id, connected -> viewModel.toggleIntegration(id, connected) },
+                                onNavigateBack = { viewModel.selectTab("settings") }
                             )
                             "welcome" -> WelcomeAuthScreen(
                                 onLaunchWorkspace = { viewModel.selectTab("dashboard") },
@@ -406,7 +408,9 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                 onSelectModel = { viewModel.setSelectedModel(it) },
                                 onOpenWakeWordSettings = { viewModel.selectTab("wakeword_settings") }
                             )
-                            "brain" -> BrainSimulationScreen()
+                            "brain" -> BrainSimulationScreen(
+                                onNavigateBack = { viewModel.selectTab("dashboard") }
+                            )
                             "dev_assistant" -> com.example.ui.screens.DevAssistantScreen(
                                 activeCodeContext = activeCodeContext,
                                 onCodeContextChange = { viewModel.setActiveCodeContext(it) },
@@ -415,7 +419,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                                     viewModel.setActiveCodeContext(codeCtx)
                                     viewModel.selectTab("chat")
                                     viewModel.sendMessage(prompt, codeCtx)
-                                }
+                                },
+                                onNavigateBack = { viewModel.selectTab("dashboard") }
                             )
                             else -> DashboardScreen(
                                 conversations = conversations,

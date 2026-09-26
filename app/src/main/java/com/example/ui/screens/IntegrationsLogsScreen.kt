@@ -12,12 +12,14 @@ fun IntegrationsLogsScreen(
     integrations: List<IntegrationEntity>,
     logs: List<SystemLogEntity>,
     onClearLogs: () -> Unit,
-    onToggleIntegration: (String, Boolean) -> Unit = { _, _ -> }
+    onToggleIntegration: (String, Boolean) -> Unit = { _, _ -> },
+    onNavigateBack: () -> Unit = {}
 ) {
     ConnectionsAndVaultScreen(
         integrations = integrations,
         logs = logs,
         onClearLogs = onClearLogs,
-        onToggleIntegration = onToggleIntegration
+        onToggleIntegration = onToggleIntegration,
+        onNavigateBack = onNavigateBack
     )
 }

@@ -58,7 +58,9 @@ import com.example.data.workflow.WorkflowEngine
 import kotlinx.coroutines.launch
 
 @Composable
-fun OperationsDashboardScreen() {
+fun OperationsDashboardScreen(
+    onNavigateBack: () -> Unit = {}
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val stats by OperationsManager.dashboardStatsFlow.collectAsStateWithLifecycle()
@@ -165,6 +167,14 @@ fun OperationsDashboardScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                             Box(
                                 modifier = Modifier
                                     .size(10.dp)
