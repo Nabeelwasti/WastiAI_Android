@@ -368,13 +368,19 @@ object ExecutionProvenanceLedger {
                 res to verificationReceipt
             }
             verificationResult?.capabilitySpecificEvidence != null -> {
-                WastiTruthGate.verifyCapability(verificationResult.capabilitySpecificEvidence!!)
+                val capEvidence = verificationResult.capabilitySpecificEvidence!!
+                val boundEvidence = if (capEvidence.inputHash == null && capEvidence.outputHash == null) {
+                    capEvidence.copy(inputHash = inputHash, outputHash = outputHash)
+                } else {
+                    capEvidence
+                }
+                WastiTruthGate.verifyCapability(boundEvidence)
             }
             verificationResult?.structuredEvidence != null -> {
-                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, verificationResult.structuredEvidence!!)
+                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, verificationResult.structuredEvidence!!, inputHash = inputHash, outputHash = outputHash)
             }
             evidence != null -> {
-                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, evidence)
+                WastiTruthGate.verifyStructured(taskId, actionId, capabilityId, evidence, inputHash = inputHash, outputHash = outputHash)
             }
             else -> null to null
         }

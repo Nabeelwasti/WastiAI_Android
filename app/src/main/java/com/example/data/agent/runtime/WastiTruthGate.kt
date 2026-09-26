@@ -21,7 +21,9 @@ object WastiTruthGate {
             verificationMethod = evidence.verificationMethod,
             confidence = evidence.confidence,
             artifactRef = evidence.artifactOrStateReference,
-            checksum = evidence.checksumOrHash
+            checksum = evidence.checksumOrHash,
+            inputHash = evidence.inputHash,
+            outputHash = evidence.outputHash
         )
     }
 
@@ -32,7 +34,9 @@ object WastiTruthGate {
         taskId: String,
         actionId: String,
         capabilityId: String,
-        evidence: VerifiedExecutionEvidence
+        evidence: VerifiedExecutionEvidence,
+        inputHash: String? = null,
+        outputHash: String? = null
     ): Pair<VerificationResult, WastiVerificationReceipt?> {
         return WastiTruthAuthority.evaluate(
             taskId = taskId,
@@ -45,7 +49,9 @@ object WastiTruthGate {
             verificationMethod = evidence.verificationMethod ?: "structured_evidence_probe",
             confidence = evidence.confidence,
             artifactRef = evidence.subject,
-            checksum = evidence.checksumOrHash
+            checksum = evidence.checksumOrHash,
+            inputHash = inputHash,
+            outputHash = outputHash
         )
     }
 

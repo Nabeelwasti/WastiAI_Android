@@ -183,6 +183,10 @@ class TruthAuthorityArchitectureTest {
     fun testExecutionProvenanceLedgerAcceptsVerifiedStatusWithGenuineReceipt() {
         val taskId = "task_ledger_valid_test"
         val actionId = "action_ledger_valid_test"
+        val inContent = "input"
+        val outContent = "output"
+        val inHash = ExecutionProvenanceLedger.hashString(inContent)
+        val outHash = ExecutionProvenanceLedger.hashString(outContent)
 
         val evidence = CapabilitySpecificEvidence(
             taskId = taskId,
@@ -197,7 +201,9 @@ class TruthAuthorityArchitectureTest {
             observedState = "state_ok",
             verifierIdentity = "DatabaseObjectiveProbe",
             verificationMethod = "objective_db_probe",
-            confidence = 0.95
+            confidence = 0.95,
+            inputHash = inHash,
+            outputHash = outHash
         )
 
         val (verResult, receipt) = WastiTruthGate.verifyCapability(evidence)
@@ -210,8 +216,8 @@ class TruthAuthorityArchitectureTest {
             capabilityId = "valid_cap",
             providerId = "TestProvider",
             modelId = "TestModel",
-            inputContent = "input",
-            outputContent = "output",
+            inputContent = inContent,
+            outputContent = outContent,
             verificationResult = verResult,
             verificationReceipt = receipt
         )
@@ -222,9 +228,12 @@ class TruthAuthorityArchitectureTest {
 
     @Test
     fun testCompileConfigurationPreservation() {
-        val gradleFile = java.io.File("app/build.gradle.kts")
-        assertTrue("app/build.gradle.kts must exist", gradleFile.exists())
-        val content = gradleFile.readText()
+        val gradleFile = listOf(
+            java.io.File("app/build.gradle.kts"),
+            java.io.File("build.gradle.kts")
+        ).firstOrNull { it.exists() }
+        assertTrue("app/build.gradle.kts or build.gradle.kts must exist", gradleFile != null && gradleFile.exists())
+        val content = gradleFile!!.readText()
         assertTrue("compileSdk must be strictly set to canonical 35", content.contains("compileSdk = 35"))
         assertTrue("targetSdk must be strictly set to canonical 35", content.contains("targetSdk = 35"))
     }

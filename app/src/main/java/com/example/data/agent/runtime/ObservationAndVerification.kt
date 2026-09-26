@@ -45,7 +45,9 @@ data class CapabilitySpecificEvidence(
     val observedState: String,
     val verifierIdentity: String = "WastiVerificationEngine",
     val verificationMethod: String,
-    val confidence: Double = 1.0
+    val confidence: Double = 1.0,
+    val inputHash: String? = null,
+    val outputHash: String? = null
 )
 
 data class VerificationRequest(
