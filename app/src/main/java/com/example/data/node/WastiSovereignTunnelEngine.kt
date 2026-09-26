@@ -905,7 +905,7 @@ object WastiSovereignTunnelEngine {
                 executor = "WastiSovereignTunnelEngine",
                 stateTransition = "REQUESTED -> TRANSITION -> $verifiedStateStr",
                 evidenceLevel = evidenceLadder,
-                receipt = receipt
+                verificationReceipt = receipt
             )
         } catch (e: Exception) {
             Log.w(TAG, "Could not record tunnel execution provenance: ${e.message}")

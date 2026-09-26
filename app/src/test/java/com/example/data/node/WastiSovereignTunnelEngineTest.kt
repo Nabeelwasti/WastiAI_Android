@@ -237,6 +237,7 @@ class WastiSovereignTunnelEngineTest {
                     override fun waitFor() = 0
                     override fun exitValue(): Int = if (isDestroyed.get()) 143 else throw IllegalThreadStateException("Process is alive")
                     override fun destroy() { isDestroyed.set(true) }
+                    override fun destroyForcibly(): Process { isDestroyed.set(true); return this }
                 }
             }
         }
@@ -279,6 +280,7 @@ class WastiSovereignTunnelEngineTest {
                     override fun waitFor() = 1
                     override fun exitValue(): Int = 1
                     override fun destroy() {}
+                    override fun destroyForcibly(): Process { return this }
                 }
             }
         }
@@ -323,6 +325,7 @@ class WastiSovereignTunnelEngineTest {
                     override fun waitFor() = 0
                     override fun exitValue(): Int = if (isDestroyed.get()) 143 else throw IllegalThreadStateException("Process is alive")
                     override fun destroy() { isDestroyed.set(true) }
+                    override fun destroyForcibly(): Process { isDestroyed.set(true); return this }
                 }
             }
         }

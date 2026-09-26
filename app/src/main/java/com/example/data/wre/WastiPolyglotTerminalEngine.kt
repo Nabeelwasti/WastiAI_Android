@@ -314,7 +314,7 @@ class WastiPolyglotTerminalEngine(
 • Reason: ${state.failureReason ?: "Unknown error"}
 • Troubleshooting: Run 'status' or check prerequisite binary/relay availability.
                     """.trimIndent()
-                    PolyglotExecutionOutcome(false, PolyglotLanguage.SOVEREIGN_TUNNEL, out, stderr = state.failureReason)
+                    PolyglotExecutionOutcome(false, PolyglotLanguage.SOVEREIGN_TUNNEL, out, stderr = state.failureReason ?: "")
                 }
             }
             "stop" -> {
