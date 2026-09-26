@@ -24,14 +24,17 @@ class DefaultDeviceSecurityProvider : DeviceSecurityProvider {
                 keyguardManager.isKeyguardSecure
             }
         } catch (e: NoSuchMethodError) {
+            android.util.Log.d("WastiSecurityManager", "isDeviceSecure method unavailable on SDK; falling back to isKeyguardSecure", e)
             try {
                 val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
                 @Suppress("DEPRECATION")
                 keyguardManager?.isKeyguardSecure == true
             } catch (e2: Throwable) {
+                android.util.Log.d("WastiSecurityManager", "isKeyguardSecure fallback failed", e2)
                 false
             }
         } catch (e: Throwable) {
+            android.util.Log.d("WastiSecurityManager", "isDeviceSecured check encountered error", e)
             false
         }
     }
