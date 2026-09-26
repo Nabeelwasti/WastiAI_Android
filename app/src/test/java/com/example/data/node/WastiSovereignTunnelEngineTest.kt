@@ -102,15 +102,16 @@ class WastiSovereignTunnelEngineTest {
 
     @Test
     fun testMeshRelayFailedWhenPeerHealthProbeFails() = runBlocking {
-        val desktopPeer = DiscoveredNode(
+        val desktopPeer = NearbyHardwareNode(
             nodeId = "mesh-server-01",
-            deviceModel = "Linux Server",
+            deviceName = "Linux Server",
+            hardwareType = DeviceHardwareType.SERVER_WORKSTATION,
+            transportType = HardwareTransportType.WIFI_LAN,
             platform = NodePlatform.SERVER,
             addressOrIp = "192.168.1.150",
             port = 8080,
-            transport = DiscoveryTransport.WIFI_LAN,
-            capabilities = setOf("compute_engine", "tunnel_ingress"),
-            status = NodeStatus.AVAILABLE
+            advertisedCapabilities = setOf("compute_engine", "tunnel_ingress"),
+            capabilityFingerprint = "fp-mesh-server-01"
         )
         WastiNearbyHardwareEngine.registerNodeForTesting(desktopPeer)
 
@@ -129,15 +130,16 @@ class WastiSovereignTunnelEngineTest {
 
     @Test
     fun testMeshRelayOperationalWhenPeerRespondsHealthy() = runBlocking {
-        val desktopPeer = DiscoveredNode(
+        val desktopPeer = NearbyHardwareNode(
             nodeId = "mesh-server-02",
-            deviceModel = "Linux Server",
+            deviceName = "Linux Server",
+            hardwareType = DeviceHardwareType.SERVER_WORKSTATION,
+            transportType = HardwareTransportType.WIFI_LAN,
             platform = NodePlatform.SERVER,
             addressOrIp = "192.168.1.200",
             port = 8080,
-            transport = DiscoveryTransport.WIFI_LAN,
-            capabilities = setOf("compute_engine", "tunnel_ingress"),
-            status = NodeStatus.AVAILABLE
+            advertisedCapabilities = setOf("compute_engine", "tunnel_ingress"),
+            capabilityFingerprint = "fp-mesh-server-02"
         )
         WastiNearbyHardwareEngine.registerNodeForTesting(desktopPeer)
 
