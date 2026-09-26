@@ -63,6 +63,7 @@ class WastiLocalModelRuntimeAndProvenanceTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
+        com.example.data.agent.runtime.WastiTruthAuthority.setTestAuthorityKeyForTesting()
         ExecutionProvenanceLedger.resetForTesting()
         com.example.data.memory.ExecutionMemoryRecorder.clearHistoryForTesting()
         com.example.data.agent.runtime.SelfModificationSafetyEngine.resetForTesting()
@@ -148,16 +149,35 @@ class WastiLocalModelRuntimeAndProvenanceTest {
 
     @Test
     fun testExecutionProvenanceLedgerHashChainingAndIntegrity() {
-        val evidence1 = VerifiedExecutionEvidence(
-            evidenceSource = EvidenceSource.FILESYSTEM,
-            subject = "workspace_create",
-            verifiedState = "DIR_EXISTS",
+        val testArtifact = File.createTempFile("wasti_workspace_", ".dat")
+        val artifactContent = "workspace_initialized_successfully"
+        testArtifact.writeText(artifactContent)
+        testArtifact.deleteOnExit()
+
+        val in1 = "dir=/tmp/wasti"
+        val out1 = "Directory created successfully"
+        val inHash1 = ExecutionProvenanceLedger.hashString(in1)
+        val outHash1 = ExecutionProvenanceLedger.hashString(out1)
+        val expectedHash1 = com.example.data.agent.runtime.WastiTruthAuthority.hashString(artifactContent)
+        val observedContent1 = testArtifact.readText(Charsets.UTF_8)
+        val observedHash1 = com.example.data.agent.runtime.WastiTruthAuthority.hashString(observedContent1)
+
+        val (verResult1, receipt1) = com.example.data.agent.runtime.WastiTruthAuthority.evaluate(
+            taskId = "task_001",
+            actionId = "act_001",
+            capabilityId = "create_workspace",
+            expectedState = expectedHash1,
+            observedState = observedHash1,
+            observationSource = EvidenceSource.FILESYSTEM_AUDIT,
+            verifierIdentity = "FilesystemObservationProbe",
+            verificationMethod = "objective_postcondition_disk_hash_probe",
             confidence = 1.0,
-            expectedPostcondition = "DIR_EXISTS",
-            observedResult = "DIR_EXISTS",
-            declaredVerifier = "WastiVerificationEngine",
-            verificationMethod = "filesystem_directory_check"
+            artifactRef = testArtifact.absolutePath,
+            checksum = observedHash1,
+            inputHash = inHash1,
+            outputHash = outHash1
         )
+        assertNotNull(receipt1)
 
         val e1 = ExecutionProvenanceLedger.recordExecution(
             taskId = "task_001",
@@ -165,21 +185,44 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             capabilityId = "create_workspace",
             providerId = "WastiSandbox",
             modelId = "wasti-smollm",
-            inputContent = "dir=/tmp/wasti",
-            outputContent = "Directory created successfully",
-            evidence = evidence1
+            inputContent = in1,
+            outputContent = out1,
+            evidence = VerifiedExecutionEvidence(
+                evidenceSource = EvidenceSource.FILESYSTEM_AUDIT,
+                subject = testArtifact.absolutePath,
+                verifiedState = observedHash1,
+                confidence = 1.0,
+                expectedPostcondition = expectedHash1,
+                observedResult = observedHash1,
+                declaredVerifier = "FilesystemObservationProbe",
+                verificationMethod = "objective_postcondition_disk_hash_probe",
+                checksumOrHash = observedHash1
+            ),
+            verifier = "FilesystemObservationProbe",
+            evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED,
+            verificationResult = verResult1,
+            verificationReceipt = receipt1
         )
 
-        val evidence2 = VerifiedExecutionEvidence(
-            evidenceSource = EvidenceSource.DATABASE_QUERY,
-            subject = "memory_write",
-            verifiedState = "RECORD_INSERTED",
+        val in2 = "key=session_token"
+        val out2 = "Saved"
+        val inHash2 = ExecutionProvenanceLedger.hashString(in2)
+        val outHash2 = ExecutionProvenanceLedger.hashString(out2)
+
+        val (verResult2, receipt2) = com.example.data.agent.runtime.WastiTruthAuthority.evaluate(
+            taskId = "task_001",
+            actionId = "act_002",
+            capabilityId = "save_memory",
+            expectedState = "RECORD_INSERTED",
+            observedState = "RECORD_INSERTED",
+            observationSource = EvidenceSource.DATABASE_QUERY,
+            verifierIdentity = "ObjectiveProbe_Database",
+            verificationMethod = "objective_db_probe",
             confidence = 0.95,
-            expectedPostcondition = "RECORD_INSERTED",
-            observedResult = "RECORD_INSERTED",
-            declaredVerifier = "WastiVerificationEngine",
-            verificationMethod = "database_query_verification"
+            inputHash = inHash2,
+            outputHash = outHash2
         )
+        assertNotNull(receipt2)
 
         val e2 = ExecutionProvenanceLedger.recordExecution(
             taskId = "task_001",
@@ -187,9 +230,22 @@ class WastiLocalModelRuntimeAndProvenanceTest {
             capabilityId = "save_memory",
             providerId = "MemoryManager",
             modelId = null,
-            inputContent = "key=session_token",
-            outputContent = "Saved",
-            evidence = evidence2
+            inputContent = in2,
+            outputContent = out2,
+            evidence = VerifiedExecutionEvidence(
+                evidenceSource = EvidenceSource.DATABASE_QUERY,
+                subject = "memory_write",
+                verifiedState = "RECORD_INSERTED",
+                confidence = 0.95,
+                expectedPostcondition = "RECORD_INSERTED",
+                observedResult = "RECORD_INSERTED",
+                declaredVerifier = "ObjectiveProbe_Database",
+                verificationMethod = "objective_db_probe"
+            ),
+            verifier = "ObjectiveProbe_Database",
+            evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.RUNTIME_VERIFIED,
+            verificationResult = verResult2,
+            verificationReceipt = receipt2
         )
 
         assertEquals(e1.entryHash, e2.previousEntryHash)
