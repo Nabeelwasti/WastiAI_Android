@@ -182,12 +182,15 @@ def is_class_defined_in_dex(dex_bytes, target_descriptor):
 
 def verify_apks():
     target_apks = []
-    for p in ["app/build/outputs/apk/release/app-release.apk", "app/build/outputs/apk/debug/app-debug.apk"]:
-        if os.path.isfile(p):
-            target_apks.append(p)
+    if len(sys.argv) > 1:
+        target_apks = sys.argv[1:]
+    else:
+        for p in ["app/build/outputs/apk/release/app-release.apk", "app/build/outputs/apk/debug/app-debug.apk"]:
+            if os.path.isfile(p):
+                target_apks.append(p)
 
     if not target_apks:
-        print("ERROR: No APK targets found to verify!")
+        print("ERROR: No APK targets found to verify! (Fail-Closed)")
         sys.exit(1)
 
     for apk in target_apks:
