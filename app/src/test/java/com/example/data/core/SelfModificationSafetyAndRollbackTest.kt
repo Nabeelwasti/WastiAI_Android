@@ -3,9 +3,12 @@ package com.example.data.core
 import com.example.data.agent.runtime.ModificationDecision
 import com.example.data.agent.runtime.ModificationOutcomeStatus
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
+import com.example.data.agent.runtime.WastiEmergencyStopController
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 
@@ -14,6 +17,18 @@ import java.io.File
  * Proposal audit chaining, diff computation, multi-generation rollback snapshots, post-restore validation.
  */
 class SelfModificationSafetyAndRollbackTest {
+
+    @Before
+    fun setUp() {
+        SelfModificationSafetyEngine.resetForTesting()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+    }
+
+    @After
+    fun tearDown() {
+        SelfModificationSafetyEngine.resetForTesting()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+    }
 
     @Test
     fun testProtectedPathEnforcement() {

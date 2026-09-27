@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -24,7 +25,12 @@ class EmergencyStopActiveConvergenceTest {
     @Before
     fun setUp() {
         controller = WastiEmergencyStopController()
-        controller.resetEmergencyStop()
+        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+    }
+
+    @After
+    fun tearDown() {
+        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
     }
 
     @Test
@@ -68,7 +74,7 @@ class EmergencyStopActiveConvergenceTest {
         assertFalse("Job must no longer be active", job.isActive)
 
         // Reset emergency stop
-        controller.resetEmergencyStop()
+        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
         assertFalse("Controller must report not stopped after reset", controller.isEmergencyStopped)
     }
 
