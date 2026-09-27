@@ -9,8 +9,13 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.File
 
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
 class AutonomousMutationGovernanceTest {
 
     private lateinit var tempDir: File
