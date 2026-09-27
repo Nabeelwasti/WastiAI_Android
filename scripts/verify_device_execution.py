@@ -37,7 +37,7 @@ def get_adb_device_info():
         model = get_prop("ro.product.model") or "Android Device"
         manufacturer = get_prop("ro.product.manufacturer") or "Unknown"
         sdk_str = get_prop("ro.build.version.sdk")
-        sdk = int(sdk_str) if sdk_str.isdigit() else 30
+        sdk = int(sdk_str) if (sdk_str and sdk_str.isdigit()) else 0
         fingerprint = get_prop("ro.build.fingerprint") or ""
         
         is_emulator = (
