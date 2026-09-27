@@ -963,6 +963,7 @@ object SelfModificationSafetyEngine {
         _pendingProposals.value = emptyList()
         _proposalAuditLog.value = emptyList()
         activeAdminTokens.clear()
+        isAuditLogCompromised = false
         com.example.data.security.AutonomousMutationGovernance.resetForTesting()
         try {
             val jDir = getJournalDir()
