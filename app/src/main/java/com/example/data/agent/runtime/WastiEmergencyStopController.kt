@@ -245,8 +245,14 @@ class WastiEmergencyStopController : EmergencyStopController {
 
     /**
      * Clears the latch atomically and records observable reset event.
+     * Enforces that autonomous AI cannot reset the emergency stop latch without human/admin authorization.
      */
-    override fun resetEmergencyStop() {
+    fun resetEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean {
+        if (!com.example.data.security.AutonomousMutationGovernance.isEmergencyStopResetPermitted(requester, adminToken)) {
+            android.util.Log.e("EmergencyStop", "Unauthorized reset attempt by '$requester' blocked (Fail-Closed)")
+            return false
+        }
+
         val now = System.currentTimeMillis()
 
         try {
@@ -276,7 +282,7 @@ class WastiEmergencyStopController : EmergencyStopController {
             EmergencyStopAuditEntry(
                 timestampMs = now,
                 isStopped = false,
-                reason = null,
+                reason = "Reset authorized by $requester",
                 generation = snap.generation
             )
         )
@@ -287,7 +293,7 @@ class WastiEmergencyStopController : EmergencyStopController {
                 actionId = "reset_emergency_stop",
                 capabilityId = "GLOBAL_EMERGENCY_STOP",
                 providerId = "WastiEmergencyStopController",
-                inputContent = "generation:${snap.generation},action:reset",
+                inputContent = "generation:${snap.generation},action:reset,requester:$requester",
                 outputContent = "stopped:false",
                 evidence = VerifiedExecutionEvidence(
                     subject = "WastiEmergencyStopController",
@@ -296,16 +302,22 @@ class WastiEmergencyStopController : EmergencyStopController {
                     evidenceSource = EvidenceSource.PROCESS_TELEMETRY,
                     expectedPostcondition = "EMERGENCY_STOP_RESET",
                     observedResult = "EMERGENCY_STOP_RESET",
-                    declaredVerifier = "WastiVerificationEngine",
+                    declaredVerifier = requester,
                     verificationMethod = "process_cancellation_latch"
                 ),
                 executionEnvironment = "local_android_runtime",
                 executor = "WastiEmergencyStopController",
-                verifier = "WastiVerificationEngine",
+                verifier = requester,
                 verificationMethod = "process_cancellation_latch",
                 evidenceLevel = EvidenceLadder.RUNTIME_VERIFIED
             )
         } catch (_: Throwable) {}
+
+        return true
+    }
+
+    override fun resetEmergencyStop() {
+        resetEmergencyStop(requester = "HUMAN_OPERATOR", adminToken = null)
     }
 
     fun triggerReset() = resetEmergencyStop()
@@ -329,7 +341,8 @@ class WastiEmergencyStopController : EmergencyStopController {
             get() = instance.stopStateFlow
 
         fun triggerEmergencyStop(reason: String) = instance.triggerEmergencyStop(reason)
-        fun resetEmergencyStop() = instance.resetEmergencyStop()
+        fun resetEmergencyStop(): Unit { instance.resetEmergencyStop() }
+        fun resetEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean = instance.resetEmergencyStop(requester, adminToken)
         fun triggerReset() = instance.resetEmergencyStop()
         fun registerScope(scope: CoroutineScope): AutoCloseable = instance.registerScope(scope)
         fun registerScope(name: String, scope: CoroutineScope): AutoCloseable = instance.registerScope(name, scope)

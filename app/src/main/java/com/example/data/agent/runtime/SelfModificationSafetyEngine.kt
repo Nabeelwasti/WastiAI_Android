@@ -252,6 +252,30 @@ object SelfModificationSafetyEngine {
         persistAuditEntry(entry)
 
         try {
+            val riskTier = com.example.data.security.AutonomousMutationGovernance.classifyRiskTier(filePath)
+            val approvalState = when (action) {
+                ProposalAuditAction.PROPOSED -> com.example.data.security.MutationApprovalState.PENDING_APPROVAL
+                ProposalAuditAction.REJECTED -> com.example.data.security.MutationApprovalState.DENIED
+                ProposalAuditAction.AUTHORIZED -> com.example.data.security.MutationApprovalState.APPROVED
+                ProposalAuditAction.APPLIED_VERIFIED -> com.example.data.security.MutationApprovalState.VERIFIED
+                ProposalAuditAction.APPLIED_UNVERIFIED -> com.example.data.security.MutationApprovalState.EXECUTED
+                ProposalAuditAction.ROLLED_BACK -> com.example.data.security.MutationApprovalState.ROLLED_BACK
+            }
+            com.example.data.security.AutonomousMutationGovernance.recordProvenance(
+                proposalId = proposalId,
+                requester = authorizingEntity,
+                reason = reason,
+                proposedMutationHash = contentHash,
+                affectedFiles = listOf(filePath),
+                riskTier = riskTier,
+                approvalIdentity = authorizingEntity,
+                approvalState = approvalState,
+                executionResult = action.name,
+                verificationEvidence = details
+            )
+        } catch (_: Throwable) {}
+
+        try {
             ExecutionProvenanceLedger.recordExecution(
                 taskId = "audit_${entry.id.take(8)}",
                 actionId = "proposal_${action.name.lowercase()}",
@@ -494,6 +518,11 @@ object SelfModificationSafetyEngine {
     fun isProtectedPath(path: String?): Boolean {
         if (path.isNullOrBlank()) return false
         val normalized = path.replace("\\", "/").lowercase()
+        val tier = com.example.data.security.AutonomousMutationGovernance.classifyRiskTier(path)
+        if (tier == com.example.data.security.MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE ||
+            tier == com.example.data.security.MutationRiskTier.HIGH_GOVERNANCE) {
+            return true
+        }
         return PROTECTED_SUBSTRINGS.any { normalized.contains(it.lowercase()) }
     }
 
@@ -934,6 +963,7 @@ object SelfModificationSafetyEngine {
         _pendingProposals.value = emptyList()
         _proposalAuditLog.value = emptyList()
         activeAdminTokens.clear()
+        com.example.data.security.AutonomousMutationGovernance.resetForTesting()
         try {
             val jDir = getJournalDir()
             jDir.listFiles()?.forEach { it.delete() }
