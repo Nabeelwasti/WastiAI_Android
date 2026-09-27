@@ -268,30 +268,44 @@ object AutonomousMutationGovernance {
 
     /**
      * Determines whether emergency stop latch reset is authorized.
-     * Invariant: AI callers can NEVER reset emergency stop autonomously.
+     * Invariant: AI callers can NEVER reset emergency stop autonomously, even if an admin token is provided.
+     * Only verified Human Operators, Owner Admins, or explicitly authorized callers with a valid admin token can reset.
      */
-    fun isEmergencyStopResetPermitted(requester: String, adminToken: String? = null): Boolean {
-        val normalizedRequester = requester.trim().uppercase()
-        if (normalizedRequester == "AUTONOMOUS_AI" ||
-            normalizedRequester.startsWith("AI_") ||
-            normalizedRequester.contains("AGENT") ||
-            normalizedRequester.contains("SUBAGENT")
+    fun isEmergencyStopResetPermitted(requester: String?, adminToken: String? = null): Boolean {
+        if (requester.isNullOrBlank()) {
+            Log.w(TAG, "Emergency Stop reset rejected: Requester identity is blank or null (Fail-Closed).")
+            return false
+        }
+
+        val normalized = requester.trim().uppercase()
+
+        // 1. Strict autonomous AI prohibition: Admin tokens CANNOT override this boundary
+        if (normalized == "AUTONOMOUS_AI" ||
+            normalized.startsWith("AI_") ||
+            normalized.contains("AGENT") ||
+            normalized.contains("SUBAGENT") ||
+            normalized.contains("AUTONOMOUS") ||
+            normalized.contains("BOT")
         ) {
             Log.e(TAG, "Security Alert: Autonomous AI '$requester' attempted to reset Emergency Stop latch. REJECTED (Fail-Closed).")
             return false
         }
 
+        // 2. Verified admin token authorization for human/system operators
         if (SelfModificationSafetyEngine.isValidAdminToken(adminToken)) {
             return true
         }
 
-        if (normalizedRequester == "HUMAN_OPERATOR" ||
-            normalizedRequester == "OWNER_ADMIN" ||
-            normalizedRequester == "SYSTEM_INITIALIZER"
+        // 3. Explicitly authorized human operators and system initializers
+        if (normalized == "HUMAN_OPERATOR" ||
+            normalized == "OWNER_ADMIN" ||
+            normalized == "SYSTEM_INITIALIZER"
         ) {
             return true
         }
 
+        // 4. Reject all other unauthenticated or unauthorized callers (Fail-Closed)
+        Log.w(TAG, "Emergency Stop reset rejected for unauthorized caller: $requester")
         return false
     }
 

@@ -196,28 +196,80 @@ class AutonomousMutationGovernanceTest {
     }
 
     @Test
-    fun testAutonomousAICannotResetEmergencyStop() {
+    fun testEmergencyStopResetAuthorityAndFailClosedSemantics() {
+        val validToken = "wasti_admin_sec_valid_token_123"
+        SelfModificationSafetyEngine.registerAdminToken(validToken)
+
+        // 1. Autonomous requester without token (MUST BE DENIED)
+        assertFalse("Autonomous AI without token must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AUTONOMOUS_AI"))
+        assertFalse("AI subagent without token must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AI_SUBAGENT_CODE_REPAIR"))
+        assertFalse("Generic agent without token must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AGENT_EXECUTOR"))
+
+        // 2. Autonomous requester WITH valid admin token (MUST STILL BE DENIED: Tokens cannot override AI prohibition)
+        assertFalse("Autonomous AI with valid admin token must STILL be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AUTONOMOUS_AI", validToken))
+        assertFalse("AI subagent with valid admin token must STILL be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AI_SUBAGENT", validToken))
+        assertFalse("Autonomous loop with valid admin token must STILL be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("AUTONOMOUS_SELF_HEAL", validToken))
+
+        // 3. Authorized human/admin with valid authorization (MUST BE ALLOWED)
+        assertTrue("Verified HUMAN_OPERATOR must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR"))
+        assertTrue("Verified OWNER_ADMIN must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("OWNER_ADMIN"))
+        assertTrue("SYSTEM_INITIALIZER must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("SYSTEM_INITIALIZER"))
+        assertTrue("Authorized human delegate with valid admin token must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("OPERATOR_DELEGATE", validToken))
+
+        // 4. Unauthorized human without token or with invalid token (MUST BE DENIED)
+        assertFalse("Unauthorized human without token must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("UNAUTHORIZED_HUMAN"))
+        assertFalse("Unauthorized human with invalid token must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("UNAUTHORIZED_HUMAN", "invalid_token_999"))
+
+        // 5. Blank / Unknown / Null requester (MUST BE DENIED)
+        assertFalse("Empty requester string must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted(""))
+        assertFalse("Whitespace requester string must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("   "))
+        assertFalse("Null requester must be denied",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted(null))
+
+        // 6. Emergency-stop controller integration: AI reset denied, Human reset allowed
         WastiEmergencyStopController.triggerEmergencyStop("Test Stop Active")
         assertTrue(WastiEmergencyStopController.isEmergencyStopped)
 
-        // Autonomous AI attempts to reset
-        val aiResetAllowed = AutonomousMutationGovernance.isEmergencyStopResetPermitted("AUTONOMOUS_AI")
-        assertFalse("Autonomous AI must not be permitted to reset emergency stop", aiResetAllowed)
+        // Attempt reset by AI with valid token -> Must fail and keep latch stopped
+        val aiResetResult = WastiEmergencyStopController.resetEmergencyStop(
+            requester = "AUTONOMOUS_AI",
+            adminToken = validToken
+        )
+        assertFalse("Emergency stop reset by AI must return false", aiResetResult)
+        assertTrue("Emergency stop latch must remain engaged after AI reset attempt",
+            WastiEmergencyStopController.isEmergencyStopped)
 
-        val aiSubagentResetAllowed = AutonomousMutationGovernance.isEmergencyStopResetPermitted("AI_SUBAGENT_CODE_REPAIR")
-        assertFalse("AI subagents must not be permitted to reset emergency stop", aiSubagentResetAllowed)
+        // Attempt reset by unauthorized human -> Must fail and keep latch stopped
+        val unauthResetResult = WastiEmergencyStopController.resetEmergencyStop(
+            requester = "UNAUTHORIZED_HUMAN",
+            adminToken = null
+        )
+        assertFalse("Emergency stop reset by unauthorized human must return false", unauthResetResult)
+        assertTrue("Emergency stop latch must remain engaged after unauthorized human attempt",
+            WastiEmergencyStopController.isEmergencyStopped)
 
-        val resetOutcome = WastiEmergencyStopController.resetEmergencyStop(requester = "AUTONOMOUS_AI")
-        assertFalse(resetOutcome)
-        assertTrue("Emergency stop must remain active after unauthorized AI reset attempt", WastiEmergencyStopController.isEmergencyStopped)
-
-        // Human operator resets
-        val humanResetAllowed = AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR")
-        assertTrue(humanResetAllowed)
-
-        val humanResetOutcome = WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
-        assertTrue(humanResetOutcome)
-        assertFalse("Emergency stop latch should be cleared by human operator", WastiEmergencyStopController.isEmergencyStopped)
+        // Legitimate human operator reset -> Must succeed and clear latch
+        val humanResetResult = WastiEmergencyStopController.resetEmergencyStop(
+            requester = "HUMAN_OPERATOR",
+            adminToken = null
+        )
+        assertTrue("Emergency stop reset by human operator must succeed", humanResetResult)
+        assertFalse("Emergency stop latch must be cleared after legitimate human reset",
+            WastiEmergencyStopController.isEmergencyStopped)
     }
 
     @Test
