@@ -4,7 +4,6 @@ import com.example.data.agent.runtime.ModificationDecision
 import com.example.data.agent.runtime.ModificationOutcomeStatus
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test

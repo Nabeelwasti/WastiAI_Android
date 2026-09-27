@@ -6,7 +6,11 @@ import com.example.data.agent.runtime.ProposalAuditAction
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
 import com.example.data.agent.runtime.WastiEmergencyStopController
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -279,14 +283,17 @@ class AutonomousMutationGovernanceTest {
 
         // Mutation 1 -> Gen 1
         val snap1 = SelfModificationSafetyEngine.createRollbackSnapshot(file)
+        assertNotNull(snap1)
         file.writeText("Gen 1 Modified Content")
 
         // Mutation 2 -> Gen 2
         val snap2 = SelfModificationSafetyEngine.createRollbackSnapshot(file)
+        assertNotNull(snap2)
         file.writeText("Gen 2 Modified Content")
 
         // Mutation 3 -> Gen 3
         val snap3 = SelfModificationSafetyEngine.createRollbackSnapshot(file)
+        assertNotNull(snap3)
         file.writeText("Gen 3 Modified Content")
 
         val snapshots = SelfModificationSafetyEngine.getSnapshotsForFile(file.absolutePath)
