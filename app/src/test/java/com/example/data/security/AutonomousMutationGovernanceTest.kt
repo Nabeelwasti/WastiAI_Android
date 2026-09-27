@@ -73,10 +73,9 @@ class AutonomousMutationGovernanceTest {
 
     @Test
     fun testFileOverloadsAndCanonicalPathResolution() {
-        val scratchDir = File(tempDir, "scratch")
-        scratchDir.mkdirs()
+        val subDir = File(tempDir, "scratch/sub")
+        subDir.mkdirs()
         val testFile = File(tempDir, "scratch/sub/../test_script.tmp")
-        testFile.canonicalFile.parentFile?.mkdirs()
         testFile.writeText("sample")
 
         // File-based classification
