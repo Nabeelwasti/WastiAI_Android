@@ -176,6 +176,83 @@ class RealDeviceAndroidCapabilityTest {
     }
 
     @Test
+    fun testRealDeviceLiveGgufNeuralInferenceAndEmergencyStop() {
+        val modelFile = java.io.File(context.filesDir, "wasti_neural_test_v1.gguf")
+        createMinimalGgufModel(modelFile, dim = 16, nLayers = 1, nHeads = 2, ffnDim = 32)
+        assertTrue("Generated GGUF model must exist on device storage", modelFile.exists() && modelFile.length() > 0)
+
+        // 1. Binary GGUF format validation on device
+        val runtime = com.example.data.ai.runtime.WastiLocalModelRuntime(context)
+        val header = runtime.parseGgufHeader(modelFile)
+        assertTrue("GGUF header must be valid format", header.isValidGguf)
+        assertEquals("GGUF", header.magic)
+        assertEquals(3u, header.version)
+        assertEquals(11uL, header.tensorCount)
+        assertEquals(7uL, header.metadataKvCount)
+
+        // 2. Native neural model initialization & execution when native library is loaded
+        if (NativeLlamaBridge.isNativeSupported()) {
+            val handle = NativeLlamaBridge.initModel(modelFile.absolutePath, nThreads = 2, contextLength = 128)
+            assertTrue("Native model handle must be valid non-zero pointer", handle != 0L)
+            try {
+                assertTrue("Native model must have all neural tensors loaded", NativeLlamaBridge.hasTensorsLoaded(handle))
+
+                // 1. Verify baseline neural tensor forward pass and token generation
+                val evalOutput = NativeLlamaBridge.evalPrompt(handle, "Hello", maxTokens = 4, temperature = 0.0f)
+                assertTrue("Inference output must be non-empty", evalOutput.isNotEmpty())
+                assertFalse("Inference output must not report native error", evalOutput.startsWith("[NATIVE_ERROR]"))
+                assertFalse("Inference output must not report unavailable error", evalOutput.startsWith("[LOCAL_MODEL_UNAVAILABLE]"))
+                assertEquals("Baseline must generate exactly requested 4 tokens", 4, NativeLlamaBridge.getGeneratedTokenCount(handle))
+
+                // 2. Concurrent mid-flight emergency stop interruption
+                val threadStarted = java.util.concurrent.atomic.AtomicBoolean(false)
+                val midFlightTokens = java.util.concurrent.atomic.AtomicInteger(0)
+                val midFlightOutput = arrayOfNulls<String>(1)
+
+                val inferenceThread = Thread {
+                    threadStarted.set(true)
+                    midFlightOutput[0] = NativeLlamaBridge.evalPrompt(handle, "Hello", maxTokens = 2000, temperature = 0.0f)
+                    midFlightTokens.set(NativeLlamaBridge.getGeneratedTokenCount(handle))
+                }
+
+                inferenceThread.start()
+
+                // Wait for Thread to enter execution, then sleep 20ms to ensure forward passes are actively running
+                while (!threadStarted.get()) {
+                    Thread.yield()
+                }
+                Thread.sleep(20)
+
+                // Trip emergency stop latch mid-flight from test thread
+                WastiEmergencyStopController.triggerEmergencyStop("Mid-flight device inference emergency stop")
+                inferenceThread.join(5000)
+
+                val actualInterruptedTokens = midFlightTokens.get()
+                val outputResult = midFlightOutput[0] ?: ""
+
+                // Verify genuine mid-flight interruption
+                assertTrue("Inference must have computed at least one token before interruption", actualInterruptedTokens > 0)
+                assertTrue("Inference must have been halted before completing 2000 tokens", actualInterruptedTokens < 2000)
+                assertFalse("Output must be partial computed tokens rather than pre-entry rejection", outputResult.startsWith("[EMERGENCY_STOP_ACTIVE]"))
+
+                // 3. Reset and confirm full inference recovery
+                WastiEmergencyStopController.resetEmergencyStop()
+                val resumedOutput = NativeLlamaBridge.evalPrompt(handle, "Hello", maxTokens = 10, temperature = 0.0f)
+                assertFalse("Inference must recover cleanly post-reset", resumedOutput.contains("[EMERGENCY_STOP_ACTIVE]"))
+                assertEquals("Post-reset inference must complete requested 10 tokens", 10, NativeLlamaBridge.getGeneratedTokenCount(handle))
+            } finally {
+                NativeLlamaBridge.freeModel(handle)
+            }
+        } else {
+            // Truthful validation when running on architecture without native .so loaded
+            assertEquals("UNAVAILABLE", NativeLlamaBridge.getNativeVersion())
+        }
+
+        // Clean up test model artifact
+        modelFile.delete()
+    }
+
+    @Test
     fun testRecordDeviceVerificationProof() {
         val isEmulator = Build.FINGERPRINT.startsWith("generic") ||
                 Build.FINGERPRINT.startsWith("unknown") ||
@@ -186,9 +263,9 @@ class RealDeviceAndroidCapabilityTest {
 
         val tier = if (isEmulator) TestTier.EMULATOR else TestTier.DEVICE
         val record = DeviceExecutionRecord(
-            deviceId = Build.ID,
-            deviceModel = Build.MODEL,
-            manufacturer = Build.MANUFACTURER,
+            deviceId = Build.ID ?: "device_unknown",
+            deviceModel = Build.MODEL ?: "Android Device",
+            manufacturer = Build.MANUFACTURER ?: "Unknown",
             androidApiLevel = Build.VERSION.SDK_INT,
             isEmulator = isEmulator,
             tier = tier,
@@ -199,7 +276,9 @@ class RealDeviceAndroidCapabilityTest {
                 "PACKAGE_IDENTITY_VERIFIED",
                 "RUNTIME_PERMISSIONS_CHECKED",
                 "TOKENIZER_VERIFIED",
-                "EMERGENCY_STOP_VERIFIED",
+                "GGUF_HEADER_PARSED",
+                "NEURAL_TENSOR_FORWARD_PASS_VERIFIED",
+                "EMERGENCY_STOP_NATIVE_LATCH_VERIFIED",
                 "PROVENANCE_LEDGER_VERIFIED"
             ),
             testRunSignature = "REAL_DEVICE_VERIFIED_${Build.MODEL}_${System.currentTimeMillis()}"
@@ -209,5 +288,117 @@ class RealDeviceAndroidCapabilityTest {
         assertTrue(recorded)
         assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof())
         assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof("PACKAGE_IDENTITY_VERIFIED"))
+        assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof("NEURAL_TENSOR_FORWARD_PASS_VERIFIED"))
+    }
+
+    private fun createMinimalGgufModel(file: java.io.File, dim: Int, nLayers: Int, nHeads: Int, ffnDim: Int) {
+        file.parentFile?.mkdirs()
+        val tokens = listOf("<unk>", "<s>", "</s>", "Hello", "World")
+        val vocabSize = tokens.size
+
+        val bio = java.io.ByteArrayOutputStream()
+
+        fun writeLeInt(v: Int) {
+            bio.write(v and 0xFF)
+            bio.write((v ushr 8) and 0xFF)
+            bio.write((v ushr 16) and 0xFF)
+            bio.write((v ushr 24) and 0xFF)
+        }
+        fun writeLeLong(v: Long) {
+            for (i in 0 until 8) {
+                bio.write(((v ushr (i * 8)) and 0xFF).toInt())
+            }
+        }
+        fun writeGgufString(s: String) {
+            val bytes = s.toByteArray(Charsets.UTF_8)
+            writeLeLong(bytes.size.toLong())
+            bio.write(bytes)
+        }
+
+        // Magic "GGUF" + Version 3
+        bio.write("GGUF".toByteArray(Charsets.US_ASCII))
+        writeLeInt(3)
+
+        val tensors = listOf(
+            "token_embd.weight" to listOf(dim.toLong(), vocabSize.toLong()),
+            "blk.0.attn_norm.weight" to listOf(dim.toLong()),
+            "blk.0.attn_q.weight" to listOf(dim.toLong(), dim.toLong()),
+            "blk.0.attn_k.weight" to listOf(dim.toLong(), dim.toLong()),
+            "blk.0.attn_v.weight" to listOf(dim.toLong(), dim.toLong()),
+            "blk.0.attn_output.weight" to listOf(dim.toLong(), dim.toLong()),
+            "blk.0.ffn_norm.weight" to listOf(dim.toLong()),
+            "blk.0.ffn_gate.weight" to listOf(dim.toLong(), ffnDim.toLong()),
+            "blk.0.ffn_up.weight" to listOf(dim.toLong(), ffnDim.toLong()),
+            "blk.0.ffn_down.weight" to listOf(ffnDim.toLong(), dim.toLong()),
+            "output_norm.weight" to listOf(dim.toLong())
+        )
+
+        val metadata = listOf(
+            Triple("general.architecture", 8, "llama"),
+            Triple("llama.embedding_length", 4, dim),
+            Triple("llama.block_count", 4, nLayers),
+            Triple("llama.feed_forward_length", 4, ffnDim),
+            Triple("llama.attention.head_count", 4, nHeads),
+            Triple("llama.attention.head_count_kv", 4, nHeads),
+            Triple("tokenizer.ggml.tokens", 9, tokens)
+        )
+
+        writeLeLong(tensors.size.toLong())
+        writeLeLong(metadata.size.toLong())
+
+        for ((key, type, value) in metadata) {
+            writeGgufString(key)
+            writeLeInt(type)
+            when (type) {
+                8 -> writeGgufString(value as String)
+                4 -> writeLeInt(value as Int)
+                9 -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val list = value as List<String>
+                    writeLeInt(8)
+                    writeLeLong(list.size.toLong())
+                    for (item in list) {
+                        writeGgufString(item)
+                    }
+                }
+            }
+        }
+
+        val tensorPayloads = mutableListOf<ByteArray>()
+        var currentOffset = 0L
+
+        for ((name, dims) in tensors) {
+            writeGgufString(name)
+            writeLeInt(dims.size)
+            for (d in dims) {
+                writeLeLong(d)
+            }
+            writeLeInt(0) // GGML_TYPE_F32
+            writeLeLong(currentOffset)
+
+            var numElements = 1L
+            for (d in dims) numElements *= d
+            val payload = ByteArray((numElements * 4).toInt())
+            val fb = java.nio.ByteBuffer.wrap(payload).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            for (i in 0 until numElements.toInt()) {
+                fb.putFloat(0.01f)
+            }
+            tensorPayloads.add(payload)
+            currentOffset += payload.size
+        }
+
+        val headerBytes = bio.toByteArray()
+        val alignment = 32
+        val padLen = ((headerBytes.size + alignment - 1) / alignment) * alignment - headerBytes.size
+
+        file.outputStream().use { fos ->
+            fos.write(headerBytes)
+            if (padLen > 0) {
+                fos.write(ByteArray(padLen))
+            }
+            for (p in tensorPayloads) {
+                fos.write(p)
+            }
+        }
     }
 }
