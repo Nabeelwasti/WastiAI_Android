@@ -118,12 +118,32 @@ object AutonomousMutationGovernance {
     fun isCompromised(): Boolean = isGovernanceCompromised
 
     /**
+     * Resolves canonical filesystem path safely to prevent path-traversal obfuscation attacks.
+     */
+    fun canonicalizePath(filePath: String): String {
+        return try {
+            File(filePath).canonicalPath.replace("\\", "/")
+        } catch (_: Exception) {
+            filePath.replace("\\", "/")
+        }
+    }
+
+    /**
+     * Classifies a target File into an explicit MutationRiskTier using canonical path resolution.
+     */
+    fun classifyRiskTier(targetFile: File, content: String? = null, action: String? = null): MutationRiskTier {
+        val canonical = canonicalizePath(targetFile.path)
+        return classifyRiskTier(canonical, content, action)
+    }
+
+    /**
      * Classifies a target file or operation into an explicit MutationRiskTier.
      */
     fun classifyRiskTier(filePath: String, content: String? = null, action: String? = null): MutationRiskTier {
         val normalizedPath = filePath.replace("\\", "/").lowercase()
+        val canonicalPath = canonicalizePath(filePath).lowercase()
         val normalizedAction = (action ?: "").lowercase()
-        val combined = "$normalizedPath $normalizedAction ${content?.take(500)?.lowercase() ?: ""}"
+        val combined = "$normalizedPath $canonicalPath $normalizedAction ${content?.take(500)?.lowercase() ?: ""}"
 
         // 1. Critical Security Check
         for (pattern in CRITICAL_SECURITY_PATTERNS) {
@@ -141,13 +161,33 @@ object AutonomousMutationGovernance {
 
         // 3. Low Reversible Check
         for (pattern in LOW_RISK_PATTERNS) {
-            if (normalizedPath.contains(pattern.lowercase())) {
+            if (normalizedPath.contains(pattern.lowercase()) || canonicalPath.contains(pattern.lowercase())) {
                 return MutationRiskTier.LOW_REVERSIBLE
             }
         }
 
         // 4. Default for workspace source code modification
         return MutationRiskTier.MEDIUM_IMPACT
+    }
+
+    /**
+     * Evaluates autonomous mutation authority for a target File object.
+     */
+    fun evaluateMutationAuthority(
+        targetFile: File,
+        newContent: String,
+        isAutonomous: Boolean = true,
+        adminAuthToken: String? = null,
+        requester: String = if (isAutonomous) "AUTONOMOUS_AI" else "HUMAN_OPERATOR"
+    ): MutationEvaluation {
+        val canonical = canonicalizePath(targetFile.path)
+        return evaluateMutationAuthority(
+            filePath = canonical,
+            newContent = newContent,
+            isAutonomous = isAutonomous,
+            adminAuthToken = adminAuthToken,
+            requester = requester
+        )
     }
 
     /**

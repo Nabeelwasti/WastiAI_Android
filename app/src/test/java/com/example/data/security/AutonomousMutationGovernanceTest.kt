@@ -60,6 +60,32 @@ class AutonomousMutationGovernanceTest {
     }
 
     @Test
+    fun testFileOverloadsAndCanonicalPathResolution() {
+        val testFile = File(tempDir, "scratch/sub/../test_script.tmp")
+        testFile.parentFile?.mkdirs()
+        testFile.writeText("sample")
+
+        // File-based classification
+        val tier = AutonomousMutationGovernance.classifyRiskTier(testFile)
+        assertEquals(MutationRiskTier.LOW_REVERSIBLE, tier)
+
+        // File-based evaluation
+        val eval = AutonomousMutationGovernance.evaluateMutationAuthority(
+            targetFile = testFile,
+            newContent = "sample updated",
+            isAutonomous = true
+        )
+        assertEquals(MutationRiskTier.LOW_REVERSIBLE, eval.riskTier)
+        assertEquals(ModificationDecision.ALLOWED, eval.decision)
+        assertFalse(eval.requiresHumanApproval)
+
+        // Traversal resolution into protected path
+        val traversalPath = "app/src/main/java/com/example/ui/../../data/security/ZeroTrustSentinelEngine.kt"
+        val traversalTier = AutonomousMutationGovernance.classifyRiskTier(traversalPath)
+        assertEquals(MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE, traversalTier)
+    }
+
+    @Test
     fun testLowRiskReversibleAutonomousExecutionWithSnapshot() {
         val scratchFile = File(tempDir, "scratch_test.txt")
         scratchFile.writeText("Initial scratch content")
