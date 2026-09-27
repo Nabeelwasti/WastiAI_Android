@@ -173,24 +173,48 @@ else
 fi
 
 # 6. Generate Verifiable Release Evidence JSON
-cat << JEOF > "$OUTPUT_JSON"
-{
-  "verificationType": "$RUNTIME_STATUS",
-  "packageId": "$CANONICAL_PACKAGE",
-  "apkSha256": "$APK_SHA256",
-  "apkPath": "$TARGET_APK",
-  "deviceTarget": "$DEVICE_INFO",
-  "timestamp": $(date +%s%3N),
-  "checks": {
-    "manifestIdentity": "VERIFIED",
-    "bytecodeComponents": "VERIFIED",
-    "signingIntegrity": "VERIFIED",
-    "runtimeExecution": "$RUNTIME_STATUS",
-    "nativePackagingProof": "$NATIVE_PACKAGING_STATUS",
-    "nativeInferenceRuntimeProof": "$NATIVE_INFERENCE_STATUS"
-  }
+python3 - << PYEOF
+import json, hashlib, time, os, subprocess
+
+commit_sha = os.environ.get("GITHUB_SHA") or ""
+if not commit_sha:
+    try:
+        commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        commit_sha = "local_development"
+
+workflow_run_id = os.environ.get("GITHUB_RUN_ID", "local_run")
+is_release = "release" in "$TARGET_APK".lower()
+scope = "RELEASE_RUNTIME" if is_release else "DEBUG_RUNTIME"
+
+evidence = {
+    "schemaVersion": "2.0",
+    "verificationScope": scope,
+    "verificationType": "$RUNTIME_STATUS",
+    "packageId": "$CANONICAL_PACKAGE",
+    "commitSha": commit_sha,
+    "workflowRunId": workflow_run_id,
+    "apkSha256": "$APK_SHA256",
+    "apkPath": "$TARGET_APK",
+    "deviceTarget": "$DEVICE_INFO",
+    "timestamp": int(time.time() * 1000),
+    "overallVerificationStatus": "$RUNTIME_STATUS",
+    "checks": {
+        "manifestIdentity": "VERIFIED",
+        "bytecodeComponents": "VERIFIED",
+        "signingIntegrity": "VERIFIED",
+        "runtimeExecution": "$RUNTIME_STATUS",
+        "nativePackagingProof": "$NATIVE_PACKAGING_STATUS",
+        "nativeInferenceRuntimeProof": "$NATIVE_INFERENCE_STATUS"
+    }
 }
-JEOF
+
+canonical_str = json.dumps(evidence, sort_keys=True)
+evidence["evidenceHash"] = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
+
+with open("$OUTPUT_JSON", "w") as f:
+    json.dump(evidence, f, indent=2)
+PYEOF
 
 echo "--- Release Verification Evidence Generated: $OUTPUT_JSON ---"
 cat "$OUTPUT_JSON"

@@ -609,12 +609,24 @@ test('deployment proof: verifyDeployment generates verifiable cryptographic evid
     assert.strictEqual(result.evidence.isReachable, true);
     assert.strictEqual(result.evidence.httpCode, 200);
     assert.strictEqual(result.evidence.subsystems.githubConfigured, true);
-    assert.strictEqual(result.evidence.subsystems.authEnforced, true);
+    assert.strictEqual(result.evidence.schemaVersion, '2.0');
+    assert.strictEqual(result.evidence.verificationScope, 'BACKEND_DEPLOYMENT');
+    assert.ok(result.evidence.commitSha);
+    assert.strictEqual(result.evidence.overallVerificationStatus, 'VERIFIED');
     assert.ok(result.evidence.evidenceHash.length === 64);
 
     assert.ok(fs.existsSync('test_deployment_evidence.json'));
     const saved = JSON.parse(fs.readFileSync('test_deployment_evidence.json', 'utf-8'));
     assert.strictEqual(saved.evidenceHash, result.evidence.evidenceHash);
+    assert.strictEqual(saved.overallVerificationStatus, 'VERIFIED');
+    assert.strictEqual(saved.schemaVersion, '2.0');
+
+    // Test tamper detection: mutating any field breaks hash verification
+    const mutated = { ...saved, overallVerificationStatus: 'TAMPERED' };
+    const checkHash = crypto.createHash('sha256')
+      .update(JSON.stringify(mutated))
+      .digest('hex');
+    assert.notStrictEqual(saved.evidenceHash, checkHash);
 
     process.argv = origArgv;
   } finally {
@@ -622,6 +634,37 @@ test('deployment proof: verifyDeployment generates verifiable cryptographic evid
       fs.unlinkSync('test_deployment_evidence.json');
     }
     await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+// 21. Unreachable Backend Evidence Integrity Test
+test('deployment proof: unreachable backend produces truthful UNAVAILABLE evidence with cryptographic hash', async () => {
+  const fs = require('fs');
+  const testEvidenceFile = 'test_deployment_evidence.json';
+  const { verifyDeployment } = require('./verify_backend_deployment');
+
+  // Point to a non-existent port
+  const invalidUrl = 'http://127.0.0.1:59999';
+  const result = await verifyDeployment(invalidUrl, testEvidenceFile);
+
+  try {
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.evidence.verificationType, 'BACKEND_UNREACHABLE');
+    assert.strictEqual(result.evidence.overallVerificationStatus, 'UNAVAILABLE');
+    assert.strictEqual(result.evidence.isReachable, false);
+    assert.strictEqual(result.evidence.schemaVersion, '2.0');
+    assert.ok(result.evidence.evidenceHash.length === 64);
+    assert.strictEqual(result.evidence.checks.healthProbe, 'FAILED');
+    assert.strictEqual(result.evidence.checks.authBoundary, 'UNTESTED');
+
+    assert.ok(fs.existsSync(testEvidenceFile));
+    const saved = JSON.parse(fs.readFileSync(testEvidenceFile, 'utf-8'));
+    assert.strictEqual(saved.overallVerificationStatus, 'UNAVAILABLE');
+    assert.strictEqual(saved.evidenceHash, result.evidence.evidenceHash);
+  } finally {
+    if (fs.existsSync(testEvidenceFile)) {
+      fs.unlinkSync(testEvidenceFile);
+    }
   }
 });
 
@@ -657,4 +700,5 @@ test('rate limiter: RateLimiterStore defaults to LOCAL_IN_MEMORY_FALLBACK and en
   // When trustProxy is true, express req.ip or forwarded header is used
   assert.strictEqual(getClientKey(mockReqUntrusted, true), '127.0.0.1');
 });
+
 

@@ -22,7 +22,9 @@ data class DeviceExecutionRecord(
     val tier: TestTier,
     val verifiedCapabilities: Set<String>,
     val timestampMs: Long = System.currentTimeMillis(),
-    val testRunSignature: String
+    val testRunSignature: String,
+    val commitSha: String = "local_development",
+    val schemaVersion: String = "2.0"
 )
 
 object DeviceVerificationEvidenceTracker {
@@ -31,7 +33,7 @@ object DeviceVerificationEvidenceTracker {
 
     /**
      * Record a verified device execution proof.
-     * Rejects any record where tier does NOT prove real-world capability.
+     * Rejects any record where tier does NOT prove real-world capability or contains invalid metadata.
      */
     @Synchronized
     fun recordDeviceExecution(record: DeviceExecutionRecord): Boolean {
@@ -50,20 +52,59 @@ object DeviceVerificationEvidenceTracker {
     }
 
     /**
-     * Returns true ONLY if at least one legitimate on-device execution proof is recorded.
+     * Returns true ONLY if at least one legitimate, fresh on-device execution proof is recorded.
      */
     @Synchronized
-    fun hasValidDeviceProof(capability: String? = null): Boolean {
-        if (executionRecords.isEmpty()) return false
+    fun hasValidDeviceProof(
+        capability: String? = null,
+        maxAgeMs: Long = EvidenceIntegrityValidator.DEFAULT_MAX_AGE_MS,
+        currentTimeMs: Long = System.currentTimeMillis()
+    ): Boolean {
+        val freshProofs = getFreshDeviceProofs(maxAgeMs, currentTimeMs)
+        if (freshProofs.isEmpty()) return false
         return if (capability != null) {
-            executionRecords.any { it.verifiedCapabilities.contains(capability) }
+            freshProofs.any { it.verifiedCapabilities.contains(capability) }
         } else {
-            executionRecords.isNotEmpty()
+            freshProofs.isNotEmpty()
         }
     }
 
     /**
-     * Returns unmodifiable copy of all recorded device execution proofs.
+     * Returns unmodifiable copy of fresh device execution proofs within the active TTL window.
+     */
+    @Synchronized
+    fun getFreshDeviceProofs(
+        maxAgeMs: Long = EvidenceIntegrityValidator.DEFAULT_MAX_AGE_MS,
+        currentTimeMs: Long = System.currentTimeMillis()
+    ): List<DeviceExecutionRecord> {
+        return executionRecords.filter { record ->
+            val freshness = EvidenceIntegrityValidator.validateFreshness(
+                timestampMs = record.timestampMs,
+                maxAgeMs = maxAgeMs,
+                currentTimeMs = currentTimeMs,
+                allowHistorical = false
+            )
+            freshness.isValidCurrent
+        }
+    }
+
+    /**
+     * Returns unmodifiable copy of historical device execution proofs (expired or historical).
+     * Preserves historical evidence without treating it as active current verification.
+     */
+    @Synchronized
+    fun getHistoricalDeviceProofs(
+        maxAgeMs: Long = EvidenceIntegrityValidator.DEFAULT_MAX_AGE_MS,
+        currentTimeMs: Long = System.currentTimeMillis()
+    ): List<DeviceExecutionRecord> {
+        return executionRecords.filter { record ->
+            val ageMs = currentTimeMs - record.timestampMs
+            ageMs > maxAgeMs
+        }
+    }
+
+    /**
+     * Returns unmodifiable copy of all recorded device execution proofs (fresh and historical).
      */
     @Synchronized
     fun getDeviceProofReport(): List<DeviceExecutionRecord> {
@@ -75,11 +116,13 @@ object DeviceVerificationEvidenceTracker {
      */
     @Synchronized
     fun getExecutionEvidenceSummary(): String {
-        val proofs = executionRecords
-        return if (proofs.isEmpty()) {
-            "ENVIRONMENT: HOST_SIMULATION (No physical device execution records)"
+        val fresh = getFreshDeviceProofs()
+        val total = executionRecords.size
+        return if (fresh.isEmpty()) {
+            if (total > 0) "ENVIRONMENT: HOST_SIMULATION ($total historical proofs recorded, 0 fresh active proofs)"
+            else "ENVIRONMENT: HOST_SIMULATION (No physical device execution records)"
         } else {
-            "ENVIRONMENT: REAL_DEVICE (${proofs.size} verified proofs)"
+            "ENVIRONMENT: REAL_DEVICE (${fresh.size} fresh verified proofs, $total total)"
         }
     }
 
@@ -94,7 +137,8 @@ object DeviceVerificationEvidenceTracker {
     fun createCurrentDeviceRecord(
         tier: TestTier = TestTier.DEVICE,
         verifiedCapabilities: Set<String> = emptySet(),
-        signature: String = "RUN_${System.currentTimeMillis()}"
+        signature: String = "RUN_${System.currentTimeMillis()}",
+        commitSha: String = "local_development"
     ): DeviceExecutionRecord {
         return DeviceExecutionRecord(
             deviceId = Build.ID ?: "unknown_device",
@@ -104,7 +148,8 @@ object DeviceVerificationEvidenceTracker {
             isEmulator = Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk"),
             tier = tier,
             verifiedCapabilities = verifiedCapabilities,
-            testRunSignature = signature
+            testRunSignature = signature,
+            commitSha = commitSha
         )
     }
 }

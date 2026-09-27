@@ -155,10 +155,17 @@ def main():
         overall_status = "VERIFIED"
         print("SUCCESS: All Android instrumentation tests passed cleanly on authentic device/emulator runtime.")
         
-    commit_sha = os.environ.get("GITHUB_SHA", "local_development")
+    commit_sha = os.environ.get("GITHUB_SHA")
+    if not commit_sha:
+        try:
+            commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, timeout=5).strip()
+        except Exception:
+            commit_sha = "local_development"
     run_id = os.environ.get("GITHUB_RUN_ID", "local_run")
     
     evidence = {
+        "schemaVersion": "2.0",
+        "verificationScope": "DEVICE_RUNTIME",
         "verificationType": "DEVICE_RUNTIME_VERIFIED" if overall_status == "VERIFIED" else ("DEVICE_RUNTIME_FAILED" if overall_status == "FAILED" else "DEVICE_RUNTIME_UNAVAILABLE"),
         "packageId": "com.aistudio.wastios.k9v2pz",
         "commitSha": commit_sha,
@@ -190,6 +197,9 @@ def main():
         "timestamp": int(time.time() * 1000),
         "overallVerificationStatus": overall_status
     }
+    
+    canonical_str = json.dumps(evidence, sort_keys=True)
+    evidence["evidenceHash"] = hashlib.sha256(canonical_str.encode("utf-8")).hexdigest()
     
     os.makedirs(os.path.dirname(os.path.abspath(output_json)) or ".", exist_ok=True)
     with open(output_json, "w") as f:

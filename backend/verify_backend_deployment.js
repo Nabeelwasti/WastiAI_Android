@@ -85,9 +85,22 @@ function sendHttpRequest(method, urlStr, headers = {}, body = null, timeoutMs = 
   });
 }
 
+const { execSync } = require('child_process');
+
+function getCommitSha() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try {
+    return execSync('git rev-parse HEAD', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch (_e) {
+    return 'local_development';
+  }
+}
+
 async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defaultOutputFile) {
   const normalizedBase = targetUrl.replace(/\/+$/, '');
   const healthUrl = `${normalizedBase}/health`;
+  const commitSha = getCommitSha();
+  const workflowRunId = process.env.GITHUB_RUN_ID || 'local_run';
 
   console.log(`--- Step 1: Health Probe (${healthUrl}) ---`);
   let healthResult;
@@ -99,9 +112,14 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
     
     // Generate unverified / unreachable evidence record truthfully
     const unreachableEvidence = {
+      schemaVersion: "2.0",
+      verificationScope: "BACKEND_DEPLOYMENT",
       verificationType: "BACKEND_UNREACHABLE",
       targetUrl: normalizedBase,
+      commitSha: commitSha,
+      workflowRunId: workflowRunId,
       timestamp: Date.now(),
+      overallVerificationStatus: "UNAVAILABLE",
       isReachable: false,
       error: err.message,
       checks: {
@@ -110,13 +128,14 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
         subsystems: "UNAVAILABLE"
       }
     };
-    if (outputFile === 'test_deployment_evidence.json') {
-      fs.writeFileSync('test_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
-      console.log('Unreachable deployment record written to test_deployment_evidence.json');
-    } else {
-      fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
-      console.log('Unreachable deployment record written to backend_deployment_evidence.json');
-    }
+    const unreachableHash = crypto.createHash('sha256')
+      .update(JSON.stringify(unreachableEvidence))
+      .digest('hex');
+    unreachableEvidence.evidenceHash = unreachableHash;
+
+    const targetOutput = outputFile === 'test_deployment_evidence.json' ? 'test_deployment_evidence.json' : (outputFile || 'backend_deployment_evidence.json');
+    fs.writeFileSync(targetOutput, JSON.stringify(unreachableEvidence, null, 2), 'utf-8');
+    console.log(`Unreachable deployment record written to ${targetOutput}`);
     return { success: false, evidence: unreachableEvidence };
   }
 
@@ -192,9 +211,14 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
   // Step 4: Cryptographic Evidence Ledger Generation
   console.log('--- Step 4: Generating Cryptographic Deployment Proof ---');
   const evidencePayload = {
+    schemaVersion: "2.0",
+    verificationScope: "BACKEND_DEPLOYMENT",
     verificationType: "BACKEND_DEPLOYMENT_VERIFIED",
     targetUrl: normalizedBase,
+    commitSha: commitSha,
+    workflowRunId: workflowRunId,
     timestamp: Date.now(),
+    overallVerificationStatus: "VERIFIED",
     isReachable: true,
     latencyMs: healthResult.latencyMs,
     httpCode: healthResult.statusCode,
@@ -218,13 +242,9 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
 
   evidencePayload.evidenceHash = hash;
 
-  if (outputFile === 'test_deployment_evidence.json') {
-    fs.writeFileSync('test_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
-    console.log('SUCCESS: Deployment evidence successfully recorded to test_deployment_evidence.json');
-  } else {
-    fs.writeFileSync('backend_deployment_evidence.json', JSON.stringify(evidencePayload, null, 2), 'utf-8');
-    console.log('SUCCESS: Deployment evidence successfully recorded to backend_deployment_evidence.json');
-  }
+  const targetOutput = outputFile === 'test_deployment_evidence.json' ? 'test_deployment_evidence.json' : (outputFile || 'backend_deployment_evidence.json');
+  fs.writeFileSync(targetOutput, JSON.stringify(evidencePayload, null, 2), 'utf-8');
+  console.log(`SUCCESS: Deployment evidence successfully recorded to ${targetOutput}`);
   console.log(`Evidence Hash (SHA-256): ${hash}`);
   console.log('========================================================');
   console.log('  BACKEND DEPLOYMENT VERIFICATION COMPLETE: VERIFIED    ');
