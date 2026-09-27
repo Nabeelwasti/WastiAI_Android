@@ -65,9 +65,10 @@ jobs:
 
     - name: Run Backend Syntax & Security Validation Tests
       run: |
+        npm --prefix backend ci --omit=dev
         node -c backend/index.js backend/rate_limiter.js backend/brevo.js backend/stripe_helper.js backend/firebase_helper.js backend/orchestrator.js backend/auth_helper.js backend/wakeword_queue.js backend/verify_backend_deployment.js
         node --test backend/test_backend.js
-        echo "SUCCESS: Backend syntax and security tests verified."
+        echo "SUCCESS: Backend syntax, lockfile reproducibility, and security tests verified."
 
     - name: Validate Gradle Wrapper
       uses: gradle/actions/wrapper-validation@017a9effdb900e5b5b2fddfb590a105619dca3c3 # v4.4.2

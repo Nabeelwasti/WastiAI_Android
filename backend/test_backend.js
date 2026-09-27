@@ -489,6 +489,7 @@ test('deployment proof: validates backend Dockerfile and container security hard
 
   assert.ok(fs.existsSync('Dockerfile') || fs.existsSync('backend/Dockerfile'), 'backend/Dockerfile must exist');
   assert.ok(fs.existsSync('.dockerignore') || fs.existsSync('backend/.dockerignore'), 'backend/.dockerignore must exist');
+  assert.ok(fs.existsSync('package-lock.json') || fs.existsSync('backend/package-lock.json'), 'backend/package-lock.json must exist for reproducible builds');
 
   const dockerfileContent = fs.existsSync('Dockerfile')
     ? fs.readFileSync('Dockerfile', 'utf-8')
@@ -496,6 +497,8 @@ test('deployment proof: validates backend Dockerfile and container security hard
   assert.ok(dockerfileContent.includes('USER nodejs'), 'Dockerfile must enforce non-root user');
   assert.ok(dockerfileContent.includes('HEALTHCHECK'), 'Dockerfile must declare container HEALTHCHECK');
   assert.ok(dockerfileContent.includes('EXPOSE 8080'), 'Dockerfile must expose port 8080');
+  assert.ok(dockerfileContent.includes('RUN npm ci --omit=dev'), 'Dockerfile must use deterministic npm ci');
+  assert.ok(!dockerfileContent.includes('|| npm install'), 'Dockerfile must not contain nondeterministic npm install fallback');
 
   const dockerignoreContent = fs.existsSync('.dockerignore')
     ? fs.readFileSync('.dockerignore', 'utf-8')
