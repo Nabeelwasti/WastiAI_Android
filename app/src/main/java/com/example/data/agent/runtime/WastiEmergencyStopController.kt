@@ -247,7 +247,7 @@ class WastiEmergencyStopController : EmergencyStopController {
      * Clears the latch atomically and records observable reset event.
      * Enforces that autonomous AI cannot reset the emergency stop latch without human/admin authorization.
      */
-    fun resetEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean {
+    fun resetEmergencyStop(requester: String, adminToken: String? = null): Boolean {
         if (!com.example.data.security.AutonomousMutationGovernance.isEmergencyStopResetPermitted(requester, adminToken)) {
             android.util.Log.e("EmergencyStop", "Unauthorized reset attempt by '$requester' blocked (Fail-Closed)")
             return false
@@ -341,8 +341,8 @@ class WastiEmergencyStopController : EmergencyStopController {
             get() = instance.stopStateFlow
 
         fun triggerEmergencyStop(reason: String) = instance.triggerEmergencyStop(reason)
-        fun resetEmergencyStop(): Unit { instance.resetEmergencyStop() }
-        fun resetEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean = instance.resetEmergencyStop(requester, adminToken)
+        fun resetEmergencyStop() { instance.resetEmergencyStop() }
+        fun resetEmergencyStop(requester: String, adminToken: String? = null): Boolean = instance.resetEmergencyStop(requester, adminToken)
         fun triggerReset() = instance.resetEmergencyStop()
         fun registerScope(scope: CoroutineScope): AutoCloseable = instance.registerScope(scope)
         fun registerScope(name: String, scope: CoroutineScope): AutoCloseable = instance.registerScope(name, scope)
