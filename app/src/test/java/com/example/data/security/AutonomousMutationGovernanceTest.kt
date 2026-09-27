@@ -1,5 +1,6 @@
 package com.example.data.security
 
+import com.example.data.agent.runtime.ExecutionProvenanceLedger
 import com.example.data.agent.runtime.ModificationDecision
 import com.example.data.agent.runtime.ModificationOutcomeStatus
 import com.example.data.agent.runtime.ProposalAuditAction
@@ -28,6 +29,7 @@ class AutonomousMutationGovernanceTest {
     fun setUp() {
         tempDir = File(System.getProperty("java.io.tmpdir"), "wasti_gov_test_${System.currentTimeMillis()}")
         tempDir.mkdirs()
+        ExecutionProvenanceLedger.resetForTesting()
         SelfModificationSafetyEngine.resetForTesting()
         AutonomousMutationGovernance.resetForTesting()
         WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
@@ -35,6 +37,7 @@ class AutonomousMutationGovernanceTest {
 
     @After
     fun tearDown() {
+        ExecutionProvenanceLedger.resetForTesting()
         SelfModificationSafetyEngine.resetForTesting()
         AutonomousMutationGovernance.resetForTesting()
         WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
