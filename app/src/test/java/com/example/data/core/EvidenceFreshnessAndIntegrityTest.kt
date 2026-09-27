@@ -6,12 +6,17 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
  * Deterministic unit test suite for Evidence Freshness, Integrity, and Provenance.
  * Verifies that stale, mismatched, forged, or ungrounded evidence is truthfully rejected,
  * while fresh authentic verification is validated.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(manifest = Config.NONE)
 class EvidenceFreshnessAndIntegrityTest {
 
     @Before

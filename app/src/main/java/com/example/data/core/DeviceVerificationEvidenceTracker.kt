@@ -21,8 +21,8 @@ data class DeviceExecutionRecord(
     val isEmulator: Boolean,
     val tier: TestTier,
     val verifiedCapabilities: Set<String>,
+    val testRunSignature: String = "RUN_${System.currentTimeMillis()}",
     val timestampMs: Long = System.currentTimeMillis(),
-    val testRunSignature: String,
     val commitSha: String = "local_development",
     val schemaVersion: String = "2.0"
 )
@@ -140,16 +140,25 @@ object DeviceVerificationEvidenceTracker {
         signature: String = "RUN_${System.currentTimeMillis()}",
         commitSha: String = "local_development"
     ): DeviceExecutionRecord {
+        val devId = try { Build.ID ?: "unknown_device" } catch (_: Throwable) { "unknown_device" }
+        val devModel = try { Build.MODEL ?: "unknown_model" } catch (_: Throwable) { "unknown_model" }
+        val devMfg = try { Build.MANUFACTURER ?: "unknown_mfg" } catch (_: Throwable) { "unknown_mfg" }
+        val devSdk = try { Build.VERSION.SDK_INT } catch (_: Throwable) { 0 }
+        val fingerprint = try { Build.FINGERPRINT ?: "" } catch (_: Throwable) { "" }
+        val isEmu = fingerprint.startsWith("generic") || devModel.contains("google_sdk")
+
         return DeviceExecutionRecord(
-            deviceId = Build.ID ?: "unknown_device",
-            deviceModel = Build.MODEL ?: "unknown_model",
-            manufacturer = Build.MANUFACTURER ?: "unknown_mfg",
-            androidApiLevel = Build.VERSION.SDK_INT,
-            isEmulator = Build.FINGERPRINT.startsWith("generic") || Build.MODEL.contains("google_sdk"),
+            deviceId = devId,
+            deviceModel = devModel,
+            manufacturer = devMfg,
+            androidApiLevel = devSdk,
+            isEmulator = isEmu,
             tier = tier,
             verifiedCapabilities = verifiedCapabilities,
             testRunSignature = signature,
-            commitSha = commitSha
+            timestampMs = System.currentTimeMillis(),
+            commitSha = commitSha,
+            schemaVersion = "2.0"
         )
     }
 }
