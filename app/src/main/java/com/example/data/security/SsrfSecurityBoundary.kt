@@ -10,7 +10,7 @@ import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
-import java.net.URL
+import java.net.URISyntaxException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -212,7 +212,11 @@ object SsrfSecurityBoundary {
                 val redirectUri = try {
                     val baseUri = URI(urlStr)
                     baseUri.resolve(locationHeader).toString()
-                } catch (e: Exception) {
+                } catch (e: URISyntaxException) {
+                    Log.w(TAG, "Malformed base/redirect URI syntax: ${e.reason}", e)
+                    locationHeader
+                } catch (e: IllegalArgumentException) {
+                    Log.w(TAG, "Invalid redirect URI resolution for '$locationHeader': ${e.message}", e)
                     locationHeader
                 }
                 if (!isSafeUrl(redirectUri)) {
