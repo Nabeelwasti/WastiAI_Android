@@ -624,13 +624,16 @@ class WastiOSRuntime(
         )
     }
 
-    fun clearEmergencyStop() {
-        safeEmergencyStop.resetEmergencyStop()
-        _activeContext.value = _activeContext.value.copy(
-            agenticState = AgenticState.Idle(),
-            progressMessage = "Emergency stop reset. System ready.",
-            lastError = null
-        )
+    fun clearEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean {
+        val success = safeEmergencyStop.resetEmergencyStop(requester, adminToken)
+        if (success) {
+            _activeContext.value = _activeContext.value.copy(
+                agenticState = AgenticState.Idle(),
+                progressMessage = "Emergency stop reset by $requester. System ready.",
+                lastError = null
+            )
+        }
+        return success
     }
 
     /**

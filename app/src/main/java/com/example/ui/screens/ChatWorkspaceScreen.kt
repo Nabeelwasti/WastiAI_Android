@@ -839,7 +839,7 @@ fun ChatWorkspaceScreen(
                         IconButton(
                             onClick = {
                                 if (emergencyStopSnap.isStopped) {
-                                    com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop()
+                                    com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
                                     Toast.makeText(context, "Emergency stop reset. System ready.", Toast.LENGTH_SHORT).show()
                                 } else {
                                     onCancelGeneration()

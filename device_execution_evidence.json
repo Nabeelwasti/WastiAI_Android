@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "2.0",
+  "verificationScope": "DEVICE_RUNTIME",
+  "verificationType": "DEVICE_RUNTIME_UNAVAILABLE",
+  "packageId": "com.aistudio.wastios.k9v2pz",
+  "commitSha": "7073d77fad99aa22f4c673410737d9ffe299e2e1",
+  "workflowRunId": "local_run",
+  "targetApkPath": "app/build/outputs/apk/debug/app-debug.apk",
+  "apkSha256": "",
+  "device": {
+    "status": "UNAVAILABLE",
+    "reason": "No live ADB device connected"
+  },
+  "instrumentationTests": {
+    "suite": "RealDeviceAndroidCapabilityTest",
+    "totalTests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "status": "UNAVAILABLE",
+    "executedCases": []
+  },
+  "verifiedCapabilities": [],
+  "timestamp": 1790593011793,
+  "overallVerificationStatus": "UNAVAILABLE",
+  "evidenceHash": "96236ced027320118d68967016174617e8f013e7602ea698efed51d1301e1801"
+}

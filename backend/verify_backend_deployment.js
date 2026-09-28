@@ -35,6 +35,8 @@ function parseUrl(u) {
   }
 }
 
+const { canonicalJsonString } = require('./canonical_json.js');
+
 function sendHttpRequest(method, urlStr, headers = {}, body = null, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(urlStr);
@@ -129,7 +131,7 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
       }
     };
     const unreachableHash = crypto.createHash('sha256')
-      .update(JSON.stringify(unreachableEvidence))
+      .update(canonicalJsonString(unreachableEvidence))
       .digest('hex');
     unreachableEvidence.evidenceHash = unreachableHash;
 
@@ -237,7 +239,7 @@ async function verifyDeployment(targetUrl = defaultTargetUrl, outputFile = defau
   };
 
   const hash = crypto.createHash('sha256')
-    .update(JSON.stringify(evidencePayload))
+    .update(canonicalJsonString(evidencePayload))
     .digest('hex');
 
   evidencePayload.evidenceHash = hash;

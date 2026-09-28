@@ -39,7 +39,9 @@ data class MemoryEntity(
     val value: String,
     val importanceScore: Float = 0.9f,
     val timestamp: Long = System.currentTimeMillis(),
-    val sourceMessageId: String? = null
+    val sourceMessageId: String? = null,
+    val tier: String = "SYSTEM_MEMORY",
+    val provenanceCategory: String = "OBSERVED"
 )
 
 @Entity(tableName = "knowledge")

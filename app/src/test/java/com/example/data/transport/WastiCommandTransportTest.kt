@@ -28,8 +28,8 @@ class WastiCommandTransportTest {
         context = ApplicationProvider.getApplicationContext()
         WastiServiceLocator.init(context)
         val emergencyStop = WastiEmergencyStopController()
-        emergencyStop.resetEmergencyStop()
-        WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         runtime = WastiOSRuntime(
             appContext = context,
             emergencyStopController = emergencyStop

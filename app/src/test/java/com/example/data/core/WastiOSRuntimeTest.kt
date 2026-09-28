@@ -31,8 +31,8 @@ class WastiOSRuntimeTest {
         context = ApplicationProvider.getApplicationContext()
         WastiServiceLocator.init(context)
         emergencyStop = WastiEmergencyStopController()
-        emergencyStop.resetEmergencyStop()
-        WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         eventBus = AgentEventBus()
         runtime = WastiOSRuntime(
             appContext = context,

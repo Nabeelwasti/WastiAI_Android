@@ -1,10 +1,13 @@
 {
+  "schemaVersion": "2.0",
+  "verificationScope": "APK_BYTECODE_BUILD",
   "verificationType": "BUILD_VERIFIED",
   "packageId": "com.aistudio.wastios.k9v2pz",
   "apkSha256": "c1369942bb3c7309a124789304c239f00c80fae3cde9372ca1b9fa9306ef765c",
   "apkPath": "app/build/outputs/apk/debug/app-debug.apk",
   "deviceTarget": "None (Host CI Runner)",
   "timestamp": 1790252201264,
+  "overallVerificationStatus": "BUILD_VERIFIED",
   "checks": {
     "manifestIdentity": "VERIFIED",
     "bytecodeComponents": "VERIFIED",
@@ -12,5 +15,6 @@
     "runtimeExecution": "BUILD_VERIFIED",
     "nativePackagingProof": "VERIFIED",
     "nativeInferenceRuntimeProof": "NOT_RUN_ON_HOST"
-  }
+  },
+  "evidenceHash": "4b7bc5edd9ec1cb50d187b1695b8566f53cbbd9aab10972bde593e4f35de51da"
 }

@@ -154,6 +154,15 @@ class WastiSovereignBinaryRegistry(
         extraEnv: Map<String, String> = emptyMap()
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "Binary execution denied: Emergency Stop is currently active.",
+                exitCode = 126
+            )
+        }
         val binPath = getBinaryPath(binaryName) ?: binaryName
 
         val envList = mutableListOf<String>()
@@ -177,19 +186,27 @@ class WastiSovereignBinaryRegistry(
 
         try {
             val process = Runtime.getRuntime().exec(cmdArray, envList.toTypedArray(), workingDir)
-            val stdout = process.inputStream.bufferedReader().readText()
-            val stderr = process.errorStream.bufferedReader().readText()
-            val exitCode = process.waitFor()
-
-            PolyglotExecutionOutcome(
-                isSuccess = exitCode == 0,
-                language = PolyglotLanguage.SHELL,
-                stdout = stdout,
-                stderr = stderr,
-                exitCode = exitCode,
-                durationMs = System.currentTimeMillis() - startTime,
-                verificationEvidence = "Native Binary '$binaryName' executed via Sovereign Subsystem"
+            val regHandle = com.example.data.agent.runtime.WastiEmergencyStopController.registerProcess(
+                "sovereign_bin_${System.currentTimeMillis()}_$binaryName",
+                process
             )
+            try {
+                val stdout = process.inputStream.bufferedReader().readText()
+                val stderr = process.errorStream.bufferedReader().readText()
+                val exitCode = process.waitFor()
+
+                PolyglotExecutionOutcome(
+                    isSuccess = exitCode == 0,
+                    language = PolyglotLanguage.SHELL,
+                    stdout = stdout,
+                    stderr = stderr,
+                    exitCode = exitCode,
+                    durationMs = System.currentTimeMillis() - startTime,
+                    verificationEvidence = "Native Binary '$binaryName' executed via Sovereign Subsystem"
+                )
+            } finally {
+                regHandle.close()
+            }
         } catch (e: Exception) {
             PolyglotExecutionOutcome(
                 isSuccess = false,
@@ -206,6 +223,10 @@ class WastiSovereignBinaryRegistry(
      * Downloads a standalone sovereign binary artifact from a trusted repository.
      */
     suspend fun downloadRemoteBinary(urlStr: String, destination: File): Boolean = withContext(Dispatchers.IO) {
+        if (!com.example.data.security.SsrfSecurityBoundary.isSafeUrl(urlStr)) {
+            Log.w("BinaryRegistry", "Download blocked by SSRF Security Boundary for URL: $urlStr")
+            return@withContext false
+        }
         try {
             val url = URL(urlStr)
             val connection = url.openConnection() as HttpURLConnection

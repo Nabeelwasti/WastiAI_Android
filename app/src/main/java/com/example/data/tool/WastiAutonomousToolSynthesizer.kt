@@ -99,6 +99,16 @@ class WastiAutonomousToolSynthesizer(
                 )
             )
 
+            if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+                return@withContext ToolSynthesisResult(
+                    isSuccess = false,
+                    toolId = toolId,
+                    executablePath = "",
+                    verificationOutput = "",
+                    errorMessage = "Tool synthesis blocked: Emergency Stop is active"
+                )
+            }
+
             val fileName = when (language) {
                 PolyglotLanguage.PYTHON -> "$toolId.py"
                 PolyglotLanguage.NODE_JAVASCRIPT -> "$toolId.js"
@@ -108,6 +118,23 @@ class WastiAutonomousToolSynthesizer(
 
             val scriptFile = File(binDirectory, fileName).canonicalFile
             require(scriptFile.parentFile == binDirectory.canonicalFile) { "Invalid synthesized tool path" }
+
+            // Route script mutation through canonical safety engine
+            val safetyDecision = com.example.data.agent.runtime.SelfModificationSafetyEngine.evaluateProposedModification(
+                filePath = scriptFile.absolutePath,
+                newContent = sourceCode,
+                isAutonomous = true
+            )
+            if (safetyDecision != com.example.data.agent.runtime.ModificationDecision.ALLOWED) {
+                return@withContext ToolSynthesisResult(
+                    isSuccess = false,
+                    toolId = toolId,
+                    executablePath = scriptFile.absolutePath,
+                    verificationOutput = "",
+                    errorMessage = "Tool synthesis blocked by mutation governance: $safetyDecision"
+                )
+            }
+
             scriptFile.writeText(sourceCode)
             scriptFile.setExecutable(true, false)
             scriptFile.setReadable(true, false)
@@ -189,6 +216,32 @@ class WastiAutonomousToolSynthesizer(
                     realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
                 )
             )
+
+            try {
+                com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                    taskId = "synth_$toolId",
+                    actionId = "synthesize_tool",
+                    capabilityId = toolId,
+                    providerId = "WastiAutonomousToolSynthesizer",
+                    inputContent = "toolId:$toolId,lang:${language.name},file:${scriptFile.name}",
+                    outputContent = probeOutput.take(200),
+                    evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                        subject = toolId,
+                        verifiedState = "SYNTHESIS_PROBE_SUCCEEDED",
+                        confidence = 0.7,
+                        evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+                        expectedPostcondition = "SYNTHESIS_PROBE_EXIT_0",
+                        observedResult = "SYNTHESIS_PROBE_EXIT_0",
+                        declaredVerifier = "WastiAutonomousToolSynthesizer",
+                        verificationMethod = "SYNTHESIS_EXECUTION_TEST"
+                    ),
+                    executionEnvironment = "wre_bin",
+                    executor = "WastiAutonomousToolSynthesizer",
+                    verifier = "WastiAutonomousToolSynthesizer",
+                    verificationMethod = "SYNTHESIS_EXECUTION_TEST",
+                    evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.SANDBOX_TESTED
+                )
+            } catch (_: Throwable) {}
 
             AdaptiveExecutionIntelligence.save(
                 AdaptiveExecutionIntelligence.current(toolId)!!.copy(

@@ -50,7 +50,7 @@ class Stage9EWorkflowOrchestrationTest {
 
     @Before
     fun setup() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         context = ApplicationProvider.getApplicationContext()
         com.example.data.di.WastiServiceLocator.init(context)
         wreManager = WreManager.getInstance(context)
@@ -61,7 +61,7 @@ class Stage9EWorkflowOrchestrationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
     }
 
     @Test

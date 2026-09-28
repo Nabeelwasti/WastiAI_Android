@@ -102,11 +102,36 @@ class MemoryStore(private val context: Context) {
                 return@withContext 0
             }
 
-            val array = JSONArray(jsonText)
+            val array = try {
+                JSONArray(jsonText)
+            } catch (e: Exception) {
+                // If top-level JSON is corrupted, quarantine raw content and fail migration atomically
+                val quarantineFile = File(context.filesDir, "$fileName.corrupted_${System.currentTimeMillis()}")
+                legacyFile.copyTo(quarantineFile, overwrite = true)
+                Log.e(TAG, "Corrupted legacy memory JSON file quarantined to ${quarantineFile.name}: ${e.message}")
+                return@withContext 0
+            }
+
             var migratedCount = 0
+            var quarantinedCount = 0
+
             for (i in 0 until array.length()) {
-                val obj = array.optJSONObject(i) ?: continue
-                val type = obj.optString("type", "General")
+                val obj = array.optJSONObject(i)
+                if (obj == null) {
+                    val rawItem = array.opt(i)?.toString() ?: "null"
+                    MemoryManager.saveMemory(
+                        key = "Legacy Item $i (Quarantined)",
+                        category = "Quarantined Legacy Migration",
+                        value = "MALFORMED_RECORD: $rawItem",
+                        importanceScore = 0.5f,
+                        tier = MemoryTier.SYSTEM_MEMORY,
+                        provenanceCategory = MemoryProvenanceCategory.IMPORTED
+                    )
+                    quarantinedCount++
+                    continue
+                }
+
+                val type = obj.optString("type", "General").ifBlank { "General" }
                 val content = obj.optString("content", "")
                 val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
 
@@ -128,19 +153,30 @@ class MemoryStore(private val context: Context) {
                         provenanceCategory = compatItem.provenanceCategory
                     )
                     migratedCount++
+                } else {
+                    // Blank content preserved as quarantined record
+                    MemoryManager.saveMemory(
+                        key = "Legacy Item $i (Blank Content)",
+                        category = "Quarantined Legacy Migration",
+                        value = "BLANK_RECORD_PAYLOAD: ${obj.toString()}",
+                        importanceScore = 0.4f,
+                        tier = MemoryTier.SYSTEM_MEMORY,
+                        provenanceCategory = MemoryProvenanceCategory.IMPORTED
+                    )
+                    quarantinedCount++
                 }
             }
 
-            // Archive the file after successful ingestion to avoid re-migration
+            // Archive the file only after all records have been either migrated or quarantined
             val archiveFile = File(context.filesDir, "$fileName.migrated")
             if (legacyFile.renameTo(archiveFile)) {
-                Log.i(TAG, "Successfully migrated and archived $migratedCount legacy memory items.")
+                Log.i(TAG, "Successfully migrated $migratedCount and quarantined $quarantinedCount legacy memory items.")
             } else {
                 legacyFile.delete()
-                Log.i(TAG, "Successfully migrated $migratedCount legacy memory items (file cleaned).")
+                Log.i(TAG, "Successfully migrated $migratedCount and quarantined $quarantinedCount legacy memory items (file cleaned).")
             }
 
-            migratedCount
+            migratedCount + quarantinedCount
         } catch (e: Exception) {
             Log.e(TAG, "Failed during legacy memory migration", e)
             0

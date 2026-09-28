@@ -279,27 +279,32 @@ object AutonomousMutationGovernance {
 
         val normalized = requester.trim().uppercase()
 
-        // 1. Strict autonomous AI prohibition: Admin tokens CANNOT override this boundary
+        // 1. Strict autonomous AI, unknown, and unverified system caller prohibition: Admin tokens CANNOT override AI boundary
         if (normalized == "AUTONOMOUS_AI" ||
             normalized.startsWith("AI_") ||
             normalized.contains("AGENT") ||
             normalized.contains("SUBAGENT") ||
             normalized.contains("AUTONOMOUS") ||
-            normalized.contains("BOT")
+            normalized.contains("BOT") ||
+            normalized == "UNKNOWN" ||
+            normalized == "SYSTEM" ||
+            normalized.startsWith("SYSTEM_")
         ) {
-            Log.e(TAG, "Security Alert: Autonomous AI '$requester' attempted to reset Emergency Stop latch. REJECTED (Fail-Closed).")
-            return false
+            // Unverified autonomous AI/agent/system/unknown callers are strictly prohibited
+            if (!SelfModificationSafetyEngine.isValidAdminToken(adminToken) || normalized.contains("AI") || normalized.contains("AGENT") || normalized.contains("AUTONOMOUS") || normalized.contains("BOT")) {
+                Log.e(TAG, "Security Alert: Autonomous/System/Unknown caller '$requester' attempted to reset Emergency Stop latch. REJECTED (Fail-Closed).")
+                return false
+            }
         }
 
-        // 2. Verified admin token authorization for human/system operators
+        // 2. Verified admin token authorization for human/owner operators
         if (SelfModificationSafetyEngine.isValidAdminToken(adminToken)) {
             return true
         }
 
-        // 3. Explicitly authorized human operators and system initializers
+        // 3. Explicitly authorized human operators and owner admins
         if (normalized == "HUMAN_OPERATOR" ||
-            normalized == "OWNER_ADMIN" ||
-            normalized == "SYSTEM_INITIALIZER"
+            normalized == "OWNER_ADMIN"
         ) {
             return true
         }

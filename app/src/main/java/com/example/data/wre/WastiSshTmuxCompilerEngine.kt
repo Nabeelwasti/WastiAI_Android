@@ -48,6 +48,15 @@ class WastiSshTmuxCompilerEngine(
         workingDir: File
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "SSH execution denied: Emergency Stop is currently active.",
+                exitCode = 126
+            )
+        }
         val tokens = argsStr.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
         val sshDir = workspaceManager.resolve("home/wasti/.ssh").getOrNull()
             ?: File(context.filesDir, "workspace/home/wasti/.ssh").apply { mkdirs() }
@@ -142,6 +151,15 @@ class WastiSshTmuxCompilerEngine(
         workingDir: File
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "Tmux execution denied: Emergency Stop is currently active.",
+                exitCode = 126
+            )
+        }
         val tokens = argsStr.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 
         if (tokens.isEmpty() || tokens[0] == "new" || tokens[0] == "new-session") {
@@ -205,6 +223,15 @@ class WastiSshTmuxCompilerEngine(
         workingDir: File
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.C_CPP,
+                stdout = "",
+                stderr = "Compiler execution denied: Emergency Stop is currently active.",
+                exitCode = 126
+            )
+        }
         val tokens = argsStr.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 
         if (tokens.isEmpty() || tokens[0] == "-v" || tokens[0] == "--version") {
@@ -260,6 +287,15 @@ class WastiSshTmuxCompilerEngine(
         stdin: String? = null
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "Unix utility execution denied: Emergency Stop is currently active.",
+                exitCode = 126
+            )
+        }
         val tokens = argsStr.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
 
         when (cmdName) {
@@ -325,16 +361,25 @@ class WastiSshTmuxCompilerEngine(
                     return@withContext PolyglotExecutionOutcome(false, PolyglotLanguage.SHELL, "", "$cmdName: missing URL operand", 1)
                 }
 
-                return@withContext try {
-                    val url = URL(urlStr)
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 8000
-                    conn.readTimeout = 8000
-                    conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", "Wasti-AI-OS-Terminal/2.0")
+                if (!com.example.data.security.SsrfSecurityBoundary.isSafeUrl(urlStr)) {
+                    return@withContext PolyglotExecutionOutcome(
+                        false,
+                        PolyglotLanguage.SHELL,
+                        "",
+                        "$cmdName: SSRF Security Violation: Access to destination '$urlStr' is blocked by security boundary",
+                        1
+                    )
+                }
 
-                    val code = conn.responseCode
-                    val text = conn.inputStream.bufferedReader().readText()
+                return@withContext try {
+                    val client = com.example.data.security.SsrfSecurityBoundary.createSafeHttpClient(8)
+                    val request = okhttp3.Request.Builder()
+                        .url(urlStr)
+                        .header("User-Agent", "Wasti-AI-OS-Terminal/2.0")
+                        .build()
+                    val response = client.newCall(request).execute()
+                    val code = response.code
+                    val text = response.body?.string() ?: ""
 
                     // Handle -o or -O flag
                     val oIdx = tokens.indexOf("-o")

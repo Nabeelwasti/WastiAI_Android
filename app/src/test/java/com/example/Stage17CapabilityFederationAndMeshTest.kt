@@ -75,7 +75,7 @@ class Stage17CapabilityFederationAndMeshTest {
         nodeManager.clearAll()
         realityRegistry = nodeManager.realityRegistry
         emergencyStop = WastiServiceLocator.emergencyStopController
-        emergencyStop.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         eventBus = WastiServiceLocator.agentEventBus
         proactiveEngine = WastiProactiveAutonomousEngine.getInstance(context)
         securityPolicy = WastiServiceLocator.securityPolicyEngine

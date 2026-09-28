@@ -50,7 +50,7 @@ class RealDeviceAndroidCapabilityTest {
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext ?: ApplicationProvider.getApplicationContext()
         ExecutionProvenanceLedger.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
     }
 
     @Test
@@ -122,7 +122,7 @@ class RealDeviceAndroidCapabilityTest {
         assertTrue(WastiEmergencyStopController.isEmergencyStopped)
         assertEquals("Device test emergency stop", WastiEmergencyStopController.getReason())
 
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         assertFalse(WastiEmergencyStopController.isEmergencyStopped)
     }
 
@@ -236,7 +236,7 @@ class RealDeviceAndroidCapabilityTest {
                 assertFalse("Output must be partial computed tokens rather than pre-entry rejection", outputResult.startsWith("[EMERGENCY_STOP_ACTIVE]"))
 
                 // 3. Reset and confirm full inference recovery
-                WastiEmergencyStopController.resetEmergencyStop()
+                WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
                 val resumedOutput = NativeLlamaBridge.evalPrompt(handle, "Hello", maxTokens = 10, temperature = 0.0f)
                 assertFalse("Inference must recover cleanly post-reset", resumedOutput.contains("[EMERGENCY_STOP_ACTIVE]"))
                 assertEquals("Post-reset inference must complete requested 10 tokens", 10, NativeLlamaBridge.getGeneratedTokenCount(handle))

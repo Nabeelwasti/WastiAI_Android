@@ -1,12 +1,18 @@
 {
+  "schemaVersion": "2.0",
+  "verificationScope": "BACKEND_DEPLOYMENT",
   "verificationType": "BACKEND_UNREACHABLE",
   "targetUrl": "http://127.0.0.1:8080",
-  "timestamp": 1788794725607,
+  "commitSha": "7073d77fad99aa22f4c673410737d9ffe299e2e1",
+  "workflowRunId": "local_run",
+  "timestamp": 1790593005806,
+  "overallVerificationStatus": "UNAVAILABLE",
   "isReachable": false,
   "error": "connect ECONNREFUSED 127.0.0.1:8080",
   "checks": {
     "healthProbe": "FAILED",
     "authBoundary": "UNTESTED",
     "subsystems": "UNAVAILABLE"
-  }
+  },
+  "evidenceHash": "72e1c62b7c13880c4106228f777ae2b408d3e0326e52822cf0ed69b89b246e61"
 }

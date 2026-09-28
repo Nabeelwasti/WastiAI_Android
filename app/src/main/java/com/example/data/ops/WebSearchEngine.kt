@@ -48,6 +48,8 @@ object WebSearchEngine {
 
     private fun createSafeHttpClient(): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dns(com.example.data.security.SsrfSecurityBoundary.safeDns)
+            .addInterceptor(com.example.data.security.SsrfSecurityBoundary.redirectValidatorInterceptor)
             .connectTimeout(8, TimeUnit.SECONDS)
             .readTimeout(10, TimeUnit.SECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
@@ -317,6 +319,10 @@ object WebSearchEngine {
     suspend fun scrapeWebPage(url: String): String = withContext(Dispatchers.IO) {
         if (url.isBlank() || (!url.startsWith("http://") && !url.startsWith("https://"))) {
             return@withContext "Error: Invalid or empty URL provided. URL must start with http:// or https://"
+        }
+
+        if (!com.example.data.security.SsrfSecurityBoundary.isSafeUrl(url)) {
+            return@withContext "Error: Destination blocked by SSRF Security Boundary ($url)"
         }
 
         Log.i(TAG, "Scraping web page content from URL: $url")

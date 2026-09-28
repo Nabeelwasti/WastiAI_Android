@@ -35,7 +35,7 @@ class WastiSovereignTunnelEngineTest {
         context = ApplicationProvider.getApplicationContext()
         WastiTruthAuthority.setTestAuthorityKeyForTesting()
         ExecutionProvenanceLedger.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         WastiSovereignTunnelEngine.resetForTesting()
         WastiNearbyHardwareEngine.clearForTesting()
     }
@@ -43,7 +43,7 @@ class WastiSovereignTunnelEngineTest {
     @After
     fun tearDown() {
         WastiSovereignTunnelEngine.terminateTunnel(context)
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         WastiNearbyHardwareEngine.clearForTesting()
     }
 

@@ -72,7 +72,7 @@ class Stage15ProactiveAutonomousRuntimeTest {
         eventBus = WastiServiceLocator.agentEventBus
         emergencyStop = WastiServiceLocator.emergencyStopController
         nodeManager = WastiServiceLocator.nodeManager
-        emergencyStop.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
 
         proactiveEngine = WastiProactiveAutonomousEngine(
             context = context,

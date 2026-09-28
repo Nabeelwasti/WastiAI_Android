@@ -33,7 +33,7 @@ class Stage6ObservationVerificationTest {
 
     @Before
     fun setUp() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         MemoryManager.resetForTesting()
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
@@ -53,7 +53,7 @@ class Stage6ObservationVerificationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         MemoryManager.resetForTesting()
     }
 

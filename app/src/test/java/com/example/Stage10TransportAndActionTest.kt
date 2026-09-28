@@ -92,7 +92,7 @@ class Stage10TransportAndActionTest {
         stopApiConn.outputStream.write("{\"reason\":\"Test stop\"}".toByteArray())
         assertEquals(200, stopApiConn.responseCode)
         assertTrue(stopApiConn.inputStream.bufferedReader().readText().contains("\"isEmergencyStopped\":true"))
-        com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+        com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
 
         val stopResult = serverManager.stopServer("Test complete")
         assertTrue(stopResult.isSuccess)
@@ -167,7 +167,7 @@ class Stage10TransportAndActionTest {
             assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, serverRes.verificationStatus)
             assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
         } finally {
-            com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop()
+            com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
             manager.stopServer("Test complete")
         }
     }

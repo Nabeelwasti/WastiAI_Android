@@ -279,8 +279,33 @@ class AutonomousCapabilityOrchestrator(
 
         // Phase C: Verification & Reality Registry Update
         eventBus?.emit(AgentEvent.CapabilityVerificationStarted(taskId, capabilityId))
-        val evidence = "WRE script verification passed (exitCode=0): $testStdout"
+        val evidence = "WRE script test probe executed: $testStdout"
         eventBus?.emit(AgentEvent.CapabilityVerified(taskId, capabilityId, evidence))
+
+        // Record mutation provenance in canonical ledger
+        com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+            taskId = taskId,
+            actionId = "synthesize_capability_$cleanName",
+            capabilityId = capabilityId,
+            providerId = "AutonomousCapabilityOrchestrator",
+            inputContent = description,
+            outputContent = currentScript.take(500),
+            evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                subject = capabilityId,
+                verifiedState = "SYNTHESIZED_PENDING_RUNTIME_VERIFICATION",
+                confidence = 0.8,
+                evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+                expectedPostcondition = "SYNTHESIZED_EXECUTABLE",
+                observedResult = testStdout,
+                declaredVerifier = "AutonomousCapabilityOrchestrator",
+                verificationMethod = "sandbox_test_run"
+            ),
+            executionEnvironment = "wre_sandbox",
+            executor = "AutonomousCapabilityOrchestrator",
+            verifier = "AutonomousCapabilityOrchestrator",
+            verificationMethod = "sandbox_test_run",
+            evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.SANDBOX_TESTED
+        )
 
         // Phase D: Promotion to Production Tool Pool
         val dynamicTool = object : WastiTool {
@@ -322,7 +347,7 @@ class AutonomousCapabilityOrchestrator(
                 authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                 provider = "WreDynamicToolProvider",
                 supportedOperations = listOf("execute"),
-                limitations = emptyList(),
+                limitations = listOf("Dynamic capability pending live runtime verification fact"),
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
@@ -347,12 +372,33 @@ class AutonomousCapabilityOrchestrator(
     }
 
     private fun applyCorrectionPatch(originalScript: String, error: String, scriptName: String): String {
-        if (originalScript.contains("exit 1")) {
-            return originalScript.replace("exit 1", "exit 0")
+        // Genuine defect repair: fix structural errors without falsifying exit codes or test assertions
+        val lines = originalScript.lines().toMutableList()
+        
+        // 1. Ensure valid shebang exists
+        if (lines.none { it.startsWith("#!") }) {
+            lines.add(0, "#!/bin/sh")
         }
+
+        // 2. Fix unclosed quotes or missing variable quoting if detected in error diagnostics
+        val errorLower = error.lowercase()
+        if (errorLower.contains("unexpected end of file") || errorLower.contains("syntax error")) {
+            // Repair missing quotes or unclosed blocks safely
+            val cleaned = lines.joinToString("\n")
+            if (cleaned.count { it == '"' } % 2 != 0) {
+                return "$cleaned\"\n"
+            }
+            if (cleaned.count { it == '\'' } % 2 != 0) {
+                return "$cleaned'\n"
+            }
+        }
+
+        // 3. Preserve failure as failure without altering assertions or test semantics
         return buildString {
-            appendLine("#!/bin/sh")
-            appendLine("# Sovereign WRE corrective patch for $scriptName")
+            if (!originalScript.startsWith("#!")) {
+                appendLine("#!/bin/sh")
+            }
+            appendLine("# Sovereign WRE corrective diagnostic record for $scriptName")
             appendLine("# Diagnostic error: ${error.replace("\n", " ").take(100)}")
             appendLine(originalScript)
         }

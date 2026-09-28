@@ -62,12 +62,21 @@ object MemoryManager {
             // Index all memories into the knowledge graph & vector index without arbitrary caps
             list.forEach { entity ->
                 val embedding = embeddingService.generateEmbedding(entity.value)
-                val provenanceCat = if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
-                    MemoryProvenanceCategory.USER_STATED
-                } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
-                    MemoryProvenanceCategory.INFERRED
-                } else {
-                    MemoryProvenanceCategory.OBSERVED
+                val tier = try {
+                    MemoryTier.valueOf(entity.tier)
+                } catch (_: Exception) {
+                    resolveTierForCategory(entity.category, entity.key)
+                }
+                val provenanceCat = try {
+                    MemoryProvenanceCategory.valueOf(entity.provenanceCategory)
+                } catch (_: Exception) {
+                    if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
+                        MemoryProvenanceCategory.USER_STATED
+                    } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
+                        MemoryProvenanceCategory.INFERRED
+                    } else {
+                        MemoryProvenanceCategory.OBSERVED
+                    }
                 }
                 val item = MemoryItem(
                     id = entity.id,
@@ -78,7 +87,7 @@ object MemoryManager {
                     timestamp = entity.timestamp,
                     sourceMessageId = entity.sourceMessageId,
                     embedding = embedding,
-                    tier = resolveTierForCategory(entity.category, entity.key),
+                    tier = tier,
                     provenanceCategory = provenanceCat
                 )
                 activeMemoriesMap[entity.id] = item
@@ -244,25 +253,31 @@ object MemoryManager {
             provenanceCategory = provenanceCategory
         )
 
+        val entity = MemoryEntity(
+            id = id,
+            key = key,
+            category = category,
+            value = value,
+            importanceScore = importanceScore,
+            timestamp = newItem.timestamp,
+            sourceMessageId = sourceMessageId,
+            tier = newItem.tier.name,
+            provenanceCategory = newItem.provenanceCategory.name
+        )
+
+        val dao = memoryDao
+        if (dao != null) {
+            try {
+                dao.insertMemory(entity)
+            } catch (e: Exception) {
+                Log.e("MemoryManager", "Authoritative persistence failure in Room database", e)
+                throw e
+            }
+        }
+
         activeMemoriesMap[id] = newItem
         evictLeastRecentlyUsedIfNeeded()
         vectorIndex.indexVector(id, embedding, "{\"key\":\"$key\"}")
-
-        try {
-            memoryDao?.insertMemory(
-                MemoryEntity(
-                    id = id,
-                    key = key,
-                    category = category,
-                    value = value,
-                    importanceScore = importanceScore,
-                    timestamp = newItem.timestamp,
-                    sourceMessageId = sourceMessageId
-                )
-            )
-        } catch (e: Exception) {
-            Log.e("MemoryManager", "Failed to persist memory entity to Room database", e)
-        }
 
         _memoriesFlow.value = activeMemoriesMap.values.toList()
         WastiEventBus.emit(WastiEvent.MemoryUpdated(id, "CREATED"))
@@ -398,12 +413,21 @@ object MemoryManager {
         val items: List<MemoryItem> = if (dao != null) {
             try {
                 dao.getAllMemoriesSync().map { entity ->
-                    val provenanceCat = if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
-                        MemoryProvenanceCategory.USER_STATED
-                    } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
-                        MemoryProvenanceCategory.INFERRED
-                    } else {
-                        MemoryProvenanceCategory.OBSERVED
+                    val tier = try {
+                        MemoryTier.valueOf(entity.tier)
+                    } catch (_: Exception) {
+                        resolveTierForCategory(entity.category, entity.key)
+                    }
+                    val provenanceCat = try {
+                        MemoryProvenanceCategory.valueOf(entity.provenanceCategory)
+                    } catch (_: Exception) {
+                        if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
+                            MemoryProvenanceCategory.USER_STATED
+                        } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
+                            MemoryProvenanceCategory.INFERRED
+                        } else {
+                            MemoryProvenanceCategory.OBSERVED
+                        }
                     }
                     MemoryItem(
                         id = entity.id,
@@ -413,7 +437,7 @@ object MemoryManager {
                         importanceScore = entity.importanceScore,
                         timestamp = entity.timestamp,
                         sourceMessageId = entity.sourceMessageId,
-                        tier = resolveTierForCategory(entity.category, entity.key),
+                        tier = tier,
                         provenanceCategory = provenanceCat
                     )
                 }
@@ -424,22 +448,21 @@ object MemoryManager {
             activeMemoriesMap.values.toList()
         }
 
-        buildString {
-            append("[\n")
-            items.forEachIndexed { index, m ->
-                append("  {\n")
-                append("    \"id\": \"${m.id}\",\n")
-                append("    \"key\": \"${m.key.replace("\"", "\\\"")}\",\n")
-                append("    \"category\": \"${m.category.replace("\"", "\\\"")}\",\n")
-                append("    \"value\": \"${m.value.replace("\"", "\\\"")}\",\n")
-                append("    \"importanceScore\": ${m.importanceScore},\n")
-                append("    \"timestamp\": ${m.timestamp}\n")
-                append("  }")
-                if (index < items.size - 1) append(",")
-                append("\n")
-            }
-            append("]")
+        val jsonArray = org.json.JSONArray()
+        for (m in items) {
+            val obj = org.json.JSONObject()
+            obj.put("id", m.id)
+            obj.put("key", m.key)
+            obj.put("category", m.category)
+            obj.put("value", m.value)
+            obj.put("importanceScore", m.importanceScore.toDouble())
+            obj.put("timestamp", m.timestamp)
+            obj.put("sourceMessageId", m.sourceMessageId ?: org.json.JSONObject.NULL)
+            obj.put("tier", m.tier.name)
+            obj.put("provenanceCategory", m.provenanceCategory.name)
+            jsonArray.put(obj)
         }
+        jsonArray.toString(2)
     }
 
     internal fun calculateKeywordMatchScore(query: String, text: String): Float {

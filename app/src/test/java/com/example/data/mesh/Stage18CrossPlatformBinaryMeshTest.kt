@@ -55,7 +55,7 @@ class Stage18CrossPlatformBinaryMeshTest {
         WastiServiceLocator.init(context)
 
         emergencyStop = WastiServiceLocator.emergencyStopController
-        emergencyStop.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
 
         realityRegistry = WastiServiceLocator.realityRegistry
         nodeManager = WastiNodeManager.getInstance()

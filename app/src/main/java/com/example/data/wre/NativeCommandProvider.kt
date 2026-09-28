@@ -129,6 +129,20 @@ class NativeCommandProvider(
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult {
         val startTime = System.currentTimeMillis()
+
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return ExecutionResult(
+                executionId = request.executionId,
+                command = request.command,
+                exitCode = 126,
+                stdout = "",
+                stderr = "Execution denied: Emergency Stop is currently active.",
+                durationMs = System.currentTimeMillis() - startTime,
+                status = ExecutionStatus.DENIED,
+                verified = false
+            )
+        }
+
         val rawCommand = request.command.trim()
 
         // Handle Command Chaining (&&, ||, ;) if chaining operators are present

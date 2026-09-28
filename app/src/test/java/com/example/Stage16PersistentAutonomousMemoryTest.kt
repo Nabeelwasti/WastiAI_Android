@@ -71,7 +71,7 @@ class Stage16PersistentAutonomousMemoryTest {
         eventBus = WastiServiceLocator.agentEventBus
         emergencyStop = WastiServiceLocator.emergencyStopController
         nodeManager = WastiServiceLocator.nodeManager
-        emergencyStop.resetEmergencyStop()
+        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
 
         runBlocking {
             taskDao.clearAllTasks()

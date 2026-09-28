@@ -18,7 +18,7 @@ interface AgentToolRouter {
 interface EmergencyStopController {
     val isEmergencyStopped: Boolean
     fun triggerEmergencyStop(reason: String)
-    fun resetEmergencyStop()
+    fun resetEmergencyStop(requester: String, adminToken: String? = null): Boolean
 }
 
 interface WastiAgentRuntime {

@@ -1256,7 +1256,7 @@ class EternalManifestoAndTruthAuditTest {
     fun testEmergencyStopActiveCancellationAndFabricRejection() = runBlocking {
         // [P0-34] EMERGENCY-STOP: Verify emergency stop active cancellation and execution rejection
         val stopController = com.example.data.di.WastiServiceLocator.emergencyStopController
-        stopController.resetEmergencyStop()
+        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         assertFalse(stopController.isEmergencyStopped)
         assertFalse(stopController.stopStateFlow.value.isStopped)
 
@@ -1315,7 +1315,7 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue(inferenceResult.output.contains("EMERGENCY_STOP_ACTIVE"))
 
         // 7. Clean reset restores normal state
-        stopController.resetEmergencyStop()
+        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         assertFalse(stopController.isEmergencyStopped)
         assertFalse(stopController.stopStateFlow.value.isStopped)
         hookHandle.close()
@@ -1490,7 +1490,7 @@ class EternalManifestoAndTruthAuditTest {
         val evidenceTracker = com.example.data.device.DeviceControlEvidenceTracker
 
         // Reset state
-        stopController.resetEmergencyStop()
+        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         evidenceTracker.clearEvidenceForTesting()
 
         // 1. Consent Gate: When user consent is false, device control must be BLOCKED_NO_CONSENT
@@ -1541,7 +1541,7 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals("ABORTED_EMERGENCY_STOP", stoppedEvidence.details)
 
         // 3. Clean Reset: After reset and with user consent, operations proceed
-        stopController.resetEmergencyStop()
+        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         assertFalse("Emergency stop must be reset", stopController.isEmergencyStopped)
     }
 
@@ -1850,7 +1850,7 @@ class EternalManifestoAndTruthAuditTest {
                 stoppedDecision
             )
         } finally {
-            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop()
+            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         }
     }
 
@@ -1932,7 +1932,7 @@ class EternalManifestoAndTruthAuditTest {
             assertTrue(stoppedRes.stderr.contains("Emergency stop active"))
             assertFalse(stoppedRes.verified)
         } finally {
-            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop()
+            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         }
 
         // 3. Security Gate: Protected system path modification forbidden without admin token
@@ -2653,7 +2653,7 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue("Notes must indicate EMERGENCY_STOP_ACTIVE", stoppedLatchCheck.notes.contains("EMERGENCY_STOP_ACTIVE"))
 
         // Reset emergency stop
-        testStopController.triggerReset()
+        testStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         assertFalse("Stop controller must be reset", testStopController.isEmergencyStopped)
 
         val recoveredAssessment = ProductionReadinessGate.assessReadiness(context, testStopController)

@@ -354,6 +354,13 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
     }
 }
 
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `memories` ADD COLUMN `tier` TEXT NOT NULL DEFAULT 'SYSTEM_MEMORY'")
+        db.execSQL("ALTER TABLE `memories` ADD COLUMN `provenanceCategory` TEXT NOT NULL DEFAULT 'OBSERVED'")
+    }
+}
+
 @Database(
     entities = [
         ConversationEntity::class,
@@ -381,7 +388,7 @@ val MIGRATION_14_15 = object : Migration(14, 15) {
         ReusableWorkflowEntity::class,
         ExecutionAuditEntity::class
     ],
-    version = 15,
+    version = 16,
     exportSchema = false
 )
 abstract class WastiDatabase : RoomDatabase() {
@@ -422,7 +429,7 @@ abstract class WastiDatabase : RoomDatabase() {
                 ).addMigrations(
                     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
                     MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
-                    MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
+                    MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16
                 )
                 // Safe migration principle: Protect human memory, learned skills, and execution audits.
                 // Strictly non-destructive persistence: Wasti One Memory architecture preserves tables and records across versions.

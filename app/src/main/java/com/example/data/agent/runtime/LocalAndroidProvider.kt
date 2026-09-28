@@ -37,6 +37,9 @@ class LocalAndroidProvider(
 
     override suspend fun execute(request: ExecutionRequest): ExecutionResult = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
+        if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
+            return@withContext securityBlocked("SECURITY_BLOCKED: Emergency Stop is currently active")
+        }
         val requested = request.executable.trim()
         if (requested.isBlank()) return@withContext invalidRequest("INVALID_REQUEST: UNSUPPORTED_EXECUTABLE: executable is empty")
 

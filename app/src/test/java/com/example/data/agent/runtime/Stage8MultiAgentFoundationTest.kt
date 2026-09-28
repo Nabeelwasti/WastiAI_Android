@@ -33,7 +33,7 @@ class Stage8MultiAgentFoundationTest {
 
     @Before
     fun setUp() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
         fabric = UnifiedExecutionFabric(
@@ -47,7 +47,7 @@ class Stage8MultiAgentFoundationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop()
+        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
     }
 
     @Test

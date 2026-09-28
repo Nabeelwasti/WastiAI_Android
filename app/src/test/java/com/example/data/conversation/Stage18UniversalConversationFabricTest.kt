@@ -53,7 +53,7 @@ class Stage18UniversalConversationFabricTest {
         runtime = WastiServiceLocator.wastiOSRuntime
 
         // Reset emergency stop state
-        emergencyStopController.resetEmergencyStop()
+        emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
 
         fabric = UniversalConversationFabric.getInstance(context)
         fabric.clearAll()
@@ -62,7 +62,7 @@ class Stage18UniversalConversationFabricTest {
     @After
     fun tearDown() {
         fabric.clearAll()
-        emergencyStopController.resetEmergencyStop()
+        emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
     }
 
     @Test

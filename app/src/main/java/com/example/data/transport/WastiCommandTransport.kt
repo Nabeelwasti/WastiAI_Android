@@ -451,8 +451,8 @@ class WastiCommandTransport(
         runtime.triggerEmergencyStop(reason)
     }
 
-    fun clearEmergencyStop() {
-        runtime.clearEmergencyStop()
+    fun clearEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean {
+        return runtime.clearEmergencyStop(requester, adminToken)
     }
 
     fun generateSessionToken(): String {
