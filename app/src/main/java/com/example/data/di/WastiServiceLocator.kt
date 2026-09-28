@@ -229,6 +229,11 @@ object WastiServiceLocator {
         com.example.data.conversation.UniversalConversationFabric.getInstance(ctx)
     }
 
+    val assistantMemoryStore: com.example.assistant.MemoryStore by lazy {
+        val ctx = requireContext()
+        com.example.assistant.MemoryStore(ctx)
+    }
+
     val universalTaskTimeline: com.example.data.conversation.UniversalTaskTimeline by lazy {
         com.example.data.conversation.UniversalTaskTimeline.getInstance()
     }

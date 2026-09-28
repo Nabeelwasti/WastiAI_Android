@@ -164,6 +164,11 @@ class WastiApplication : Application(), Configuration.Provider {
                             com.example.data.log.DeveloperLogger.initialize(this@WastiApplication)
                             if (db != null) {
                                 com.example.data.memory.MemoryManager.initialize(db.memoryDao())
+                                val assistantMemoryStore = com.example.assistant.MemoryStore(this@WastiApplication)
+                                val migratedCount = assistantMemoryStore.migrateLegacyFileIfExists()
+                                if (migratedCount > 0) {
+                                    Log.i("WastiApplication", "Migrated $migratedCount legacy assistant memories into active MemoryManager.")
+                                }
                             }
                         } catch (e: Throwable) {
                             Log.e("WastiApplication", "MemoryManager startup warning", e)
