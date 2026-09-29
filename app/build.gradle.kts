@@ -195,8 +195,8 @@ android {
         test.systemProperty("ENVIRONMENT", "test")
         test.systemProperty("WASTI_TEST_MODE", "true")
         test.systemProperty("WASTI_ENV", "test")
-        test.environment("WASTI_ENV" to "test")
-        test.environment("ENVIRONMENT" to "test")
+        test.environment("WASTI_ENV", "test")
+        test.environment("ENVIRONMENT", "test")
         test.testLogging {
           events("skipped", "failed")
           showStandardStreams = false
