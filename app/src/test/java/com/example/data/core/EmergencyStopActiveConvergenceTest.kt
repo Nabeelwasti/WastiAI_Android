@@ -1,6 +1,7 @@
 package com.example.data.core
 
 import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.security.TestBootstrapSecurityFixture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -21,16 +22,24 @@ import java.util.concurrent.atomic.AtomicBoolean
 class EmergencyStopActiveConvergenceTest {
 
     private lateinit var controller: WastiEmergencyStopController
+    private var testBootstrapToken: String? = null
 
     @Before
     fun setUp() {
         controller = WastiEmergencyStopController()
-        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        val token = TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        testBootstrapToken = token
+        TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(controller, token)
     }
 
     @After
     fun tearDown() {
-        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        val token = testBootstrapToken
+        if (token != null) {
+            TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(controller, token)
+            TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+            testBootstrapToken = null
+        }
     }
 
     @Test
@@ -73,8 +82,17 @@ class EmergencyStopActiveConvergenceTest {
         delay(100)
         assertFalse("Job must no longer be active", job.isActive)
 
-        // Reset emergency stop
-        controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        // 1. Plain unauthenticated SYSTEM_INITIALIZER must fail closed
+        val unauthReset = controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        assertFalse("Unauthenticated SYSTEM_INITIALIZER must fail closed", unauthReset)
+        assertTrue("Controller must remain stopped after unauthenticated attempt", controller.isEmergencyStopped)
+
+        // 2. Authenticated SYSTEM_INITIALIZER with valid bootstrap token must succeed
+        val authReset = controller.resetEmergencyStop(
+            requester = "SYSTEM_INITIALIZER",
+            adminToken = testBootstrapToken
+        )
+        assertTrue("Authenticated SYSTEM_INITIALIZER must succeed", authReset)
         assertFalse("Controller must report not stopped after reset", controller.isEmergencyStopped)
     }
 

@@ -5,6 +5,7 @@ import com.example.data.core.WastiOSRuntime
 import com.example.data.di.WastiServiceLocator
 import com.example.data.security.AutonomousMutationGovernance
 import com.example.data.transport.WastiCommandTransport
+import com.example.data.security.TestBootstrapSecurityFixture
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +23,7 @@ class EmergencyStopGovernanceAndBypassTest {
     private lateinit var controller: WastiEmergencyStopController
     private lateinit var runtime: WastiOSRuntime
     private lateinit var transport: WastiCommandTransport
+    private var testAdminToken: String? = null
 
     @Before
     fun setUp() {
@@ -30,14 +32,19 @@ class EmergencyStopGovernanceAndBypassTest {
         controller = WastiEmergencyStopController.instance
         runtime = WastiServiceLocator.wastiOSRuntime
         transport = WastiCommandTransport.getInstance(context)
-        SelfModificationSafetyEngine.setTestAdminToken("test_secret_admin_token_999")
-        controller.resetEmergencyStop(requester = "OWNER_ADMIN")
+        val token = TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        testAdminToken = token
+        TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
     }
 
     @After
     fun tearDown() {
-        SelfModificationSafetyEngine.clearTestAdminToken()
-        controller.resetEmergencyStop(requester = "OWNER_ADMIN")
+        val token = testAdminToken
+        if (token != null) {
+            TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+            testAdminToken = null
+        }
     }
 
     @Test
@@ -67,7 +74,7 @@ class EmergencyStopGovernanceAndBypassTest {
 
         val resetSuccess = controller.resetEmergencyStop(
             requester = "AUTHORIZED_OPERATOR",
-            adminToken = "test_secret_admin_token_999"
+            adminToken = testAdminToken
         )
         assertTrue("Caller with valid admin token must succeed", resetSuccess)
         assertFalse("Controller must no longer be stopped", controller.isEmergencyStopped)
@@ -86,7 +93,7 @@ class EmergencyStopGovernanceAndBypassTest {
         // 2. With valid admin token (Strict AI prohibition invariant)
         val aiWithToken = controller.resetEmergencyStop(
             requester = "AUTONOMOUS_AI",
-            adminToken = "test_secret_admin_token_999"
+            adminToken = testAdminToken
         )
         assertFalse("Autonomous AI with admin token must still fail closed", aiWithToken)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
@@ -94,7 +101,7 @@ class EmergencyStopGovernanceAndBypassTest {
         // 3. Subagent variant
         val subagentWithToken = controller.resetEmergencyStop(
             requester = "AI_SUBAGENT_PLANNER",
-            adminToken = "test_secret_admin_token_999"
+            adminToken = testAdminToken
         )
         assertFalse("AI subagent with token must fail closed", subagentWithToken)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
@@ -123,6 +130,13 @@ class EmergencyStopGovernanceAndBypassTest {
         val systemInitializerNoToken = controller.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
         assertFalse("SYSTEM_INITIALIZER without token must fail closed", systemInitializerNoToken)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        val systemInitializerWithToken = controller.resetEmergencyStop(
+            requester = "SYSTEM_INITIALIZER",
+            adminToken = testAdminToken
+        )
+        assertTrue("SYSTEM_INITIALIZER with valid admin token must succeed", systemInitializerWithToken)
+        assertFalse("Controller must no longer be stopped after authorized reset", controller.isEmergencyStopped)
     }
 
     @Test

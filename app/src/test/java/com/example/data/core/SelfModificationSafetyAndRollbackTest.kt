@@ -4,6 +4,7 @@ import com.example.data.agent.runtime.ModificationDecision
 import com.example.data.agent.runtime.ModificationOutcomeStatus
 import com.example.data.agent.runtime.SelfModificationSafetyEngine
 import com.example.data.agent.runtime.WastiEmergencyStopController
+import com.example.data.security.TestBootstrapSecurityFixture
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -18,16 +19,25 @@ import java.io.File
  */
 class SelfModificationSafetyAndRollbackTest {
 
+    private var testBootstrapToken: String? = null
+
     @Before
     fun setUp() {
         SelfModificationSafetyEngine.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        val token = TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        testBootstrapToken = token
+        TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
     }
 
     @After
     fun tearDown() {
+        val token = testBootstrapToken
+        if (token != null) {
+            TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+            testBootstrapToken = null
+        }
         SelfModificationSafetyEngine.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
     }
 
     @Test

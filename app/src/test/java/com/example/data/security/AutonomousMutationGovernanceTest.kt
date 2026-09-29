@@ -24,6 +24,7 @@ import java.io.File
 class AutonomousMutationGovernanceTest {
 
     private lateinit var tempDir: File
+    private var testBootstrapToken: String? = null
 
     @Before
     fun setUp() {
@@ -32,15 +33,22 @@ class AutonomousMutationGovernanceTest {
         ExecutionProvenanceLedger.resetForTesting()
         SelfModificationSafetyEngine.resetForTesting()
         AutonomousMutationGovernance.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
+        val token = TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        testBootstrapToken = token
+        TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
     }
 
     @After
     fun tearDown() {
+        val token = testBootstrapToken
+        if (token != null) {
+            TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+            testBootstrapToken = null
+        }
         ExecutionProvenanceLedger.resetForTesting()
         SelfModificationSafetyEngine.resetForTesting()
         AutonomousMutationGovernance.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "SYSTEM_INITIALIZER")
         tempDir.deleteRecursively()
     }
 
@@ -229,8 +237,8 @@ class AutonomousMutationGovernanceTest {
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR"))
         assertTrue("Verified OWNER_ADMIN must be allowed",
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("OWNER_ADMIN"))
-        assertTrue("SYSTEM_INITIALIZER must be allowed",
-            AutonomousMutationGovernance.isEmergencyStopResetPermitted("SYSTEM_INITIALIZER"))
+        assertTrue("SYSTEM_INITIALIZER with valid admin token must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("SYSTEM_INITIALIZER", validToken))
         assertTrue("Authorized human delegate with valid admin token must be allowed",
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("OPERATOR_DELEGATE", validToken))
 
