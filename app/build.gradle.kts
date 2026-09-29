@@ -198,8 +198,8 @@ android {
         test.environment("WASTI_ENV", "test")
         test.environment("ENVIRONMENT", "test")
         test.testLogging {
-          events("skipped", "failed")
-          showStandardStreams = false
+          events("passed", "skipped", "failed", "standardError")
+          showStandardStreams = true
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
           showExceptions = true
           showCauses = true
@@ -224,12 +224,13 @@ android {
               println("[TEST FAILED] ${testDescriptor.className} -> ${testDescriptor.name}")
               result.exception?.let { exc ->
                 println("[TEST ERROR] ${exc.message}")
+                exc.printStackTrace()
               }
             }
           }
         })
         test.maxParallelForks = 1
-        test.failFast = true
+        test.failFast = false
         test.timeout.set(Duration.ofMinutes(12))
       }
     }
