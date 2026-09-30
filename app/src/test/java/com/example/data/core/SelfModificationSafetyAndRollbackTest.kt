@@ -109,4 +109,38 @@ class SelfModificationSafetyAndRollbackTest {
             tmpFile.delete()
         }
     }
+
+    @Test
+    fun testEvaluateProposedModificationEquivalenceAndInvariants() {
+        val protectedPath = "app/src/main/java/com/example/data/security/ZeroTrustSentinelEngine.kt"
+        val normalPath = "app/src/main/java/com/example/data/tool/CustomTool.kt"
+
+        // 1. Autonomous modification on protected path without token is blocked
+        val blockedDecision = SelfModificationSafetyEngine.evaluateProposedModification(
+            filePath = protectedPath,
+            newContent = "val a = 1",
+            isAutonomous = true,
+            adminAuthToken = null
+        )
+        assertEquals(ModificationDecision.BLOCKED_PROTECTED_PATH, blockedDecision)
+
+        // 2. Autonomous modification on protected path with valid admin token is allowed
+        val adminToken = testBootstrapToken
+        val allowedWithToken = SelfModificationSafetyEngine.evaluateProposedModification(
+            filePath = protectedPath,
+            newContent = "val a = 1",
+            isAutonomous = true,
+            adminAuthToken = adminToken
+        )
+        assertEquals(ModificationDecision.ALLOWED, allowedWithToken)
+
+        // 3. Autonomous modification on normal un-protected path is allowed
+        val allowedNormal = SelfModificationSafetyEngine.evaluateProposedModification(
+            filePath = normalPath,
+            newContent = "val toolName = \"Custom\"",
+            isAutonomous = true,
+            adminAuthToken = null
+        )
+        assertEquals(ModificationDecision.ALLOWED, allowedNormal)
+    }
 }

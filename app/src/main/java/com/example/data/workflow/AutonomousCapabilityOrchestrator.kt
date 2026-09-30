@@ -284,7 +284,7 @@ class AutonomousCapabilityOrchestrator(
 
         // Record mutation provenance in canonical ledger
         com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
-            taskId = taskId,
+            taskId = taskId.value,
             actionId = "synthesize_capability_$cleanName",
             capabilityId = capabilityId,
             providerId = "AutonomousCapabilityOrchestrator",

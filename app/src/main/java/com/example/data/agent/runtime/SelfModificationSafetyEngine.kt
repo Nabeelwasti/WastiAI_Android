@@ -605,6 +605,22 @@ object SelfModificationSafetyEngine {
         return ModificationDecision.ALLOWED
     }
 
+    /**
+     * Evaluates a proposed modification against all mutation-safety, authorization, emergency-stop,
+     * protected-path, and loop-detection invariants under canonical fail-closed policy.
+     */
+    fun evaluateProposedModification(
+        filePath: String,
+        newContent: String,
+        isAutonomous: Boolean = true,
+        adminAuthToken: String? = null
+    ): ModificationDecision = evaluateModification(
+        filePath = filePath,
+        newContent = newContent,
+        isAutonomous = isAutonomous,
+        adminAuthToken = adminAuthToken
+    )
+
     private fun getJournalDir(): File {
         val userHome = System.getProperty("user.home") ?: System.getProperty("java.io.tmpdir") ?: "."
         val dir = File(userHome, ".wasti_ai/snapshots")
