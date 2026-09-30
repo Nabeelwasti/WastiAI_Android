@@ -247,7 +247,7 @@ class WastiEmergencyStopController : EmergencyStopController {
      * Clears the latch atomically and records observable reset event.
      * Enforces that autonomous AI cannot reset the emergency stop latch without human/admin authorization.
      */
-    override fun resetEmergencyStop(requester: String, adminToken: String? = null): Boolean {
+    override fun resetEmergencyStop(requester: String, adminToken: String?): Boolean {
         if (!com.example.data.security.AutonomousMutationGovernance.isEmergencyStopResetPermitted(requester, adminToken)) {
             android.util.Log.e("EmergencyStop", "Unauthorized reset attempt by '$requester' blocked (Fail-Closed)")
             return false

@@ -181,17 +181,19 @@ object SsrfSecurityBoundary {
     /**
      * OkHttp DNS provider that re-resolves and validates every IP address before socket connect.
      */
-    val safeDns = Dns { hostname ->
-        if (CLOUD_METADATA_HOSTNAMES.contains(hostname.lowercase())) {
-            throw IOException("SSRF Security Violation: Cloud metadata resolution blocked for '$hostname'")
-        }
-        val addresses = Dns.SYSTEM.lookup(hostname)
-        for (addr in addresses) {
-            if (!isSafePublicAddress(addr)) {
-                throw IOException("SSRF Security Violation: Host '$hostname' resolved to private/unsafe address '${addr.hostAddress}'")
+    val safeDns: Dns = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            if (CLOUD_METADATA_HOSTNAMES.contains(hostname.lowercase(java.util.Locale.ROOT))) {
+                throw IOException("SSRF Security Violation: Cloud metadata resolution blocked for '$hostname'")
             }
+            val addresses = Dns.SYSTEM.lookup(hostname)
+            for (addr in addresses) {
+                if (!isSafePublicAddress(addr)) {
+                    throw IOException("SSRF Security Violation: Host '$hostname' resolved to private/unsafe address '${addr.hostAddress}'")
+                }
+            }
+            return addresses
         }
-        addresses
     }
 
     /**
