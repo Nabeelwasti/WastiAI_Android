@@ -209,6 +209,7 @@ class AutonomousCapabilityOrchestrator(
         var isTestVerified = false
         var testStdout = ""
         var lastError = ""
+        var actualExitCode = -1
 
         // Phase A: Build / Package
         eventBus?.emit(AgentEvent.CapabilityBuildStarted(taskId, capabilityId))
@@ -242,6 +243,7 @@ class AutonomousCapabilityOrchestrator(
                 initiatedBy = "AutonomousCapabilityOrchestrator"
             )
             val testRes = wreManager.execute(testReq)
+            actualExitCode = testRes.exitCode
 
             if (testRes.status == ExecutionStatus.SUCCESS) {
                 isTestVerified = true
@@ -269,17 +271,18 @@ class AutonomousCapabilityOrchestrator(
         }
 
         if (!isTestVerified) {
-            rollbackCapability(taskId, cleanName, "Verification test failed after $attempt attempts: $lastError")
-            eventBus?.emit(AgentEvent.CapabilityRejected(taskId, capabilityId, "Test failed: $lastError"))
+            val failureDetail = "$lastError (exitCode=$actualExitCode)"
+            rollbackCapability(taskId, cleanName, "Verification test failed after $attempt attempts: $failureDetail")
+            eventBus?.emit(AgentEvent.CapabilityRejected(taskId, capabilityId, "Test failed: $failureDetail"))
             return CapabilityResolutionResult.ResolutionFailed(
-                reason = "WRE test execution failed after retries: $lastError",
+                reason = "WRE test execution failed after retries: $failureDetail",
                 capabilityId = capabilityId
             )
         }
 
         // Phase C: Verification & Reality Registry Update
         eventBus?.emit(AgentEvent.CapabilityVerificationStarted(taskId, capabilityId))
-        val evidence = "WRE script test probe executed: $testStdout"
+        val evidence = "WRE script test probe executed: $testStdout (exitCode=$actualExitCode)"
         eventBus?.emit(AgentEvent.CapabilityVerified(taskId, capabilityId, evidence))
 
         // Record mutation provenance in canonical ledger

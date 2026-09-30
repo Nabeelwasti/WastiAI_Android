@@ -176,5 +176,6 @@ class MemoryPersistenceAndMigrationTest {
         assertTrue(quarantined.any { it.value.contains("Blank Item") })
 
         archiveFile.delete()
+        Unit
     }
 }

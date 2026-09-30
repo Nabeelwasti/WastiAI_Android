@@ -141,10 +141,12 @@ class Stage14SelfEvolvingCapabilityEngineTest {
         val faultyCapId = "faulty_then_repaired_${System.currentTimeMillis()}"
         val events = mutableListOf<AgentEvent>()
         val job = launch { eventBus.events.collect { events.add(it) } }
+        // Initial script has a structural defect (missing shebang and unclosed quote)
+        val initialFaultyScript = "echo \"status=executed,capability=$faultyCapId"
         val result = orchestrator.resolveCapability(
             capabilityId = faultyCapId,
             description = "Faulty capability that recovers via self-correction",
-            scriptContentOverride = "#!/bin/sh\nexit 1\n",
+            scriptContentOverride = initialFaultyScript,
             maxCorrectionAttempts = 2
         )
         job.cancel()
@@ -199,5 +201,27 @@ class Stage14SelfEvolvingCapabilityEngineTest {
         assertTrue(result is CapabilityResolutionResult.ResolutionFailed)
         val failed = result as CapabilityResolutionResult.ResolutionFailed
         assertTrue(failed.reason.contains("Emergency stop"))
+    }
+
+    @Test
+    fun testH_ExplicitFailingCapabilityCannotBePromotedByRewritingExitCode() = runTest(testDispatcher) {
+        val explicitFailingCapId = "explicit_failing_${System.currentTimeMillis()}"
+        val events = mutableListOf<AgentEvent>()
+        val job = launch { eventBus.events.collect { events.add(it) } }
+        val result = orchestrator.resolveCapability(
+            capabilityId = explicitFailingCapId,
+            description = "Explicit failing capability with exit 1",
+            scriptContentOverride = "#!/bin/sh\nexit 1\n",
+            maxCorrectionAttempts = 2
+        )
+        job.cancel()
+        assertTrue("Explicit failing capability must fail resolution", result is CapabilityResolutionResult.ResolutionFailed)
+        val failed = result as CapabilityResolutionResult.ResolutionFailed
+        assertTrue(failed.reason.contains("failed") || failed.reason.contains("exitCode=1"))
+        assertTrue(events.any { it is AgentEvent.RollbackStarted })
+        assertTrue(events.any { it is AgentEvent.RollbackCompleted && it.isSuccess })
+        assertTrue(events.any { it is AgentEvent.CapabilityRejected && it.capabilityId == explicitFailingCapId })
+        assertFalse("Explicit failing capability must never be promoted", events.any { it is AgentEvent.CapabilityPromoted && it.capabilityId == explicitFailingCapId })
+        assertFalse("Explicit failing capability must never be marked verified", events.any { it is AgentEvent.CapabilityVerified && it.capabilityId == explicitFailingCapId })
     }
 }
