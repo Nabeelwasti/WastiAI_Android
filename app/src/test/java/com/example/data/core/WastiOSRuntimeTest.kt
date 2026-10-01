@@ -31,8 +31,10 @@ class WastiOSRuntimeTest {
         context = ApplicationProvider.getApplicationContext()
         WastiServiceLocator.init(context)
         emergencyStop = WastiEmergencyStopController()
-        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
-        WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStop, token)
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(WastiServiceLocator.emergencyStopController, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         eventBus = AgentEventBus()
         runtime = WastiOSRuntime(
             appContext = context,
@@ -70,7 +72,9 @@ class WastiOSRuntimeTest {
         val rejected = result as CommandSubmissionResult.Rejected
         assertTrue(rejected.reason.contains("EMERGENCY_STOP_ACTIVE"))
 
-        runtime.clearEmergencyStop()
+        val clearToken = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        runtime.clearEmergencyStop(requester = "AUTHENTICATED_TEST_RUNNER", adminToken = clearToken)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(clearToken)
         assertFalse(emergencyStop.isEmergencyStopped)
     }
 

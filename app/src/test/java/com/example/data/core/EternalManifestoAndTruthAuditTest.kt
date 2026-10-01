@@ -1256,7 +1256,9 @@ class EternalManifestoAndTruthAuditTest {
     fun testEmergencyStopActiveCancellationAndFabricRejection() = runBlocking {
         // [P0-34] EMERGENCY-STOP: Verify emergency stop active cancellation and execution rejection
         val stopController = com.example.data.di.WastiServiceLocator.emergencyStopController
-        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(stopController, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         assertFalse(stopController.isEmergencyStopped)
         assertFalse(stopController.stopStateFlow.value.isStopped)
 
@@ -1315,7 +1317,9 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue(inferenceResult.output.contains("EMERGENCY_STOP_ACTIVE"))
 
         // 7. Clean reset restores normal state
-        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val resetToken = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(stopController, resetToken)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(resetToken)
         assertFalse(stopController.isEmergencyStopped)
         assertFalse(stopController.stopStateFlow.value.isStopped)
         hookHandle.close()
@@ -1490,7 +1494,9 @@ class EternalManifestoAndTruthAuditTest {
         val evidenceTracker = com.example.data.device.DeviceControlEvidenceTracker
 
         // Reset state
-        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         evidenceTracker.clearEvidenceForTesting()
 
         // 1. Consent Gate: When user consent is false, device control must be BLOCKED_NO_CONSENT
@@ -1541,7 +1547,9 @@ class EternalManifestoAndTruthAuditTest {
         assertEquals("ABORTED_EMERGENCY_STOP", stoppedEvidence.details)
 
         // 3. Clean Reset: After reset and with user consent, operations proceed
-        stopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val cleanToken = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(cleanToken)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(cleanToken)
         assertFalse("Emergency stop must be reset", stopController.isEmergencyStopped)
     }
 
@@ -1850,7 +1858,9 @@ class EternalManifestoAndTruthAuditTest {
                 stoppedDecision
             )
         } finally {
-            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+            val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+            com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         }
     }
 
@@ -1932,7 +1942,9 @@ class EternalManifestoAndTruthAuditTest {
             assertTrue(stoppedRes.stderr.contains("Emergency stop active"))
             assertFalse(stoppedRes.verified)
         } finally {
-            com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+            val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+            com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         }
 
         // 3. Security Gate: Protected system path modification forbidden without admin token
@@ -2653,7 +2665,9 @@ class EternalManifestoAndTruthAuditTest {
         assertTrue("Notes must indicate EMERGENCY_STOP_ACTIVE", stoppedLatchCheck.notes.contains("EMERGENCY_STOP_ACTIVE"))
 
         // Reset emergency stop
-        testStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val gateToken = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(testStopController, gateToken)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(gateToken)
         assertFalse("Stop controller must be reset", testStopController.isEmergencyStopped)
 
         val recoveredAssessment = ProductionReadinessGate.assessReadiness(context, testStopController)

@@ -55,7 +55,9 @@ class Stage18CrossPlatformBinaryMeshTest {
         WastiServiceLocator.init(context)
 
         emergencyStop = WastiServiceLocator.emergencyStopController
-        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStop, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
 
         realityRegistry = WastiServiceLocator.realityRegistry
         nodeManager = WastiNodeManager.getInstance()

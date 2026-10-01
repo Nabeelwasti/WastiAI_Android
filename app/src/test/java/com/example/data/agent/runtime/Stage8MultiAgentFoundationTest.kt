@@ -33,7 +33,9 @@ class Stage8MultiAgentFoundationTest {
 
     @Before
     fun setUp() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
         fabric = UnifiedExecutionFabric(
@@ -47,7 +49,9 @@ class Stage8MultiAgentFoundationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
     }
 
     @Test

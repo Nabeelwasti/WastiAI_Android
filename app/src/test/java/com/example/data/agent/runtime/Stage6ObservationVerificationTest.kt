@@ -33,7 +33,9 @@ class Stage6ObservationVerificationTest {
 
     @Before
     fun setUp() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         MemoryManager.resetForTesting()
         context = ApplicationProvider.getApplicationContext()
         realityRegistry = CapabilityRealityRegistry()
@@ -53,7 +55,9 @@ class Stage6ObservationVerificationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         MemoryManager.resetForTesting()
     }
 

@@ -50,7 +50,9 @@ class Stage9EWorkflowOrchestrationTest {
 
     @Before
     fun setup() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         context = ApplicationProvider.getApplicationContext()
         com.example.data.di.WastiServiceLocator.init(context)
         wreManager = WreManager.getInstance(context)
@@ -61,7 +63,9 @@ class Stage9EWorkflowOrchestrationTest {
 
     @After
     fun tearDown() {
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
     }
 
     @Test

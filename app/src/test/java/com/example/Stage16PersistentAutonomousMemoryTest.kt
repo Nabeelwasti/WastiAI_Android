@@ -71,7 +71,9 @@ class Stage16PersistentAutonomousMemoryTest {
         eventBus = WastiServiceLocator.agentEventBus
         emergencyStop = WastiServiceLocator.emergencyStopController
         nodeManager = WastiServiceLocator.nodeManager
-        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStop, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
 
         runBlocking {
             taskDao.clearAllTasks()

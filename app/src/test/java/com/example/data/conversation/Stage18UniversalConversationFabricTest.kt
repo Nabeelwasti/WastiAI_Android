@@ -53,7 +53,9 @@ class Stage18UniversalConversationFabricTest {
         runtime = WastiServiceLocator.wastiOSRuntime
 
         // Reset emergency stop state
-        emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStopController, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
 
         fabric = UniversalConversationFabric.getInstance(context)
         fabric.clearAll()
@@ -62,7 +64,9 @@ class Stage18UniversalConversationFabricTest {
     @After
     fun tearDown() {
         fabric.clearAll()
-        emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStopController, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
     }
 
     @Test

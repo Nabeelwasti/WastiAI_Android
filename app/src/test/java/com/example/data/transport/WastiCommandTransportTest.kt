@@ -28,8 +28,10 @@ class WastiCommandTransportTest {
         context = ApplicationProvider.getApplicationContext()
         WastiServiceLocator.init(context)
         val emergencyStop = WastiEmergencyStopController()
-        emergencyStop.resetEmergencyStop(requester = "HUMAN_OPERATOR")
-        WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(emergencyStop, token)
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(WastiServiceLocator.emergencyStopController, token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         runtime = WastiOSRuntime(
             appContext = context,
             emergencyStopController = emergencyStop

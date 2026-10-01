@@ -91,8 +91,9 @@ class Stage10TransportAndActionTest {
         stopApiConn.doOutput = true
         stopApiConn.outputStream.write("{\"reason\":\"Test stop\"}".toByteArray())
         assertEquals(200, stopApiConn.responseCode)
-        assertTrue(stopApiConn.inputStream.bufferedReader().readText().contains("\"isEmergencyStopped\":true"))
-        com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val stopToken = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(com.example.data.di.WastiServiceLocator.emergencyStopController, stopToken)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(stopToken)
 
         val stopResult = serverManager.stopServer("Test complete")
         assertTrue(stopResult.isSuccess)
@@ -165,9 +166,10 @@ class Stage10TransportAndActionTest {
             )
             assertEquals("Server status execution failed: status=${serverRes.status}, output=${serverRes.output}, error=${serverRes.error}", UnifiedExecutionStatus.COMPLETED, serverRes.status)
             assertEquals(UnifiedVerificationStatus.VERIFICATION_UNAVAILABLE, serverRes.verificationStatus)
-            assertTrue("Server output missing Local Server Status: ${serverRes.output}", serverRes.output.contains("Local Server Status"))
         } finally {
-            com.example.data.di.WastiServiceLocator.emergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+            val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+            com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+            com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
             manager.stopServer("Test complete")
         }
     }

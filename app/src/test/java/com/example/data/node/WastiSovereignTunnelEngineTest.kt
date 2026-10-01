@@ -35,7 +35,9 @@ class WastiSovereignTunnelEngineTest {
         context = ApplicationProvider.getApplicationContext()
         WastiTruthAuthority.setTestAuthorityKeyForTesting()
         ExecutionProvenanceLedger.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         WastiSovereignTunnelEngine.resetForTesting()
         WastiNearbyHardwareEngine.clearForTesting()
     }
@@ -43,7 +45,9 @@ class WastiSovereignTunnelEngineTest {
     @After
     fun tearDown() {
         WastiSovereignTunnelEngine.terminateTunnel(context)
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
         WastiNearbyHardwareEngine.clearForTesting()
     }
 
