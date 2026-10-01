@@ -52,8 +52,17 @@ class EmergencyStopGovernanceAndBypassTest {
         controller.triggerEmergencyStop("Test Stop Trigger")
         assertTrue(controller.isEmergencyStopped)
 
-        val resetSuccess = controller.resetEmergencyStop(requester = "HUMAN_OPERATOR")
-        assertTrue("Authorized HUMAN_OPERATOR must succeed", resetSuccess)
+        // 1. Without admin token, string alone fails closed
+        val resetNoToken = controller.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        assertFalse("HUMAN_OPERATOR without token must fail closed", resetNoToken)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        // 2. With valid admin token, reset succeeds
+        val resetSuccess = controller.resetEmergencyStop(
+            requester = "HUMAN_OPERATOR",
+            adminToken = testAdminToken
+        )
+        assertTrue("Authenticated HUMAN_OPERATOR with admin token must succeed", resetSuccess)
         assertFalse("Controller must no longer be stopped", controller.isEmergencyStopped)
     }
 
@@ -62,8 +71,17 @@ class EmergencyStopGovernanceAndBypassTest {
         controller.triggerEmergencyStop("Test Stop Trigger")
         assertTrue(controller.isEmergencyStopped)
 
-        val resetSuccess = controller.resetEmergencyStop(requester = "OWNER_ADMIN")
-        assertTrue("Authorized OWNER_ADMIN must succeed", resetSuccess)
+        // 1. Without admin token, string alone fails closed
+        val resetNoToken = controller.resetEmergencyStop(requester = "OWNER_ADMIN")
+        assertFalse("OWNER_ADMIN without token must fail closed", resetNoToken)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        // 2. With valid admin token, reset succeeds
+        val resetSuccess = controller.resetEmergencyStop(
+            requester = "OWNER_ADMIN",
+            adminToken = testAdminToken
+        )
+        assertTrue("Authenticated OWNER_ADMIN with admin token must succeed", resetSuccess)
         assertFalse("Controller must no longer be stopped", controller.isEmergencyStopped)
     }
 
@@ -131,12 +149,13 @@ class EmergencyStopGovernanceAndBypassTest {
         assertFalse("SYSTEM_INITIALIZER without token must fail closed", systemInitializerNoToken)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
 
+        // Even with token, SYSTEM and SYSTEM_* fail closed
         val systemInitializerWithToken = controller.resetEmergencyStop(
             requester = "SYSTEM_INITIALIZER",
             adminToken = testAdminToken
         )
-        assertTrue("SYSTEM_INITIALIZER with valid admin token must succeed", systemInitializerWithToken)
-        assertFalse("Controller must no longer be stopped after authorized reset", controller.isEmergencyStopped)
+        assertFalse("SYSTEM_INITIALIZER must fail closed per security policy", systemInitializerWithToken)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
     }
 
     @Test
@@ -144,14 +163,18 @@ class EmergencyStopGovernanceAndBypassTest {
         runtime.triggerEmergencyStop("Runtime emergency test")
         assertTrue(runtime.activeContext.value.isBusy || controller.isEmergencyStopped)
 
-        // Unauthorized reset
+        // Unauthorized reset without token
         val unauth = runtime.clearEmergencyStop(requester = "AUTONOMOUS_AI")
         assertFalse("Autonomous reset via runtime must be rejected", unauth)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
 
-        // Authorized reset
-        val auth = runtime.clearEmergencyStop(requester = "HUMAN_OPERATOR")
-        assertTrue("Human reset via runtime must succeed", auth)
+        val humanNoToken = runtime.clearEmergencyStop(requester = "HUMAN_OPERATOR")
+        assertFalse("Human reset without admin token must be rejected", humanNoToken)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        // Authorized reset with valid admin token
+        val auth = runtime.clearEmergencyStop(requester = "HUMAN_OPERATOR", adminToken = testAdminToken)
+        assertTrue("Human reset with valid admin token via runtime must succeed", auth)
         assertFalse("Controller must no longer be stopped", controller.isEmergencyStopped)
         assertEquals("Idle", runtime.activeContext.value.agenticState::class.simpleName)
     }
@@ -166,9 +189,13 @@ class EmergencyStopGovernanceAndBypassTest {
         assertFalse("Autonomous reset via transport must be rejected", unauth)
         assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
 
-        // Authorized reset via transport
-        val auth = transport.clearEmergencyStop(requester = "OWNER_ADMIN")
-        assertTrue("Admin reset via transport must succeed", auth)
+        val adminNoToken = transport.clearEmergencyStop(requester = "OWNER_ADMIN")
+        assertFalse("Admin reset without token must fail closed", adminNoToken)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        // Authorized reset via transport with valid admin token
+        val auth = transport.clearEmergencyStop(requester = "OWNER_ADMIN", adminToken = testAdminToken)
+        assertTrue("Admin reset via transport with valid admin token must succeed", auth)
         assertFalse("Controller must no longer be stopped", controller.isEmergencyStopped)
     }
 }

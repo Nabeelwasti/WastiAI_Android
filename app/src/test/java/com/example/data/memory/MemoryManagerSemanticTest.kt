@@ -66,6 +66,20 @@ class MemoryManagerSemanticTest {
     @Test
     fun testMemoryDataGovernanceCompliance() = runBlocking {
         MemoryManager.resetForTesting()
+        val testDao = object : com.example.data.db.MemoryDao {
+            private val store = mutableListOf<com.example.data.db.MemoryEntity>()
+            override fun getAllMemories() = kotlinx.coroutines.flow.flowOf(store.toList())
+            override suspend fun getAllMemoriesSync() = store.toList()
+            override suspend fun getMemoriesList() = store.toList()
+            override fun getMemoriesByCategory(category: String) = kotlinx.coroutines.flow.flowOf(store.filter { it.category == category })
+            override suspend fun insertMemory(memory: com.example.data.db.MemoryEntity) { store.removeIf { it.id == memory.id }; store.add(memory) }
+            override suspend fun deleteMemory(memory: com.example.data.db.MemoryEntity) { store.removeIf { it.id == memory.id } }
+            override suspend fun getMemoryByKey(key: String) = store.find { it.key == key }
+            override suspend fun deleteMemoryById(id: String) { store.removeIf { it.id == id } }
+            override suspend fun deleteAllMemories(): Int { val c = store.size; store.clear(); return c }
+            override suspend fun deleteMemoriesOlderThan(olderThanTimestamp: Long): Int { val before = store.size; store.removeIf { it.timestamp < olderThanTimestamp }; return before - store.size }
+        }
+        MemoryManager.initialize(testDao)
 
         // Create memories
         MemoryManager.saveMemory(key = "user_pref", category = "PREFERENCE", value = "prefers dark theme", importanceScore = 0.9f)

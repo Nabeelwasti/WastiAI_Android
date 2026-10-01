@@ -87,12 +87,17 @@ class EmergencyStopActiveConvergenceTest {
         assertFalse("Unauthenticated SYSTEM_INITIALIZER must fail closed", unauthReset)
         assertTrue("Controller must remain stopped after unauthenticated attempt", controller.isEmergencyStopped)
 
-        // 2. Authenticated SYSTEM_INITIALIZER with valid bootstrap token must succeed
-        val authReset = controller.resetEmergencyStop(
+        // 2. SYSTEM_INITIALIZER even with token fails closed per strict SYSTEM_* rejection policy
+        val systemWithTokenReset = controller.resetEmergencyStop(
             requester = "SYSTEM_INITIALIZER",
             adminToken = testBootstrapToken
         )
-        assertTrue("Authenticated SYSTEM_INITIALIZER must succeed", authReset)
+        assertFalse("SYSTEM_INITIALIZER with token must fail closed", systemWithTokenReset)
+        assertTrue("Controller must remain stopped", controller.isEmergencyStopped)
+
+        // 3. Authenticated test bootstrap fixture reset succeeds
+        val authReset = TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(controller, testBootstrapToken)
+        assertTrue("Authenticated bootstrap fixture reset must succeed", authReset)
         assertFalse("Controller must report not stopped after reset", controller.isEmergencyStopped)
     }
 

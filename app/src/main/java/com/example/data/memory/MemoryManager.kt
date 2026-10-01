@@ -362,29 +362,31 @@ object MemoryManager {
     }
 
     suspend fun deleteMemory(id: String) = withContext(Dispatchers.IO) {
+        val dao = memoryDao ?: throw IllegalStateException("Authoritative Room DAO is unavailable")
+        try {
+            dao.deleteMemoryById(id)
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to delete memory entity from Room database", e)
+            throw e
+        }
         activeMemoriesMap.remove(id)
         vectorIndex.removeVector(id)
         _memoriesFlow.value = activeMemoriesMap.values.toList()
-        try {
-            memoryDao?.deleteMemoryById(id)
-        } catch (e: Exception) {
-            Log.e("MemoryManager", "Failed to delete memory entity from Room database", e)
-        }
         WastiEventBus.emit(WastiEvent.MemoryUpdated(id, "DELETED"))
     }
 
     suspend fun deleteAllMemories(): Int = withContext(Dispatchers.IO) {
+        val dao = memoryDao ?: throw IllegalStateException("Authoritative Room DAO is unavailable")
+        val dbDeleted = try {
+            dao.deleteAllMemories()
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to clear all memories from Room database", e)
+            throw e
+        }
         val count = activeMemoriesMap.size
         activeMemoriesMap.clear()
         vectorIndex.clear()
         _memoriesFlow.value = emptyList()
-        var dbDeleted = 0
-        try {
-            dbDeleted = memoryDao?.deleteAllMemories() ?: count
-        } catch (e: Exception) {
-            Log.e("MemoryManager", "Failed to clear all memories from Room database", e)
-            dbDeleted = count
-        }
         WastiEventBus.emit(WastiEvent.MemoryUpdated("ALL", "CLEARED"))
         maxOf(count, dbDeleted)
     }
@@ -392,19 +394,19 @@ object MemoryManager {
     suspend fun pruneMemoriesOlderThan(retentionDays: Int): Int = withContext(Dispatchers.IO) {
         if (retentionDays <= 0) return@withContext 0
         val cutoff = System.currentTimeMillis() - (retentionDays * 86400000L)
+        val dao = memoryDao ?: throw IllegalStateException("Authoritative Room DAO is unavailable")
+        val deletedCount = try {
+            dao.deleteMemoriesOlderThan(cutoff)
+        } catch (e: Exception) {
+            Log.e("MemoryManager", "Failed to prune older memories from Room database", e)
+            throw e
+        }
         val toRemove = activeMemoriesMap.filter { it.value.timestamp < cutoff }.keys.toList()
         toRemove.forEach { id ->
             activeMemoriesMap.remove(id)
             vectorIndex.removeVector(id)
         }
         _memoriesFlow.value = activeMemoriesMap.values.toList()
-        var deletedCount = 0
-        try {
-            deletedCount = memoryDao?.deleteMemoriesOlderThan(cutoff) ?: toRemove.size
-        } catch (e: Exception) {
-            Log.e("MemoryManager", "Failed to prune older memories from Room database", e)
-            deletedCount = toRemove.size
-        }
         deletedCount
     }
 

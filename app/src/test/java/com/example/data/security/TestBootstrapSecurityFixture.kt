@@ -14,7 +14,7 @@ import java.util.UUID
  */
 object TestBootstrapSecurityFixture {
 
-    const val BOOTSTRAP_REQUESTER = "SYSTEM_INITIALIZER"
+    const val BOOTSTRAP_REQUESTER = "AUTHENTICATED_TEST_RUNNER"
 
     /**
      * Generates a unique, non-forgeable test bootstrap token and registers it in

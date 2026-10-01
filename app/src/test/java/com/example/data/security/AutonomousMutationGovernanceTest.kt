@@ -278,12 +278,20 @@ class AutonomousMutationGovernanceTest {
         assertTrue("Emergency stop latch must remain engaged after unauthorized human attempt",
             WastiEmergencyStopController.isEmergencyStopped)
 
-        // Legitimate human operator reset -> Must succeed and clear latch
-        val humanResetResult = WastiEmergencyStopController.resetEmergencyStop(
+        // Attempt reset by human operator without token -> Must fail closed
+        val humanNoTokenResult = WastiEmergencyStopController.resetEmergencyStop(
             requester = "HUMAN_OPERATOR",
             adminToken = null
         )
-        assertTrue("Emergency stop reset by human operator must succeed", humanResetResult)
+        assertFalse("Emergency stop reset by human operator without token must fail closed", humanNoTokenResult)
+        assertTrue("Emergency stop latch must remain engaged", WastiEmergencyStopController.isEmergencyStopped)
+
+        // Legitimate authenticated human operator reset with valid admin token -> Must succeed and clear latch
+        val humanResetResult = WastiEmergencyStopController.resetEmergencyStop(
+            requester = "HUMAN_OPERATOR",
+            adminToken = validToken
+        )
+        assertTrue("Emergency stop reset by authenticated human operator must succeed", humanResetResult)
         assertFalse("Emergency stop latch must be cleared after legitimate human reset",
             WastiEmergencyStopController.isEmergencyStopped)
     }

@@ -119,12 +119,22 @@ object AutonomousMutationGovernance {
 
     /**
      * Resolves canonical filesystem path safely to prevent path-traversal obfuscation attacks.
+     * Throws SecurityException on canonicalization failure (Fail-Closed).
      */
     fun canonicalizePath(filePath: String): String {
+        return tryCanonicalizePath(filePath)
+            ?: throw SecurityException("Path canonicalization failed (Fail-Closed): $filePath")
+    }
+
+    /**
+     * Attempts to resolve canonical path safely; returns null on failure without falling back to raw path.
+     */
+    fun tryCanonicalizePath(filePath: String): String? {
         return try {
-            File(filePath).canonicalPath.replace("\\", "/")
+            val file = File(filePath)
+            file.canonicalPath.replace("\\", "/")
         } catch (_: Exception) {
-            filePath.replace("\\", "/")
+            null
         }
     }
 
@@ -132,7 +142,7 @@ object AutonomousMutationGovernance {
      * Classifies a target File into an explicit MutationRiskTier using canonical path resolution.
      */
     fun classifyRiskTier(targetFile: File, content: String? = null, action: String? = null): MutationRiskTier {
-        val canonical = canonicalizePath(targetFile.path)
+        val canonical = tryCanonicalizePath(targetFile.path) ?: return MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE
         return classifyRiskTier(canonical, content, action)
     }
 
@@ -140,10 +150,11 @@ object AutonomousMutationGovernance {
      * Classifies a target file or operation into an explicit MutationRiskTier.
      */
     fun classifyRiskTier(filePath: String, content: String? = null, action: String? = null): MutationRiskTier {
+        val canonicalPath = tryCanonicalizePath(filePath) ?: return MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE
         val normalizedPath = filePath.replace("\\", "/").lowercase()
-        val canonicalPath = canonicalizePath(filePath).lowercase()
+        val canonicalLower = canonicalPath.lowercase()
         val normalizedAction = (action ?: "").lowercase()
-        val combined = "$normalizedPath $canonicalPath $normalizedAction ${content?.take(500)?.lowercase() ?: ""}"
+        val combined = "$normalizedPath $canonicalLower $normalizedAction ${content?.take(500)?.lowercase() ?: ""}"
 
         // 1. Critical Security Check
         for (pattern in CRITICAL_SECURITY_PATTERNS) {
@@ -161,7 +172,7 @@ object AutonomousMutationGovernance {
 
         // 3. Low Reversible Check
         for (pattern in LOW_RISK_PATTERNS) {
-            if (normalizedPath.contains(pattern.lowercase()) || canonicalPath.contains(pattern.lowercase())) {
+            if (normalizedPath.contains(pattern.lowercase()) || canonicalLower.contains(pattern.lowercase())) {
                 return MutationRiskTier.LOW_REVERSIBLE
             }
         }
@@ -178,27 +189,39 @@ object AutonomousMutationGovernance {
         newContent: String,
         isAutonomous: Boolean = true,
         adminAuthToken: String? = null,
-        requester: String = if (isAutonomous) "AUTONOMOUS_AI" else "HUMAN_OPERATOR"
+        requester: String = if (isAutonomous) "AUTONOMOUS_AI" else "HUMAN_OPERATOR",
+        workspaceRoot: File? = null
     ): MutationEvaluation {
-        val canonical = canonicalizePath(targetFile.path)
+        val canonical = tryCanonicalizePath(targetFile.path)
+        if (canonical == null) {
+            return MutationEvaluation(
+                riskTier = MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE,
+                decision = ModificationDecision.BLOCKED_PROTECTED_PATH,
+                requiresHumanApproval = true,
+                reason = "Path canonicalization failed (Fail-Closed): ${targetFile.path}",
+                riskFactors = listOf("CANONICALIZATION_FAILURE")
+            )
+        }
         return evaluateMutationAuthority(
             filePath = canonical,
             newContent = newContent,
             isAutonomous = isAutonomous,
             adminAuthToken = adminAuthToken,
-            requester = requester
+            requester = requester,
+            workspaceRoot = workspaceRoot
         )
     }
 
     /**
-     * Evaluates autonomous mutation authority against risk tier, caller identity, and system state.
+     * Evaluates autonomous mutation authority against risk tier, caller identity, workspace containment, and system state.
      */
     fun evaluateMutationAuthority(
         filePath: String,
         newContent: String,
         isAutonomous: Boolean = true,
         adminAuthToken: String? = null,
-        requester: String = if (isAutonomous) "AUTONOMOUS_AI" else "HUMAN_OPERATOR"
+        requester: String = if (isAutonomous) "AUTONOMOUS_AI" else "HUMAN_OPERATOR",
+        workspaceRoot: File? = null
     ): MutationEvaluation {
         // 1. Emergency Stop Check
         if (WastiEmergencyStopController.isEmergencyStopped) {
@@ -211,11 +234,37 @@ object AutonomousMutationGovernance {
             )
         }
 
-        // 2. Classify Risk Tier
-        val tier = classifyRiskTier(filePath, newContent)
+        // 2. Canonical Path Resolution (Fail-Closed on Traversal / Resolution Failure)
+        val canonicalTarget = tryCanonicalizePath(filePath)
+        if (canonicalTarget == null) {
+            return MutationEvaluation(
+                riskTier = MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE,
+                decision = ModificationDecision.BLOCKED_PROTECTED_PATH,
+                requiresHumanApproval = true,
+                reason = "Target path canonicalization failed (Fail-Closed): $filePath",
+                riskFactors = listOf("CANONICALIZATION_FAILURE")
+            )
+        }
+
+        // 3. Workspace-Root Containment Verification
+        if (workspaceRoot != null) {
+            val canonicalRoot = tryCanonicalizePath(workspaceRoot.path)
+            if (canonicalRoot == null || (!canonicalTarget.startsWith("$canonicalRoot/") && canonicalTarget != canonicalRoot)) {
+                return MutationEvaluation(
+                    riskTier = MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE,
+                    decision = ModificationDecision.BLOCKED_PROTECTED_PATH,
+                    requiresHumanApproval = true,
+                    reason = "Workspace boundary violation: target '$canonicalTarget' escapes workspace root '${canonicalRoot ?: workspaceRoot.path}'",
+                    riskFactors = listOf("WORKSPACE_ESCAPE_DETECTED")
+                )
+            }
+        }
+
+        // 4. Classify Risk Tier using Canonical Path
+        val tier = classifyRiskTier(canonicalTarget, newContent)
         val riskFactors = mutableListOf<String>()
 
-        // 3. Critical Security Boundary
+        // 5. Critical Security Boundary
         if (tier == MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE) {
             riskFactors.add("CRITICAL_SECURITY_IMMUTABLE: Target is in protected security/signing/CI boundary")
             if (isAutonomous && !SelfModificationSafetyEngine.isValidAdminToken(adminAuthToken)) {
@@ -229,7 +278,7 @@ object AutonomousMutationGovernance {
             }
         }
 
-        // 4. High Governance Boundary
+        // 6. High Governance Boundary
         if (tier == MutationRiskTier.HIGH_GOVERNANCE) {
             riskFactors.add("HIGH_GOVERNANCE: Operation affects privileged system controls or root operations")
             if (isAutonomous && !SelfModificationSafetyEngine.isValidAdminToken(adminAuthToken)) {
@@ -243,9 +292,9 @@ object AutonomousMutationGovernance {
             }
         }
 
-        // 5. Size and Loop Checks via SelfModificationSafetyEngine
+        // 7. Size, Path, and Loop Checks via SelfModificationSafetyEngine
         val engineDecision = SelfModificationSafetyEngine.evaluateModification(
-            filePath = filePath,
+            filePath = canonicalTarget,
             newContent = newContent,
             isAutonomous = isAutonomous,
             adminAuthToken = adminAuthToken
@@ -268,8 +317,10 @@ object AutonomousMutationGovernance {
 
     /**
      * Determines whether emergency stop latch reset is authorized.
-     * Invariant: AI callers can NEVER reset emergency stop autonomously, even if an admin token is provided.
-     * Only verified Human Operators, Owner Admins, or explicitly authorized callers with a valid admin token can reset.
+     * Invariant: SYSTEM, SYSTEM_*, AI, agent, subagent, autonomous, bot, and UNKNOWN identities
+     * can NEVER reset emergency stop (fail-closed).
+     * A requester string alone must never authorize reset; a cryptographically valid admin token
+     * is strictly required.
      */
     fun isEmergencyStopResetPermitted(requester: String?, adminToken: String? = null): Boolean {
         if (requester.isNullOrBlank()) {
@@ -279,9 +330,11 @@ object AutonomousMutationGovernance {
 
         val normalized = requester.trim().uppercase()
 
-        // 1. Strict autonomous AI, unknown, and unverified system caller prohibition: Admin tokens CANNOT override AI boundary
+        // 1. Strict fail-closed rejection of SYSTEM, SYSTEM_*, AI, agent, subagent, autonomous, bot, and UNKNOWN identities
         if (normalized == "AUTONOMOUS_AI" ||
+            normalized == "AI" ||
             normalized.startsWith("AI_") ||
+            normalized.endsWith("_AI") ||
             normalized.contains("AGENT") ||
             normalized.contains("SUBAGENT") ||
             normalized.contains("AUTONOMOUS") ||
@@ -290,27 +343,17 @@ object AutonomousMutationGovernance {
             normalized == "SYSTEM" ||
             normalized.startsWith("SYSTEM_")
         ) {
-            // Unverified autonomous AI/agent/system/unknown callers are strictly prohibited
-            if (!SelfModificationSafetyEngine.isValidAdminToken(adminToken) || normalized.contains("AI") || normalized.contains("AGENT") || normalized.contains("AUTONOMOUS") || normalized.contains("BOT")) {
-                Log.e(TAG, "Security Alert: Autonomous/System/Unknown caller '$requester' attempted to reset Emergency Stop latch. REJECTED (Fail-Closed).")
-                return false
-            }
+            Log.e(TAG, "Security Alert: Autonomous/System/Agent/Bot/Unknown caller '$requester' attempted to reset Emergency Stop latch. REJECTED (Fail-Closed).")
+            return false
         }
 
-        // 2. Verified admin token authorization for human/owner operators
+        // 2. Requester string alone must never authorize reset: strictly requires a non-forgeable verified admin token
         if (SelfModificationSafetyEngine.isValidAdminToken(adminToken)) {
             return true
         }
 
-        // 3. Explicitly authorized human operators and owner admins
-        if (normalized == "HUMAN_OPERATOR" ||
-            normalized == "OWNER_ADMIN"
-        ) {
-            return true
-        }
-
-        // 4. Reject all other unauthenticated or unauthorized callers (Fail-Closed)
-        Log.w(TAG, "Emergency Stop reset rejected for unauthorized caller: $requester")
+        // 3. Fail-Closed for all unauthenticated callers (e.g. HUMAN_OPERATOR without valid admin token)
+        Log.w(TAG, "Emergency Stop reset rejected for unauthenticated caller: $requester (valid admin token required)")
         return false
     }
 

@@ -65,7 +65,8 @@ enum class MemoryProvenanceCategory {
     IMPORTED,
     INFERRED,
     VERIFIED,
-    SUPERSEDED
+    SUPERSEDED,
+    UNKNOWN
 }
 
 data class MemoryItem(
