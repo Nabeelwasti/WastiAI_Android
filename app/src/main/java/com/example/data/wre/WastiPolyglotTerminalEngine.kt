@@ -439,51 +439,33 @@ class WastiPolyglotTerminalEngine(
     }
 
     private suspend fun executeRustCompilation(bin: String, args: String, workingDir: java.io.File): PolyglotExecutionOutcome {
-        val tokens = args.split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.isEmpty() || tokens[0] == "--version" || tokens[0] == "-V") {
+        val binPath = binaryRegistry.getBinaryPath(bin)
+        if (binPath == null) {
             return PolyglotExecutionOutcome(
-                isSuccess = true,
+                isSuccess = false,
                 language = PolyglotLanguage.SHELL,
-                stdout = "rustc 1.76.0 (07dca489a 2024-02-04) (Wasti Sovereign Toolchain aarch64-linux-android)\nLLVM version: 17.0.6",
-                verificationEvidence = "Rust compiler toolchain active"
+                stdout = "",
+                stderr = "$bin: Sovereign Rust toolchain binary not registered, authorized, or installed on this device.",
+                exitCode = 127
             )
         }
-        val srcName = tokens.firstOrNull { it.endsWith(".rs") }
-        val outName = tokens.getOrNull(tokens.indexOf("-o") + 1) ?: srcName?.removeSuffix(".rs") ?: "a.out"
-        val srcFile = srcName?.let { java.io.File(workingDir, it) }
-
-        if (srcFile != null && !srcFile.exists()) {
-            return PolyglotExecutionOutcome(false, PolyglotLanguage.SHELL, "", "error: couldn't read $srcName: No such file or directory (os error 2)", 1)
-        }
-
-        val outBin = java.io.File(workingDir, outName)
-        outBin.writeText("#!/system/bin/sh\necho \"[Rust Binary: $outName] Compiled and executed on Wasti AI OS\"\n")
-        try { outBin.setExecutable(true) } catch (_: Exception) {}
-
-        return PolyglotExecutionOutcome(
-            isSuccess = true,
-            language = PolyglotLanguage.SHELL,
-            stdout = "   Compiling ${srcName ?: "crate"} v0.1.0 (${workingDir.absolutePath})\n    Finished release [optimized] target(s) in 0.42s\nGenerated binary: $outName",
-            verificationEvidence = "Compiled Rust binary: $outName"
-        )
+        val tokens = args.split(Regex("\\s+")).filter { it.isNotBlank() }
+        return binaryRegistry.executeRawBinary(bin, tokens, workingDir, requester = "WastiPolyglotTerminalEngine:RustCompilation")
     }
 
     private suspend fun executeFfmpeg(bin: String, args: String, workingDir: java.io.File): PolyglotExecutionOutcome {
-        val tokens = args.split(Regex("\\s+")).filter { it.isNotBlank() }
-        if (tokens.isEmpty() || tokens[0] == "-version" || tokens[0] == "--version") {
+        val binPath = binaryRegistry.getBinaryPath(bin)
+        if (binPath == null) {
             return PolyglotExecutionOutcome(
-                isSuccess = true,
+                isSuccess = false,
                 language = PolyglotLanguage.SHELL,
-                stdout = "ffmpeg version 6.1.1-WastiSovereign Copyright (c) 2000-2023 the FFmpeg developers\nbuilt with clang version 17.0.6\nconfiguration: --enable-gpl --enable-libmp3lame --enable-libx264 --enable-libx265",
-                verificationEvidence = "FFmpeg multimedia engine active"
+                stdout = "",
+                stderr = "$bin: Sovereign multimedia binary not registered, authorized, or installed on this device.",
+                exitCode = 127
             )
         }
-        return PolyglotExecutionOutcome(
-            isSuccess = true,
-            language = PolyglotLanguage.SHELL,
-            stdout = "ffmpeg: Processing input streams with hardware acceleration...\nframe=  420 fps=60 q=-0.0 size=    4096kB time=00:00:07.00 bitrate=4793.8kbits/s speed=2.1x\nStream mapping: [video -> h264_mediacodec, audio -> aac]\nConversion completed successfully.",
-            verificationEvidence = "FFmpeg transformation completed"
-        )
+        val tokens = args.split(Regex("\\s+")).filter { it.isNotBlank() }
+        return binaryRegistry.executeRawBinary(bin, tokens, workingDir, requester = "WastiPolyglotTerminalEngine:FFmpeg")
     }
 
     private suspend fun executeMeshDiscovery(): PolyglotExecutionOutcome {

@@ -76,24 +76,24 @@ class WrePackageManager(
     }
 
     private fun savePackages() {
-        try {
-            val jsonObj = JSONObject()
-            packages.forEach { (name, pkg) ->
-                val item = JSONObject().apply {
-                    put("name", pkg.name)
-                    put("version", pkg.version)
-                    put("description", pkg.description)
-                    put("runtime", pkg.runtime)
-                    put("entryPoint", pkg.entryPoint)
-                    put("author", pkg.author)
-                    put("installedAt", pkg.installedAt)
-                }
-                jsonObj.put(name, item)
+        val jsonObj = JSONObject()
+        packages.forEach { (name, pkg) ->
+            val item = JSONObject().apply {
+                put("name", pkg.name)
+                put("version", pkg.version)
+                put("description", pkg.description)
+                put("runtime", pkg.runtime)
+                put("entryPoint", pkg.entryPoint)
+                put("author", pkg.author)
+                put("installedAt", pkg.installedAt)
+                val permsArr = org.json.JSONArray()
+                pkg.permissions.forEach { permsArr.put(it) }
+                put("permissions", permsArr)
             }
-            packagesMetaFile.writeText(jsonObj.toString(2))
-        } catch (e: Exception) {
-            android.util.Log.w("WrePackageManager", "Failed to save packages: " + e.message, e)
+            jsonObj.put(name, item)
         }
+        packagesMetaFile.parentFile?.mkdirs()
+        packagesMetaFile.writeText(jsonObj.toString(2))
     }
 
     private fun ensureDefaultPackages() {

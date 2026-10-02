@@ -114,16 +114,16 @@ object SovereignAlternativeRegistry {
 
         // 1. Query Wikipedia Summary API for factual entities (No API key needed)
         try {
-            val wikiUrl = URL("https://en.wikipedia.org/api/rest_v1/page/summary/$encodedQuery")
-            val conn = (wikiUrl.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 4000
-                readTimeout = 4000
-                setRequestProperty("User-Agent", "WastiAI-Sovereign-Engine/1.0")
-            }
+            val wikiUrlStr = "https://en.wikipedia.org/api/rest_v1/page/summary/$encodedQuery"
+            val safeResponse = com.example.data.security.SsrfSecurityBoundary.executeSafeHttpGet(
+                urlStr = wikiUrlStr,
+                headers = mapOf("User-Agent" to "WastiAI-Sovereign-Engine/1.0"),
+                connectTimeoutMs = 4000,
+                readTimeoutMs = 4000
+            )
 
-            if (conn.responseCode == 200) {
-                val jsonText = conn.inputStream.bufferedReader().readText()
+            if (safeResponse.statusCode == 200) {
+                val jsonText = safeResponse.body
                 val obj = JSONObject(jsonText)
                 val title = obj.optString("title", query)
                 val extract = obj.optString("extract", "")
@@ -133,21 +133,20 @@ object SovereignAlternativeRegistry {
                     results.add(SovereignSearchResultItem(title = title, snippet = extract, sourceUrl = pageUrl))
                 }
             }
-            conn.disconnect()
         } catch (_: Exception) {}
 
         // 2. Query DuckDuckGo HTML Lite (No API key, plain text)
         try {
-            val ddgUrl = URL("https://html.duckduckgo.com/html/?q=$encodedQuery")
-            val conn = (ddgUrl.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 5000
-                readTimeout = 5000
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/115.0")
-            }
+            val ddgUrlStr = "https://html.duckduckgo.com/html/?q=$encodedQuery"
+            val safeResponse = com.example.data.security.SsrfSecurityBoundary.executeSafeHttpGet(
+                urlStr = ddgUrlStr,
+                headers = mapOf("User-Agent" to "Mozilla/5.0 (Android; Mobile; rv:109.0) Gecko/109.0 Firefox/115.0"),
+                connectTimeoutMs = 5000,
+                readTimeoutMs = 5000
+            )
 
-            if (conn.responseCode == 200) {
-                val html = conn.inputStream.bufferedReader().readText()
+            if (safeResponse.statusCode == 200) {
+                val html = safeResponse.body
                 // Extract search result snippets cleanly
                 val snippetRegex = Regex("<a class=\"result__snippet\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
                 val titleRegex = Regex("<a class=\"result__url\"[^>]*href=\"([^\"]+)\"[^>]*>(.*?)</a>", RegexOption.DOT_MATCHES_ALL)
@@ -163,7 +162,6 @@ object SovereignAlternativeRegistry {
                     }
                 }
             }
-            conn.disconnect()
         } catch (e: Exception) {
             Log.w(TAG, "DuckDuckGo HTML query fallback: ${e.message}")
         }

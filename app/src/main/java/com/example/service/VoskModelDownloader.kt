@@ -61,10 +61,7 @@ object VoskModelDownloader {
             _downloadState.value = DownloadState.Downloading(0f, 0L, 0L)
             Log.i(TAG, "Downloading Vosk model from $MODEL_URL...")
 
-            val client = OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(120, TimeUnit.SECONDS)
-                .build()
+            val client = com.example.data.security.SsrfSecurityBoundary.createSafeHttpClient(30)
 
             val request = Request.Builder()
                 .url(MODEL_URL)

@@ -105,9 +105,99 @@ class SsrfSecurityBoundaryTest {
     }
 
     @Test
+    fun testRejectsEmbeddedCredentialsInUrls() {
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("http://user:password@example.com/"))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("https://admin:secret@8.8.8.8/api"))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("http://guest:@example.com/resource"))
+    }
+
+    @Test
+    fun testRejectsMalformedAndEmptyUrls() {
+        assertFalse(SsrfSecurityBoundary.isSafeUrl(null))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl(""))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("   "))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("not a valid url"))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("http://"))
+        assertFalse(SsrfSecurityBoundary.isSafeUrl("https://"))
+    }
+
+    @Test
     fun testAllowsPublicInternetAddresses() {
         assertTrue(SsrfSecurityBoundary.isSafePublicAddress(InetAddress.getByName("8.8.8.8")))
         assertTrue(SsrfSecurityBoundary.isSafePublicAddress(InetAddress.getByName("1.1.1.1")))
         assertTrue(SsrfSecurityBoundary.isSafePublicAddress(InetAddress.getByName("93.184.216.34")))
+    }
+
+    @Test
+    fun testSafeDnsBlocksMetadataHostnames() {
+        try {
+            SsrfSecurityBoundary.safeDns.lookup("metadata.google.internal")
+            org.junit.Assert.fail("Expected IOException for metadata hostname resolution")
+        } catch (e: java.io.IOException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+
+        try {
+            SsrfSecurityBoundary.safeDns.lookup("169.254.169.254")
+            org.junit.Assert.fail("Expected IOException for metadata IP resolution")
+        } catch (e: java.io.IOException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+    }
+
+    @Test
+    fun testOpenSafeConnectionThrowsOnUnsafeDestination() {
+        try {
+            SsrfSecurityBoundary.openSafeConnection("http://127.0.0.1:8080/secret")
+            org.junit.Assert.fail("Expected SecurityException when opening unsafe connection")
+        } catch (e: SecurityException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+
+        try {
+            SsrfSecurityBoundary.openSafeConnection("http://169.254.169.254/latest/meta-data")
+            org.junit.Assert.fail("Expected SecurityException when opening metadata connection")
+        } catch (e: SecurityException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+    }
+
+    @Test
+    fun testExecuteSafeHttpGetThrowsOnUnsafeDestination() {
+        try {
+            SsrfSecurityBoundary.executeSafeHttpGet("http://192.168.1.1/admin")
+            org.junit.Assert.fail("Expected SecurityException when executing unsafe HTTP GET")
+        } catch (e: SecurityException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+
+        try {
+            SsrfSecurityBoundary.executeSafeHttpGet("http://user:pass@example.com")
+            org.junit.Assert.fail("Expected SecurityException when executing credentialed URL")
+        } catch (e: SecurityException) {
+            assertTrue(e.message?.contains("SSRF Security Violation") == true)
+        }
+    }
+
+    @Test
+    fun testModelDownloaderSecureUrlValidation() {
+        // Allowed domains via HTTPS
+        assertTrue(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen.gguf"))
+        assertTrue(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://hf-mirror.com/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen.gguf"))
+        assertTrue(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://github.com/ggerganov/llama.cpp/releases/download/b1234/model.gguf"))
+        assertTrue(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://raw.githubusercontent.com/user/models/main/model.gguf"))
+
+        // Disallowed domains
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://untrusted-host.com/model.gguf"))
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://evil.org/model.gguf"))
+
+        // Disallowed non-HTTPS schemes
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("http://huggingface.co/model.gguf"))
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("ftp://github.com/model.gguf"))
+
+        // Disallowed private / loopback / metadata destinations
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://127.0.0.1/model.gguf"))
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://169.254.169.254/model.gguf"))
+        assertFalse(com.example.data.ai.runtime.WastiModelDownloader.isSecureDownloadUrl("https://10.0.0.1/model.gguf"))
     }
 }

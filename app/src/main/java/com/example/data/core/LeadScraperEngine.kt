@@ -260,7 +260,6 @@ object LeadScraperEngine {
      */
     suspend fun fetchRemotiveJobs(query: String): List<LeadItem> = withContext(Dispatchers.IO) {
         val jobs = mutableListOf<LeadItem>()
-        var connection: HttpURLConnection? = null
         try {
             val cleanQ = query.trim()
             val encodedQuery = URLEncoder.encode(cleanQ, "UTF-8")
@@ -269,17 +268,19 @@ object LeadScraperEngine {
             } else {
                 "https://remotive.com/api/remote-jobs?limit=12"
             }
-            val url = URL(urlString)
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 8000
-                readTimeout = 8000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0")
-                setRequestProperty("Accept", "application/json")
-            }
 
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
+            val safeResponse = com.example.data.security.SsrfSecurityBoundary.executeSafeHttpGet(
+                urlStr = urlString,
+                headers = mapOf(
+                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0",
+                    "Accept" to "application/json"
+                ),
+                connectTimeoutMs = 8000,
+                readTimeoutMs = 8000
+            )
+
+            if (safeResponse.statusCode == HttpURLConnection.HTTP_OK) {
+                val jsonStr = safeResponse.body
                 val json = JSONObject(jsonStr)
                 val jobsArray = json.optJSONArray("jobs") ?: JSONArray()
                 for (i in 0 until jobsArray.length()) {
@@ -310,8 +311,6 @@ object LeadScraperEngine {
             }
         } catch (e: Exception) {
             Log.w(TAG, "Remotive live jobs fetch notice: ${e.message}")
-        } finally {
-            connection?.disconnect()
         }
         jobs
     }
@@ -365,19 +364,16 @@ object LeadScraperEngine {
      */
     suspend fun fetchRssFeed(feedUrl: String): List<LeadItem> = withContext(Dispatchers.IO) {
         val leads = mutableListOf<LeadItem>()
-        var connection: HttpURLConnection? = null
         try {
-            val url = URL(feedUrl)
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 10000
-                readTimeout = 10000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0")
-                instanceFollowRedirects = true
-            }
+            val safeResponse = com.example.data.security.SsrfSecurityBoundary.executeSafeHttpGet(
+                urlStr = feedUrl,
+                headers = mapOf("User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WastiLeadRadar/2.0"),
+                connectTimeoutMs = 10000,
+                readTimeoutMs = 10000
+            )
 
-            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                val inputStream = connection.inputStream
+            if (safeResponse.statusCode == HttpURLConnection.HTTP_OK) {
+                val inputStream = java.io.ByteArrayInputStream(safeResponse.body.toByteArray(Charsets.UTF_8))
                 val parser = Xml.newPullParser()
                 parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
                 parser.setInput(inputStream, "UTF-8")
@@ -431,12 +427,10 @@ object LeadScraperEngine {
                     eventType = parser.next()
                 }
             } else {
-                Log.w(TAG, "RSS Feed HTTP response code: ${connection.responseCode}")
+                Log.w(TAG, "RSS Feed HTTP response code: ${safeResponse.statusCode}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching/parsing RSS feed from $feedUrl", e)
-        } finally {
-            connection?.disconnect()
         }
 
         return@withContext leads

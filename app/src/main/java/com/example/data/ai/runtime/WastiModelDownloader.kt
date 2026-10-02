@@ -43,12 +43,11 @@ object WastiModelDownloader {
     }
 
     fun isSecureDownloadUrl(urlString: String): Boolean {
+        if (!com.example.data.security.SsrfSecurityBoundary.isSafeUrl(urlString)) return false
         return try {
             val uri = URI(urlString)
             if (!uri.scheme.equals("https", ignoreCase = true)) return false
             val host = uri.host?.lowercase() ?: return false
-            if (host == "localhost" || host == "127.0.0.1" || host == "::1") return false
-            if (host.startsWith("10.") || host.startsWith("192.168.") || host.startsWith("169.254.")) return false
             val allowedSuffixes = listOf("huggingface.co", "github.com", "githubusercontent.com", "hf-mirror.com")
             allowedSuffixes.any { host == it || host.endsWith(".$it") }
         } catch (_: Throwable) {
@@ -164,10 +163,7 @@ object WastiModelDownloader {
                         )
                     }
 
-                    val url = URL(currentUrl)
-                    connection = url.openConnection() as HttpURLConnection
-                    connection.connectTimeout = 15000
-                    connection.readTimeout = 30000
+                    connection = com.example.data.security.SsrfSecurityBoundary.openSafeConnection(currentUrl, 15000, 30000)
                     connection.requestMethod = "GET"
 
                     val existingLength = if (tempFile.exists()) tempFile.length() else 0L

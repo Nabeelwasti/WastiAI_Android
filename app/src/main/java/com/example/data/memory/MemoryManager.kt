@@ -431,57 +431,21 @@ object MemoryManager {
     }
 
     suspend fun exportUserDataJson(): String = withContext(Dispatchers.IO) {
-        val dao = memoryDao
-        val items: List<MemoryItem> = if (dao != null) {
-            try {
-                dao.getAllMemoriesSync().map { entity ->
-                    val tier = try {
-                        MemoryTier.valueOf(entity.tier)
-                    } catch (_: Exception) {
-                        resolveTierForCategory(entity.category, entity.key)
-                    }
-                    val provenanceCat = try {
-                        MemoryProvenanceCategory.valueOf(entity.provenanceCategory)
-                    } catch (_: Exception) {
-                        if (entity.category.contains("Preference", ignoreCase = true) || entity.category.contains("User", ignoreCase = true)) {
-                            MemoryProvenanceCategory.USER_STATED
-                        } else if (entity.category.contains("Inferred", ignoreCase = true) || entity.category.contains("Guessed", ignoreCase = true)) {
-                            MemoryProvenanceCategory.INFERRED
-                        } else {
-                            MemoryProvenanceCategory.OBSERVED
-                        }
-                    }
-                    MemoryItem(
-                        id = entity.id,
-                        key = entity.key,
-                        category = entity.category,
-                        value = entity.value,
-                        importanceScore = entity.importanceScore,
-                        timestamp = entity.timestamp,
-                        sourceMessageId = entity.sourceMessageId,
-                        tier = tier,
-                        provenanceCategory = provenanceCat
-                    )
-                }
-            } catch (_: Exception) {
-                activeMemoriesMap.values.toList()
-            }
-        } else {
-            activeMemoriesMap.values.toList()
-        }
+        val dao = memoryDao ?: throw IllegalStateException("Authoritative Room database is not available for export")
+        val entities = dao.getAllMemoriesSync()
 
         val jsonArray = org.json.JSONArray()
-        for (m in items) {
+        for (entity in entities) {
             val obj = org.json.JSONObject()
-            obj.put("id", m.id)
-            obj.put("key", m.key)
-            obj.put("category", m.category)
-            obj.put("value", m.value)
-            obj.put("importanceScore", m.importanceScore.toDouble())
-            obj.put("timestamp", m.timestamp)
-            obj.put("sourceMessageId", m.sourceMessageId ?: org.json.JSONObject.NULL)
-            obj.put("tier", m.tier.name)
-            obj.put("provenanceCategory", m.provenanceCategory.name)
+            obj.put("id", entity.id)
+            obj.put("key", entity.key)
+            obj.put("category", entity.category)
+            obj.put("value", entity.value)
+            obj.put("importanceScore", entity.importanceScore.toDouble())
+            obj.put("timestamp", entity.timestamp)
+            obj.put("sourceMessageId", entity.sourceMessageId ?: org.json.JSONObject.NULL)
+            obj.put("tier", entity.tier.ifBlank { "UNKNOWN" })
+            obj.put("provenanceCategory", entity.provenanceCategory.ifBlank { "UNKNOWN" })
             jsonArray.put(obj)
         }
         jsonArray.toString(2)

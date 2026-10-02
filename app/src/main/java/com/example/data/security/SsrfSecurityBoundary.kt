@@ -6,11 +6,13 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
 import java.io.IOException
+import java.net.HttpURLConnection
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.URI
 import java.net.URISyntaxException
+import java.net.URL
 import java.util.concurrent.TimeUnit
 
 /**
@@ -20,9 +22,17 @@ import java.util.concurrent.TimeUnit
  * 1. Re-resolves hostnames against authoritative DNS.
  * 2. Rejects IPv4/IPv6 loopback, RFC 1918 private subnets, link-local, carrier-grade NAT,
  *    multicast, unspecified/any-local, benchmark/test networks, and cloud metadata services.
- * 3. Intercepts redirects dynamically to prevent DNS-rebinding and redirect bypass.
- * 4. Preserves legitimate public Internet access.
+ * 3. Rejects user credentials embedded in URLs (userInfo).
+ * 4. Intercepts redirects dynamically to prevent DNS-rebinding and redirect bypass.
+ * 5. Preserves legitimate public Internet access.
  */
+data class SafeHttpResponse(
+    val statusCode: Int,
+    val headers: Map<String, List<String>>,
+    val body: String,
+    val finalUrl: String
+)
+
 object SsrfSecurityBoundary {
 
     private const val TAG = "SsrfSecurityBoundary"
@@ -48,11 +58,18 @@ object SsrfSecurityBoundary {
                 return false
             }
 
+            // Reject user credentials / embedded user info
+            if (uri.userInfo != null || uri.rawUserInfo != null) {
+                Log.w(TAG, "SSRF Blocked: Disallowed user info/credentials in URL")
+                return false
+            }
+
             val host = uri.host ?: return false
             if (host.isBlank()) return false
 
+            val hostLower = host.lowercase()
             // Check metadata hostnames directly
-            if (CLOUD_METADATA_HOSTNAMES.contains(host.lowercase())) {
+            if (CLOUD_METADATA_HOSTNAMES.contains(hostLower) || hostLower.contains("metadata.google.internal") || hostLower.contains("metadata.internal")) {
                 Log.w(TAG, "SSRF Blocked: Cloud metadata hostname '$host'")
                 return false
             }
@@ -183,10 +200,14 @@ object SsrfSecurityBoundary {
      */
     val safeDns: Dns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
-            if (CLOUD_METADATA_HOSTNAMES.contains(hostname.lowercase(java.util.Locale.ROOT))) {
+            val hostLower = hostname.lowercase(java.util.Locale.ROOT)
+            if (CLOUD_METADATA_HOSTNAMES.contains(hostLower) || hostLower.contains("metadata.google.internal") || hostLower.contains("metadata.internal")) {
                 throw IOException("SSRF Security Violation: Cloud metadata resolution blocked for '$hostname'")
             }
             val addresses = Dns.SYSTEM.lookup(hostname)
+            if (addresses.isEmpty()) {
+                throw IOException("SSRF Security Violation: Host '$hostname' could not be resolved")
+            }
             for (addr in addresses) {
                 if (!isSafePublicAddress(addr)) {
                     throw IOException("SSRF Security Violation: Host '$hostname' resolved to private/unsafe address '${addr.hostAddress}'")
@@ -197,7 +218,7 @@ object SsrfSecurityBoundary {
     }
 
     /**
-     * OkHttp interceptor that inspects HTTP redirect responses (301, 302, 307, 308)
+     * OkHttp interceptor that inspects HTTP redirect responses (301, 302, 303, 307, 308)
      * and ensures redirect destination URLs comply with SSRF boundaries before following.
      */
     val redirectValidatorInterceptor = Interceptor { chain ->
@@ -244,4 +265,130 @@ object SsrfSecurityBoundary {
             .followSslRedirects(true)
             .build()
     }
+
+    /**
+     * Executes an HTTP GET request with authoritative SSRF validation at every connection and redirect hop.
+     * Disables automatic redirects, verifies every redirect destination against SSRF boundaries,
+     * and increments redirectCount up to maxRedirects.
+     */
+    fun executeSafeHttpGet(
+        urlStr: String,
+        headers: Map<String, String> = emptyMap(),
+        connectTimeoutMs: Int = 10000,
+        readTimeoutMs: Int = 10000,
+        maxRedirects: Int = 5
+    ): SafeHttpResponse {
+        return executeSafeHttpRequest(
+            urlStr = urlStr,
+            method = "GET",
+            headers = headers,
+            connectTimeoutMs = connectTimeoutMs,
+            readTimeoutMs = readTimeoutMs,
+            maxRedirects = maxRedirects
+        )
+    }
+
+    /**
+     * Executes an HTTP request with authoritative SSRF validation at every connection and redirect hop.
+     */
+    fun executeSafeHttpRequest(
+        urlStr: String,
+        method: String = "GET",
+        headers: Map<String, String> = emptyMap(),
+        body: ByteArray? = null,
+        connectTimeoutMs: Int = 10000,
+        readTimeoutMs: Int = 10000,
+        maxRedirects: Int = 5
+    ): SafeHttpResponse {
+        var currentUrl = urlStr
+        var redirectCount = 0
+
+        while (true) {
+            if (!isSafeUrl(currentUrl)) {
+                throw SecurityException("SSRF Security Violation: Blocked unsafe destination '$currentUrl'")
+            }
+
+            val url = URL(currentUrl)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                this.requestMethod = method
+                this.connectTimeout = connectTimeoutMs
+                this.readTimeout = readTimeoutMs
+                this.instanceFollowRedirects = false
+                for ((k, v) in headers) {
+                    this.setRequestProperty(k, v)
+                }
+                if (body != null && (method == "POST" || method == "PUT" || method == "PATCH")) {
+                    this.doOutput = true
+                    this.outputStream.use { it.write(body) }
+                }
+            }
+
+            try {
+                val responseCode = connection.responseCode
+                if (responseCode in listOf(301, 302, 303, 307, 308)) {
+                    redirectCount++
+                    if (redirectCount > maxRedirects) {
+                        throw IOException("SSRF Security Error: Exceeded maximum redirects ($maxRedirects)")
+                    }
+
+                    val locationHeader = connection.getHeaderField("Location")
+                    if (locationHeader.isNullOrBlank()) {
+                        throw IOException("SSRF Security Error: HTTP redirect $responseCode missing Location header")
+                    }
+
+                    val baseUri = URI(currentUrl)
+                    val resolvedUri = try {
+                        baseUri.resolve(locationHeader)
+                    } catch (e: Exception) {
+                        throw SecurityException("SSRF Security Violation: Malformed redirect URI '$locationHeader': ${e.message}")
+                    }
+
+                    val nextUrl = resolvedUri.toString()
+                    if (!isSafeUrl(nextUrl)) {
+                        throw SecurityException("SSRF Security Violation: Redirect destination '$nextUrl' is unsafe")
+                    }
+
+                    currentUrl = nextUrl
+                    continue
+                }
+
+                val responseHeaders = connection.headerFields ?: emptyMap()
+                val stream = if (responseCode in 200..399) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream ?: java.io.ByteArrayInputStream(ByteArray(0))
+                }
+                val responseText = stream.bufferedReader().use { it.readText() }
+                return SafeHttpResponse(
+                    statusCode = responseCode,
+                    headers = responseHeaders,
+                    body = responseText,
+                    finalUrl = currentUrl
+                )
+            } finally {
+                connection.disconnect()
+            }
+        }
+    }
+
+    /**
+     * Opens an [HttpURLConnection] strictly verified against SSRF boundaries.
+     * Automatic redirects are disabled.
+     */
+    fun openSafeConnection(
+        urlString: String,
+        connectTimeoutMs: Int = 10000,
+        readTimeoutMs: Int = 10000
+    ): HttpURLConnection {
+        if (!isSafeUrl(urlString)) {
+            throw SecurityException("SSRF Security Violation: Disallowed destination '$urlString'")
+        }
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.connectTimeout = connectTimeoutMs
+        conn.readTimeout = readTimeoutMs
+        conn.instanceFollowRedirects = false
+        return conn
+    }
 }
+

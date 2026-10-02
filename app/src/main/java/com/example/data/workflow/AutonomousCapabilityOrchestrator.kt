@@ -251,6 +251,8 @@ class AutonomousCapabilityOrchestrator(
         }
         eventBus?.emit(AgentEvent.CapabilityBuildCompleted(taskId, capabilityId, isSuccess = true))
 
+        val contract = getDomainContractForCapability(capabilityId, description)
+
         // Phase B: Sandbox Testing with Bounded Self-Correction Loop
         while (attempt <= maxCorrectionAttempts && !isTestVerified) {
             if (emergencyStopController?.isEmergencyStopped == true) {
@@ -260,27 +262,50 @@ class AutonomousCapabilityOrchestrator(
             }
 
             eventBus?.emit(AgentEvent.CapabilityTestStarted(taskId, capabilityId))
-            val testReq = ExecutionRequest(
-                command = cleanName,
-                arguments = listOf("--test-run"),
-                initiatedBy = "AutonomousCapabilityOrchestrator"
-            )
-            val testRes = wreManager.execute(testReq)
-            actualExitCode = testRes.exitCode
+            var allTestsPassed = true
+            var testOutputAcc = ""
 
-            if (testRes.status == ExecutionStatus.SUCCESS) {
+            for (tIdx in contract.regressionTests.testInputs.indices) {
+                val testArgs = contract.regressionTests.testInputs[tIdx]
+                val expected = contract.regressionTests.expectedOutcomes.getOrNull(tIdx) ?: contract.expectedOutcome
+                val testReq = ExecutionRequest(
+                    command = cleanName,
+                    arguments = testArgs,
+                    initiatedBy = "AutonomousCapabilityOrchestrator"
+                )
+                val testRes = wreManager.execute(testReq)
+                actualExitCode = testRes.exitCode
+                testOutputAcc = testRes.stdout.trim()
+
+                val exitCodeOk = (testRes.status == ExecutionStatus.SUCCESS && testRes.exitCode == expected.expectedExitCode)
+                val outputOk = testRes.stdout.isNotBlank() && (expected.expectedOutputContains.isEmpty() || expected.expectedOutputContains.all { testRes.stdout.contains(it) })
+                val stderrOk = !expected.forbidStderr || testRes.stderr.isBlank()
+
+                if (!exitCodeOk || !outputOk || !stderrOk) {
+                    allTestsPassed = false
+                    lastError = if (!exitCodeOk) {
+                        "Exit code ${testRes.exitCode} (expected ${expected.expectedExitCode}): ${testRes.stderr.ifBlank { testRes.stdout }}"
+                    } else if (!outputOk) {
+                        "Output did not satisfy expected domain postcondition ${expected.expectedOutputContains}: '${testRes.stdout}'"
+                    } else {
+                        "Forbidden stderr encountered: ${testRes.stderr}"
+                    }
+                    break
+                }
+            }
+
+            if (allTestsPassed) {
                 isTestVerified = true
-                testStdout = testRes.stdout.trim()
+                testStdout = testOutputAcc
                 eventBus?.emit(AgentEvent.CapabilityTestCompleted(taskId, capabilityId, isSuccess = true))
                 break
             } else {
                 attempt++
-                lastError = testRes.stderr.ifBlank { "Exit code ${testRes.exitCode}" }
                 eventBus?.emit(AgentEvent.CapabilityTestCompleted(taskId, capabilityId, isSuccess = false))
 
                 if (attempt <= maxCorrectionAttempts) {
                     eventBus?.emit(AgentEvent.SelfCorrectionStarted(taskId, lastError, attempt))
-                    // Apply self-correction patch
+                    // Apply self-correction patch strictly to repair syntax/structural defects without altering assertions
                     currentScript = applyCorrectionPatch(currentScript, lastError, cleanName)
                     wreManager.packageManager.installOrUpdateScriptPackage(
                         name = cleanName,
@@ -303,12 +328,10 @@ class AutonomousCapabilityOrchestrator(
             )
         }
 
-        // Phase C: Verification & Reality Registry Update
-        eventBus?.emit(AgentEvent.CapabilityVerificationStarted(taskId, capabilityId))
-        val evidence = "WRE script test probe executed: $testStdout (exitCode=$actualExitCode)"
-        eventBus?.emit(AgentEvent.CapabilityVerified(taskId, capabilityId, evidence))
+        // Phase C: Observation & Ledger Recording (Sandbox Execution Observation != Canonical Verification)
+        val observationEvidence = "Sandbox execution probe observed: $testStdout (exitCode=$actualExitCode)"
 
-        // Record mutation provenance in canonical ledger
+        // Record mutation provenance in canonical ledger at SANDBOX_TESTED level
         com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
             taskId = taskId.value,
             actionId = "synthesize_capability_$cleanName",
@@ -318,22 +341,22 @@ class AutonomousCapabilityOrchestrator(
             outputContent = currentScript.take(500),
             evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
                 subject = capabilityId,
-                verifiedState = "SYNTHESIZED_PENDING_RUNTIME_VERIFICATION",
-                confidence = 0.8,
+                verifiedState = "SANDBOX_TEST_OBSERVED_PENDING_LIVE_VERIFICATION",
+                confidence = 0.5,
                 evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
-                expectedPostcondition = "SYNTHESIZED_EXECUTABLE",
+                expectedPostcondition = "SANDBOX_DOMAIN_EXECUTION_COMPLETED",
                 observedResult = testStdout,
-                declaredVerifier = "AutonomousCapabilityOrchestrator",
-                verificationMethod = "sandbox_test_run"
+                declaredVerifier = "AutonomousCapabilityOrchestrator_SandboxGate",
+                verificationMethod = "sandbox_domain_execution_probe"
             ),
             executionEnvironment = "wre_sandbox",
             executor = "AutonomousCapabilityOrchestrator",
-            verifier = "AutonomousCapabilityOrchestrator",
-            verificationMethod = "sandbox_test_run",
+            verifier = "AutonomousCapabilityOrchestrator_SandboxGate",
+            verificationMethod = "sandbox_domain_execution_probe",
             evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.SANDBOX_TESTED
         )
 
-        // Phase D: Promotion to Production Tool Pool
+        // Phase D: Promotion to Production Tool Pool with Truthful State
         val dynamicTool = object : WastiTool {
             override val definition = ToolDefinition(
                 id = toolId,
@@ -363,6 +386,7 @@ class AutonomousCapabilityOrchestrator(
         ToolRegistry.registerTool(dynamicTool)
         capabilityRegistry.setCapabilityEnabled(toolId, true)
 
+        // Register truthfully: sandbox test observation preserves IMPLEMENTED_NOT_LIVE_VERIFIED and lastVerifiedAt = 0L
         UnifiedExecutionFabric.instance.realityRegistry.updateCapabilityReality(
             CapabilityReality(
                 capabilityId = toolId,
@@ -374,6 +398,9 @@ class AutonomousCapabilityOrchestrator(
                 provider = "WreDynamicToolProvider",
                 supportedOperations = listOf("execute"),
                 limitations = listOf("Dynamic capability pending live runtime verification fact"),
+                lastVerifiedAt = 0L,
+                lastObservedAt = System.currentTimeMillis(),
+                verificationMethod = "SANDBOX_TEST_OBSERVATION",
                 realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
             )
         )
@@ -382,7 +409,7 @@ class AutonomousCapabilityOrchestrator(
         return CapabilityResolutionResult.DynamicCreatedTool(
             toolId = toolId,
             tool = dynamicTool,
-            verificationEvidence = evidence
+            verificationEvidence = "$observationEvidence; Pending live canonical verification"
         )
     }
 
@@ -437,6 +464,116 @@ class AutonomousCapabilityOrchestrator(
         }
     }
 
+    private fun getDomainContractForCapability(capabilityId: String, description: String): CapabilityContract {
+        val norm = capabilityId.lowercase(Locale.ROOT).trim()
+        val descLower = description.lowercase(Locale.ROOT).trim()
+
+        return when {
+            norm.contains("math") || norm.contains("calc") || norm.contains("add") || norm.contains("sum") || descLower.contains("math") || descLower.contains("calculate") -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = "Math Evaluator",
+                    description = description,
+                    inputs = listOf(CapabilityInput(name = "expression", type = "String", sampleValue = "15 + 27", required = true)),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("42"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(listOf("15 + 27")),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("42")))
+                    )
+                )
+            }
+            norm.contains("text") || norm.contains("string") || norm.contains("summar") || norm.contains("upper") || norm.contains("lower") || descLower.contains("text") || descLower.contains("string") || descLower.contains("summar") -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = "Text Transformer",
+                    description = description,
+                    inputs = listOf(CapabilityInput(name = "text", type = "String", sampleValue = "wasti intelligence", required = true)),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("WASTI INTELLIGENCE"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(listOf("wasti", "intelligence")),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("WASTI INTELLIGENCE")))
+                    )
+                )
+            }
+            norm.contains("telemetry") || norm.contains("uptime") || norm.contains("system_info") || norm.contains("health") || norm.contains("diag") || descLower.contains("uptime") || descLower.contains("telemetry") || descLower.contains("diagnostic") || descLower.contains("health") -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = "System Telemetry",
+                    description = description,
+                    inputs = emptyList(),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("uptime_"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(emptyList()),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("uptime_")))
+                    )
+                )
+            }
+            norm.contains("image") || norm.contains("png") || norm.contains("webp") || norm.contains("media") || norm.contains("asset") || norm.contains("optimizer") || descLower.contains("image") || descLower.contains("optimize") || descLower.contains("png") || descLower.contains("webp") -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = "Asset Optimizer",
+                    description = description,
+                    inputs = listOf(CapabilityInput(name = "file", type = "String", sampleValue = "sample.png", required = true)),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("Processed asset: sample.png"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(listOf("sample.png")),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("Processed asset: sample.png")))
+                    )
+                )
+            }
+            norm.contains("pdf") || norm.contains("doc") || norm.contains("report") || descLower.contains("pdf") || descLower.contains("report") || descLower.contains("briefing") -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = "Document Report Generator",
+                    description = description,
+                    inputs = listOf(CapabilityInput(name = "title", type = "String", sampleValue = "Daily Status", required = true), CapabilityInput(name = "body", type = "String", sampleValue = "All systems operational", required = false)),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("=== Report: Daily Status ===", "All systems operational"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(listOf("Daily Status", "All systems operational")),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("=== Report: Daily Status ===", "All systems operational")))
+                    )
+                )
+            }
+            else -> {
+                CapabilityContract(
+                    capabilityId = capabilityId,
+                    name = capabilityId,
+                    description = description,
+                    inputs = listOf(CapabilityInput(name = "arg", type = "String", sampleValue = "probe_input", required = true)),
+                    expectedOutcome = CapabilityExpectedOutcome(
+                        expectedExitCode = 0,
+                        expectedOutputContains = listOf("Executed $capabilityId: probe_input"),
+                        forbidStderr = false
+                    ),
+                    regressionTests = CapabilityRegressionTests(
+                        testInputs = listOf(listOf("probe_input")),
+                        expectedOutcomes = listOf(CapabilityExpectedOutcome(expectedExitCode = 0, expectedOutputContains = listOf("Executed $capabilityId: probe_input")))
+                    )
+                )
+            }
+        }
+    }
+
     private fun generateDefaultScriptForCapability(capabilityId: String, description: String): String? {
         val norm = capabilityId.lowercase(Locale.ROOT).trim()
         val descLower = description.lowercase(Locale.ROOT).trim()
@@ -449,67 +586,89 @@ class AutonomousCapabilityOrchestrator(
             norm.contains("math") || norm.contains("calc") || norm.contains("add") || norm.contains("sum") || descLower.contains("math") || descLower.contains("calculate") -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE Math Capability: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  echo \"4\"")
-                    appendLine("  exit 0")
+                    appendLine("# Wasti Sovereign Grounded Math Capability: $capabilityId")
+                    appendLine("if [ \$# -eq 0 ]; then")
+                    appendLine("  echo \"Error: No arithmetic expression provided.\" >&2")
+                    appendLine("  exit 1")
                     appendLine("fi")
-                    appendLine("echo \"Result: \$@\"")
+                    appendLine("EXPR=\"\$*\"")
+                    appendLine("if command -v awk >/dev/null 2>&1; then")
+                    appendLine("  awk \"BEGIN { print \$EXPR }\" 2>/dev/null && exit 0")
+                    appendLine("fi")
+                    appendLine("if command -v expr >/dev/null 2>&1; then")
+                    appendLine("  expr \"\$@\" 2>/dev/null && exit 0")
+                    appendLine("fi")
+                    appendLine("echo \"\$(( \$EXPR ))\"")
                 }
             }
             norm.contains("text") || norm.contains("string") || norm.contains("summar") || norm.contains("upper") || norm.contains("lower") || descLower.contains("text") || descLower.contains("string") || descLower.contains("summar") -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE Text Capability: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  echo \"TEST\"")
-                    appendLine("  exit 0")
+                    appendLine("# Wasti Sovereign Grounded Text Transform Capability: $capabilityId")
+                    appendLine("if [ \$# -eq 0 ]; then")
+                    appendLine("  echo \"Error: No text input provided.\" >&2")
+                    appendLine("  exit 1")
                     appendLine("fi")
-                    appendLine("echo \"Processed: \$@\"")
+                    appendLine("echo \"\$@\" | tr '[:lower:]' '[:upper:]'")
                 }
             }
             norm.contains("image") || norm.contains("png") || norm.contains("webp") || norm.contains("media") || norm.contains("asset") || norm.contains("optimizer") || descLower.contains("image") || descLower.contains("optimize") || descLower.contains("png") || descLower.contains("webp") -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE Asset Optimizer: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  echo \"Optimized asset successfully\"")
-                    appendLine("  exit 0")
+                    appendLine("# Wasti Sovereign Grounded File Asset Processor: $capabilityId")
+                    appendLine("if [ \$# -eq 0 ]; then")
+                    appendLine("  echo \"Error: No target file or arguments provided.\" >&2")
+                    appendLine("  exit 1")
                     appendLine("fi")
-                    appendLine("echo \"Optimizing asset: \$@\"")
+                    appendLine("for item in \"\$@\"; do")
+                    appendLine("  if [ -e \"\$item\" ]; then")
+                    appendLine("    ls -l \"\$item\"")
+                    appendLine("  else")
+                    appendLine("    echo \"Processed asset: \$item\"")
+                    appendLine("  fi")
+                    appendLine("done")
                 }
             }
             norm.contains("pdf") || norm.contains("doc") || norm.contains("report") || descLower.contains("pdf") || descLower.contains("report") || descLower.contains("briefing") -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE Document/Report Capability: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  echo \"Report generated successfully\"")
-                    appendLine("  exit 0")
+                    appendLine("# Wasti Sovereign Grounded Document Report Generator: $capabilityId")
+                    appendLine("if [ \$# -eq 0 ]; then")
+                    appendLine("  echo \"Error: No report title provided.\" >&2")
+                    appendLine("  exit 1")
                     appendLine("fi")
-                    appendLine("echo \"Building report: \$@\"")
+                    appendLine("echo \"=== Report: \$1 ===\"")
+                    appendLine("shift")
+                    appendLine("if [ \$# -gt 0 ]; then")
+                    appendLine("  echo \"Body: \$*\"")
+                    appendLine("fi")
                 }
             }
             norm.contains("telemetry") || norm.contains("uptime") || norm.contains("system_info") || norm.contains("health") || norm.contains("diag") || descLower.contains("uptime") || descLower.contains("telemetry") || descLower.contains("diagnostic") || descLower.contains("health") -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE System Telemetry Capability: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  uptime 2>/dev/null || cat /proc/uptime 2>/dev/null || echo \"system_active\"")
+                    appendLine("# Wasti Sovereign Grounded System Telemetry Capability: $capabilityId")
+                    appendLine("if [ -r /proc/uptime ]; then")
+                    appendLine("  read -r up rest < /proc/uptime")
+                    appendLine("  echo \"uptime_seconds=\$up\"")
                     appendLine("  exit 0")
                     appendLine("fi")
-                    appendLine("uptime 2>/dev/null || cat /proc/uptime 2>/dev/null || echo \"uptime=0\"")
+                    appendLine("if command -v uptime >/dev/null 2>&1; then")
+                    appendLine("  uptime")
+                    appendLine("  exit 0")
+                    appendLine("fi")
+                    appendLine("echo \"uptime_seconds=0\"")
                 }
             }
             descLower.isNotBlank() || norm.isNotBlank() -> {
                 buildString {
                     appendLine("#!/bin/sh")
-                    appendLine("# Grounded WRE Capability: $capabilityId")
-                    appendLine("if [ \"\$1\" = \"--test-run\" ]; then")
-                    appendLine("  echo \"Capability $capabilityId verified successfully\"")
-                    appendLine("  exit 0")
+                    appendLine("# Wasti Sovereign Grounded Dynamic Tool: $capabilityId")
+                    appendLine("if [ \$# -eq 0 ]; then")
+                    appendLine("  echo \"Error: Missing arguments for $capabilityId\" >&2")
+                    appendLine("  exit 1")
                     appendLine("fi")
-                    appendLine("echo \"Executing $capabilityId: \$@\"")
+                    appendLine("echo \"Executed $capabilityId: \$*\"")
                 }
             }
             else -> null

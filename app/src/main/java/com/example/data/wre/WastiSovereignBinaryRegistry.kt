@@ -57,74 +57,35 @@ class WastiSovereignBinaryRegistry(
     private fun initializeStandardBinaries() {
         val arch = getSystemArchitecture()
         
-        // Register core built-in toolchain binaries
-        val defaultTools = listOf(
-            "clang" to "17.0.6",
-            "clang++" to "17.0.6",
-            "gcc" to "13.2.0",
-            "g++" to "13.2.0",
-            "rustc" to "1.76.0",
-            "cargo" to "1.76.0",
-            "python3" to "3.11.8",
-            "python" to "3.11.8",
-            "pip" to "23.3.1",
-            "pip3" to "23.3.1",
-            "node" to "20.11.1",
-            "npm" to "10.2.4",
-            "ffmpeg" to "6.1.1",
-            "ffprobe" to "6.1.1",
-            "git" to "2.43.0",
-            "sqlite3" to "3.42.0",
-            "curl" to "8.5.0",
-            "wget" to "1.21.4",
-            "jq" to "1.7.1",
-            "nano" to "7.2",
-            "vim" to "9.1",
-            "tmux" to "3.4",
-            "make" to "4.4.1",
-            "neofetch" to "7.1.0",
-            "htop" to "3.3.0",
-            "tree" to "2.1.1",
-            "tar" to "1.35",
-            "zip" to "3.0",
-            "unzip" to "6.0"
-        )
-
-        for ((name, ver) in defaultTools) {
-            val binFile = File(binDir, name)
-            if (!binFile.exists()) {
-                createScriptExecutable(binFile, name, ver)
-            } else {
-                binFile.setExecutable(true, false)
+        // Scan for genuine binary executables installed in sovereign bin directory
+        val binFiles = binDir.listFiles() ?: emptyArray()
+        for (binFile in binFiles) {
+            if (binFile.isFile && binFile.canExecute()) {
+                val name = binFile.name
+                installedBinaries[name] = SovereignBinaryInfo(
+                    name = name,
+                    version = "1.0.0",
+                    path = binFile.absolutePath,
+                    sizeBytes = binFile.length(),
+                    architecture = arch,
+                    isNativeElf = true
+                )
             }
-            installedBinaries[name] = SovereignBinaryInfo(
-                name = name,
-                version = ver,
-                path = binFile.absolutePath,
-                sizeBytes = binFile.length(),
-                architecture = arch,
-                isNativeElf = true
-            )
         }
     }
 
-    private fun createScriptExecutable(file: File, name: String, version: String) {
-        val script = """
-            #!/system/bin/sh
-            # Wasti AI OS Sovereign Standalone Binary Executable Wrapper
-            # Binary: $name v$version
-            export WASTI_USR_BIN="${binDir.absolutePath}"
-            export WASTI_USR_LIB="${libDir.absolutePath}"
-            export PATH="${binDir.absolutePath}:/system/bin:/system/xbin:${'$'}PATH"
-            echo "⚡ [Wasti Sovereign Execution Engine: $name v$version]"
-        """.trimIndent()
-        try {
-            file.writeText(script)
-            file.setExecutable(true, false)
-            file.setReadable(true, false)
-        } catch (e: Exception) {
-            Log.w("BinaryRegistry", "Failed to write executable permission for $name: ${e.message}")
-        }
+    fun registerInstalledBinary(name: String, version: String, file: File) {
+        require(file.exists() && file.isFile) { "Binary file does not exist: ${file.absolutePath}" }
+        file.setExecutable(true, false)
+        val arch = getSystemArchitecture()
+        installedBinaries[name] = SovereignBinaryInfo(
+            name = name,
+            version = version,
+            path = file.absolutePath,
+            sizeBytes = file.length(),
+            architecture = arch,
+            isNativeElf = true
+        )
     }
 
     fun getSystemArchitecture(): String {
@@ -132,12 +93,13 @@ class WastiSovereignBinaryRegistry(
     }
 
     fun isBinaryInstalled(name: String): Boolean {
-        return installedBinaries.containsKey(name) || File(binDir, name).exists()
+        val f = File(binDir, name)
+        return (installedBinaries.containsKey(name) || f.exists()) && f.isFile && f.canExecute()
     }
 
     fun getBinaryPath(name: String): String? {
         val f = File(binDir, name)
-        return if (f.exists()) f.absolutePath else null
+        return if (f.exists() && f.isFile && f.canExecute()) f.absolutePath else installedBinaries[name]?.path
     }
 
     fun getInstalledBinariesList(): List<SovereignBinaryInfo> {
@@ -145,13 +107,16 @@ class WastiSovereignBinaryRegistry(
     }
 
     /**
-     * Executes any binary with unconstrained environment parameters (PATH, LD_LIBRARY_PATH, HOME).
+     * Executes any binary with unconstrained environment parameters (PATH, LD_LIBRARY_PATH, HOME),
+     * strictly enforcing emergency-stop check, workspace boundary confinement, explicit requester identity,
+     * and authoritative execution provenance.
      */
     suspend fun executeRawBinary(
         binaryName: String,
         arguments: List<String>,
         workingDir: File,
-        extraEnv: Map<String, String> = emptyMap()
+        extraEnv: Map<String, String> = emptyMap(),
+        requester: String = "WastiSovereignBinaryRegistry"
     ): PolyglotExecutionOutcome = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         if (com.example.data.agent.runtime.WastiEmergencyStopController.isEmergencyStopped) {
@@ -163,7 +128,30 @@ class WastiSovereignBinaryRegistry(
                 exitCode = 126
             )
         }
-        val binPath = getBinaryPath(binaryName) ?: binaryName
+
+        // Enforce workspace boundary confinement
+        val canonicalWorking = try { workingDir.canonicalFile } catch (_: Exception) { workingDir }
+        val rootDir = workspaceManager.getRootDirectory().canonicalFile
+        if (!canonicalWorking.absolutePath.startsWith(rootDir.absolutePath)) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "Security Exception: Working directory '${workingDir.path}' is outside sandboxed workspace boundary.",
+                exitCode = 126
+            )
+        }
+
+        val resolvedBinPath = getBinaryPath(binaryName) ?: if (File(binaryName).isAbsolute && File(binaryName).exists() && File(binaryName).canExecute()) binaryName else null
+        if (resolvedBinPath == null) {
+            return@withContext PolyglotExecutionOutcome(
+                isSuccess = false,
+                language = PolyglotLanguage.SHELL,
+                stdout = "",
+                stderr = "$binaryName: Sovereign toolchain binary not registered, authorized, or installed on this system.",
+                exitCode = 127
+            )
+        }
 
         val envList = mutableListOf<String>()
         val defaultEnv = mapOf(
@@ -182,7 +170,7 @@ class WastiSovereignBinaryRegistry(
             envList.add("$k=$v")
         }
 
-        val cmdArray = arrayOf(binPath) + arguments.toTypedArray()
+        val cmdArray = arrayOf(resolvedBinPath) + arguments.toTypedArray()
 
         try {
             val process = Runtime.getRuntime().exec(cmdArray, envList.toTypedArray(), workingDir)
@@ -195,6 +183,32 @@ class WastiSovereignBinaryRegistry(
                 val stderr = process.errorStream.bufferedReader().readText()
                 val exitCode = process.waitFor()
 
+                try {
+                    com.example.data.agent.runtime.ExecutionProvenanceLedger.recordExecution(
+                        taskId = "bin_exec_${System.currentTimeMillis()}",
+                        actionId = "execute_raw_binary_$binaryName",
+                        capabilityId = binaryName,
+                        providerId = requester,
+                        inputContent = arguments.joinToString(" "),
+                        outputContent = stdout.take(300),
+                        evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
+                            subject = binaryName,
+                            verifiedState = if (exitCode == 0) "PROCESS_EXECUTION_COMPLETED" else "PROCESS_EXECUTION_FAILED",
+                            confidence = 0.8,
+                            evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
+                            expectedPostcondition = "PROCESS_EXIT_RECORDED",
+                            observedResult = "exitCode=$exitCode",
+                            declaredVerifier = "WastiSovereignBinaryRegistry",
+                            verificationMethod = "real_process_execution"
+                        ),
+                        executionEnvironment = "sovereign_bin_space",
+                        executor = requester,
+                        verifier = "WastiSovereignBinaryRegistry",
+                        verificationMethod = "real_process_execution",
+                        evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.SANDBOX_TESTED
+                    )
+                } catch (_: Throwable) {}
+
                 PolyglotExecutionOutcome(
                     isSuccess = exitCode == 0,
                     language = PolyglotLanguage.SHELL,
@@ -202,7 +216,7 @@ class WastiSovereignBinaryRegistry(
                     stderr = stderr,
                     exitCode = exitCode,
                     durationMs = System.currentTimeMillis() - startTime,
-                    verificationEvidence = "Native Binary '$binaryName' executed via Sovereign Subsystem"
+                    verificationEvidence = "Native Binary '$binaryName' executed (exitCode=$exitCode)"
                 )
             } finally {
                 regHandle.close()
@@ -223,15 +237,8 @@ class WastiSovereignBinaryRegistry(
      * Downloads a standalone sovereign binary artifact from a trusted repository.
      */
     suspend fun downloadRemoteBinary(urlStr: String, destination: File): Boolean = withContext(Dispatchers.IO) {
-        if (!com.example.data.security.SsrfSecurityBoundary.isSafeUrl(urlStr)) {
-            Log.w("BinaryRegistry", "Download blocked by SSRF Security Boundary for URL: $urlStr")
-            return@withContext false
-        }
         try {
-            val url = URL(urlStr)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 15000
-            connection.readTimeout = 30000
+            val connection = com.example.data.security.SsrfSecurityBoundary.openSafeConnection(urlStr, 15000, 30000)
             connection.requestMethod = "GET"
             if (connection.responseCode == HttpURLConnection.HTTP_OK) {
                 connection.inputStream.use { input ->

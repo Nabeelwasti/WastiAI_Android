@@ -210,9 +210,10 @@ class WastiAutonomousToolSynthesizer(
                     authenticationStatus = CapabilityAuthStatus.NOT_REQUIRED,
                     provider = "WastiAutonomousToolSynthesizer",
                     supportedOperations = listOf("execute"),
-                    limitations = listOf("Synthesized tool pending runtime verification fact"),
-                    lastVerifiedAt = System.currentTimeMillis(),
-                    verificationMethod = "SYNTHESIS_EXECUTION_TEST",
+                    limitations = listOf("Synthesized tool pending live runtime verification fact"),
+                    lastVerifiedAt = 0L,
+                    lastObservedAt = System.currentTimeMillis(),
+                    verificationMethod = "SYNTHESIS_EXECUTION_PROBE_OBSERVED",
                     realityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED
                 )
             )
@@ -227,18 +228,18 @@ class WastiAutonomousToolSynthesizer(
                     outputContent = probeOutput.take(200),
                     evidence = com.example.data.agent.runtime.VerifiedExecutionEvidence(
                         subject = toolId,
-                        verifiedState = "SYNTHESIS_PROBE_SUCCEEDED",
-                        confidence = 0.7,
+                        verifiedState = "SYNTHESIS_PROBE_OBSERVED_PENDING_LIVE_VERIFICATION",
+                        confidence = 0.5,
                         evidenceSource = com.example.data.agent.runtime.EvidenceSource.PROCESS_TELEMETRY,
                         expectedPostcondition = "SYNTHESIS_PROBE_EXIT_0",
                         observedResult = "SYNTHESIS_PROBE_EXIT_0",
-                        declaredVerifier = "WastiAutonomousToolSynthesizer",
-                        verificationMethod = "SYNTHESIS_EXECUTION_TEST"
+                        declaredVerifier = "WastiAutonomousToolSynthesizer_SandboxProbe",
+                        verificationMethod = "SYNTHESIS_EXECUTION_PROBE"
                     ),
                     executionEnvironment = "wre_bin",
                     executor = "WastiAutonomousToolSynthesizer",
-                    verifier = "WastiAutonomousToolSynthesizer",
-                    verificationMethod = "SYNTHESIS_EXECUTION_TEST",
+                    verifier = "WastiAutonomousToolSynthesizer_SandboxProbe",
+                    verificationMethod = "SYNTHESIS_EXECUTION_PROBE",
                     evidenceLevel = com.example.data.agent.runtime.EvidenceLadder.SANDBOX_TESTED
                 )
             } catch (_: Throwable) {}

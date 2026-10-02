@@ -32,7 +32,8 @@ data class CapabilityReality(
     val provider: String = "LOCAL",
     val supportedOperations: List<String> = emptyList(),
     val limitations: List<String> = emptyList(),
-    val lastVerifiedAt: Long = System.currentTimeMillis(),
+    val lastVerifiedAt: Long = 0L,
+    val lastObservedAt: Long = 0L,
     val verificationMethod: String = "SYSTEM_AUDIT",
     val fallbackCapabilities: List<String> = emptyList(),
     val realityState: CapabilityRealityState = CapabilityRealityState.IMPLEMENTED_NOT_LIVE_VERIFIED

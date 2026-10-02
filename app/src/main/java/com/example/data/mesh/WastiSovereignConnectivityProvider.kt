@@ -442,11 +442,13 @@ class WastiSovereignConnectivityProvider private constructor(
      */
     suspend fun checkGatewayReachability(gatewayUrl: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val url = URL(gatewayUrl)
-            val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 5000
-            conn.readTimeout = 5000
-            conn.responseCode in 200..399
+            val safeResp = com.example.data.security.SsrfSecurityBoundary.executeSafeHttpGet(
+                urlStr = gatewayUrl,
+                connectTimeoutMs = 5000,
+                readTimeoutMs = 5000,
+                maxRedirects = 2
+            )
+            safeResp.statusCode in 200..399
         } catch (_: Exception) {
             false
         }
