@@ -233,20 +233,20 @@ class AutonomousMutationGovernanceTest {
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("AUTONOMOUS_SELF_HEAL", validToken))
 
         // 3. Authorized human/admin with valid authorization (MUST BE ALLOWED)
-        assertTrue("Verified HUMAN_OPERATOR must be allowed",
-            AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR"))
-        assertTrue("Verified OWNER_ADMIN must be allowed",
-            AutonomousMutationGovernance.isEmergencyStopResetPermitted("OWNER_ADMIN"))
-        assertTrue("SYSTEM_INITIALIZER with valid admin token must be allowed",
+        assertTrue("Verified HUMAN_OPERATOR with valid token must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR", validToken))
+        assertTrue("Verified OWNER_ADMIN with valid token must be allowed",
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("OWNER_ADMIN", validToken))
+        assertFalse("SYSTEM_INITIALIZER must be denied under fail-closed identity rules even with token",
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("SYSTEM_INITIALIZER", validToken))
         assertTrue("Authorized human delegate with valid admin token must be allowed",
             AutonomousMutationGovernance.isEmergencyStopResetPermitted("OPERATOR_DELEGATE", validToken))
 
         // 4. Unauthorized human without token or with invalid token (MUST BE DENIED)
         assertFalse("Unauthorized human without token must be denied",
-            AutonomousMutationGovernance.isEmergencyStopResetPermitted("UNAUTHORIZED_HUMAN"))
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR"))
         assertFalse("Unauthorized human with invalid token must be denied",
-            AutonomousMutationGovernance.isEmergencyStopResetPermitted("UNAUTHORIZED_HUMAN", "invalid_token_999"))
+            AutonomousMutationGovernance.isEmergencyStopResetPermitted("HUMAN_OPERATOR", "invalid_token_999"))
 
         // 5. Blank / Unknown / Null requester (MUST BE DENIED)
         assertFalse("Empty requester string must be denied",
