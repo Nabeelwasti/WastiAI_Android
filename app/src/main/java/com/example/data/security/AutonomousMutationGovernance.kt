@@ -235,7 +235,12 @@ object AutonomousMutationGovernance {
         }
 
         // 2. Canonical Path Resolution (Fail-Closed on Traversal / Resolution Failure)
-        val canonicalTarget = tryCanonicalizePath(filePath)
+        val effectivePath = if (workspaceRoot != null && !File(filePath).isAbsolute) {
+            File(workspaceRoot, filePath).path
+        } else {
+            filePath
+        }
+        val canonicalTarget = tryCanonicalizePath(effectivePath)
         if (canonicalTarget == null) {
             return MutationEvaluation(
                 riskTier = MutationRiskTier.CRITICAL_SECURITY_IMMUTABLE,

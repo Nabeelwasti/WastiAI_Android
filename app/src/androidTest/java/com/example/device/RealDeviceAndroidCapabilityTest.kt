@@ -50,7 +50,9 @@ class RealDeviceAndroidCapabilityTest {
     fun setUp() {
         context = InstrumentationRegistry.getInstrumentation().targetContext ?: ApplicationProvider.getApplicationContext()
         ExecutionProvenanceLedger.resetForTesting()
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
     }
 
     @Test
@@ -122,7 +124,10 @@ class RealDeviceAndroidCapabilityTest {
         assertTrue(WastiEmergencyStopController.isEmergencyStopped)
         assertEquals("Device test emergency stop", WastiEmergencyStopController.getReason())
 
-        WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+        val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+        val resetResult = com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+        com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+        assertTrue("Emergency stop reset must succeed with valid token", resetResult)
         assertFalse(WastiEmergencyStopController.isEmergencyStopped)
     }
 
@@ -236,7 +241,10 @@ class RealDeviceAndroidCapabilityTest {
                 assertFalse("Output must be partial computed tokens rather than pre-entry rejection", outputResult.startsWith("[EMERGENCY_STOP_ACTIVE]"))
 
                 // 3. Reset and confirm full inference recovery
-                WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
+                val token = com.example.data.security.TestBootstrapSecurityFixture.createAuthorizedBootstrapToken()
+                val resetResult = com.example.data.security.TestBootstrapSecurityFixture.resetEmergencyStopForBootstrap(token)
+                com.example.data.security.TestBootstrapSecurityFixture.revokeAuthorizedBootstrapToken(token)
+                assertTrue("Post-inference stop reset must succeed with valid token", resetResult)
                 val resumedOutput = NativeLlamaBridge.evalPrompt(handle, "Hello", maxTokens = 10, temperature = 0.0f)
                 assertFalse("Inference must recover cleanly post-reset", resumedOutput.contains("[EMERGENCY_STOP_ACTIVE]"))
                 assertEquals("Post-reset inference must complete requested 10 tokens", 10, NativeLlamaBridge.getGeneratedTokenCount(handle))
@@ -289,6 +297,234 @@ class RealDeviceAndroidCapabilityTest {
         assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof())
         assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof("PACKAGE_IDENTITY_VERIFIED"))
         assertTrue(DeviceVerificationEvidenceTracker.hasValidDeviceProof("NEURAL_TENSOR_FORWARD_PASS_VERIFIED"))
+    }
+
+    @Test
+    fun testRealDeviceAdversarialLocalIpcRejectionAndLegitimateClient() {
+        val serverManager = com.example.data.server.WastiLocalServerManager(context)
+        serverManager.stopServer("Pre-test cleanup")
+        val startResult = serverManager.startServer(0)
+        assertTrue("Local server must start successfully on ephemeral port 0", startResult.isSuccess)
+        val info = startResult.getOrThrow()
+        assertTrue("Bound HTTP port must be nonzero", info.port > 0)
+        assertTrue("Bound WebSocket port must be nonzero", info.wsPort > 0)
+        assertEquals(com.example.data.server.LocalServerState.RUNNING, serverManager.serverInfo.value.state)
+
+        val port = info.port
+        val baseUrl = "http://127.0.0.1:$port"
+        val testDeviceId = "device_instrumentation_test_${System.currentTimeMillis()}"
+
+        try {
+            // 1. Unauthenticated adversarial request to privileged endpoint /api/command
+            val unauthConn = java.net.URL("$baseUrl/api/command").openConnection() as java.net.HttpURLConnection
+            unauthConn.requestMethod = "POST"
+            unauthConn.doOutput = true
+            unauthConn.connectTimeout = 3000
+            unauthConn.readTimeout = 3000
+            unauthConn.setRequestProperty("Content-Type", "application/json")
+            val unauthPayload = org.json.JSONObject().apply {
+                put("command", "system_info")
+                put("origin", "LOCAL_SERVER")
+            }.toString()
+
+            unauthConn.outputStream.use { it.write(unauthPayload.toByteArray(Charsets.UTF_8)) }
+            val unauthResponseCode = unauthConn.responseCode
+            val unauthResponseBody = try {
+                unauthConn.inputStream.bufferedReader().use { it.readText() }
+            } catch (_: Exception) {
+                unauthConn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
+
+            // Assert real server rejects unauthenticated request per canonical CommandSubmissionResult.Rejected contract (HTTP 400 with failure reason)
+            assertEquals("Unauthenticated privileged command must be rejected with HTTP 400", 400, unauthResponseCode)
+            val unauthJson = org.json.JSONObject(unauthResponseBody)
+            assertFalse("Unauthenticated command response must have success == false", unauthJson.optBoolean("success", true))
+            val reason = unauthJson.optString("reason")
+            assertTrue(
+                "Rejection reason must indicate transport security denial (got: $reason)",
+                reason.contains("TRANSPORT_SECURITY_DENIED")
+            )
+
+            // 2. Production Pairing Flow: Request Pairing Challenge
+            val pairReqConn = java.net.URL("$baseUrl/api/pairing/request").openConnection() as java.net.HttpURLConnection
+            pairReqConn.requestMethod = "POST"
+            pairReqConn.doOutput = true
+            pairReqConn.connectTimeout = 3000
+            pairReqConn.readTimeout = 3000
+            pairReqConn.setRequestProperty("Content-Type", "application/json")
+            val pairReqPayload = org.json.JSONObject().apply {
+                put("deviceId", testDeviceId)
+                put("deviceName", "RealDeviceInstrumentationCompanion")
+                put("platform", "DESKTOP")
+            }.toString()
+
+            pairReqConn.outputStream.use { it.write(pairReqPayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(200, pairReqConn.responseCode)
+            val pairReqBody = pairReqConn.inputStream.bufferedReader().use { it.readText() }
+            val pairReqJson = org.json.JSONObject(pairReqBody)
+            assertTrue("Pairing request must succeed", pairReqJson.optBoolean("success"))
+            val pairingCode = pairReqJson.getString("code")
+            assertTrue("Pairing code must start with PAIR-", pairingCode.startsWith("PAIR-"))
+
+            // 3. Production Pairing Flow: Verify Pairing Challenge to obtain genuine session token
+            val pairVerifyConn = java.net.URL("$baseUrl/api/pairing/verify").openConnection() as java.net.HttpURLConnection
+            pairVerifyConn.requestMethod = "POST"
+            pairVerifyConn.doOutput = true
+            pairVerifyConn.connectTimeout = 3000
+            pairVerifyConn.readTimeout = 3000
+            pairVerifyConn.setRequestProperty("Content-Type", "application/json")
+            val pairVerifyPayload = org.json.JSONObject().apply {
+                put("code", pairingCode)
+                put("deviceId", testDeviceId)
+            }.toString()
+
+            pairVerifyConn.outputStream.use { it.write(pairVerifyPayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(200, pairVerifyConn.responseCode)
+            val pairVerifyBody = pairVerifyConn.inputStream.bufferedReader().use { it.readText() }
+            val pairVerifyJson = org.json.JSONObject(pairVerifyBody)
+            assertTrue("Pairing verification must succeed", pairVerifyJson.optBoolean("success"))
+            val sessionToken = pairVerifyJson.getString("sessionToken")
+            assertTrue("Session token must start with wasti-dev-sess-", sessionToken.startsWith("wasti-dev-sess-"))
+
+            // 4. Authenticated Privileged Request to /api/command with genuine session token and deviceId
+            val authCmdConn = java.net.URL("$baseUrl/api/command").openConnection() as java.net.HttpURLConnection
+            authCmdConn.requestMethod = "POST"
+            authCmdConn.doOutput = true
+            authCmdConn.connectTimeout = 5000
+            authCmdConn.readTimeout = 5000
+            authCmdConn.setRequestProperty("Content-Type", "application/json")
+            authCmdConn.setRequestProperty("X-Wasti-Auth-Token", sessionToken)
+            authCmdConn.setRequestProperty("X-Wasti-Device-Id", testDeviceId)
+            val authCmdPayload = org.json.JSONObject().apply {
+                put("command", "system_info")
+                put("origin", "DESKTOP_COMPANION")
+            }.toString()
+
+            authCmdConn.outputStream.use { it.write(authCmdPayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(200, authCmdConn.responseCode)
+            val authCmdBody = authCmdConn.inputStream.bufferedReader().use { it.readText() }
+            val authCmdJson = org.json.JSONObject(authCmdBody)
+            assertTrue("Authenticated command submission must succeed", authCmdJson.optBoolean("success"))
+            val commandId = authCmdJson.optString("commandId")
+            assertTrue("Accepted command must return non-empty commandId", commandId.isNotBlank())
+            val message = authCmdJson.optString("message")
+            assertTrue("Accepted command message must confirm execution", message.contains("accepted", ignoreCase = true))
+
+            // 4b. Await and inspect actual asynchronous system_info execution completion and output through canonical execution history
+            var matchedRecord: com.example.data.core.CommandExecutionRecord? = null
+            val deadline = System.currentTimeMillis() + 10000L
+            while (System.currentTimeMillis() < deadline) {
+                val history = com.example.data.transport.WastiCommandTransport.getInstance(context).executionHistory.value
+                val record = history.firstOrNull { it.commandId == commandId }
+                if (record != null && (record.isSuccess || record.response.isNotBlank())) {
+                    matchedRecord = record
+                    break
+                }
+                Thread.sleep(100)
+            }
+
+            assertNotNull(
+                "Command $commandId did not complete within the 10-second timeout. Active context: ${com.example.data.core.WastiOSRuntime.getInstance(context).activeContext.value}",
+                matchedRecord
+            )
+            val record = matchedRecord!!
+            assertTrue(
+                "Command $commandId execution must be recorded as successful (got isSuccess=${record.isSuccess}, state=${record.agenticState}, response='${record.response}')",
+                record.isSuccess
+            )
+            val actualOutput = record.response
+            assertTrue(
+                "Command $commandId output must contain meaningful system information fields (got: '$actualOutput')",
+                actualOutput.isNotBlank() && (
+                    actualOutput.contains("OS", ignoreCase = true) ||
+                    actualOutput.contains("Linux", ignoreCase = true) ||
+                    actualOutput.contains("Android", ignoreCase = true) ||
+                    actualOutput.contains("Runtime", ignoreCase = true) ||
+                    actualOutput.contains("Device", ignoreCase = true) ||
+                    actualOutput.contains("Model", ignoreCase = true) ||
+                    actualOutput.contains("SDK", ignoreCase = true)
+                )
+            )
+
+            // 4c. Invoke privileged execution endpoint /api/execute using legitimate session token to verify synchronous system_info output
+            val authExecConn = java.net.URL("$baseUrl/api/execute").openConnection() as java.net.HttpURLConnection
+            authExecConn.requestMethod = "POST"
+            authExecConn.doOutput = true
+            authExecConn.connectTimeout = 5000
+            authExecConn.readTimeout = 5000
+            authExecConn.setRequestProperty("Content-Type", "application/json")
+            authExecConn.setRequestProperty("X-Wasti-Auth-Token", sessionToken)
+            authExecConn.setRequestProperty("X-Wasti-Device-Id", testDeviceId)
+            val authExecPayload = org.json.JSONObject().apply {
+                put("capabilityId", "system_info")
+                put("parameters", org.json.JSONObject())
+            }.toString()
+
+            authExecConn.outputStream.use { it.write(authExecPayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(200, authExecConn.responseCode)
+            val authExecBody = authExecConn.inputStream.bufferedReader().use { it.readText() }
+            val authExecJson = org.json.JSONObject(authExecBody)
+            val execStatus = authExecJson.optString("status")
+            assertTrue(
+                "Privileged execution must return completed/verified status (got: $execStatus)",
+                execStatus in listOf("COMPLETED", "VERIFIED", "SUCCEEDED")
+            )
+            val syncOutput = authExecJson.optString("output")
+            assertTrue("Synchronous execution output must be non-empty", syncOutput.isNotBlank())
+            assertTrue(
+                "Synchronous execution output must contain real system telemetry (got: '$syncOutput')",
+                syncOutput.contains("OS", ignoreCase = true) ||
+                syncOutput.contains("Android", ignoreCase = true) ||
+                syncOutput.contains("Linux", ignoreCase = true) ||
+                syncOutput.contains("Device", ignoreCase = true) ||
+                syncOutput.contains("Model", ignoreCase = true)
+            )
+
+            // 5. Clean up paired session by calling revocation API
+            val revokeConn = java.net.URL("$baseUrl/api/pairing/revoke").openConnection() as java.net.HttpURLConnection
+            revokeConn.requestMethod = "POST"
+            revokeConn.doOutput = true
+            revokeConn.connectTimeout = 3000
+            revokeConn.readTimeout = 3000
+            revokeConn.setRequestProperty("Content-Type", "application/json")
+            val revokePayload = org.json.JSONObject().apply {
+                put("deviceId", testDeviceId)
+            }.toString()
+
+            revokeConn.outputStream.use { it.write(revokePayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(200, revokeConn.responseCode)
+            val revokeBody = revokeConn.inputStream.bufferedReader().use { it.readText() }
+            val revokeJson = org.json.JSONObject(revokeBody)
+            assertTrue("Device revocation must succeed", revokeJson.optBoolean("success"))
+
+            // 6. Verify post-revocation adversarial rejection
+            val postRevokeConn = java.net.URL("$baseUrl/api/command").openConnection() as java.net.HttpURLConnection
+            postRevokeConn.requestMethod = "POST"
+            postRevokeConn.doOutput = true
+            postRevokeConn.connectTimeout = 3000
+            postRevokeConn.readTimeout = 3000
+            postRevokeConn.setRequestProperty("Content-Type", "application/json")
+            postRevokeConn.setRequestProperty("X-Wasti-Auth-Token", sessionToken)
+            postRevokeConn.setRequestProperty("X-Wasti-Device-Id", testDeviceId)
+            val postRevokePayload = org.json.JSONObject().apply {
+                put("command", "system_info")
+                put("origin", "DESKTOP_COMPANION")
+            }.toString()
+
+            postRevokeConn.outputStream.use { it.write(postRevokePayload.toByteArray(Charsets.UTF_8)) }
+            assertEquals(400, postRevokeConn.responseCode)
+            val postRevokeBody = try {
+                postRevokeConn.inputStream.bufferedReader().use { it.readText() }
+            } catch (_: Exception) {
+                postRevokeConn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
+            val postRevokeJson = org.json.JSONObject(postRevokeBody)
+            assertFalse("Post-revocation command must be rejected", postRevokeJson.optBoolean("success", true))
+        } finally {
+            val stopResult = serverManager.stopServer("Real device test completed")
+            assertTrue("Server stop must succeed", stopResult.isSuccess)
+            assertEquals(com.example.data.server.LocalServerState.STOPPED, serverManager.serverInfo.value.state)
+        }
     }
 
     private fun createMinimalGgufModel(file: java.io.File, dim: Int, nLayers: Int, nHeads: Int, ffnDim: Int) {

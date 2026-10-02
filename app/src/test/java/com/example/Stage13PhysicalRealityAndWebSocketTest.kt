@@ -207,13 +207,52 @@ class Stage13PhysicalRealityAndWebSocketTest {
     }
 
     @Test
-    fun testLocalServerManagerWebSocketLifecycle() {
-        val serverResult = serverManager.startServer(9098)
-        assertTrue(serverResult.isSuccess)
-        val info = serverResult.getOrNull()!!
-        assertEquals(9098, info.port)
-        assertEquals(9099, info.wsPort)
-        serverManager.stopServer()
+    fun testLocalServerManagerEphemeralPortAllocationAndActualReporting() {
+        val serverResult = serverManager.startServer(0)
+        try {
+            assertTrue("Ephemeral port server start must succeed", serverResult.isSuccess)
+            val info = serverResult.getOrNull()!!
+            assertTrue("Actual bound HTTP port must be non-zero", info.port > 0)
+            assertTrue("Actual bound WS port must be non-zero", info.wsPort > 0)
+            org.junit.Assert.assertNotEquals("HTTP and WS ports must be distinct", info.port, info.wsPort)
+            assertEquals(info.port, serverManager.serverInfo.value.port)
+            assertEquals(info.wsPort, serverManager.serverInfo.value.wsPort)
+            assertEquals(com.example.data.server.LocalServerState.RUNNING, serverManager.serverInfo.value.state)
+        } finally {
+            val stopRes = serverManager.stopServer("Cleanup ephemeral test")
+            assertTrue("Stop server must succeed", stopRes.isSuccess)
+            assertEquals(com.example.data.server.LocalServerState.STOPPED, serverManager.serverInfo.value.state)
+        }
+    }
+
+    @Test
+    fun testLocalServerManagerExplicitPortCollisionFailure() {
+        // Find an available base port and occupy all candidate ports in the scan window
+        val basePort = java.net.ServerSocket(0).use { it.localPort }
+        val occupiedSockets = mutableListOf<java.net.ServerSocket>()
+        try {
+            // Occupy basePort..basePort+5 to ensure collision on every fallback offset
+            for (offset in 0..5) {
+                try {
+                    occupiedSockets.add(java.net.ServerSocket(basePort + offset))
+                } catch (_: Exception) {}
+            }
+            // Attempt to start server on occupied basePort
+            val serverResult = serverManager.startServer(basePort)
+            try {
+                assertTrue("Server startup must fail when candidate ports are occupied", serverResult.isFailure)
+                assertEquals(com.example.data.server.LocalServerState.FAILED, serverManager.serverInfo.value.state)
+            } finally {
+                serverManager.stopServer("Cleanup collision test")
+            }
+        } finally {
+            for (socket in occupiedSockets) {
+                try {
+                    socket.close()
+                } catch (_: Exception) {}
+            }
+            serverManager.stopServer("Post-test cleanup")
+        }
     }
 
     private fun readHttpHeaders(inp: InputStream): String {

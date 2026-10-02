@@ -624,7 +624,7 @@ class WastiOSRuntime(
         )
     }
 
-    fun clearEmergencyStop(requester: String = "HUMAN_OPERATOR", adminToken: String? = null): Boolean {
+    fun clearEmergencyStop(requester: String, adminToken: String? = null): Boolean {
         val success = safeEmergencyStop.resetEmergencyStop(requester, adminToken)
         if (success) {
             _activeContext.value = _activeContext.value.copy(

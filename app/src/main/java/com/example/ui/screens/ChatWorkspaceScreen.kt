@@ -839,8 +839,24 @@ fun ChatWorkspaceScreen(
                         IconButton(
                             onClick = {
                                 if (emergencyStopSnap.isStopped) {
-                                    com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(requester = "HUMAN_OPERATOR")
-                                    Toast.makeText(context, "Emergency stop reset. System ready.", Toast.LENGTH_SHORT).show()
+                                    val profile = com.example.data.auth.WastiIdentityManager.currentProfile.value
+                                    val isVerifiedOwner = profile?.isVerifiedOwner == true
+                                    val entitlement = profile?.ownerEntitlement
+                                    val requesterId = if (isVerifiedOwner) {
+                                        profile?.userId?.ifBlank { profile.email } ?: "UNAUTHORIZED"
+                                    } else {
+                                        "UNAUTHORIZED"
+                                    }
+                                    val adminToken = if (isVerifiedOwner && entitlement?.isValid == true) entitlement.token else null
+                                    val success = com.example.data.agent.runtime.WastiEmergencyStopController.resetEmergencyStop(
+                                        requester = requesterId,
+                                        adminToken = adminToken
+                                    )
+                                    if (success) {
+                                        Toast.makeText(context, "Emergency stop reset. System ready.", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Emergency stop reset rejected: verified owner authorization required.", Toast.LENGTH_LONG).show()
+                                    }
                                 } else {
                                     onCancelGeneration()
                                     com.example.data.agent.runtime.WastiEmergencyStopController.triggerEmergencyStop(

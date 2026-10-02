@@ -93,13 +93,14 @@ class WastiLocalServerManager(
         // Try preferred port, fallback to sequential ports up to +5
         for (offset in 0..5) {
             try {
-                val candidatePort = preferredPort + offset
+                val candidatePort = if (preferredPort == 0) 0 else preferredPort + offset
                 val address = InetSocketAddress("127.0.0.1", candidatePort)
                 server = HttpServer.create(address, 0)
-                selectedPort = candidatePort
+                selectedPort = server.address.port
                 break
             } catch (e: Exception) {
                 lastException = e
+                if (preferredPort == 0) break
             }
         }
 
@@ -200,9 +201,9 @@ class WastiLocalServerManager(
             httpServer = server
 
             // Stage 13: Canonical RFC 6455 WebSocket Server Startup
-            val wsPort = selectedPort + 1
-            val wsResult = WastiWebSocketServer.getInstance(context).start(wsPort)
-            val actualWsPort = wsResult.getOrDefault(wsPort)
+            val targetWsPort = if (preferredPort == 0) 0 else selectedPort + 1
+            val wsResult = WastiWebSocketServer.getInstance(context).start(targetWsPort)
+            val actualWsPort = wsResult.getOrThrow()
 
             val updatedInfo = LocalServerInfo(
                 state = LocalServerState.RUNNING,
@@ -246,6 +247,13 @@ class WastiLocalServerManager(
         } catch (e: Exception) {
             val errMsg = "Failed to start local server on port $selectedPort: ${e.message}"
             Log.e(TAG, errMsg, e)
+            try {
+                httpServer?.stop(0)
+                httpServer = null
+            } catch (_: Exception) {}
+            try {
+                WastiWebSocketServer.getInstance(context).stop()
+            } catch (_: Exception) {}
             _serverInfo.value = _serverInfo.value.copy(
                 state = LocalServerState.FAILED,
                 lastError = errMsg

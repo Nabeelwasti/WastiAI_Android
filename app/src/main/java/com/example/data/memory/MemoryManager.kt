@@ -158,6 +158,26 @@ object MemoryManager {
             return@withContext false
         }
         val updated = existing.copy(tier = targetTier)
+        val dao = memoryDao
+        if (dao != null) {
+            val entity = MemoryEntity(
+                id = updated.id,
+                key = updated.key,
+                category = updated.category,
+                value = updated.value,
+                importanceScore = updated.importanceScore,
+                timestamp = updated.timestamp,
+                sourceMessageId = updated.sourceMessageId,
+                tier = updated.tier.name,
+                provenanceCategory = updated.provenanceCategory.name
+            )
+            try {
+                dao.insertMemory(entity)
+            } catch (e: Exception) {
+                Log.e("MemoryManager", "Failed updating memory entity in Room DB for tier promotion", e)
+                throw e
+            }
+        }
         activeMemoriesMap[memoryId] = updated
         _memoriesFlow.value = activeMemoriesMap.values.toList()
         true
