@@ -9,7 +9,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
 import java.net.HttpURLConnection
-import java.net.URL
 import java.net.URLEncoder
 
 data class LeadItem(

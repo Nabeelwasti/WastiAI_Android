@@ -336,11 +336,10 @@ object SsrfSecurityBoundary {
                         throw IOException("SSRF Security Error: HTTP redirect $responseCode missing Location header")
                     }
 
-                    val baseUri = URI(currentUrl)
                     val resolvedUri = try {
                         baseUri.resolve(locationHeader)
                     } catch (e: Exception) {
-                        throw SecurityException("SSRF Security Violation: Malformed redirect URI '$locationHeader': ${e.message}")
+                        throw SecurityException("SSRF Security Violation: Malformed redirect URI '$locationHeader': ${e.message}", e)
                     }
 
                     val nextUrl = resolvedUri.toString()

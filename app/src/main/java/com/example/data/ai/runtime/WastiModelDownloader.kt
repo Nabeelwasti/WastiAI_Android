@@ -17,7 +17,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.security.MessageDigest
 
 data class ModelDownloadProgress(

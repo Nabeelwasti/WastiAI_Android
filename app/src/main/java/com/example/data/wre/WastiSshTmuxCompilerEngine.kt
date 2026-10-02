@@ -234,11 +234,12 @@ class WastiSshTmuxCompilerEngine(
         val canonicalWorking = try {
             workingDir.canonicalFile
         } catch (e: Exception) {
+            Log.w(TAG, "Working directory canonicalization failed: ${e.message}", e)
             return@withContext PolyglotExecutionOutcome(
                 isSuccess = false,
                 language = PolyglotLanguage.C_CPP,
                 stdout = "",
-                stderr = "Security Exception: Working directory canonicalization failed (Fail-Closed): ${workingDir.path}",
+                stderr = "Security Exception: Working directory canonicalization failed (Fail-Closed): ${workingDir.path}: ${e.message}",
                 exitCode = 126
             )
         }
@@ -246,11 +247,12 @@ class WastiSshTmuxCompilerEngine(
         val rootDir = try {
             workspaceManager.getRootDirectory().canonicalFile
         } catch (e: Exception) {
+            Log.w(TAG, "Workspace root directory canonicalization failed: ${e.message}", e)
             return@withContext PolyglotExecutionOutcome(
                 isSuccess = false,
                 language = PolyglotLanguage.C_CPP,
                 stdout = "",
-                stderr = "Security Exception: Workspace root directory canonicalization failed (Fail-Closed).",
+                stderr = "Security Exception: Workspace root directory canonicalization failed (Fail-Closed): ${e.message}",
                 exitCode = 126
             )
         }

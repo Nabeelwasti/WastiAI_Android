@@ -2,13 +2,11 @@ package com.example.data.wre
 
 import android.content.Context
 import android.os.Build
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
-import java.net.URL
 import java.util.concurrent.ConcurrentHashMap
 
 /**
