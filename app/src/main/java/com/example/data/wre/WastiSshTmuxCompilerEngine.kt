@@ -1,6 +1,7 @@
 package com.example.data.wre
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -28,6 +29,10 @@ class WastiSshTmuxCompilerEngine(
     private val context: Context,
     private val workspaceManager: WreWorkspaceManager
 ) {
+
+    companion object {
+        private const val TAG = "WastiSshTmuxCompilerEngine"
+    }
 
     private val tmuxSessions = ConcurrentHashMap<String, TmuxSession>()
 
