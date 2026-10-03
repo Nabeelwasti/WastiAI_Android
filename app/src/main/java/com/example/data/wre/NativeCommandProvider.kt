@@ -862,14 +862,33 @@ class NativeCommandProvider(
             }
 
             "[", "test" -> {
-                // Simple condition evaluation: [ "$1" = "--test-run" ] or [ a = b ]
+                // Support comparison operators: =, ==, !=, -eq, -ne, -gt, -ge, -lt, -le, -z, -n
                 val cleanArgs = args.filter { it != "]" }
                 if (cleanArgs.size >= 3 && (cleanArgs[1] == "=" || cleanArgs[1] == "==")) {
-                    val eq = cleanArgs[0] == cleanArgs[2]
-                    exitCode = if (eq) 0 else 1
+                    exitCode = if (cleanArgs[0] == cleanArgs[2]) 0 else 1
                 } else if (cleanArgs.size >= 3 && cleanArgs[1] == "!=") {
-                    val neq = cleanArgs[0] != cleanArgs[2]
-                    exitCode = if (neq) 0 else 1
+                    exitCode = if (cleanArgs[0] != cleanArgs[2]) 0 else 1
+                } else if (cleanArgs.size >= 3 && (cleanArgs[1] == "-eq" || cleanArgs[1] == "-ne" || cleanArgs[1] == "-gt" || cleanArgs[1] == "-ge" || cleanArgs[1] == "-lt" || cleanArgs[1] == "-le")) {
+                    val num1 = cleanArgs[0].toLongOrNull()
+                    val num2 = cleanArgs[2].toLongOrNull()
+                    if (num1 != null && num2 != null) {
+                        val cond = when (cleanArgs[1]) {
+                            "-eq" -> num1 == num2
+                            "-ne" -> num1 != num2
+                            "-gt" -> num1 > num2
+                            "-ge" -> num1 >= num2
+                            "-lt" -> num1 < num2
+                            "-le" -> num1 <= num2
+                            else -> false
+                        }
+                        exitCode = if (cond) 0 else 1
+                    } else {
+                        exitCode = if (cleanArgs[0] == cleanArgs[2]) 0 else 1
+                    }
+                } else if (cleanArgs.size >= 2 && cleanArgs[0] == "-z") {
+                    exitCode = if (cleanArgs[1].isEmpty()) 0 else 1
+                } else if (cleanArgs.size >= 2 && cleanArgs[0] == "-n") {
+                    exitCode = if (cleanArgs[1].isNotEmpty()) 0 else 1
                 } else if (cleanArgs.isNotEmpty()) {
                     exitCode = if (cleanArgs[0].isNotBlank()) 0 else 1
                 } else {
@@ -1072,9 +1091,10 @@ class NativeCommandProvider(
             var line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#")) continue
 
-            // Parameter expansions: $@, $*, $1, $2, etc.
+            // Parameter expansions: $@, $*, $#, $1, $2, etc.
             line = line.replace("\$@", args.joinToString(" "))
                 .replace("\$*", args.joinToString(" "))
+                .replace("\$#", args.size.toString())
             args.forEachIndexed { idx, argVal ->
                 line = line.replace("\$${idx + 1}", argVal)
             }

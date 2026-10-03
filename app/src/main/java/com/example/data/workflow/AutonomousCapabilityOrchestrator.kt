@@ -200,6 +200,7 @@ class AutonomousCapabilityOrchestrator(
             capabilityId = normId,
             description = description.ifBlank { "Dynamically created WRE tool for $normId" },
             initialScriptContent = scriptContent,
+            isCustomOverride = (scriptContentOverride != null),
             maxCorrectionAttempts = maxCorrectionAttempts
         )
     }
@@ -209,6 +210,7 @@ class AutonomousCapabilityOrchestrator(
         capabilityId: String,
         description: String,
         initialScriptContent: String,
+        isCustomOverride: Boolean = false,
         maxCorrectionAttempts: Int
     ): CapabilityResolutionResult {
         val cleanName = capabilityId.replace(Regex("[^a-zA-Z0-9_]"), "_")
@@ -251,7 +253,11 @@ class AutonomousCapabilityOrchestrator(
         }
         eventBus?.emit(AgentEvent.CapabilityBuildCompleted(taskId, capabilityId, isSuccess = true))
 
-        val contract = getDomainContractForCapability(capabilityId, description, currentScript)
+        val contract = if (isCustomOverride) {
+            getDomainContractForCapability(capabilityId, description, currentScript)
+        } else {
+            getDomainContractForCapability(capabilityId, description, null)
+        }
 
         // Phase B: Sandbox Testing with Bounded Self-Correction Loop
         while (attempt <= maxCorrectionAttempts && !isTestVerified) {
